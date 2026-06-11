@@ -1,0 +1,36 @@
+{
+  "name": "sopralluoghi",
+  "private": true,
+  "version": "0.1.0",
+  "description": "PWA professionale per sopralluoghi tecnici: quotatura su foto e report PDF",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "dexie": "^4.0.10",
+    "dexie-react-hooks": "^1.1.7",
+    "exifr": "^7.1.3",
+    "jszip": "^3.10.1",
+    "konva": "^9.3.16",
+    "pdfmake": "^0.2.14",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-konva": "^18.2.10"
+  },
+  "devDependencies": {
+    "@types/pdfmake": "^0.2.9",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "fake-indexeddb": "^6.0.0",
+    "typescript": "~5.6.3",
+    "vite": "^6.0.3",
+    "vite-plugin-pwa": "^0.21.1",
+    "vitest": "^3.2.6"
+  }
+}
