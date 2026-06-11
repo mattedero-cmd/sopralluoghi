@@ -10,8 +10,8 @@ interface ManifestBackup {
   esportatoIl: number;
   cartelle: Cartella[];
   progetti: Progetto[];
-  /** metadati foto senza i blob (salvati come file nello zip) */
-  foto: Array<Omit<Foto, 'blobOriginale' | 'miniatura'>>;
+  /** metadati foto senza i dati binari (salvati come file nello zip) */
+  foto: Array<Omit<Foto, 'origine' | 'miniatura'>>;
   annotazioni: Annotazione[];
   impostazioni: Impostazioni | null;
 }
@@ -36,7 +36,7 @@ export async function esportaBackup(avanzamento?: (msg: string) => void): Promis
     esportatoIl: Date.now(),
     cartelle,
     progetti,
-    foto: foto.map(({ blobOriginale: _b, miniatura: _m, ...resto }) => resto),
+    foto: foto.map(({ origine: _o, miniatura: _m, ...resto }) => resto),
     annotazioni,
     impostazioni: impostazioni ?? null
   };
@@ -44,7 +44,7 @@ export async function esportaBackup(avanzamento?: (msg: string) => void): Promis
   const zip = new JSZip();
   zip.file('backup.json', JSON.stringify(manifest));
   for (const f of foto) {
-    zip.file(`foto/${f.id}.jpg`, f.blobOriginale);
+    zip.file(`foto/${f.id}.jpg`, f.origine);
     zip.file(`miniature/${f.id}.jpg`, f.miniatura);
   }
   avanzamento?.('Compressione…');
@@ -101,12 +101,14 @@ export async function importaBackup(
     const fOrig = zip.file(`foto/${meta.id}.jpg`);
     const fMini = zip.file(`miniature/${meta.id}.jpg`);
     if (!fOrig) throw new Error(`Backup incompleto: manca l'immagine della foto ${meta.id}.`);
-    const blobOriginale = await fOrig.async('blob');
-    const miniatura = fMini ? await fMini.async('blob') : blobOriginale;
+    const origine = await fOrig.async('arraybuffer');
+    const miniatura = fMini ? await fMini.async('arraybuffer') : origine.slice(0);
     fotoComplete.push({
       ...meta,
-      blobOriginale: new Blob([blobOriginale], { type: 'image/jpeg' }),
-      miniatura: new Blob([miniatura], { type: 'image/jpeg' })
+      origine,
+      origineTipo: meta.origineTipo || 'image/jpeg',
+      miniatura,
+      miniaturaTipo: meta.miniaturaTipo || 'image/jpeg'
     });
   }
 

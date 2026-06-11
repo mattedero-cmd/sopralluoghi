@@ -48,11 +48,13 @@ export function StatoApp() {
     salvataggio === 'salvato' ? 'Salvato' : salvataggio === 'salvataggio' ? 'Salvataggio…' : 'ERRORE';
   return (
     <span className="stato-app">
-      <span>
-        <span className={`pallino ${salvataggio === 'salvato' ? 'online' : salvataggio}`} /> {testoSalva}
+      <span title={testoSalva}>
+        <span className={`pallino ${salvataggio === 'salvato' ? 'online' : salvataggio}`} />
+        <span className="etichetta-stato"> {testoSalva}</span>
       </span>
-      <span>
-        <span className={`pallino ${online ? 'online' : 'offline'}`} /> {online ? 'Online' : 'Offline'}
+      <span title={online ? 'Online' : 'Offline'}>
+        <span className={`pallino ${online ? 'online' : 'offline'}`} />
+        <span className="etichetta-stato"> {online ? 'Online' : 'Offline'}</span>
       </span>
     </span>
   );
@@ -168,16 +170,16 @@ export function MenuContesto({
 }
 
 // ---------------------------------------------------------------------------
-// Miniatura da Blob con gestione dell'URL oggetto
+// Miniatura dai dati archiviati, con gestione dell'URL oggetto
 // ---------------------------------------------------------------------------
 
-export function ImmagineBlob({ blob, alt }: { blob: Blob; alt: string }) {
+export function ImmagineBlob({ dati, tipo, alt }: { dati: ArrayBuffer; tipo: string; alt: string }) {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
-    const u = URL.createObjectURL(blob);
+    const u = URL.createObjectURL(new Blob([dati], { type: tipo || 'image/jpeg' }));
     setUrl(u);
     return () => URL.revokeObjectURL(u);
-  }, [blob]);
+  }, [dati, tipo]);
   if (!url) return null;
   return <img src={url} alt={alt} loading="lazy" />;
 }

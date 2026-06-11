@@ -377,6 +377,35 @@ textarea {
   background: var(--pericolo);
 }
 
+/* Schermi stretti (telefoni): la barra deve sempre stare in una riga.
+   Restano i pallini di stato; le etichette testuali vengono nascoste. */
+@media (max-width: 640px) {
+  .barra {
+    gap: 5px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .barra h1 {
+    font-size: 16px;
+    min-width: 30px;
+  }
+
+  .barra .btn.icona {
+    min-width: 42px;
+    min-height: 42px;
+    font-size: 19px;
+  }
+
+  .etichetta-stato {
+    display: none;
+  }
+
+  .stato-app {
+    gap: 5px;
+  }
+}
+
 /* Editor */
 .editor {
   display: flex;

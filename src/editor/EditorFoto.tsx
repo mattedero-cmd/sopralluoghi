@@ -15,7 +15,7 @@ import type {
 } from '../db/types';
 import { IMPOSTAZIONI_DEFAULT } from '../db/types';
 import { aggiornaFoto, leggiImpostazioni, salvaAnnotazioniFoto } from '../db/repository';
-import { caricaImmagine } from '../utils/image';
+import { blobOrigine, caricaImmagine } from '../utils/image';
 import { naviga } from '../router';
 import { Modale, StatoApp } from '../components/comuni';
 import { mostraToast } from '../state/toast';
@@ -67,7 +67,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   useEffect(() => {
     if (!foto) return;
     let attivo = true;
-    caricaImmagine(foto.blobOriginale)
+    caricaImmagine(blobOrigine(foto))
       .then((img) => attivo && setImmagine(img))
       .catch((e) => mostraToast('errore', e instanceof Error ? e.message : 'Foto non caricabile.'));
     return () => {
@@ -380,6 +380,17 @@ function PannelloProprieta({
   onElimina: () => void;
   onModificaTesto: () => void;
 }) {
+  // dimensione personalizzabile: scala spessore linee e testo insieme
+  const scalaStile = (fattore: number) => {
+    onModifica({
+      stile: {
+        ...ann.stile,
+        spessore: Math.min(40, Math.max(1, ann.stile.spessore * fattore)),
+        dimensioneTesto: Math.min(200, Math.max(8, Math.round(ann.stile.dimensioneTesto * fattore)))
+      }
+    });
+  };
+
   return (
     <div className="pannello-proprieta">
       {ann.tipo === 'quota' && (
@@ -388,6 +399,20 @@ function PannelloProprieta({
           annotazioni={annotazioni}
           inputValore={inputValore}
           onModifica={onModifica}
+        />
+      )}
+      <span className="segmenti" role="group" aria-label="Dimensione annotazione">
+        <button aria-label="Riduci dimensione" onClick={() => scalaStile(1 / 1.25)}>
+          A−
+        </button>
+        <button aria-label="Aumenta dimensione" onClick={() => scalaStile(1.25)}>
+          A＋
+        </button>
+      </span>
+      {ann.tipo === 'quota' && (
+        <PaletteColori
+          colore={ann.stile.colore}
+          onScegli={(c) => onModifica({ stile: { ...ann.stile, colore: c } })}
         />
       )}
       {ann.tipo === 'testo' && (

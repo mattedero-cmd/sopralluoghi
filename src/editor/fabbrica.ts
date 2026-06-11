@@ -30,10 +30,11 @@ export class FabbricaAnnotazioni {
   }
 
   stileBase(): Stile {
+    const fattore = this.impostazioni.fattoreDimensione || 1;
     return {
       colore: this.impostazioni.stileDefault.colore,
-      spessore: Math.max(2, Math.round(this.lato / 600)),
-      dimensioneTesto: Math.min(72, Math.max(18, Math.round(this.lato / 50)))
+      spessore: Math.max(1, Math.round((this.lato / 600) * fattore)),
+      dimensioneTesto: Math.min(140, Math.max(12, Math.round((this.lato / 50) * fattore)))
     };
   }
 

@@ -1,5 +1,5 @@
 import exifr from 'exifr';
-import type { Geotag } from '../db/types';
+import type { Foto, Geotag } from '../db/types';
 
 /** Lato massimo dell'immagine archiviata: qualità da documentazione tecnica */
 const LATO_MAX = 2560;
@@ -11,12 +11,23 @@ const QUALITA_MINIATURA = 0.75;
 const MAX_FILE_BYTE = 80 * 1024 * 1024;
 
 export interface FotoImportata {
-  blobOriginale: Blob;
-  miniatura: Blob;
+  origine: ArrayBuffer;
+  origineTipo: string;
+  miniatura: ArrayBuffer;
+  miniaturaTipo: string;
   larghezzaPx: number;
   altezzaPx: number;
   dataScatto: number;
   geotag: Geotag | null;
+}
+
+/** Ricostruisce il Blob dell'originale dai dati archiviati */
+export function blobOrigine(f: Pick<Foto, 'origine' | 'origineTipo'>): Blob {
+  return new Blob([f.origine], { type: f.origineTipo || 'image/jpeg' });
+}
+
+export function blobMiniatura(f: Pick<Foto, 'miniatura' | 'miniaturaTipo'>): Blob {
+  return new Blob([f.miniatura], { type: f.miniaturaTipo || 'image/jpeg' });
 }
 
 /**
@@ -53,8 +64,10 @@ export async function importaFoto(file: File | Blob): Promise<FotoImportata> {
     const principale = await ridimensiona(bitmap, LATO_MAX, QUALITA_JPEG);
     const miniatura = await ridimensiona(bitmap, LATO_MINIATURA, QUALITA_MINIATURA);
     return {
-      blobOriginale: principale.blob,
-      miniatura: miniatura.blob,
+      origine: await principale.blob.arrayBuffer(),
+      origineTipo: 'image/jpeg',
+      miniatura: await miniatura.blob.arrayBuffer(),
+      miniaturaTipo: 'image/jpeg',
       larghezzaPx: principale.larghezza,
       altezzaPx: principale.altezza,
       dataScatto,

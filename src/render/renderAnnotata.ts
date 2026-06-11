@@ -1,6 +1,6 @@
 import type { Annotazione, Foto } from '../db/types';
 import { primitiveAnnotazione, type Primitiva } from '../geometry/primitive';
-import { canvasInBlob, caricaImmagine } from '../utils/image';
+import { blobOrigine, canvasInBlob, caricaImmagine } from '../utils/image';
 
 /**
  * Renderer di export: disegna l'originale + le primitive delle annotazioni
@@ -14,7 +14,7 @@ export async function renderFotoAnnotata(
   formato: 'image/jpeg' | 'image/png' = 'image/jpeg',
   qualita = 0.92
 ): Promise<Blob> {
-  const img = await caricaImmagine(foto.blobOriginale);
+  const img = await caricaImmagine(blobOrigine(foto));
   const canvas = document.createElement('canvas');
   canvas.width = foto.larghezzaPx;
   canvas.height = foto.altezzaPx;

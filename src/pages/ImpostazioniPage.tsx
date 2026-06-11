@@ -122,6 +122,18 @@ export function ImpostazioniPage() {
           />
         </div>
         <div className="campo">
+          <label>Dimensione di quote e testi sulle nuove annotazioni</label>
+          <select
+            value={String(imp.fattoreDimensione)}
+            onChange={(e) => aggiorna({ fattoreDimensione: Number(e.target.value) })}
+          >
+            <option value="0.7">Piccola</option>
+            <option value="1">Media</option>
+            <option value="1.4">Grande</option>
+            <option value="1.8">Molto grande</option>
+          </select>
+        </div>
+        <div className="campo">
           <label>Unità predefinita</label>
           <select value={imp.unitaDefault} onChange={(e) => aggiorna({ unitaDefault: e.target.value as Unita })}>
             <option value="mm">millimetri</option>

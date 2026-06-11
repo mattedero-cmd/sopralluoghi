@@ -8,6 +8,7 @@ import {
   duplicaProgetto,
   eliminaCartella,
   eliminaProgetto,
+  migraFotoLegacy,
   salvaAnnotazioniFoto,
   spostaCartella
 } from '../repository';
@@ -15,8 +16,10 @@ import type { Foto, Quota } from '../types';
 
 function datiFoto(): Omit<Foto, 'id' | 'progettoId' | 'ordine' | 'creataIl' | 'modificataIl'> {
   return {
-    blobOriginale: new Blob(['jpeg-finto'], { type: 'image/jpeg' }),
-    miniatura: new Blob(['mini'], { type: 'image/jpeg' }),
+    origine: new TextEncoder().encode('jpeg-finto').buffer as ArrayBuffer,
+    origineTipo: 'image/jpeg',
+    miniatura: new TextEncoder().encode('mini').buffer as ArrayBuffer,
+    miniaturaTipo: 'image/jpeg',
     larghezzaPx: 2000,
     altezzaPx: 1500,
     dataScatto: Date.now(),
@@ -130,6 +133,44 @@ describe('spostamenti e duplicazione', () => {
     // l'originale è intatto
     expect(await db.foto.where('progettoId').equals(p.id).count()).toBe(1);
     expect(await db.annotazioni.where('fotoId').equals(f.id).count()).toBe(1);
+  });
+});
+
+describe('migrazione foto legacy (Blob → ArrayBuffer)', () => {
+  it('converte i record salvati come Blob dalle prime versioni', async () => {
+    const p = await creaProgetto({ nome: 'Legacy', cliente: '', luogo: '' }, null);
+    const legacy = {
+      id: 'foto-legacy',
+      progettoId: p.id,
+      blobOriginale: new Blob(['vecchio-jpeg'], { type: 'image/jpeg' }),
+      miniatura: new Blob(['vecchia-mini'], { type: 'image/jpeg' }),
+      larghezzaPx: 100,
+      altezzaPx: 100,
+      dataScatto: Date.now(),
+      geotag: null,
+      didascalia: 'legacy',
+      noteDato: '',
+      scala: null,
+      ordine: 0,
+      creataIl: Date.now(),
+      modificataIl: Date.now()
+    };
+    await db.foto.put(legacy as never);
+
+    await migraFotoLegacy();
+
+    const migrata = await db.foto.get('foto-legacy');
+    expect(migrata).toBeDefined();
+    expect(migrata!.origine).toBeInstanceOf(ArrayBuffer);
+    expect(migrata!.miniatura).toBeInstanceOf(ArrayBuffer);
+    expect(migrata!.origineTipo).toBe('image/jpeg');
+    expect('blobOriginale' in migrata!).toBe(false);
+    expect(new TextDecoder().decode(migrata!.origine)).toBe('vecchio-jpeg');
+    // idempotente: una seconda esecuzione non altera nulla
+    await migraFotoLegacy();
+    expect(new TextDecoder().decode((await db.foto.get('foto-legacy'))!.miniatura)).toBe(
+      'vecchia-mini'
+    );
   });
 });
 

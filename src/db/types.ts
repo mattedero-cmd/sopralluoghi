@@ -41,10 +41,17 @@ export interface Geotag {
 export interface Foto {
   id: ID;
   progettoId: ID;
-  /** Immagine originale: mai modificata dopo l'acquisizione */
-  blobOriginale: Blob;
+  /**
+   * Immagine originale (mai modificata dopo l'acquisizione).
+   * Salvata come ArrayBuffer e non come Blob: su iOS/WebKit i Blob
+   * archiviati in IndexedDB possono diventare illeggibili dopo il
+   * riavvio dell'app (bug noto del browser).
+   */
+  origine: ArrayBuffer;
+  origineTipo: string;
   /** Miniatura per liste veloci */
-  miniatura: Blob;
+  miniatura: ArrayBuffer;
+  miniaturaTipo: string;
   larghezzaPx: number;
   altezzaPx: number;
   /** Data di scatto (da EXIF se disponibile), modificabile manualmente */
@@ -174,6 +181,8 @@ export interface Impostazioni {
   sogliaSnap: number;
   /** Unità di misura predefinita per le nuove quote */
   unitaDefault: Unita;
+  /** Moltiplicatore della dimensione di quote e testi (leggibilità) */
+  fattoreDimensione: number;
   stileDefault: Stile;
 }
 
@@ -182,6 +191,7 @@ export const IMPOSTAZIONI_DEFAULT: Impostazioni = {
   professionista: { nome: '', azienda: '', telefono: '', email: '', indirizzo: '' },
   sogliaSnap: 24,
   unitaDefault: 'cm',
+  fattoreDimensione: 1,
   stileDefault: { colore: '#ff3b30', spessore: 3, dimensioneTesto: 28 }
 };
 

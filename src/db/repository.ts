@@ -221,7 +221,7 @@ export async function aggiungiFoto(
 
 export async function aggiornaFoto(
   id: ID,
-  modifiche: Partial<Omit<Foto, 'id' | 'progettoId' | 'blobOriginale' | 'creataIl'>>
+  modifiche: Partial<Omit<Foto, 'id' | 'progettoId' | 'origine' | 'origineTipo' | 'creataIl'>>
 ): Promise<void> {
   await scrivi('salvare le modifiche alla foto', () =>
     db.foto.update(id, { ...modifiche, modificataIl: ora() })
@@ -272,7 +272,14 @@ export async function eliminaAnnotazione(id: ID): Promise<void> {
 
 export async function leggiImpostazioni(): Promise<Impostazioni> {
   const i = await db.impostazioni.get('app');
-  return i ?? IMPOSTAZIONI_DEFAULT;
+  if (!i) return IMPOSTAZIONI_DEFAULT;
+  // merge con i default: i campi aggiunti nelle nuove versioni restano validi
+  return {
+    ...IMPOSTAZIONI_DEFAULT,
+    ...i,
+    professionista: { ...IMPOSTAZIONI_DEFAULT.professionista, ...i.professionista },
+    stileDefault: { ...IMPOSTAZIONI_DEFAULT.stileDefault, ...i.stileDefault }
+  };
 }
 
 export async function salvaImpostazioni(i: Impostazioni): Promise<void> {
@@ -305,6 +312,45 @@ export async function statoStorage(): Promise<StatoStorage | null> {
 }
 
 /**
+ * Migra le foto salvate dalle prime versioni come Blob al formato
+ * ArrayBuffer. Su iOS/WebKit i Blob in IndexedDB possono diventare
+ * illeggibili dopo il riavvio: ciò che è ancora leggibile viene
+ * convertito; ciò che il browser ha già corrotto viene segnalato.
+ */
+export async function migraFotoLegacy(): Promise<void> {
+  type FotoLegacy = Foto & { blobOriginale?: Blob };
+  const tutte = (await db.foto.toArray()) as FotoLegacy[];
+  let irrecuperabili = 0;
+  for (const f of tutte) {
+    const vecchiaOrigine = f.blobOriginale;
+    const vecchiaMiniatura = f.miniatura as unknown;
+    if (vecchiaOrigine === undefined && !(vecchiaMiniatura instanceof Blob)) continue;
+    try {
+      const origine =
+        vecchiaOrigine instanceof Blob ? await vecchiaOrigine.arrayBuffer() : f.origine;
+      const miniatura =
+        vecchiaMiniatura instanceof Blob ? await vecchiaMiniatura.arrayBuffer() : f.miniatura;
+      const { blobOriginale: _b, ...resto } = f;
+      await db.foto.put({
+        ...resto,
+        origine,
+        origineTipo: 'image/jpeg',
+        miniatura,
+        miniaturaTipo: 'image/jpeg'
+      });
+    } catch {
+      irrecuperabili++;
+    }
+  }
+  if (irrecuperabili > 0) {
+    mostraToast(
+      'errore',
+      `${irrecuperabili} foto non sono più leggibili (problema noto del browser con le vecchie versioni dell'app). Le altre sono state messe in sicurezza.`
+    );
+  }
+}
+
+/**
  * Chiede al browser di proteggere i dati dall'eviction automatica
  * e avvisa preventivamente se lo spazio sta per esaurirsi.
  */
@@ -313,6 +359,7 @@ export async function inizializzaStorage(): Promise<void> {
     if (navigator.storage?.persist) {
       await navigator.storage.persist();
     }
+    await migraFotoLegacy();
     const stato = await statoStorage();
     if (stato && stato.quotaByte > 0 && stato.percentuale > 80) {
       mostraToast(

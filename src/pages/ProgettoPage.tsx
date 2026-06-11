@@ -216,7 +216,7 @@ export function ProgettoPage({ id }: { id: string }) {
                   apriMenuFoto(f, e);
                 }}
               >
-                <ImmagineBlob blob={f.miniatura} alt={f.didascalia || 'Foto'} />
+                <ImmagineBlob dati={f.miniatura} tipo={f.miniaturaTipo} alt={f.didascalia || 'Foto'} />
                 <span
                   className="btn icona"
                   role="button"
