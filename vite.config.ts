@@ -6,7 +6,9 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'prompt',
+      // aggiornamento automatico: sul campo nessuno deve gestire gli update;
+      // la nuova versione si attiva da sola alla prima apertura con rete
+      registerType: 'autoUpdate',
       includeAssets: ['icons/icon.svg'],
       manifest: {
         name: 'Sopralluoghi — Quotatura foto e report',
@@ -49,6 +51,11 @@ export default defineConfig({
       }
     })
   ],
+  define: {
+    // data di build visibile nelle Impostazioni: permette di verificare
+    // quale versione sta effettivamente girando sul dispositivo
+    __BUILD__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' '))
+  },
   build: {
     chunkSizeWarningLimit: 3000,
     rollupOptions: {

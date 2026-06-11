@@ -52,6 +52,11 @@ export interface Foto {
   /** Miniatura per liste veloci */
   miniatura: ArrayBuffer;
   miniaturaTipo: string;
+  /**
+   * true se il contenuto è stato perso dal browser (bug WebKit con i
+   * Blob delle prime versioni) e la foto non è più recuperabile.
+   */
+  danneggiata?: boolean;
   larghezzaPx: number;
   altezzaPx: number;
   /** Data di scatto (da EXIF se disponibile), modificabile manualmente */

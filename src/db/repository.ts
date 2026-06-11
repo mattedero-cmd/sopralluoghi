@@ -325,12 +325,13 @@ export async function migraFotoLegacy(): Promise<void> {
     const vecchiaOrigine = f.blobOriginale;
     const vecchiaMiniatura = f.miniatura as unknown;
     if (vecchiaOrigine === undefined && !(vecchiaMiniatura instanceof Blob)) continue;
+    const { blobOriginale: _b, ...resto } = f;
     try {
       const origine =
         vecchiaOrigine instanceof Blob ? await vecchiaOrigine.arrayBuffer() : f.origine;
       const miniatura =
         vecchiaMiniatura instanceof Blob ? await vecchiaMiniatura.arrayBuffer() : f.miniatura;
-      const { blobOriginale: _b, ...resto } = f;
+      if (!origine || origine.byteLength === 0) throw new Error('contenuto perso');
       await db.foto.put({
         ...resto,
         origine,
@@ -339,13 +340,26 @@ export async function migraFotoLegacy(): Promise<void> {
         miniaturaTipo: 'image/jpeg'
       });
     } catch {
+      // Il browser ha perso il contenuto: si marca il record come
+      // danneggiato così la UI lo spiega chiaramente e ne propone
+      // l'eliminazione, invece di fallire a ogni apertura.
       irrecuperabili++;
+      await db.foto
+        .put({
+          ...resto,
+          origine: new ArrayBuffer(0),
+          origineTipo: 'image/jpeg',
+          miniatura: new ArrayBuffer(0),
+          miniaturaTipo: 'image/jpeg',
+          danneggiata: true
+        })
+        .catch(() => {});
     }
   }
   if (irrecuperabili > 0) {
     mostraToast(
       'errore',
-      `${irrecuperabili} foto non sono più leggibili (problema noto del browser con le vecchie versioni dell'app). Le altre sono state messe in sicurezza.`
+      `${irrecuperabili} foto delle versioni precedenti non sono più leggibili: il loro contenuto è stato perso dal browser (bug di iOS/Safari, ora aggirato) e non è recuperabile. Sono contrassegnate con ⚠️: puoi eliminarle.`
     );
   }
 }

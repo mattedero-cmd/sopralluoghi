@@ -21,13 +21,34 @@ export interface FotoImportata {
   geotag: Geotag | null;
 }
 
-/** Ricostruisce il Blob dell'originale dai dati archiviati */
+/** true se il contenuto della foto è assente o perso (record danneggiato) */
+export function fotoIllegibile(f: Pick<Foto, 'origine' | 'danneggiata'>): boolean {
+  if (f.danneggiata) return true;
+  const legacy = (f as { blobOriginale?: Blob }).blobOriginale;
+  if (legacy instanceof Blob) return false; // record legacy non ancora migrato
+  return !(f.origine instanceof ArrayBuffer) || f.origine.byteLength === 0;
+}
+
+/**
+ * Ricostruisce il Blob dell'originale dai dati archiviati.
+ * Fallback sul vecchio campo Blob per i record non ancora migrati
+ * (es. foto aperta prima che la migrazione all'avvio sia terminata).
+ */
 export function blobOrigine(f: Pick<Foto, 'origine' | 'origineTipo'>): Blob {
-  return new Blob([f.origine], { type: f.origineTipo || 'image/jpeg' });
+  if (f.origine instanceof ArrayBuffer && f.origine.byteLength > 0) {
+    return new Blob([f.origine], { type: f.origineTipo || 'image/jpeg' });
+  }
+  const legacy = (f as { blobOriginale?: Blob }).blobOriginale;
+  if (legacy instanceof Blob) return legacy;
+  return new Blob([], { type: 'image/jpeg' });
 }
 
 export function blobMiniatura(f: Pick<Foto, 'miniatura' | 'miniaturaTipo'>): Blob {
-  return new Blob([f.miniatura], { type: f.miniaturaTipo || 'image/jpeg' });
+  if (f.miniatura instanceof ArrayBuffer) {
+    return new Blob([f.miniatura], { type: f.miniaturaTipo || 'image/jpeg' });
+  }
+  // record legacy: la miniatura è ancora un Blob
+  return f.miniatura as unknown as Blob;
 }
 
 /**

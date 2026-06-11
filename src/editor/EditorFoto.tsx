@@ -15,9 +15,10 @@ import type {
 } from '../db/types';
 import { IMPOSTAZIONI_DEFAULT } from '../db/types';
 import { aggiornaFoto, leggiImpostazioni, salvaAnnotazioniFoto } from '../db/repository';
-import { blobOrigine, caricaImmagine } from '../utils/image';
+import { blobOrigine, caricaImmagine, fotoIllegibile } from '../utils/image';
 import { naviga } from '../router';
-import { Modale, StatoApp } from '../components/comuni';
+import { ConfermaDialog, Modale, StatoApp, type RichiestaConferma } from '../components/comuni';
+import { eliminaFoto } from '../db/repository';
 import { mostraToast } from '../state/toast';
 import { StageEditor, type Strumento } from './StageEditor';
 import { FabbricaAnnotazioni } from './fabbrica';
@@ -65,7 +66,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   }, [fotoId]);
 
   useEffect(() => {
-    if (!foto) return;
+    if (!foto || fotoIllegibile(foto)) return;
     let attivo = true;
     caricaImmagine(blobOrigine(foto))
       .then((img) => attivo && setImmagine(img))
@@ -227,6 +228,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     }
   };
 
+  if (foto && fotoIllegibile(foto)) {
+    return <SchermataFotoDanneggiata foto={foto} />;
+  }
+
   if (!foto || !immagine || annotazioni === null) {
     return (
       <div className="app">
@@ -338,6 +343,54 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           }}
         />
       )}
+    </div>
+  );
+}
+
+function SchermataFotoDanneggiata({ foto }: { foto: Foto }) {
+  const [conferma, setConferma] = useState<RichiestaConferma | null>(null);
+  return (
+    <div className="app">
+      <header className="barra">
+        <button
+          className="btn icona"
+          aria-label="Indietro"
+          onClick={() => naviga({ nome: 'progetto', id: foto.progettoId })}
+        >
+          ←
+        </button>
+        <h1>{foto.didascalia || 'Foto'}</h1>
+      </header>
+      <main className="contenuto">
+        <div className="vuoto">
+          <div className="grande">⚠️</div>
+          <p>
+            Il contenuto di questa foto è stato perso dal browser: un difetto di iOS/Safari nelle
+            prime versioni dell'app poteva corrompere le immagini archiviate. Il problema è stato
+            risolto per le foto nuove, ma questa non è recuperabile.
+          </p>
+          <p style={{ marginTop: 16 }}>
+            <button
+              className="btn pericolo"
+              onClick={() =>
+                setConferma({
+                  titolo: 'Eliminare la foto danneggiata?',
+                  messaggio:
+                    'Il record e le eventuali annotazioni verranno rimossi definitivamente.',
+                  onConferma: () => {
+                    void eliminaFoto(foto.id).then(() =>
+                      naviga({ nome: 'progetto', id: foto.progettoId })
+                    );
+                  }
+                })
+              }
+            >
+              🗑 Elimina questa foto
+            </button>
+          </p>
+        </div>
+      </main>
+      <ConfermaDialog richiesta={conferma} onChiudi={() => setConferma(null)} />
     </div>
   );
 }

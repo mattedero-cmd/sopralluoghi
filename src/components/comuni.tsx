@@ -173,13 +173,34 @@ export function MenuContesto({
 // Miniatura dai dati archiviati, con gestione dell'URL oggetto
 // ---------------------------------------------------------------------------
 
-export function ImmagineBlob({ dati, tipo, alt }: { dati: ArrayBuffer; tipo: string; alt: string }) {
+export function ImmagineBlob({ dati, tipo, alt }: { dati: ArrayBuffer | Blob; tipo: string; alt: string }) {
   const [url, setUrl] = useState<string | null>(null);
+  const vuota = dati instanceof ArrayBuffer && dati.byteLength === 0;
   useEffect(() => {
-    const u = URL.createObjectURL(new Blob([dati], { type: tipo || 'image/jpeg' }));
+    if (vuota) return;
+    const blob = dati instanceof Blob ? dati : new Blob([dati], { type: tipo || 'image/jpeg' });
+    const u = URL.createObjectURL(blob);
     setUrl(u);
     return () => URL.revokeObjectURL(u);
-  }, [dati, tipo]);
+  }, [dati, tipo, vuota]);
+  if (vuota) {
+    return (
+      <span
+        role="img"
+        aria-label="Foto danneggiata"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '100%',
+          height: '100%',
+          fontSize: 34
+        }}
+      >
+        ⚠️
+      </span>
+    );
+  }
   if (!url) return null;
   return <img src={url} alt={alt} loading="lazy" />;
 }

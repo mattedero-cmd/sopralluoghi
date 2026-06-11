@@ -7,13 +7,10 @@ import { mostraToast } from './state/toast';
 import './styles.css';
 
 // Service worker: app shell in cache, funzionamento 100% offline.
-// Gli aggiornamenti vengono proposti, mai imposti a metà lavoro.
-const aggiorna = registerSW({
-  onNeedRefresh() {
-    if (window.confirm('È disponibile una nuova versione dell’app. Aggiornare adesso?')) {
-      void aggiorna(true);
-    }
-  },
+// Aggiornamento automatico alla prima apertura con rete disponibile:
+// i dati vivono in IndexedDB, il refresh non tocca mai il lavoro.
+registerSW({
+  immediate: true,
   onOfflineReady() {
     mostraToast('successo', 'App pronta per l’uso offline.');
   }

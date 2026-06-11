@@ -5,7 +5,7 @@ import { db } from '../db/db';
 import type { Annotazione, Foto, Progetto, Quota } from '../db/types';
 import { leggiImpostazioni } from '../db/repository';
 import { renderFotoAnnotata } from '../render/renderAnnotata';
-import { caricaImmagine } from '../utils/image';
+import { caricaImmagine, fotoIllegibile } from '../utils/image';
 import { calcolaCatene, sommaCatenaInUnita } from '../geometry/catene';
 import { formattaData, formattaDataOra, formattaMisura, formattaNumero } from '../utils/format';
 
@@ -29,9 +29,11 @@ export async function generaReportPdf(
 ): Promise<Blob> {
   avanzamento?.('Lettura dati…');
   const impostazioni = await leggiImpostazioni();
-  const fotoList = (await db.foto.where('progettoId').equals(progetto.id).toArray()).sort(
-    (a, b) => a.ordine - b.ordine
-  );
+  // le foto danneggiate (contenuto perso dal browser) non possono
+  // comparire nel report: vengono saltate, il resto del PDF si genera
+  const fotoList = (await db.foto.where('progettoId').equals(progetto.id).toArray())
+    .filter((f) => !fotoIllegibile(f))
+    .sort((a, b) => a.ordine - b.ordine);
   const annotazioniPerFoto = new Map<string, Annotazione[]>();
   for (const f of fotoList) {
     annotazioniPerFoto.set(f.id, await db.annotazioni.where('fotoId').equals(f.id).toArray());

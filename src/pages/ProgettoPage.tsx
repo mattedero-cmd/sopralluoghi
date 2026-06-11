@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import type { Foto, Progetto, StatoProgetto } from '../db/types';
 import { aggiungiFoto, aggiornaProgetto, eliminaFoto } from '../db/repository';
-import { importaFoto } from '../utils/image';
+import { fotoIllegibile, importaFoto } from '../utils/image';
 import { naviga } from '../router';
 import {
   ConfermaDialog,
@@ -91,6 +91,13 @@ export function ProgettoPage({ id }: { id: string }) {
         {
           testo: 'Condividi / salva immagine quotata',
           onClick: async () => {
+            if (fotoIllegibile(f)) {
+              mostraToast(
+                'errore',
+                'Questa foto è stata danneggiata dal browser in una versione precedente e non è recuperabile.'
+              );
+              return;
+            }
             try {
               const annotazioni = await db.annotazioni.where('fotoId').equals(f.id).toArray();
               const blob = await renderFotoAnnotata(f, annotazioni);
