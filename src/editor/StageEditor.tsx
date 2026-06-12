@@ -82,12 +82,25 @@ export function StageEditor(p: Props) {
   const [indicatoreSnap, setIndicatoreSnap] = useState<Punto | null>(null);
   /** modifica live tramite maniglie, non ancora committata */
   const [annLive, setAnnLive] = useState<Annotazione | null>(null);
+  /**
+   * Punto sotto il dito durante un gesto: alimenta la lente di
+   * ingrandimento per il posizionamento di precisione.
+   */
+  const [puntoLente, setPuntoLente] = useState<Punto | null>(null);
+  /**
+   * Punto in attesa per gli strumenti a tocco singolo (angolo, piano,
+   * testo): si fissa al rilascio del dito, così si può aggiustare la
+   * posizione guardando la lente.
+   */
+  const [puntoPendente, setPuntoPendente] = useState<Punto | null>(null);
   const pinch = useRef<{ dist: number; centro: Punto } | null>(null);
   const disegnoAttivo = useRef(false);
 
   // I drafting multi-tocco (angolo, piano) si azzerano al cambio strumento
   useEffect(() => {
     setBozza(null);
+    setPuntoPendente(null);
+    setPuntoLente(null);
     disegnoAttivo.current = false;
   }, [p.strumento]);
 
@@ -213,6 +226,8 @@ export function StageEditor(p: Props) {
     e.evt.preventDefault();
     // due dita: pinch zoom + pan; qualunque bozza viene annullata
     if (bozza) setBozza(null);
+    setPuntoPendente(null);
+    setPuntoLente(null);
     disegnoAttivo.current = false;
     const rect = contenitore.current?.getBoundingClientRect();
     if (!rect) return;
@@ -265,90 +280,130 @@ export function StageEditor(p: Props) {
         const sottotipo: SottotipoQuota =
           p.strumento === 'quotaO' ? 'orizzontale' : p.strumento === 'quotaV' ? 'verticale' : 'allineata';
         setBozza({ tipo: 'quota', sottotipo, p1, p2: p1 });
+        setPuntoLente(p1);
         disegnoAttivo.current = true;
         break;
       }
       case 'freccia': {
         setBozza({ tipo: 'freccia', p1: pos, p2: pos });
+        setPuntoLente(pos);
         disegnoAttivo.current = true;
         break;
       }
       case 'raggio': {
         const centro = applicaSnap(pos);
         setBozza({ tipo: 'raggio', centro, bordo: centro });
+        setPuntoLente(centro);
         disegnoAttivo.current = true;
         break;
       }
       case 'calibra': {
         const p1 = applicaSnap(pos);
         setBozza({ tipo: 'calibra', p1, p2: p1 });
+        setPuntoLente(p1);
         disegnoAttivo.current = true;
         break;
       }
       case 'disegno': {
         setBozza({ tipo: 'disegno', punti: [pos.x, pos.y] });
+        setPuntoLente(pos);
         disegnoAttivo.current = true;
         break;
       }
       case 'callout': {
         setBozza({ tipo: 'callout', inizio: pos, corrente: pos });
+        setPuntoLente(pos);
         disegnoAttivo.current = true;
         break;
       }
+      // strumenti a punto singolo: premi → aggiusta con la lente → rilascia
       case 'testo': {
-        p.onNuovoTesto(pos);
+        setPuntoPendente(pos);
+        setPuntoLente(pos);
+        disegnoAttivo.current = true;
         break;
       }
-      case 'angolo': {
-        // tre tocchi: vertice, primo lato, secondo lato
-        const punto = applicaSnap(pos);
-        const punti = bozza?.tipo === 'angolo' ? [...bozza.punti, punto] : [punto];
-        if (punti.length === 3) {
-          setBozza(null);
-          setIndicatoreSnap(null);
-          p.onNuovoAngolo(punti[0], punti[1], punti[2]);
-        } else {
-          setBozza({ tipo: 'angolo', punti });
-        }
-        break;
-      }
+      case 'angolo':
       case 'piano': {
-        // quattro tocchi: gli angoli del rettangolo di riferimento
         const punto = applicaSnap(pos);
-        const punti = bozza?.tipo === 'piano' ? [...bozza.punti, punto] : [punto];
-        if (punti.length === 4) {
-          setBozza(null);
-          setIndicatoreSnap(null);
-          p.onPiano(punti as [Punto, Punto, Punto, Punto]);
-        } else {
-          setBozza({ tipo: 'piano', punti });
-        }
+        setPuntoPendente(punto);
+        setPuntoLente(punto);
+        disegnoAttivo.current = true;
         break;
       }
     }
   };
 
+  /** conferma del punto pendente al rilascio (angolo, piano, testo) */
+  const confermaPuntoPendente = (punto: Punto) => {
+    if (p.strumento === 'testo') {
+      p.onNuovoTesto(punto);
+      return;
+    }
+    if (p.strumento === 'angolo') {
+      const punti = bozza?.tipo === 'angolo' ? [...bozza.punti, punto] : [punto];
+      if (punti.length === 3) {
+        setBozza(null);
+        p.onNuovoAngolo(punti[0], punti[1], punti[2]);
+      } else {
+        setBozza({ tipo: 'angolo', punti });
+      }
+      return;
+    }
+    if (p.strumento === 'piano') {
+      const punti = bozza?.tipo === 'piano' ? [...bozza.punti, punto] : [punto];
+      if (punti.length === 4) {
+        setBozza(null);
+        p.onPiano(punti as [Punto, Punto, Punto, Punto]);
+      } else {
+        setBozza({ tipo: 'piano', punti });
+      }
+    }
+  };
+
   const suPointerMove = () => {
-    if (!disegnoAttivo.current || !bozza) return;
+    if (!disegnoAttivo.current) return;
     const pos = posImmagine();
     if (!pos) return;
+
+    // strumento a punto singolo: il punto pendente segue il dito
+    if (puntoPendente !== null) {
+      const punto = p.strumento === 'testo' ? pos : applicaSnap(pos);
+      setPuntoPendente(punto);
+      setPuntoLente(punto);
+      return;
+    }
+
+    if (!bozza) return;
     setBozza((b) => {
       if (!b) return b;
       switch (b.tipo) {
         case 'quota': {
           let p2 = applicaSnap(pos, [b.p1]);
           if (b.sottotipo === 'allineata') p2 = applicaVincolo(b.p1, p2);
+          setPuntoLente(p2);
           return { ...b, p2 };
         }
-        case 'freccia':
-          return { ...b, p2: applicaVincolo(b.p1, pos) };
-        case 'raggio':
-          return { ...b, bordo: applicaSnap(pos, [b.centro]) };
-        case 'calibra':
-          return { ...b, p2: applicaSnap(pos, [b.p1]) };
+        case 'freccia': {
+          const p2 = applicaVincolo(b.p1, pos);
+          setPuntoLente(p2);
+          return { ...b, p2 };
+        }
+        case 'raggio': {
+          const bordo = applicaSnap(pos, [b.centro]);
+          setPuntoLente(bordo);
+          return { ...b, bordo };
+        }
+        case 'calibra': {
+          const p2 = applicaSnap(pos, [b.p1]);
+          setPuntoLente(p2);
+          return { ...b, p2 };
+        }
         case 'disegno':
+          setPuntoLente(pos);
           return { ...b, punti: [...b.punti, pos.x, pos.y] };
         case 'callout':
+          setPuntoLente(pos);
           return { ...b, corrente: pos };
         default:
           return b;
@@ -357,11 +412,20 @@ export function StageEditor(p: Props) {
   };
 
   const suPointerUp = () => {
-    if (!disegnoAttivo.current || !bozza) {
-      disegnoAttivo.current = false;
+    setPuntoLente(null);
+    if (!disegnoAttivo.current) return;
+    disegnoAttivo.current = false;
+
+    // conferma del punto pendente (angolo, piano, testo)
+    if (puntoPendente !== null) {
+      const punto = puntoPendente;
+      setPuntoPendente(null);
+      setIndicatoreSnap(null);
+      confermaPuntoPendente(punto);
       return;
     }
-    disegnoAttivo.current = false;
+
+    if (!bozza) return;
     if (bozza.tipo === 'angolo' || bozza.tipo === 'piano') return; // multi-tocco
     setIndicatoreSnap(null);
     const b = bozza;
@@ -563,6 +627,31 @@ export function StageEditor(p: Props) {
               )}
             </>
           )}
+          {puntoPendente && (
+            <>
+              {/* mirino del punto in attesa di conferma */}
+              <Line
+                points={[puntoPendente.x - raggioManiglia * 1.4, puntoPendente.y, puntoPendente.x + raggioManiglia * 1.4, puntoPendente.y]}
+                stroke="#2f81f7"
+                strokeWidth={2 / vista.scala}
+                listening={false}
+              />
+              <Line
+                points={[puntoPendente.x, puntoPendente.y - raggioManiglia * 1.4, puntoPendente.x, puntoPendente.y + raggioManiglia * 1.4]}
+                stroke="#2f81f7"
+                strokeWidth={2 / vista.scala}
+                listening={false}
+              />
+              <Circle
+                x={puntoPendente.x}
+                y={puntoPendente.y}
+                radius={raggioManiglia * 0.7}
+                stroke="#2f81f7"
+                strokeWidth={2.5 / vista.scala}
+                listening={false}
+              />
+            </>
+          )}
           {indicatoreSnap && (
             <Circle
               x={indicatoreSnap.x}
@@ -580,13 +669,128 @@ export function StageEditor(p: Props) {
               scala={vista.scala}
               onLive={setAnnLive}
               onFine={committaLive}
+              onPuntoAttivo={setPuntoLente}
               applicaSnap={applicaSnap}
               vincolo={p.vincolo}
             />
           )}
         </Layer>
       </Stage>
+      {puntoLente && (
+        <Lente
+          immagine={p.immagine}
+          annotazioni={annotazioniVisibili}
+          bozza={bozzaAnnotazione}
+          punto={puntoLente}
+          agganciato={indicatoreSnap !== null}
+          vista={vista}
+          contenitore={dimensioni}
+        />
+      )}
       {suggerimento && <div className="suggerimento-stage">{suggerimento}</div>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Lente di ingrandimento: zoom in tempo reale con mirino a croce, mostrata
+// nell'angolo opposto al dito per il posizionamento di precisione.
+// ---------------------------------------------------------------------------
+
+const LATO_LENTE = 150;
+
+function Lente({
+  immagine,
+  annotazioni,
+  bozza,
+  punto,
+  agganciato,
+  vista,
+  contenitore
+}: {
+  immagine: HTMLImageElement;
+  annotazioni: Annotazione[];
+  bozza: Annotazione | null;
+  punto: Punto;
+  agganciato: boolean;
+  vista: Vista;
+  contenitore: { w: number; h: number };
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // ingrandimento: sempre più stretto della vista corrente, mai sgranato oltre 6x
+  const zoom = Math.min(6, Math.max(1.4, vista.scala * 3));
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+    if (canvas.width !== LATO_LENTE * dpr) {
+      canvas.width = LATO_LENTE * dpr;
+      canvas.height = LATO_LENTE * dpr;
+    }
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, LATO_LENTE, LATO_LENTE);
+    ctx.fillStyle = '#05070a';
+    ctx.fillRect(0, 0, LATO_LENTE, LATO_LENTE);
+
+    // foto + annotazioni centrate sul punto, ingrandite
+    ctx.save();
+    ctx.translate(LATO_LENTE / 2, LATO_LENTE / 2);
+    ctx.scale(zoom, zoom);
+    ctx.translate(-punto.x, -punto.y);
+    ctx.drawImage(immagine, 0, 0);
+    for (const a of annotazioni) {
+      for (const prim of primitiveAnnotazione(a)) disegnaPrimitiva(ctx, prim, immagine);
+    }
+    if (bozza) {
+      for (const prim of primitiveAnnotazione(bozza)) disegnaPrimitiva(ctx, prim, immagine);
+    }
+    ctx.restore();
+
+    // mirino a croce con alone scuro per leggibilità su qualsiasi sfondo
+    const c = LATO_LENTE / 2;
+    const gap = 7;
+    for (const [colore, sp] of [
+      ['rgba(0,0,0,0.85)', 3.5],
+      [agganciato ? '#32d74b' : '#ffffff', 1.5]
+    ] as const) {
+      ctx.strokeStyle = colore;
+      ctx.lineWidth = sp;
+      ctx.beginPath();
+      ctx.moveTo(4, c);
+      ctx.lineTo(c - gap, c);
+      ctx.moveTo(c + gap, c);
+      ctx.lineTo(LATO_LENTE - 4, c);
+      ctx.moveTo(c, 4);
+      ctx.lineTo(c, c - gap);
+      ctx.moveTo(c, c + gap);
+      ctx.lineTo(c, LATO_LENTE - 4);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(c, c, gap, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }, [immagine, annotazioni, bozza, punto, agganciato, zoom]);
+
+  // posizione: angolo orizzontalmente opposto al dito; in alto, oppure in
+  // basso quando il dito lavora nella parte alta dello schermo
+  const schermo = { x: punto.x * vista.scala + vista.x, y: punto.y * vista.scala + vista.y };
+  const margine = 10;
+  const sinistra = schermo.x > contenitore.w / 2;
+  const sopra = schermo.y > contenitore.h * 0.4;
+  const stile: React.CSSProperties = {
+    left: sinistra ? margine : contenitore.w - LATO_LENTE - margine,
+    top: sopra ? margine : contenitore.h - LATO_LENTE - margine
+  };
+
+  return (
+    <div className={`lente${agganciato ? ' agganciata' : ''}`} style={stile}>
+      <canvas ref={canvasRef} style={{ width: LATO_LENTE, height: LATO_LENTE }} />
     </div>
   );
 }
@@ -761,6 +965,7 @@ function ManiglieAnnotazione({
   scala,
   onLive,
   onFine,
+  onPuntoAttivo,
   applicaSnap,
   vincolo
 }: {
@@ -769,6 +974,8 @@ function ManiglieAnnotazione({
   scala: number;
   onLive: (a: Annotazione | null) => void;
   onFine: () => void;
+  /** alimenta la lente di ingrandimento durante il trascinamento */
+  onPuntoAttivo: (p: Punto | null) => void;
   applicaSnap: (p: Punto, escludi?: Punto[]) => Punto;
   vincolo: ModalitaVincolo;
 }) {
@@ -791,9 +998,13 @@ function ManiglieAnnotazione({
         let nuovo: Punto = { x: e.target.x(), y: e.target.y() };
         if (opzioni?.snap) nuovo = applicaSnap(nuovo, opzioni.escludi);
         e.target.position(nuovo);
+        onPuntoAttivo(nuovo);
         onLive(aggiorna(nuovo));
       }}
-      onDragEnd={() => onFine()}
+      onDragEnd={() => {
+        onPuntoAttivo(null);
+        onFine();
+      }}
     />
   );
 

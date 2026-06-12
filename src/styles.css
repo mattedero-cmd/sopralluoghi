@@ -422,6 +422,24 @@ textarea {
   touch-action: none;
 }
 
+/* Lente di ingrandimento per il posizionamento di precisione */
+.lente {
+  position: absolute;
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 3px solid var(--accento);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+  z-index: 50;
+  background: #05070a;
+}
+
+.lente.agganciata {
+  border-color: var(--ok);
+}
+
 .suggerimento-stage {
   position: absolute;
   left: 50%;
