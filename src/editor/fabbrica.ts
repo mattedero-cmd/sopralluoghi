@@ -15,6 +15,7 @@ import type {
   Stile,
   TestoFoto
 } from '../db/types';
+import { quadrilateroQuotaRett } from '../db/types';
 import { nuovoId } from '../utils/id';
 import { haCalibrazione, misureRettangolo, valoreAutomatico } from '../geometry/calibrazione';
 
@@ -89,14 +90,20 @@ export class FabbricaAnnotazioni {
     return q;
   }
 
-  /** Quota rettangolo: un solo oggetto per base × altezza */
-  quotaRettangolo(rect: Rettangolo, esistenti: Annotazione[]): QuotaRettangolo {
+  /**
+   * Quota elemento (quadrilatero): un solo oggetto per base × altezza.
+   * Riceve i 4 angoli (alto-sx, alto-dx, basso-dx, basso-sx) e viene
+   * nomenclaturata automaticamente (1, 2, 3…) per distinguere le forme.
+   */
+  quotaRettangolo(punti: [Punto, Punto, Punto, Punto], esistenti: Annotazione[]): QuotaRettangolo {
     const calibrata = haCalibrazione(this.foto);
+    const numero = esistenti.filter((a) => a.tipo === 'quotaRett').length + 1;
     const q: QuotaRettangolo = {
       id: nuovoId(),
       fotoId: this.foto.id,
       tipo: 'quotaRett',
-      rect,
+      punti,
+      etichetta: String(numero),
       valoreBase: null,
       valoreAltezza: null,
       valoreAuto: calibrata,
@@ -106,7 +113,7 @@ export class FabbricaAnnotazioni {
       stile: this.stileBase()
     };
     if (calibrata) {
-      const m = misureRettangolo(rect, this.foto, q.unita);
+      const m = misureRettangolo(punti, this.foto, q.unita);
       if (m) {
         q.valoreBase = m.base;
         q.valoreAltezza = m.altezza;
@@ -240,8 +247,16 @@ export function traslaAnnotazione(a: Annotazione, dx: number, dy: number): Annot
         centro: { x: a.centro.x + dx, y: a.centro.y + dy },
         bordo: { x: a.bordo.x + dx, y: a.bordo.y + dy }
       };
-    case 'quotaRett':
-      return { ...a, rect: { ...a.rect, x: a.rect.x + dx, y: a.rect.y + dy } };
+    case 'quotaRett': {
+      const punti = quadrilateroQuotaRett(a).map((p) => ({ x: p.x + dx, y: p.y + dy })) as [
+        Punto,
+        Punto,
+        Punto,
+        Punto
+      ];
+      const { rect: _r, ...resto } = a;
+      return { ...resto, punti };
+    }
     case 'testo':
       return { ...a, posizione: { x: a.posizione.x + dx, y: a.posizione.y + dy } };
     case 'disegno': {

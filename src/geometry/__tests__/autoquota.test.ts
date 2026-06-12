@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { RicercaBordi, rilevaFigura } from '../bordi';
 import { misureRettangolo, applicaValoriAuto } from '../calibrazione';
-import type { QuotaRettangolo } from '../../db/types';
+import type { Punto, QuotaRettangolo } from '../../db/types';
 
 /**
  * Immagine sintetica: sfondo scuro (40) con un rettangolo chiaro (210)
  * da (60,50) a (160,130) — come una finestra chiara su una parete scura.
  */
-function immagineSintetica(): RicercaBordi {
+function immagineOrtogonale(): RicercaBordi {
   const w = 220;
   const h = 180;
   const lum = new Float32Array(w * h).fill(40);
@@ -19,20 +19,54 @@ function immagineSintetica(): RicercaBordi {
   return RicercaBordi.daDati(lum, w, h, 1);
 }
 
+/**
+ * Figura in "prospettiva": quadrilatero chiaro con i lati verticali
+ * inclinati (il bordo sinistro va da x=60 in alto a x=72 in basso,
+ * il destro da x=160 a x=148), come una porta fotografata di sbieco.
+ */
+function immagineInclinata(): RicercaBordi {
+  const w = 220;
+  const h = 200;
+  const lum = new Float32Array(w * h).fill(40);
+  for (let y = 40; y <= 160; y++) {
+    const t = (y - 40) / 120;
+    const xSx = Math.round(60 + 12 * t);
+    const xDx = Math.round(160 - 12 * t);
+    for (let x = xSx; x <= xDx; x++) {
+      lum[y * w + x] = 210;
+    }
+  }
+  return RicercaBordi.daDati(lum, w, h, 1);
+}
+
+const vicino = (p: Punto, x: number, y: number, tolleranza = 5) => {
+  expect(Math.abs(p.x - x)).toBeLessThanOrEqual(tolleranza);
+  expect(Math.abs(p.y - y)).toBeLessThanOrEqual(tolleranza);
+};
+
 describe('autoquotatura: rilevamento figura', () => {
-  it('toccando il centro della figura ne rileva i bordi', () => {
-    const analisi = immagineSintetica();
-    const figura = rilevaFigura(analisi, { x: 110, y: 90 });
+  it('figura ortogonale: i 4 angoli coincidono con i bordi', () => {
+    const figura = rilevaFigura(immagineOrtogonale(), { x: 110, y: 90 });
     expect(figura).not.toBeNull();
-    const r = figura!.rettangolo;
-    expect(r.x).toBeGreaterThan(55);
-    expect(r.x).toBeLessThan(65);
-    expect(r.x + r.width).toBeGreaterThan(155);
-    expect(r.x + r.width).toBeLessThan(165);
-    expect(r.y).toBeGreaterThan(45);
-    expect(r.y).toBeLessThan(55);
-    expect(r.y + r.height).toBeGreaterThan(125);
-    expect(r.y + r.height).toBeLessThan(135);
+    const [altoSx, altoDx, bassoDx, bassoSx] = figura!.punti;
+    vicino(altoSx, 60, 50);
+    vicino(altoDx, 160, 50);
+    vicino(bassoDx, 160, 130);
+    vicino(bassoSx, 60, 130);
+  });
+
+  it('figura in prospettiva: il quadrilatero segue i lati inclinati', () => {
+    const figura = rilevaFigura(immagineInclinata(), { x: 110, y: 100 });
+    expect(figura).not.toBeNull();
+    const [altoSx, altoDx, bassoDx, bassoSx] = figura!.punti;
+    // i lati verticali sono inclinati: gli angoli alti e bassi NON
+    // hanno la stessa x — il rilevamento non è un rettangolo statico
+    vicino(altoSx, 60, 40, 6);
+    vicino(altoDx, 160, 40, 6);
+    vicino(bassoDx, 148, 160, 6);
+    vicino(bassoSx, 72, 160, 6);
+    expect(bassoSx.x - altoSx.x).toBeGreaterThan(6); // inclinazione rilevata
+    expect(altoDx.x - bassoDx.x).toBeGreaterThan(6);
   });
 
   it('su una zona uniforme non propone nulla', () => {
@@ -44,20 +78,34 @@ describe('autoquotatura: rilevamento figura', () => {
   });
 
   it('fuori dall’immagine non propone nulla', () => {
-    const analisi = immagineSintetica();
-    expect(rilevaFigura(analisi, { x: -10, y: 5 })).toBeNull();
+    expect(rilevaFigura(immagineOrtogonale(), { x: -10, y: 5 })).toBeNull();
   });
 });
 
-describe('quota rettangolo', () => {
+describe('quota elemento (quadrilatero)', () => {
   const stile = { colore: '#ff3b30', spessore: 3, dimensioneTesto: 24 };
   const fotoScala = { scala: { px: 100, reale: 50, unita: 'cm' as const }, piano: null };
+  const puntiOrto: [Punto, Punto, Punto, Punto] = [
+    { x: 0, y: 0 },
+    { x: 200, y: 0 },
+    { x: 200, y: 100 },
+    { x: 0, y: 100 }
+  ];
 
-  it('misureRettangolo: base e altezza dalla calibrazione', () => {
-    const m = misureRettangolo({ x: 0, y: 0, width: 200, height: 100 }, fotoScala, 'cm');
+  it('misureRettangolo: base e altezza misurate lungo i lati reali', () => {
+    const m = misureRettangolo(puntiOrto, fotoScala, 'cm');
     expect(m).not.toBeNull();
     expect(m!.base).toBeCloseTo(100);
     expect(m!.altezza).toBeCloseTo(50);
+    // lato inclinato: la base è la lunghezza del lato, non la proiezione
+    const inclinati: [Punto, Punto, Punto, Punto] = [
+      { x: 0, y: 0 },
+      { x: 160, y: 120 }, // lato alto lungo 200 (3-4-5)
+      { x: 160, y: 220 },
+      { x: 0, y: 100 }
+    ];
+    const mi = misureRettangolo(inclinati, fotoScala, 'cm');
+    expect(mi!.base).toBeCloseTo(100);
   });
 
   it('applicaValoriAuto riempie base e altezza, rispetta i valori manuali', () => {
@@ -65,7 +113,8 @@ describe('quota rettangolo', () => {
       id: 'r1',
       fotoId: 'f1',
       tipo: 'quotaRett',
-      rect: { x: 0, y: 0, width: 200, height: 100 },
+      punti: puntiOrto,
+      etichetta: '1',
       valoreBase: null,
       valoreAltezza: null,
       unita: 'cm',
@@ -76,6 +125,7 @@ describe('quota rettangolo', () => {
     const manuale: QuotaRettangolo = {
       ...auto,
       id: 'r2',
+      etichetta: '2',
       valoreBase: 90,
       valoreAltezza: 210,
       valoreAuto: false

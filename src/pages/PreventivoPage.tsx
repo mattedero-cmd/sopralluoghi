@@ -155,7 +155,7 @@ export function PreventivoPage({ id }: { id: string }) {
             (inMillimetri(a.valoreAltezza, a.unita) / 1000);
           nuove.push({
             id: nuovoId(),
-            descrizione: `${nomeFoto} — rettangolo ${formattaNumero(a.valoreBase)} × ${formattaNumero(a.valoreAltezza)} ${a.unita}`,
+            descrizione: `${nomeFoto} — elemento ${a.etichetta ?? ''} ${formattaNumero(a.valoreBase)} × ${formattaNumero(a.valoreAltezza)} ${a.unita}`.replace(/\s+/g, ' '),
             quantita: Math.round(areaMq * 100) / 100,
             unita: 'm²',
             prezzoUnitario: 0

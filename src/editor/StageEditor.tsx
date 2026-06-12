@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Stage, Layer, Image as KonvaImage, Shape, Circle, Rect, Line } from 'react-konva';
 import type Konva from 'konva';
-import type { Annotazione, Foto, Punto, Rettangolo, SottotipoQuota } from '../db/types';
+import {
+  quadrilateroQuotaRett,
+  type Annotazione,
+  type Foto,
+  type Punto,
+  type Rettangolo,
+  type SottotipoQuota
+} from '../db/types';
 import { primitiveAnnotazione } from '../geometry/primitive';
 import { geometriaQuota } from '../geometry/primitive';
 import { disegnaPrimitiva } from '../render/renderAnnotata';
@@ -584,16 +591,23 @@ export function StageEditor(p: Props) {
           posizioneTesto: 'sopra',
           stato: 'reale'
         };
-      case 'rett':
+      case 'rett': {
+        const r = normalizzaRect(bozza.p1, bozza.p2);
         return {
           ...base,
           tipo: 'quotaRett',
-          rect: normalizzaRect(bozza.p1, bozza.p2),
+          punti: [
+            { x: r.x, y: r.y },
+            { x: r.x + r.width, y: r.y },
+            { x: r.x + r.width, y: r.y + r.height },
+            { x: r.x, y: r.y + r.height }
+          ],
           valoreBase: null,
           valoreAltezza: null,
           unita: 'cm',
           stato: 'reale'
         };
+      }
       case 'freccia':
         return { ...base, tipo: 'freccia', p1: bozza.p1, p2: bozza.p2 };
       case 'calibra':
@@ -1088,10 +1102,9 @@ function boxAnnotazione(a: Annotazione): Rettangolo {
     }
     case 'quotaRett': {
       const margine = Math.max(24, a.stile.dimensioneTesto * 1.1) + a.stile.dimensioneTesto;
-      punti.push(
-        { x: a.rect.x - margine, y: a.rect.y - margine },
-        { x: a.rect.x + a.rect.width, y: a.rect.y + a.rect.height }
-      );
+      for (const q of quadrilateroQuotaRett(a)) {
+        punti.push({ x: q.x - margine, y: q.y - margine }, { x: q.x + margine, y: q.y + margine });
+      }
       break;
     }
     case 'freccia':
@@ -1242,29 +1255,19 @@ function ManiglieAnnotazione({
         </>
       );
     case 'quotaRett': {
-      const r = ann.rect;
-      const angoli: Array<[string, Punto, Punto]> = [
-        // [chiave, angolo trascinato, angolo opposto (fisso)]
-        ['nw', { x: r.x, y: r.y }, { x: r.x + r.width, y: r.y + r.height }],
-        ['ne', { x: r.x + r.width, y: r.y }, { x: r.x, y: r.y + r.height }],
-        ['se', { x: r.x + r.width, y: r.y + r.height }, { x: r.x, y: r.y }],
-        ['sw', { x: r.x, y: r.y + r.height }, { x: r.x + r.width, y: r.y }]
-      ];
+      // ogni angolo è libero: il quadrilatero può seguire la prospettiva
+      const punti = quadrilateroQuotaRett(ann);
       return (
         <>
-          {angoli.map(([chiave, pos, opposto]) =>
+          {punti.map((pos, i) =>
             maniglia(
-              chiave,
+              `angolo-${i}`,
               pos,
-              (n) => ({
-                ...ann,
-                rect: {
-                  x: Math.min(n.x, opposto.x),
-                  y: Math.min(n.y, opposto.y),
-                  width: Math.abs(n.x - opposto.x),
-                  height: Math.abs(n.y - opposto.y)
-                }
-              }),
+              (n) => {
+                const nuovi = punti.map((q, j) => (j === i ? n : q)) as [Punto, Punto, Punto, Punto];
+                const { rect: _r, ...resto } = ann;
+                return { ...resto, punti: nuovi };
+              },
               { snap: true, escludi: [pos] }
             )
           )}

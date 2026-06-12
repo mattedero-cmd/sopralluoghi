@@ -224,19 +224,43 @@ export interface QuotaAngolare extends AnnotazioneBase {
 }
 
 /**
- * Quota rettangolo: un solo oggetto che misura base × altezza di un
- * elemento (finestra, porta, pannello). Nel report compare come voce
- * unica "Rettangolo — B × H"; i valori si calcolano anche in
- * prospettiva tramite la calibrazione della foto.
+ * Quota elemento: un solo oggetto che misura base × altezza di un
+ * elemento (finestra, porta, pannello). La forma è un QUADRILATERO
+ * libero — segue i bordi reali dell'elemento anche quando la
+ * prospettiva li inclina — e le linee di quota sono allineate ai lati.
+ * Nel report compare come voce unica "Elemento — B × H".
  */
 export interface QuotaRettangolo extends AnnotazioneBase {
   tipo: 'quotaRett';
-  rect: Rettangolo;
+  /** angoli in ordine: alto-sx, alto-dx, basso-dx, basso-sx */
+  punti: [Punto, Punto, Punto, Punto];
+  /** solo per i record salvati dalla versione 0.4.0 (rettangolo ortogonale) */
+  rect?: Rettangolo;
+  /**
+   * Nomenclatura dell'elemento (es. "1", "2", "A"…): numerata
+   * automaticamente, visibile sulla foto e nel report per distinguere
+   * le forme quotate l'una dall'altra.
+   */
+  etichetta?: string;
   valoreBase: number | null;
   valoreAltezza: number | null;
   valoreAuto?: boolean;
   unita: Unita;
   stato: StatoMisura;
+}
+
+/** Angoli del quadrilatero, con conversione dei record legacy (rect) */
+export function quadrilateroQuotaRett(
+  q: Pick<QuotaRettangolo, 'punti' | 'rect'>
+): [Punto, Punto, Punto, Punto] {
+  if (q.punti) return q.punti;
+  const r = q.rect ?? { x: 0, y: 0, width: 1, height: 1 };
+  return [
+    { x: r.x, y: r.y },
+    { x: r.x + r.width, y: r.y },
+    { x: r.x + r.width, y: r.y + r.height },
+    { x: r.x, y: r.y + r.height }
+  ];
 }
 
 /** Quota radiale o di diametro: centro + punto sul bordo */

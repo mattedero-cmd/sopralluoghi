@@ -11,7 +11,7 @@ import type {
   Rettangolo,
   TestoFoto
 } from '../db/types';
-import { COLORE_REALE, COLORE_STIMATA } from '../db/types';
+import { COLORE_REALE, COLORE_STIMATA, quadrilateroQuotaRett } from '../db/types';
 import { formattaMisura, formattaNumero } from '../utils/format';
 import {
   direzioneQuota,
@@ -319,16 +319,23 @@ export function etichettaRettangolo(
 }
 
 /**
- * Quota rettangolo: contorno + quota della base (sopra) e dell'altezza
- * (a sinistra), disegnate riusando la geometria delle quote lineari.
+ * Quota elemento (quadrilatero): contorno che segue i bordi reali della
+ * figura + quota della base e dell'altezza ALLINEATE ai lati (anche
+ * inclinati dalla prospettiva), riusando la geometria delle quote lineari.
  */
 export function primitiveQuotaRettangolo(q: QuotaRettangolo): Primitiva[] {
-  const r = q.rect;
+  const [altoSx, altoDx, bassoDx, bassoSx] = quadrilateroQuotaRett(q);
   const offset = Math.max(24, q.stile.dimensioneTesto * 1.1);
   const prim: Primitiva[] = [
     {
-      kind: 'rettangolo',
-      rect: r,
+      kind: 'polilinea',
+      punti: [
+        altoSx.x, altoSx.y,
+        altoDx.x, altoDx.y,
+        bassoDx.x, bassoDx.y,
+        bassoSx.x, bassoSx.y,
+        altoSx.x, altoSx.y
+      ],
       colore: coloreQuota(q),
       spessore: q.stile.spessore * 0.75
     }
@@ -337,30 +344,49 @@ export function primitiveQuotaRettangolo(q: QuotaRettangolo): Primitiva[] {
     id: q.id,
     fotoId: q.fotoId,
     tipo: 'quota' as const,
+    sottotipo: 'allineata' as const,
     zIndex: q.zIndex,
     stile: q.stile,
     posizioneTesto: 'sopra' as const,
     stato: q.stato,
     unita: q.unita
   };
+  // base: lungo il lato alto, linea di quota all'esterno (sopra)
+  // altezza: lungo il lato sinistro, linea di quota all'esterno (a sinistra)
   prim.push(
-    ...primitiveQuota({
-      ...comune,
-      sottotipo: 'orizzontale',
-      p1: { x: r.x, y: r.y },
-      p2: { x: r.x + r.width, y: r.y },
-      offset: -offset,
-      valore: q.valoreBase
-    }),
-    ...primitiveQuota({
-      ...comune,
-      sottotipo: 'verticale',
-      p1: { x: r.x, y: r.y },
-      p2: { x: r.x, y: r.y + r.height },
-      offset,
-      valore: q.valoreAltezza
-    })
+    ...primitiveQuota({ ...comune, p1: altoSx, p2: altoDx, offset: -offset, valore: q.valoreBase }),
+    ...primitiveQuota({ ...comune, p1: altoSx, p2: bassoSx, offset, valore: q.valoreAltezza })
   );
+
+  // nomenclatura dell'elemento: badge al centro della figura, per
+  // distinguere le forme quotate l'una dall'altra (foto e report)
+  if (q.etichetta) {
+    const dim = q.stile.dimensioneTesto;
+    const centro: Punto = {
+      x: (altoSx.x + altoDx.x + bassoDx.x + bassoSx.x) / 4,
+      y: (altoSx.y + altoDx.y + bassoDx.y + bassoSx.y) / 4
+    };
+    const colore = coloreQuota(q);
+    const mezzaL = Math.max(dim * 0.9, misuraLarghezzaTesto(q.etichetta, dim) / 2 + dim * 0.4);
+    prim.push(
+      {
+        kind: 'rettangolo',
+        rect: { x: centro.x - mezzaL, y: centro.y - dim * 0.8, width: mezzaL * 2, height: dim * 1.6 },
+        colore,
+        spessore: 0,
+        riempimento: colore
+      },
+      {
+        kind: 'testo',
+        testo: q.etichetta,
+        posizione: centro,
+        rotazioneDeg: 0,
+        dimensione: dim,
+        colore: '#ffffff',
+        sfondo: null
+      }
+    );
+  }
   return prim;
 }
 

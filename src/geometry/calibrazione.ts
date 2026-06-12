@@ -1,4 +1,4 @@
-import type { Annotazione, Foto, Punto, Rettangolo, Unita } from '../db/types';
+import { quadrilateroQuotaRett, type Annotazione, type Foto, type Punto, type Unita } from '../db/types';
 import { daMillimetri, inMillimetri } from '../utils/format';
 import { applicaOmografia, omografiaPiano, type Omografia } from './omografia';
 import { direzioneQuota, distanza, dot, scala as scalaPunto, somma, sottrai } from './punti';
@@ -97,17 +97,17 @@ export function valoreAutomatico(a: Annotazione, foto: CalibrazioneFoto): number
 }
 
 /**
- * Base e altezza reali di un rettangolo immagine, dalla calibrazione.
- * Con il piano prospettico i lati sono misurati sul piano rettificato.
+ * Base e altezza reali di un elemento quadrilatero, dalla calibrazione:
+ * la base è misurata lungo il lato alto, l'altezza lungo il lato
+ * sinistro — i lati REALI della figura, anche inclinati dalla
+ * prospettiva. Con il piano prospettico la misura è rettificata.
  */
 export function misureRettangolo(
-  rect: Rettangolo,
+  punti: [Punto, Punto, Punto, Punto],
   foto: CalibrazioneFoto,
   unita: Unita
 ): { base: number; altezza: number } | null {
-  const altoSx: Punto = { x: rect.x, y: rect.y };
-  const altoDx: Punto = { x: rect.x + rect.width, y: rect.y };
-  const bassoSx: Punto = { x: rect.x, y: rect.y + rect.height };
+  const [altoSx, altoDx, , bassoSx] = punti;
   const b = distanzaReale(foto, altoSx, altoDx);
   const h = distanzaReale(foto, altoSx, bassoSx);
   if (!b || !h) return null;
@@ -127,7 +127,7 @@ export function applicaValoriAuto(annotazioni: Annotazione[], foto: Calibrazione
     if (a.tipo === 'quotaRett') {
       const auto = a.valoreAuto ?? (a.valoreBase === null && a.valoreAltezza === null);
       if (!auto) return a;
-      const m = misureRettangolo(a.rect, foto, a.unita);
+      const m = misureRettangolo(quadrilateroQuotaRett(a), foto, a.unita);
       if (!m) return a;
       if (m.base === a.valoreBase && m.altezza === a.valoreAltezza && a.valoreAuto === true) return a;
       return { ...a, valoreBase: m.base, valoreAltezza: m.altezza, valoreAuto: true };

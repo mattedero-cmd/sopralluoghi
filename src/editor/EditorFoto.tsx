@@ -16,7 +16,7 @@ import type {
   StatoMisura,
   Unita
 } from '../db/types';
-import { IMPOSTAZIONI_DEFAULT } from '../db/types';
+import { IMPOSTAZIONI_DEFAULT, quadrilateroQuotaRett } from '../db/types';
 import { aggiornaFoto, eliminaFoto, leggiImpostazioni, salvaAnnotazioniFoto } from '../db/repository';
 import { blobOrigine, caricaImmagine, fotoIllegibile } from '../utils/image';
 import { naviga } from '../router';
@@ -245,7 +245,15 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
 
   const creaRettangolo = (rect: Rettangolo) => {
     if (!fabbrica || !annotazioni) return;
-    const q = fabbrica.quotaRettangolo(rect, annotazioni);
+    // lo strumento manuale parte ortogonale: gli angoli si adattano
+    // poi alla prospettiva trascinandoli singolarmente
+    const punti: [Punto, Punto, Punto, Punto] = [
+      { x: rect.x, y: rect.y },
+      { x: rect.x + rect.width, y: rect.y },
+      { x: rect.x + rect.width, y: rect.y + rect.height },
+      { x: rect.x, y: rect.y + rect.height }
+    ];
+    const q = fabbrica.quotaRettangolo(punti, annotazioni);
     commit([...annotazioni, q]);
     setSelezioneId(q.id);
     setStrumento('seleziona');
@@ -285,8 +293,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       );
       return;
     }
-    // un solo oggetto base × altezza, mostrato in blu finché non accettato
-    const q = fabbrica.quotaRettangolo(figura.rettangolo, annotazioni);
+    // un solo oggetto base × altezza che segue i bordi reali della
+    // figura, mostrato in blu finché non accettato
+    const q = fabbrica.quotaRettangolo(figura.punti, annotazioni);
     setProposta({ ...q, stile: { ...q.stile, colore: '#2f81f7' } });
   };
 
@@ -1003,6 +1012,15 @@ function ProprietaRettangolo({
   const calibrata = haCalibrazione(foto);
   return (
     <>
+      <input
+        className="input-misura"
+        style={{ width: 56 }}
+        value={rett.etichetta ?? ''}
+        maxLength={4}
+        aria-label="Nomenclatura dell'elemento"
+        placeholder="n°"
+        onChange={(e) => onModifica({ etichetta: e.target.value })}
+      />
       <label style={{ color: 'var(--testo-2)', fontSize: 13 }}>B</label>
       <CampoMisura
         key={`${rett.id}-b`}
@@ -1021,7 +1039,7 @@ function ProprietaRettangolo({
         calcolabile={calibrata}
         onValore={(v) => onModifica({ valoreAltezza: v, valoreAuto: false })}
         onRiattivaAuto={() => {
-          const m = misureRettangolo(rett.rect, foto, rett.unita);
+          const m = misureRettangolo(quadrilateroQuotaRett(rett), foto, rett.unita);
           if (m) onModifica({ valoreBase: m.base, valoreAltezza: m.altezza, valoreAuto: true });
         }}
       />
@@ -1031,7 +1049,7 @@ function ProprietaRettangolo({
         onChange={(e) => {
           const unita = e.target.value as Unita;
           if (rett.valoreAuto) {
-            const m = misureRettangolo(rett.rect, foto, unita);
+            const m = misureRettangolo(quadrilateroQuotaRett(rett), foto, unita);
             onModifica({ unita, valoreBase: m?.base ?? rett.valoreBase, valoreAltezza: m?.altezza ?? rett.valoreAltezza });
           } else {
             onModifica({ unita });

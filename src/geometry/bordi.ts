@@ -1,4 +1,4 @@
-import type { Punto, Rettangolo } from '../db/types';
+import type { Punto } from '../db/types';
 
 /**
  * Analisi dell'immagine per snap ai bordi e autoquotatura: luminanza
@@ -89,15 +89,23 @@ export class RicercaBordi {
 // ---------------------------------------------------------------------------
 
 export interface FiguraRilevata {
-  rettangolo: Rettangolo;
+  /** angoli del quadrilatero rilevato: alto-sx, alto-dx, basso-dx, basso-sx */
+  punti: [Punto, Punto, Punto, Punto];
+}
+
+/** retta x = a·y + b (lati verticali) oppure y = a·x + b (lati orizzontali) */
+interface RettaLato {
+  a: number;
+  b: number;
 }
 
 /**
  * Rileva la figura "netta" (porta, finestra, piastrella, pannello…)
- * che contiene il punto toccato: dal punto si scandisce nelle quattro
- * direzioni il profilo di luminanza mediato su una piccola banda e si
- * cerca il primo fronte di contrasto deciso — il bordo della figura.
- * Restituisce null se non c'è una figura sufficientemente netta.
+ * che contiene il punto toccato. La forma NON è un rettangolo
+ * ortogonale: ogni lato viene TRACCIATO seguendo il fronte di
+ * contrasto (campioni lungo il bordo + fit ai minimi quadrati), così
+ * il quadrilatero segue i bordi reali anche quando la prospettiva li
+ * inclina. Restituisce null se non c'è una figura sufficientemente netta.
  */
 export function rilevaFigura(ricerca: RicercaBordi, p: Punto): FiguraRilevata | null {
   // accesso ai campi privati della classe (stesso modulo)
@@ -179,12 +187,117 @@ export function rilevaFigura(ricerca: RicercaBordi, p: Punto): FiguraRilevata | 
   const sotto = primoBordo(lungoY, cy, 1, h);
   if (sinistra === null || destra === null || sopra === null || sotto === null) return null;
 
-  const x1 = (cx - sinistra) / fattore;
-  const x2 = (cx + destra) / fattore;
-  const y1 = (cy - sopra) / fattore;
-  const y2 = (cy + sotto) / fattore;
-  const minLato = 14 / fattore;
-  if (x2 - x1 < minLato || y2 - y1 < minLato) return null;
+  const xL = cx - sinistra;
+  const xR = cx + destra;
+  const yT = cy - sopra;
+  const yB = cy + sotto;
+  if (xR - xL < 14 || yB - yT < 14) return null;
 
-  return { rettangolo: { x: x1, y: y1, width: x2 - x1, height: y2 - y1 } };
+  // -------------------------------------------------------------------------
+  // Tracciamento dei lati: si segue il fronte di contrasto campione per
+  // campione (finestra mobile) e si interpola la retta del lato.
+  // -------------------------------------------------------------------------
+
+  const grad = (x: number, y: number, orizzontale: boolean): number => {
+    // gradiente perpendicolare al lato, mediato su 3 righe/colonne
+    let somma = 0;
+    for (let k = -1; k <= 1; k++) {
+      if (orizzontale) {
+        const xx = Math.max(1, Math.min(w - 2, x + k));
+        somma += Math.abs(lum[y * w + xx + 1] - lum[y * w + xx - 1]);
+      } else {
+        const yy = Math.max(1, Math.min(h - 2, y + k));
+        somma += Math.abs(lum[(yy + 1) * w + x] - lum[(yy - 1) * w + x]);
+      }
+    }
+    return somma / 6;
+  };
+
+  /** fit ai minimi quadrati: v = a·t + b sui campioni raccolti */
+  const fitRetta = (campioni: Array<{ t: number; v: number }>): RettaLato | null => {
+    const n = campioni.length;
+    if (n < 4) return null;
+    let st = 0;
+    let sv = 0;
+    let stt = 0;
+    let stv = 0;
+    for (const c of campioni) {
+      st += c.t;
+      sv += c.v;
+      stt += c.t * c.t;
+      stv += c.t * c.v;
+    }
+    const den = n * stt - st * st;
+    if (Math.abs(den) < 1e-9) return null;
+    const a = (n * stv - st * sv) / den;
+    if (Math.abs(a) > 0.6) return null; // lato troppo inclinato: non plausibile
+    return { a, b: (sv - a * st) / n };
+  };
+
+  /**
+   * Traccia un lato verticale (x ≈ costante) tra tMin e tMax (coordinate y):
+   * a ogni passo cerca il massimo del gradiente orizzontale in una
+   * finestra attorno alla x del passo precedente.
+   */
+  const tracciaLato = (vIniziale: number, tMin: number, tMax: number, verticale: boolean): RettaLato => {
+    const campioni: Array<{ t: number; v: number }> = [];
+    const passi = 9;
+    const FINESTRA = 7;
+    let vPrec = vIniziale;
+    for (let i = 0; i < passi; i++) {
+      const t = Math.round(tMin + ((tMax - tMin) * i) / (passi - 1));
+      let meglioV = -1;
+      let meglioG = 0;
+      for (let dv = -FINESTRA; dv <= FINESTRA; dv++) {
+        const v = Math.round(vPrec) + dv;
+        if (v < 1 || v > (verticale ? w : h) - 2) continue;
+        const g = verticale ? grad(v, t, true) : grad(t, v, false);
+        if (g > meglioG) {
+          meglioG = g;
+          meglioV = v;
+        }
+      }
+      if (meglioV >= 0 && meglioG >= SOGLIA_FORTE * 0.6) {
+        campioni.push({ t, v: meglioV });
+        vPrec = meglioV;
+      }
+    }
+    // fallback: lato dritto alla posizione iniziale
+    return fitRetta(campioni) ?? { a: 0, b: vIniziale };
+  };
+
+  // margini dai presunti angoli, per non campionare gli spigoli
+  const mY = Math.max(2, Math.round((yB - yT) * 0.18));
+  const mX = Math.max(2, Math.round((xR - xL) * 0.18));
+  const latoSinistro = tracciaLato(xL, yT + mY, yB - mY, true); // x = a·y + b
+  const latoDestro = tracciaLato(xR, yT + mY, yB - mY, true);
+  const latoAlto = tracciaLato(yT, xL + mX, xR - mX, false); // y = a·x + b
+  const latoBasso = tracciaLato(yB, xL + mX, xR - mX, false);
+
+  /** intersezione tra un lato verticale (x = a·y+b) e uno orizzontale (y = c·x+d) */
+  const interseca = (vert: RettaLato, oriz: RettaLato): Punto | null => {
+    const den = 1 - vert.a * oriz.a;
+    if (Math.abs(den) < 0.05) return null;
+    const x = (vert.a * oriz.b + vert.b) / den;
+    const y = oriz.a * x + oriz.b;
+    if (x < -w * 0.05 || x > w * 1.05 || y < -h * 0.05 || y > h * 1.05) return null;
+    return { x, y };
+  };
+
+  const altoSx = interseca(latoSinistro, latoAlto);
+  const altoDx = interseca(latoDestro, latoAlto);
+  const bassoDx = interseca(latoDestro, latoBasso);
+  const bassoSx = interseca(latoSinistro, latoBasso);
+  if (!altoSx || !altoDx || !bassoDx || !bassoSx) return null;
+
+  const minLato = 12;
+  if (
+    Math.hypot(altoDx.x - altoSx.x, altoDx.y - altoSx.y) < minLato ||
+    Math.hypot(bassoSx.x - altoSx.x, bassoSx.y - altoSx.y) < minLato
+  ) {
+    return null;
+  }
+
+  const inImmagine = (q: Punto): Punto => ({ x: q.x / fattore, y: q.y / fattore });
+  return { punti: [inImmagine(altoSx), inImmagine(altoDx), inImmagine(bassoDx), inImmagine(bassoSx)] };
 }

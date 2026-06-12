@@ -185,11 +185,12 @@ function righeMisureFoto(annotazioni: Annotazione[]): RigaMisura[] {
         stato: a.stato
       });
     } else if (a.tipo === 'quotaRett') {
-      // un elemento unico: base × altezza, mai due misure scollegate
+      // un elemento unico (base × altezza), nomenclaturato per essere
+      // riconoscibile sulla foto: mai due misure scollegate
       const b = a.valoreBase === null ? '?' : formattaNumero(a.valoreBase);
       const h = a.valoreAltezza === null ? '?' : formattaNumero(a.valoreAltezza);
       righe.push({
-        tipo: 'Rettangolo (b × h)',
+        tipo: a.etichetta ? `Elemento ${a.etichetta} (b × h)` : 'Elemento (b × h)',
         misura: `${b} × ${h} ${a.unita}`,
         stato: a.stato
       });

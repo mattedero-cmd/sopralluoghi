@@ -1,4 +1,4 @@
-import type { Annotazione, Punto, Quota } from '../db/types';
+import { quadrilateroQuotaRett, type Annotazione, type Punto, type Quota } from '../db/types';
 import { distanza } from './punti';
 
 /**
@@ -19,13 +19,7 @@ export function puntiAggancio(annotazioni: Annotazione[], escludiId?: string): P
     } else if (a.tipo === 'quotaRaggio') {
       punti.push(a.centro, a.bordo);
     } else if (a.tipo === 'quotaRett') {
-      const r = a.rect;
-      punti.push(
-        { x: r.x, y: r.y },
-        { x: r.x + r.width, y: r.y },
-        { x: r.x + r.width, y: r.y + r.height },
-        { x: r.x, y: r.y + r.height }
-      );
+      punti.push(...quadrilateroQuotaRett(a));
     }
   }
   return punti;
