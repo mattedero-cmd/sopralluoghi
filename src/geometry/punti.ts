@@ -39,3 +39,13 @@ export function vincolaOrto(p1: Punto, p2: Punto): Punto {
   const dy = Math.abs(p2.y - p1.y);
   return dx >= dy ? { x: p2.x, y: p1.y } : { x: p1.x, y: p2.y };
 }
+
+/** Snap angolare: vincola la direzione p1→p2 al multiplo di `passoGradi` più vicino */
+export function vincolaAngolo(p1: Punto, p2: Punto, passoGradi = 15): Punto {
+  const d = sottrai(p2, p1);
+  const r = Math.hypot(d.x, d.y);
+  if (r < 1e-9) return p2;
+  const passo = (passoGradi * Math.PI) / 180;
+  const angolo = Math.round(Math.atan2(d.y, d.x) / passo) * passo;
+  return { x: p1.x + r * Math.cos(angolo), y: p1.y + r * Math.sin(angolo) };
+}

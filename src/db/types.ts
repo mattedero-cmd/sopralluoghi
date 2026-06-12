@@ -69,8 +69,14 @@ export interface Foto {
    * come corpo del testo e raccolto nell'indice.
    */
   noteDato: string;
-  /** Calibrazione px↔reale opzionale (predisposta per la Fase 2) */
+  /** Calibrazione px↔reale (segmento di lunghezza nota), opzionale */
   scala: { px: number; reale: number; unita: Unita } | null;
+  /**
+   * Piano di riferimento prospettico (Fase 2): 4 punti di un
+   * rettangolo di dimensioni reali note. Permette di calcolare le
+   * misure su quel piano tramite omografia anche in foto non frontali.
+   */
+  piano?: PianoProspettiva | null;
   /** Ordine di presentazione nel progetto e nel PDF */
   ordine: number;
   creataIl: number;
@@ -101,8 +107,20 @@ export interface Stile {
   dimensioneTesto: number;
 }
 
+export interface PianoProspettiva {
+  /** angoli del rettangolo di riferimento nell'immagine, in ordine:
+   *  alto-sx, alto-dx, basso-dx, basso-sx */
+  punti: [Punto, Punto, Punto, Punto];
+  /** dimensioni reali del rettangolo */
+  larghezzaReale: number;
+  altezzaReale: number;
+  unita: Unita;
+}
+
 export type TipoAnnotazione =
   | 'quota'
+  | 'quotaAngolo'
+  | 'quotaRaggio'
   | 'testo'
   | 'disegno'
   | 'freccia'
@@ -133,8 +151,40 @@ export interface Quota extends AnnotazioneBase {
   offset: number;
   /** Valore numerico della misura (inserito/corretto manualmente) */
   valore: number | null;
+  /**
+   * true: il valore è calcolato automaticamente dalla calibrazione
+   * (scala o piano) e viene ricalcolato quando la geometria cambia.
+   * false: valore inserito a mano, mai sovrascritto.
+   */
+  valoreAuto?: boolean;
   unita: Unita;
   posizioneTesto: PosizioneTesto;
+  stato: StatoMisura;
+}
+
+/** Quota angolare: vertice + due lati, arco di quota, valore in gradi */
+export interface QuotaAngolare extends AnnotazioneBase {
+  tipo: 'quotaAngolo';
+  vertice: Punto;
+  a: Punto;
+  b: Punto;
+  /** raggio dell'arco di quota in px immagine */
+  raggioArco: number;
+  /** gradi; calcolato dalla geometria, correggibile a mano */
+  valore: number | null;
+  valoreAuto?: boolean;
+  stato: StatoMisura;
+}
+
+/** Quota radiale o di diametro: centro + punto sul bordo */
+export interface QuotaRaggio extends AnnotazioneBase {
+  tipo: 'quotaRaggio';
+  centro: Punto;
+  bordo: Punto;
+  modo: 'raggio' | 'diametro';
+  valore: number | null;
+  valoreAuto?: boolean;
+  unita: Unita;
   stato: StatoMisura;
 }
 
@@ -166,7 +216,14 @@ export interface Callout extends AnnotazioneBase {
   etichetta: string;
 }
 
-export type Annotazione = Quota | TestoFoto | DisegnoLibero | Freccia | Callout;
+export type Annotazione =
+  | Quota
+  | QuotaAngolare
+  | QuotaRaggio
+  | TestoFoto
+  | DisegnoLibero
+  | Freccia
+  | Callout;
 
 // ---------------------------------------------------------------------------
 // Impostazioni utente (dati professionali per il PDF + preferenze editor)

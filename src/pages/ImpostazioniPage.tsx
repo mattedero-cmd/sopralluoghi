@@ -190,7 +190,7 @@ export function ImpostazioniPage() {
           Sopralluoghi — applicazione offline-first. I dati restano sul dispositivo; il file di
           backup è l'unica copia esterna.
           <br />
-          Versione 0.1.1 — build {__BUILD__} (UTC). Se hai appena aggiornato e la data non
+          Versione 0.2.0 — build {__BUILD__} (UTC). Se hai appena aggiornato e la data non
           corrisponde, chiudi e riapri l'app con la rete attiva.
         </p>
       </main>

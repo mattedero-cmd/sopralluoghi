@@ -14,6 +14,10 @@ export function puntiAggancio(annotazioni: Annotazione[], escludiId?: string): P
     if (a.id === escludiId) continue;
     if (a.tipo === 'quota' || a.tipo === 'freccia') {
       punti.push(a.p1, a.p2);
+    } else if (a.tipo === 'quotaAngolo') {
+      punti.push(a.vertice, a.a, a.b);
+    } else if (a.tipo === 'quotaRaggio') {
+      punti.push(a.centro, a.bordo);
     }
   }
   return punti;

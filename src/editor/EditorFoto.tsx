@@ -8,21 +8,31 @@ import type {
   PosizioneTesto,
   Punto,
   Quota,
+  QuotaAngolare,
+  QuotaRaggio,
   Rettangolo,
   SottotipoQuota,
   StatoMisura,
   Unita
 } from '../db/types';
 import { IMPOSTAZIONI_DEFAULT } from '../db/types';
-import { aggiornaFoto, leggiImpostazioni, salvaAnnotazioniFoto } from '../db/repository';
+import { aggiornaFoto, eliminaFoto, leggiImpostazioni, salvaAnnotazioniFoto } from '../db/repository';
 import { blobOrigine, caricaImmagine, fotoIllegibile } from '../utils/image';
 import { naviga } from '../router';
 import { ConfermaDialog, Modale, StatoApp, type RichiestaConferma } from '../components/comuni';
-import { eliminaFoto } from '../db/repository';
 import { mostraToast } from '../state/toast';
-import { StageEditor, type Strumento } from './StageEditor';
+import { StageEditor, type ModalitaVincolo, type Strumento } from './StageEditor';
 import { FabbricaAnnotazioni } from './fabbrica';
 import { calcolaCatene, sommaCatenaInUnita } from '../geometry/catene';
+import {
+  applicaValoriAuto,
+  haCalibrazione,
+  valoreAutomatico
+} from '../geometry/calibrazione';
+import { omografiaPiano } from '../geometry/omografia';
+import { lunghezzaPxQuota } from '../geometry/punti';
+import { RicercaBordi } from '../geometry/bordi';
+import { distanza } from '../geometry/punti';
 import {
   aInputDataOra,
   analizzaMisura,
@@ -31,8 +41,24 @@ import {
 } from '../utils/format';
 import { condividiOScarica, nomeFileSicuro } from '../utils/share';
 import { renderFotoAnnotata } from '../render/renderAnnotata';
+import { avviaDettatura, dettaturaDisponibile } from '../utils/dettatura';
 
 const COLORI = ['#ff3b30', '#ffcc00', '#34c759', '#007aff', '#ffffff', '#111111'];
+
+type CategoriaLayer = 'quote' | 'note' | 'callout';
+
+function categoriaAnnotazione(a: Annotazione): CategoriaLayer {
+  switch (a.tipo) {
+    case 'quota':
+    case 'quotaAngolo':
+    case 'quotaRaggio':
+      return 'quote';
+    case 'callout':
+      return 'callout';
+    default:
+      return 'note';
+  }
+}
 
 export function EditorFoto({ fotoId }: { fotoId: string }) {
   const foto = useLiveQuery(() => db.foto.get(fotoId), [fotoId]);
@@ -42,9 +68,17 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [selezioneId, setSelezioneId] = useState<string | null>(null);
   const [strumento, setStrumento] = useState<Strumento>('seleziona');
   const [snapAttivo, setSnapAttivo] = useState(true);
-  const [ortoAttivo, setOrtoAttivo] = useState(false);
+  const [vincolo, setVincolo] = useState<ModalitaVincolo>('off');
+  const [bordiAttivo, setBordiAttivo] = useState(false);
+  const [layerVisibili, setLayerVisibili] = useState<Record<CategoriaLayer, boolean>>({
+    quote: true,
+    note: true,
+    callout: true
+  });
   const [schedaNote, setSchedaNote] = useState(false);
   const [testoInModifica, setTestoInModifica] = useState<string | null>(null);
+  const [schedaScala, setSchedaScala] = useState<{ px: number } | null>(null);
+  const [schedaPiano, setSchedaPiano] = useState<{ punti: [Punto, Punto, Punto, Punto] } | null>(null);
   const passato = useRef<Annotazione[][]>([]);
   const futuro = useRef<Annotazione[][]>([]);
   const timerSalvataggio = useRef<number | null>(null);
@@ -77,6 +111,17 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     // l'originale non cambia mai: si carica una sola volta per foto
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [foto?.id]);
+
+  // Rilevamento bordi: costruito solo quando serve (lavoro CPU una tantum)
+  const ricercaBordi = useMemo(() => {
+    if (!bordiAttivo || !immagine || !foto) return null;
+    try {
+      return new RicercaBordi(immagine, foto.larghezzaPx, foto.altezzaPx);
+    } catch {
+      return null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bordiAttivo, immagine]);
 
   // ---------------------------------------------------------------------------
   // Autosave transazionale con debounce breve + flush garantito
@@ -133,6 +178,14 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     [programmaSalvataggio]
   );
 
+  /** commit dalle modifiche di geometria: i valori auto vengono ricalcolati */
+  const commitGeometria = useCallback(
+    (nuove: Annotazione[]) => {
+      commit(foto ? applicaValoriAuto(nuove, foto) : nuove);
+    },
+    [commit, foto]
+  );
+
   const undo = () => {
     const prec = passato.current.pop();
     if (!prec || !annotazioni) return;
@@ -166,7 +219,24 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     setSelezioneId(q.id);
     setStrumento('seleziona');
     // focus sul campo misura: l'inserimento del valore è il passo successivo
-    setTimeout(() => inputValore.current?.focus(), 60);
+    if (q.valore === null) setTimeout(() => inputValore.current?.focus(), 60);
+  };
+
+  const creaAngolo = (vertice: Punto, a: Punto, b: Punto) => {
+    if (!fabbrica || !annotazioni) return;
+    const q = fabbrica.quotaAngolare(vertice, a, b, annotazioni);
+    commit([...annotazioni, q]);
+    setSelezioneId(q.id);
+    setStrumento('seleziona');
+  };
+
+  const creaRaggio = (centro: Punto, bordo: Punto) => {
+    if (!fabbrica || !annotazioni) return;
+    const q = fabbrica.quotaRaggio(centro, bordo, annotazioni);
+    commit([...annotazioni, q]);
+    setSelezioneId(q.id);
+    setStrumento('seleziona');
+    if (q.valore === null) setTimeout(() => inputValore.current?.focus(), 60);
   };
 
   const creaTesto = (pos: Punto) => {
@@ -213,6 +283,58 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     setSelezioneId(null);
   };
 
+  // ---------------------------------------------------------------------------
+  // Calibrazione: scala lineare e piano prospettico
+  // ---------------------------------------------------------------------------
+
+  /** dopo un cambio di calibrazione i valori auto vengono ricalcolati */
+  const ricalcolaConCalibrazione = (fotoAggiornata: Pick<Foto, 'scala' | 'piano'>) => {
+    if (!annotazioni) return;
+    commit(applicaValoriAuto(annotazioni, fotoAggiornata));
+  };
+
+  const salvaScala = async (px: number, reale: number, unita: Unita) => {
+    if (!foto) return;
+    const scala = { px, reale, unita };
+    await aggiornaFoto(foto.id, { scala });
+    ricalcolaConCalibrazione({ scala, piano: foto.piano });
+    mostraToast('successo', 'Scala calibrata: le quote senza valore manuale vengono calcolate.');
+    setStrumento('seleziona');
+  };
+
+  const salvaPiano = async (
+    punti: [Punto, Punto, Punto, Punto],
+    larghezzaReale: number,
+    altezzaReale: number,
+    unita: Unita
+  ) => {
+    if (!foto) return;
+    const piano = { punti, larghezzaReale, altezzaReale, unita };
+    try {
+      omografiaPiano(piano); // verifica che i punti non siano degeneri
+    } catch (e) {
+      mostraToast('errore', e instanceof Error ? e.message : 'Punti del piano non validi.');
+      return;
+    }
+    await aggiornaFoto(foto.id, { piano });
+    ricalcolaConCalibrazione({ scala: foto.scala, piano });
+    mostraToast(
+      'successo',
+      'Piano di riferimento attivo: le misure su quel piano vengono calcolate in prospettiva.'
+    );
+    setStrumento('seleziona');
+  };
+
+  const calibraDaQuota = async (q: Quota) => {
+    if (!foto || q.valore === null) return;
+    const px = lunghezzaPxQuota(q);
+    if (px < 2) return;
+    const scala = { px, reale: q.valore, unita: q.unita };
+    await aggiornaFoto(foto.id, { scala });
+    ricalcolaConCalibrazione({ scala, piano: foto.piano });
+    mostraToast('successo', 'Scala ricavata dalla quota selezionata.');
+  };
+
   const esporta = async () => {
     if (!foto || !annotazioni) return;
     salvaOra();
@@ -251,6 +373,20 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       ? annotazioni.find((a) => a.id === testoInModifica && a.tipo === 'testo')
       : null;
 
+  const cicloVincolo = () => {
+    setVincolo((v) => (v === 'off' ? 'orto' : v === 'orto' ? 'angolo15' : 'off'));
+  };
+
+  const toggleLayer = (cat: CategoriaLayer) => {
+    setLayerVisibili((l) => {
+      const nuovi = { ...l, [cat]: !l[cat] };
+      if (!nuovi[cat] && selezionata && categoriaAnnotazione(selezionata) === cat) {
+        setSelezioneId(null);
+      }
+      return nuovi;
+    });
+  };
+
   return (
     <div className="editor">
       <header className="barra">
@@ -287,25 +423,33 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         selezioneId={selezioneId}
         strumento={strumento}
         snapAttivo={snapAttivo}
-        ortoAttivo={ortoAttivo}
+        vincolo={vincolo}
         sogliaSnap={impostazioni.sogliaSnap}
+        ricercaBordi={ricercaBordi}
+        filtroVisibile={(a) => layerVisibili[categoriaAnnotazione(a)]}
         onSeleziona={setSelezioneId}
-        onCommit={commit}
+        onCommit={commitGeometria}
         onNuovaQuota={creaQuota}
+        onNuovoAngolo={creaAngolo}
+        onNuovoRaggio={creaRaggio}
         onNuovoTesto={creaTesto}
         onNuovaFreccia={creaFreccia}
         onNuovoDisegno={creaDisegno}
         onNuovoCallout={creaCallout}
+        onCalibra={(p1, p2) => setSchedaScala({ px: distanza(p1, p2) })}
+        onPiano={(punti) => setSchedaPiano({ punti })}
       />
 
       {selezionata && (
         <PannelloProprieta
           ann={selezionata}
           annotazioni={annotazioni}
+          foto={foto}
           inputValore={inputValore}
           onModifica={aggiornaSelezionata}
           onElimina={eliminaSelezionata}
           onModificaTesto={() => setTestoInModifica(selezionata.id)}
+          onCalibraDaQuota={(q) => void calibraDaQuota(q)}
         />
       )}
 
@@ -314,18 +458,58 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         <BtnStrumento attivo={strumento === 'quotaO'} onClick={() => setStrumento('quotaO')} icona="↔" testo="Quota O" />
         <BtnStrumento attivo={strumento === 'quotaV'} onClick={() => setStrumento('quotaV')} icona="↕" testo="Quota V" />
         <BtnStrumento attivo={strumento === 'quotaA'} onClick={() => setStrumento('quotaA')} icona="⤡" testo="Allineata" />
+        <BtnStrumento attivo={strumento === 'angolo'} onClick={() => setStrumento('angolo')} icona="∠" testo="Angolo" />
+        <BtnStrumento attivo={strumento === 'raggio'} onClick={() => setStrumento('raggio')} icona="◔" testo="Raggio" />
         <BtnStrumento attivo={strumento === 'callout'} onClick={() => setStrumento('callout')} icona="🔍" testo="Dettaglio" />
         <BtnStrumento attivo={strumento === 'testo'} onClick={() => setStrumento('testo')} icona="T" testo="Testo" />
         <BtnStrumento attivo={strumento === 'freccia'} onClick={() => setStrumento('freccia')} icona="➚" testo="Freccia" />
         <BtnStrumento attivo={strumento === 'disegno'} onClick={() => setStrumento('disegno')} icona="✏️" testo="Disegno" />
+        <BtnStrumento attivo={strumento === 'calibra'} onClick={() => setStrumento('calibra')} icona="📐" testo="Scala" />
+        <BtnStrumento attivo={strumento === 'piano'} onClick={() => setStrumento('piano')} icona="▱" testo="Piano" />
         <BtnStrumento attivo={snapAttivo} onClick={() => setSnapAttivo(!snapAttivo)} icona="🧲" testo="Snap" />
-        <BtnStrumento attivo={ortoAttivo} onClick={() => setOrtoAttivo(!ortoAttivo)} icona="∟" testo="Orto" />
+        <BtnStrumento
+          attivo={vincolo !== 'off'}
+          onClick={cicloVincolo}
+          icona={vincolo === 'angolo15' ? '∠15°' : '∟'}
+          testo={vincolo === 'off' ? 'Vincolo' : vincolo === 'orto' ? 'Orto' : '15°'}
+        />
+        <BtnStrumento attivo={bordiAttivo} onClick={() => setBordiAttivo(!bordiAttivo)} icona="◫" testo="Bordi" />
+        <BtnStrumento attivo={layerVisibili.quote} onClick={() => toggleLayer('quote')} icona={layerVisibili.quote ? '👁' : '🚫'} testo="Quote" />
+        <BtnStrumento attivo={layerVisibili.note} onClick={() => toggleLayer('note')} icona={layerVisibili.note ? '👁' : '🚫'} testo="Note" />
+        <BtnStrumento attivo={layerVisibili.callout} onClick={() => toggleLayer('callout')} icona={layerVisibili.callout ? '👁' : '🚫'} testo="Dett." />
         <BtnStrumento attivo={false} onClick={() => window.dispatchEvent(new CustomEvent('editor:zoom', { detail: 1.3 }))} icona="＋" testo="Zoom" />
         <BtnStrumento attivo={false} onClick={() => window.dispatchEvent(new CustomEvent('editor:zoom', { detail: 1 / 1.3 }))} icona="－" testo="Zoom" />
         <BtnStrumento attivo={false} onClick={() => window.dispatchEvent(new Event('editor:adatta'))} icona="⤢" testo="Adatta" />
       </nav>
 
-      {schedaNote && <SchedaNoteFoto foto={foto} onChiudi={() => setSchedaNote(false)} />}
+      {schedaNote && (
+        <SchedaNoteFoto
+          foto={foto}
+          onRimuoviCalibrazione={ricalcolaConCalibrazione}
+          onChiudi={() => setSchedaNote(false)}
+        />
+      )}
+      {schedaScala && (
+        <SchedaScala
+          px={schedaScala.px}
+          unitaDefault={impostazioni.unitaDefault}
+          onChiudi={() => setSchedaScala(null)}
+          onSalva={(reale, unita) => {
+            void salvaScala(schedaScala.px, reale, unita);
+            setSchedaScala(null);
+          }}
+        />
+      )}
+      {schedaPiano && (
+        <SchedaPiano
+          unitaDefault={impostazioni.unitaDefault}
+          onChiudi={() => setSchedaPiano(null)}
+          onSalva={(larghezza, altezza, unita) => {
+            void salvaPiano(schedaPiano.punti, larghezza, altezza, unita);
+            setSchedaPiano(null);
+          }}
+        />
+      )}
       {testoTarget && testoTarget.tipo === 'testo' && (
         <SchedaTesto
           iniziale={testoTarget.testo}
@@ -421,17 +605,21 @@ function BtnStrumento({
 function PannelloProprieta({
   ann,
   annotazioni,
+  foto,
   inputValore,
   onModifica,
   onElimina,
-  onModificaTesto
+  onModificaTesto,
+  onCalibraDaQuota
 }: {
   ann: Annotazione;
   annotazioni: Annotazione[];
+  foto: Foto;
   inputValore: React.RefObject<HTMLInputElement>;
   onModifica: (m: Partial<Annotazione>) => void;
   onElimina: () => void;
   onModificaTesto: () => void;
+  onCalibraDaQuota: (q: Quota) => void;
 }) {
   // dimensione personalizzabile: scala spessore linee e testo insieme
   const scalaStile = (fattore: number) => {
@@ -450,9 +638,17 @@ function PannelloProprieta({
         <ProprietaQuota
           quota={ann}
           annotazioni={annotazioni}
+          foto={foto}
           inputValore={inputValore}
           onModifica={onModifica}
+          onCalibraDaQuota={onCalibraDaQuota}
         />
+      )}
+      {ann.tipo === 'quotaAngolo' && (
+        <ProprietaAngolo angolo={ann} foto={foto} onModifica={onModifica} />
+      )}
+      {ann.tipo === 'quotaRaggio' && (
+        <ProprietaRaggio raggio={ann} foto={foto} inputValore={inputValore} onModifica={onModifica} />
       )}
       <span className="segmenti" role="group" aria-label="Dimensione annotazione">
         <button aria-label="Riduci dimensione" onClick={() => scalaStile(1 / 1.25)}>
@@ -462,7 +658,7 @@ function PannelloProprieta({
           A＋
         </button>
       </span>
-      {ann.tipo === 'quota' && (
+      {(ann.tipo === 'quota' || ann.tipo === 'quotaAngolo' || ann.tipo === 'quotaRaggio') && (
         <PaletteColori
           colore={ann.stile.colore}
           onScegli={(c) => onModifica({ stile: { ...ann.stile, colore: c } })}
@@ -499,53 +695,112 @@ function PannelloProprieta({
   );
 }
 
-function ProprietaQuota({
-  quota,
-  annotazioni,
-  inputValore,
-  onModifica
+/** Campo misura riutilizzabile con gestione di valoreAuto */
+function CampoMisura({
+  valore,
+  valoreAuto,
+  calcolabile,
+  inputRef,
+  onValore,
+  onRiattivaAuto
 }: {
-  quota: Quota;
-  annotazioni: Annotazione[];
-  inputValore: React.RefObject<HTMLInputElement>;
-  onModifica: (m: Partial<Quota>) => void;
+  valore: number | null;
+  valoreAuto: boolean | undefined;
+  calcolabile: boolean;
+  inputRef?: React.RefObject<HTMLInputElement>;
+  onValore: (v: number | null) => void;
+  onRiattivaAuto: () => void;
 }) {
-  const [testoValore, setTestoValore] = useState(
-    quota.valore === null ? '' : String(quota.valore).replace('.', ',')
-  );
+  const [testo, setTesto] = useState(valore === null ? '' : String(valore).replace('.', ','));
+  const valoreRef = useRef(valore);
   useEffect(() => {
-    setTestoValore(quota.valore === null ? '' : String(quota.valore).replace('.', ','));
-    // si risincronizza solo al cambio di quota selezionata
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quota.id]);
-
-  const catena = useMemo(() => {
-    return calcolaCatene(annotazioni).find((c) => c.quote.some((q) => q.id === quota.id)) ?? null;
-  }, [annotazioni, quota.id]);
-
-  const applicaValore = (testo: string) => {
-    setTestoValore(testo);
-    const v = analizzaMisura(testo);
-    if (testo.trim() !== '' && v === null) return; // input non valido: non salvare
-    onModifica({ valore: v });
-  };
+    // si risincronizza quando il valore cambia dall'esterno (es. ricalcolo auto)
+    if (valore !== valoreRef.current) {
+      valoreRef.current = valore;
+      setTesto(valore === null ? '' : String(valore).replace('.', ','));
+    }
+  }, [valore]);
 
   return (
     <>
       <input
-        ref={inputValore}
+        ref={inputRef}
         className="input-misura"
         type="text"
         inputMode="decimal"
         placeholder="misura"
         aria-label="Valore della misura"
-        value={testoValore}
-        onChange={(e) => applicaValore(e.target.value)}
+        value={testo}
+        onChange={(e) => {
+          const t = e.target.value;
+          setTesto(t);
+          const v = analizzaMisura(t);
+          if (t.trim() !== '' && v === null) return; // input non valido: non salvare
+          valoreRef.current = v;
+          onValore(v);
+        }}
+      />
+      {calcolabile &&
+        (valoreAuto ? (
+          <span style={{ color: 'var(--ok)', fontSize: 13, fontWeight: 700 }} title="Calcolato dalla calibrazione">
+            auto
+          </span>
+        ) : (
+          <button className="btn" style={{ minHeight: 44, padding: '0 10px' }} onClick={onRiattivaAuto} title="Ricalcola dalla calibrazione">
+            ↻ auto
+          </button>
+        ))}
+    </>
+  );
+}
+
+function ProprietaQuota({
+  quota,
+  annotazioni,
+  foto,
+  inputValore,
+  onModifica,
+  onCalibraDaQuota
+}: {
+  quota: Quota;
+  annotazioni: Annotazione[];
+  foto: Foto;
+  inputValore: React.RefObject<HTMLInputElement>;
+  onModifica: (m: Partial<Quota>) => void;
+  onCalibraDaQuota: (q: Quota) => void;
+}) {
+  const catena = useMemo(() => {
+    return calcolaCatene(annotazioni).find((c) => c.quote.some((q) => q.id === quota.id)) ?? null;
+  }, [annotazioni, quota.id]);
+
+  const calibrata = haCalibrazione(foto);
+
+  return (
+    <>
+      <CampoMisura
+        key={quota.id}
+        valore={quota.valore}
+        valoreAuto={quota.valoreAuto}
+        calcolabile={calibrata}
+        inputRef={inputValore}
+        onValore={(v) => onModifica({ valore: v, valoreAuto: false })}
+        onRiattivaAuto={() => {
+          const v = valoreAutomatico(quota, foto);
+          if (v !== null) onModifica({ valore: v, valoreAuto: true });
+        }}
       />
       <select
         aria-label="Unità"
         value={quota.unita}
-        onChange={(e) => onModifica({ unita: e.target.value as Unita })}
+        onChange={(e) => {
+          const unita = e.target.value as Unita;
+          if (quota.valoreAuto) {
+            const v = valoreAutomatico({ ...quota, unita }, foto);
+            onModifica({ unita, valore: v ?? quota.valore });
+          } else {
+            onModifica({ unita });
+          }
+        }}
         style={{ minHeight: 44, borderRadius: 10, background: 'var(--sfondo)', border: '1px solid var(--bordo)', padding: '0 8px' }}
       >
         <option value="mm">mm</option>
@@ -572,12 +827,129 @@ function ProprietaQuota({
           </button>
         ))}
       </span>
+      {quota.valore !== null && !quota.valoreAuto && !calibrata && (
+        <button className="btn" onClick={() => onCalibraDaQuota(quota)} title="Usa questa quota come riferimento di scala per calcolare le altre">
+          📐 Usa come scala
+        </button>
+      )}
       {catena && sommaCatenaInUnita(catena) !== null && (
         <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
           Catena ({catena.quote.length}): {formattaNumero(sommaCatenaInUnita(catena)!)} {catena.unita}
           {catena.completa ? '' : ' (parz.)'}
         </span>
       )}
+    </>
+  );
+}
+
+function ProprietaAngolo({
+  angolo,
+  foto,
+  onModifica
+}: {
+  angolo: QuotaAngolare;
+  foto: Foto;
+  onModifica: (m: Partial<QuotaAngolare>) => void;
+}) {
+  return (
+    <>
+      <CampoMisura
+        key={angolo.id}
+        valore={angolo.valore}
+        valoreAuto={angolo.valoreAuto}
+        calcolabile={true}
+        onValore={(v) => onModifica({ valore: v, valoreAuto: false })}
+        onRiattivaAuto={() => {
+          const v = valoreAutomatico(angolo, foto);
+          if (v !== null) onModifica({ valore: v, valoreAuto: true });
+        }}
+      />
+      <span style={{ fontWeight: 700 }}>°</span>
+      <span className="segmenti" role="group" aria-label="Stato della misura">
+        {(['reale', 'stimata'] as StatoMisura[]).map((s) => (
+          <button key={s} className={angolo.stato === s ? 'attivo' : ''} onClick={() => onModifica({ stato: s })}>
+            {s === 'reale' ? 'Reale' : '≈ Stimata'}
+          </button>
+        ))}
+      </span>
+    </>
+  );
+}
+
+function ProprietaRaggio({
+  raggio,
+  foto,
+  inputValore,
+  onModifica
+}: {
+  raggio: QuotaRaggio;
+  foto: Foto;
+  inputValore: React.RefObject<HTMLInputElement>;
+  onModifica: (m: Partial<QuotaRaggio>) => void;
+}) {
+  const calibrata = haCalibrazione(foto);
+  return (
+    <>
+      <CampoMisura
+        key={raggio.id}
+        valore={raggio.valore}
+        valoreAuto={raggio.valoreAuto}
+        calcolabile={calibrata}
+        inputRef={inputValore}
+        onValore={(v) => onModifica({ valore: v, valoreAuto: false })}
+        onRiattivaAuto={() => {
+          const v = valoreAutomatico(raggio, foto);
+          if (v !== null) onModifica({ valore: v, valoreAuto: true });
+        }}
+      />
+      <select
+        aria-label="Unità"
+        value={raggio.unita}
+        onChange={(e) => {
+          const unita = e.target.value as Unita;
+          if (raggio.valoreAuto) {
+            const v = valoreAutomatico({ ...raggio, unita }, foto);
+            onModifica({ unita, valore: v ?? raggio.valore });
+          } else {
+            onModifica({ unita });
+          }
+        }}
+        style={{ minHeight: 44, borderRadius: 10, background: 'var(--sfondo)', border: '1px solid var(--bordo)', padding: '0 8px' }}
+      >
+        <option value="mm">mm</option>
+        <option value="cm">cm</option>
+        <option value="m">m</option>
+      </select>
+      <span className="segmenti" role="group" aria-label="Raggio o diametro">
+        {(
+          [
+            ['raggio', 'R'],
+            ['diametro', '⌀']
+          ] as Array<[QuotaRaggio['modo'], string]>
+        ).map(([m, t]) => (
+          <button
+            key={m}
+            className={raggio.modo === m ? 'attivo' : ''}
+            onClick={() => {
+              if (raggio.valoreAuto) {
+                const v = valoreAutomatico({ ...raggio, modo: m }, foto);
+                onModifica({ modo: m, valore: v ?? raggio.valore });
+              } else {
+                onModifica({ modo: m });
+              }
+            }}
+          >
+            {t}
+          </button>
+        ))}
+      </span>
+      <span className="segmenti" role="group" aria-label="Stato della misura">
+        {(['reale', 'stimata'] as StatoMisura[]).map((s) => (
+          <button key={s} className={raggio.stato === s ? 'attivo' : ''} onClick={() => onModifica({ stato: s })}>
+            {s === 'reale' ? 'Reale' : '≈ Stimata'}
+          </button>
+        ))}
+      </span>
     </>
   );
 }
@@ -599,15 +971,142 @@ function PaletteColori({ colore, onScegli }: { colore: string; onScegli: (c: str
 }
 
 // ---------------------------------------------------------------------------
-// Schede: note della foto (didascalia, note dato, data, geotag) e testo
+// Schede: calibrazioni, note della foto e testo
 // ---------------------------------------------------------------------------
 
-function SchedaNoteFoto({ foto, onChiudi }: { foto: Foto; onChiudi: () => void }) {
+function SchedaScala({
+  px,
+  unitaDefault,
+  onChiudi,
+  onSalva
+}: {
+  px: number;
+  unitaDefault: Unita;
+  onChiudi: () => void;
+  onSalva: (reale: number, unita: Unita) => void;
+}) {
+  const [testo, setTesto] = useState('');
+  const [unita, setUnita] = useState<Unita>(unitaDefault);
+  const valore = analizzaMisura(testo);
+  return (
+    <Modale titolo="Calibrazione di scala" onChiudi={onChiudi} centro>
+      <p style={{ color: 'var(--testo-2)' }}>
+        Hai indicato un segmento di {Math.round(px)} px. Inserisci la sua lunghezza reale: l'app
+        ricaverà il rapporto px↔reale e calcolerà automaticamente le quote su questo piano.
+      </p>
+      <div className="campo">
+        <label>Lunghezza reale del segmento *</label>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input autoFocus inputMode="decimal" value={testo} onChange={(e) => setTesto(e.target.value)} placeholder="es. 80" />
+          <select value={unita} onChange={(e) => setUnita(e.target.value as Unita)} style={{ width: 110 }}>
+            <option value="mm">mm</option>
+            <option value="cm">cm</option>
+            <option value="m">m</option>
+          </select>
+        </div>
+      </div>
+      <div className="riga-pulsanti">
+        <button className="btn" onClick={onChiudi}>
+          Annulla
+        </button>
+        <button className="btn primario" disabled={valore === null || valore <= 0} onClick={() => onSalva(valore!, unita)}>
+          Calibra
+        </button>
+      </div>
+    </Modale>
+  );
+}
+
+function SchedaPiano({
+  unitaDefault,
+  onChiudi,
+  onSalva
+}: {
+  unitaDefault: Unita;
+  onChiudi: () => void;
+  onSalva: (larghezza: number, altezza: number, unita: Unita) => void;
+}) {
+  const [testoL, setTestoL] = useState('');
+  const [testoA, setTestoA] = useState('');
+  const [unita, setUnita] = useState<Unita>(unitaDefault);
+  const larghezza = analizzaMisura(testoL);
+  const altezza = analizzaMisura(testoA);
+  const valido = larghezza !== null && larghezza > 0 && altezza !== null && altezza > 0;
+  return (
+    <Modale titolo="Piano di riferimento (prospettiva)" onChiudi={onChiudi} centro>
+      <p style={{ color: 'var(--testo-2)' }}>
+        Inserisci le dimensioni reali del rettangolo indicato (es. una porta, una piastrella, un
+        infisso). Tutte le misure prese su quel piano verranno calcolate correggendo la
+        prospettiva.
+      </p>
+      <div className="campo">
+        <label>Larghezza reale (lato alto) *</label>
+        <input autoFocus inputMode="decimal" value={testoL} onChange={(e) => setTestoL(e.target.value)} placeholder="es. 90" />
+      </div>
+      <div className="campo">
+        <label>Altezza reale (lato destro) *</label>
+        <input inputMode="decimal" value={testoA} onChange={(e) => setTestoA(e.target.value)} placeholder="es. 210" />
+      </div>
+      <div className="campo">
+        <label>Unità</label>
+        <select value={unita} onChange={(e) => setUnita(e.target.value as Unita)}>
+          <option value="mm">mm</option>
+          <option value="cm">cm</option>
+          <option value="m">m</option>
+        </select>
+      </div>
+      <div className="riga-pulsanti">
+        <button className="btn" onClick={onChiudi}>
+          Annulla
+        </button>
+        <button className="btn primario" disabled={!valido} onClick={() => onSalva(larghezza!, altezza!, unita)}>
+          Attiva piano
+        </button>
+      </div>
+    </Modale>
+  );
+}
+
+function SchedaNoteFoto({
+  foto,
+  onRimuoviCalibrazione,
+  onChiudi
+}: {
+  foto: Foto;
+  onRimuoviCalibrazione: (f: Pick<Foto, 'scala' | 'piano'>) => void;
+  onChiudi: () => void;
+}) {
   const [didascalia, setDidascalia] = useState(foto.didascalia);
   const [noteDato, setNoteDato] = useState(foto.noteDato);
   const [dataScatto, setDataScatto] = useState(aInputDataOra(foto.dataScatto));
   const [lat, setLat] = useState(foto.geotag ? String(foto.geotag.lat) : '');
   const [lng, setLng] = useState(foto.geotag ? String(foto.geotag.lng) : '');
+  const [dettaturaAttiva, setDettaturaAttiva] = useState(false);
+  const stopDettatura = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    return () => stopDettatura.current?.();
+  }, []);
+
+  const toggleDettatura = () => {
+    if (dettaturaAttiva) {
+      stopDettatura.current?.();
+      stopDettatura.current = null;
+      setDettaturaAttiva(false);
+      return;
+    }
+    setDettaturaAttiva(true);
+    stopDettatura.current = avviaDettatura(
+      (frase) => {
+        setNoteDato((prev) => (prev.trim() === '' ? frase : `${prev.trimEnd()} ${frase}`));
+      },
+      (errore) => {
+        setDettaturaAttiva(false);
+        stopDettatura.current = null;
+        if (errore) mostraToast('errore', errore);
+      }
+    );
+  };
 
   const salva = async () => {
     const nuovaData = daInputDataOra(dataScatto);
@@ -620,6 +1119,7 @@ function SchedaNoteFoto({ foto, onChiudi }: { foto: Foto; onChiudi: () => void }
       mostraToast('errore', 'Coordinate GPS non valide.');
       return;
     }
+    stopDettatura.current?.();
     await aggiornaFoto(foto.id, {
       didascalia: didascalia.trim(),
       noteDato,
@@ -636,7 +1136,19 @@ function SchedaNoteFoto({ foto, onChiudi }: { foto: Foto; onChiudi: () => void }
         <input value={didascalia} onChange={(e) => setDidascalia(e.target.value)} />
       </div>
       <div className="campo">
-        <label>Note dato (testo riportato nel PDF e nell'indice)</label>
+        <label>
+          Note dato (testo riportato nel PDF e nell'indice)
+          {dettaturaDisponibile() && (
+            <button
+              className={`btn${dettaturaAttiva ? ' attivo' : ''}`}
+              style={{ marginLeft: 10, minHeight: 36, padding: '0 12px' }}
+              onClick={toggleDettatura}
+              type="button"
+            >
+              {dettaturaAttiva ? '🎤 In ascolto… (tocca per fermare)' : '🎤 Detta'}
+            </button>
+          )}
+        </label>
         <textarea value={noteDato} onChange={(e) => setNoteDato(e.target.value)} rows={5} />
       </div>
       <div className="campo">
@@ -650,6 +1162,47 @@ function SchedaNoteFoto({ foto, onChiudi }: { foto: Foto; onChiudi: () => void }
           <input placeholder="lng" value={lng} onChange={(e) => setLng(e.target.value)} inputMode="decimal" />
         </div>
       </div>
+      {(foto.scala || foto.piano) && (
+        <div className="campo">
+          <label>Calibrazione attiva</label>
+          {foto.scala && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <span style={{ flex: 1 }}>
+                Scala: {Math.round(foto.scala.px)} px = {formattaNumero(foto.scala.reale)}{' '}
+                {foto.scala.unita}
+              </span>
+              <button
+                className="btn pericolo"
+                style={{ minHeight: 40 }}
+                onClick={async () => {
+                  await aggiornaFoto(foto.id, { scala: null });
+                  onRimuoviCalibrazione({ scala: null, piano: foto.piano });
+                }}
+              >
+                Rimuovi
+              </button>
+            </div>
+          )}
+          {foto.piano && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ flex: 1 }}>
+                Piano: {formattaNumero(foto.piano.larghezzaReale)} ×{' '}
+                {formattaNumero(foto.piano.altezzaReale)} {foto.piano.unita}
+              </span>
+              <button
+                className="btn pericolo"
+                style={{ minHeight: 40 }}
+                onClick={async () => {
+                  await aggiornaFoto(foto.id, { piano: null });
+                  onRimuoviCalibrazione({ scala: foto.scala, piano: null });
+                }}
+              >
+                Rimuovi
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       <div className="riga-pulsanti">
         <button className="btn primario" onClick={() => void salva()}>
           Salva

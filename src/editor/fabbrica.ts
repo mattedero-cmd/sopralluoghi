@@ -7,12 +7,15 @@ import type {
   Impostazioni,
   Punto,
   Quota,
+  QuotaAngolare,
+  QuotaRaggio,
   Rettangolo,
   SottotipoQuota,
   Stile,
   TestoFoto
 } from '../db/types';
 import { nuovoId } from '../utils/id';
+import { haCalibrazione, valoreAutomatico } from '../geometry/calibrazione';
 
 /**
  * Creazione delle annotazioni con valori predefiniti proporzionati
@@ -43,7 +46,8 @@ export class FabbricaAnnotazioni {
   }
 
   quota(p1: Punto, p2: Punto, sottotipo: SottotipoQuota, esistenti: Annotazione[]): Quota {
-    return {
+    const calibrata = haCalibrazione(this.foto);
+    const q: Quota = {
       id: nuovoId(),
       fotoId: this.foto.id,
       tipo: 'quota',
@@ -52,12 +56,56 @@ export class FabbricaAnnotazioni {
       p2,
       offset: Math.max(28, Math.round(this.lato * 0.035)),
       valore: null,
+      valoreAuto: calibrata,
       unita: this.impostazioni.unitaDefault,
       posizioneTesto: 'sopra',
-      stato: 'reale',
+      // un valore derivato dalla calibrazione è una stima, non un rilievo
+      stato: calibrata ? 'stimata' : 'reale',
       zIndex: this.prossimoZ(esistenti),
       stile: this.stileBase()
     };
+    if (calibrata) q.valore = valoreAutomatico(q, this.foto);
+    return q;
+  }
+
+  quotaAngolare(vertice: Punto, a: Punto, b: Punto, esistenti: Annotazione[]): QuotaAngolare {
+    const q: QuotaAngolare = {
+      id: nuovoId(),
+      fotoId: this.foto.id,
+      tipo: 'quotaAngolo',
+      vertice,
+      a,
+      b,
+      raggioArco: Math.max(30, Math.round(this.lato * 0.05)),
+      valore: null,
+      valoreAuto: true,
+      // l'angolo misurato sull'immagine è una stima (salvo piano calibrato)
+      stato: 'stimata',
+      zIndex: this.prossimoZ(esistenti),
+      stile: this.stileBase()
+    };
+    q.valore = valoreAutomatico(q, this.foto);
+    return q;
+  }
+
+  quotaRaggio(centro: Punto, bordo: Punto, esistenti: Annotazione[]): QuotaRaggio {
+    const calibrata = haCalibrazione(this.foto);
+    const q: QuotaRaggio = {
+      id: nuovoId(),
+      fotoId: this.foto.id,
+      tipo: 'quotaRaggio',
+      centro,
+      bordo,
+      modo: 'raggio',
+      valore: null,
+      valoreAuto: calibrata,
+      unita: this.impostazioni.unitaDefault,
+      stato: calibrata ? 'stimata' : 'reale',
+      zIndex: this.prossimoZ(esistenti),
+      stile: this.stileBase()
+    };
+    if (calibrata) q.valore = valoreAutomatico(q, this.foto);
+    return q;
   }
 
   testo(posizione: Punto, esistenti: Annotazione[]): TestoFoto {
@@ -151,6 +199,19 @@ export function traslaAnnotazione(a: Annotazione, dx: number, dy: number): Annot
         ...a,
         p1: { x: a.p1.x + dx, y: a.p1.y + dy },
         p2: { x: a.p2.x + dx, y: a.p2.y + dy }
+      };
+    case 'quotaAngolo':
+      return {
+        ...a,
+        vertice: { x: a.vertice.x + dx, y: a.vertice.y + dy },
+        a: { x: a.a.x + dx, y: a.a.y + dy },
+        b: { x: a.b.x + dx, y: a.b.y + dy }
+      };
+    case 'quotaRaggio':
+      return {
+        ...a,
+        centro: { x: a.centro.x + dx, y: a.centro.y + dy },
+        bordo: { x: a.bordo.x + dx, y: a.bordo.y + dy }
       };
     case 'testo':
       return { ...a, posizione: { x: a.posizione.x + dx, y: a.posizione.y + dy } };

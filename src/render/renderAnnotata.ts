@@ -73,6 +73,23 @@ export function disegnaPrimitiva(
       ctx.fill();
       break;
     }
+    case 'cerchio': {
+      ctx.strokeStyle = p.colore;
+      ctx.lineWidth = p.spessore;
+      if (p.tratteggio) ctx.setLineDash(p.tratteggio);
+      ctx.beginPath();
+      ctx.arc(p.centro.x, p.centro.y, p.raggio, 0, Math.PI * 2);
+      ctx.stroke();
+      break;
+    }
+    case 'arco': {
+      ctx.strokeStyle = p.colore;
+      ctx.lineWidth = p.spessore;
+      ctx.beginPath();
+      ctx.arc(p.centro.x, p.centro.y, p.raggio, p.inizio, p.fine, p.antiorario);
+      ctx.stroke();
+      break;
+    }
     case 'rettangolo': {
       if (p.riempimento) {
         ctx.fillStyle = p.riempimento;

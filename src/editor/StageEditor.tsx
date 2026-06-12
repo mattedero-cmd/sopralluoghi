@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Stage, Layer, Image as KonvaImage, Shape, Circle, Rect } from 'react-konva';
+import { Stage, Layer, Image as KonvaImage, Shape, Circle, Rect, Line } from 'react-konva';
 import type Konva from 'konva';
 import type { Annotazione, Foto, Punto, Rettangolo, SottotipoQuota } from '../db/types';
 import { primitiveAnnotazione } from '../geometry/primitive';
 import { geometriaQuota } from '../geometry/primitive';
 import { disegnaPrimitiva } from '../render/renderAnnotata';
 import { puntiAggancio, snapPunto } from '../geometry/snap';
-import { distanza, dot, normale, sottrai, vincolaOrto } from '../geometry/punti';
+import { distanza, dot, normale, sottrai, vincolaAngolo, vincolaOrto } from '../geometry/punti';
+import type { RicercaBordi } from '../geometry/bordi';
 import { traslaAnnotazione } from './fabbrica';
 
 export type Strumento =
@@ -14,10 +15,17 @@ export type Strumento =
   | 'quotaO'
   | 'quotaV'
   | 'quotaA'
+  | 'angolo'
+  | 'raggio'
   | 'testo'
   | 'disegno'
   | 'freccia'
-  | 'callout';
+  | 'callout'
+  | 'calibra'
+  | 'piano';
+
+/** Vincolo direzionale: nessuno, orto (H/V) o snap angolare a 15° */
+export type ModalitaVincolo = 'off' | 'orto' | 'angolo15';
 
 interface Props {
   foto: Foto;
@@ -26,15 +34,23 @@ interface Props {
   selezioneId: string | null;
   strumento: Strumento;
   snapAttivo: boolean;
-  ortoAttivo: boolean;
+  vincolo: ModalitaVincolo;
   sogliaSnap: number;
+  /** snap ai bordi dell'immagine (rilevamento contorni), se attivo */
+  ricercaBordi: RicercaBordi | null;
+  /** layer: quali categorie di annotazioni mostrare */
+  filtroVisibile: (a: Annotazione) => boolean;
   onSeleziona: (id: string | null) => void;
   onCommit: (annotazioni: Annotazione[]) => void;
   onNuovaQuota: (p1: Punto, p2: Punto, sottotipo: SottotipoQuota) => void;
+  onNuovoAngolo: (vertice: Punto, a: Punto, b: Punto) => void;
+  onNuovoRaggio: (centro: Punto, bordo: Punto) => void;
   onNuovoTesto: (posizione: Punto) => void;
   onNuovaFreccia: (p1: Punto, p2: Punto) => void;
   onNuovoDisegno: (punti: number[]) => void;
   onNuovoCallout: (sorgente: Rettangolo) => void;
+  onCalibra: (p1: Punto, p2: Punto) => void;
+  onPiano: (punti: [Punto, Punto, Punto, Punto]) => void;
 }
 
 interface Vista {
@@ -46,8 +62,12 @@ interface Vista {
 type Bozza =
   | { tipo: 'quota'; sottotipo: SottotipoQuota; p1: Punto; p2: Punto }
   | { tipo: 'freccia'; p1: Punto; p2: Punto }
+  | { tipo: 'raggio'; centro: Punto; bordo: Punto }
+  | { tipo: 'calibra'; p1: Punto; p2: Punto }
   | { tipo: 'disegno'; punti: number[] }
   | { tipo: 'callout'; inizio: Punto; corrente: Punto }
+  | { tipo: 'angolo'; punti: Punto[] }
+  | { tipo: 'piano'; punti: Punto[] }
   | null;
 
 const SCALA_MIN = 0.05;
@@ -64,6 +84,12 @@ export function StageEditor(p: Props) {
   const [annLive, setAnnLive] = useState<Annotazione | null>(null);
   const pinch = useRef<{ dist: number; centro: Punto } | null>(null);
   const disegnoAttivo = useRef(false);
+
+  // I drafting multi-tocco (angolo, piano) si azzerano al cambio strumento
+  useEffect(() => {
+    setBozza(null);
+    disegnoAttivo.current = false;
+  }, [p.strumento]);
 
   // Adatta la vista al contenitore (e al cambio orientamento del telefono)
   useEffect(() => {
@@ -117,18 +143,34 @@ export function StageEditor(p: Props) {
   );
 
   const applicaSnap = (punto: Punto, escludi?: Punto[]): Punto => {
-    if (!p.snapAttivo) {
-      setIndicatoreSnap(null);
-      return punto;
-    }
     // a zoom ridotto la soglia cresce in px immagine: la precisione del dito è costante sullo schermo
     const soglia = Math.max(p.sogliaSnap, p.sogliaSnap / vista.scala);
-    const candidati = escludi
-      ? candidatiSnap.filter((c) => !escludi.some((e) => distanza(e, c) < 0.01))
-      : candidatiSnap;
-    const esito = snapPunto(punto, candidati, soglia);
-    setIndicatoreSnap(esito.agganciato ? esito.punto : null);
-    return esito.punto;
+    if (p.snapAttivo) {
+      const candidati = escludi
+        ? candidatiSnap.filter((c) => !escludi.some((e) => distanza(e, c) < 0.01))
+        : candidatiSnap;
+      const esito = snapPunto(punto, candidati, soglia);
+      if (esito.agganciato) {
+        setIndicatoreSnap(esito.punto);
+        return esito.punto;
+      }
+    }
+    if (p.ricercaBordi) {
+      const bordo = p.ricercaBordi.cerca(punto, soglia);
+      if (bordo) {
+        setIndicatoreSnap(bordo);
+        return bordo;
+      }
+    }
+    setIndicatoreSnap(null);
+    return punto;
+  };
+
+  /** vincolo direzionale per gli strumenti a due punti */
+  const applicaVincolo = (p1: Punto, p2: Punto): Punto => {
+    if (p.vincolo === 'orto') return vincolaOrto(p1, p2);
+    if (p.vincolo === 'angolo15') return vincolaAngolo(p1, p2, 15);
+    return p2;
   };
 
   // -------------------------------------------------------------------------
@@ -231,6 +273,18 @@ export function StageEditor(p: Props) {
         disegnoAttivo.current = true;
         break;
       }
+      case 'raggio': {
+        const centro = applicaSnap(pos);
+        setBozza({ tipo: 'raggio', centro, bordo: centro });
+        disegnoAttivo.current = true;
+        break;
+      }
+      case 'calibra': {
+        const p1 = applicaSnap(pos);
+        setBozza({ tipo: 'calibra', p1, p2: p1 });
+        disegnoAttivo.current = true;
+        break;
+      }
       case 'disegno': {
         setBozza({ tipo: 'disegno', punti: [pos.x, pos.y] });
         disegnoAttivo.current = true;
@@ -245,6 +299,32 @@ export function StageEditor(p: Props) {
         p.onNuovoTesto(pos);
         break;
       }
+      case 'angolo': {
+        // tre tocchi: vertice, primo lato, secondo lato
+        const punto = applicaSnap(pos);
+        const punti = bozza?.tipo === 'angolo' ? [...bozza.punti, punto] : [punto];
+        if (punti.length === 3) {
+          setBozza(null);
+          setIndicatoreSnap(null);
+          p.onNuovoAngolo(punti[0], punti[1], punti[2]);
+        } else {
+          setBozza({ tipo: 'angolo', punti });
+        }
+        break;
+      }
+      case 'piano': {
+        // quattro tocchi: gli angoli del rettangolo di riferimento
+        const punto = applicaSnap(pos);
+        const punti = bozza?.tipo === 'piano' ? [...bozza.punti, punto] : [punto];
+        if (punti.length === 4) {
+          setBozza(null);
+          setIndicatoreSnap(null);
+          p.onPiano(punti as [Punto, Punto, Punto, Punto]);
+        } else {
+          setBozza({ tipo: 'piano', punti });
+        }
+        break;
+      }
     }
   };
 
@@ -257,18 +337,21 @@ export function StageEditor(p: Props) {
       switch (b.tipo) {
         case 'quota': {
           let p2 = applicaSnap(pos, [b.p1]);
-          if (p.ortoAttivo && b.sottotipo === 'allineata') p2 = vincolaOrto(b.p1, p2);
+          if (b.sottotipo === 'allineata') p2 = applicaVincolo(b.p1, p2);
           return { ...b, p2 };
         }
-        case 'freccia': {
-          let p2 = pos;
-          if (p.ortoAttivo) p2 = vincolaOrto(b.p1, p2);
-          return { ...b, p2 };
-        }
+        case 'freccia':
+          return { ...b, p2: applicaVincolo(b.p1, pos) };
+        case 'raggio':
+          return { ...b, bordo: applicaSnap(pos, [b.centro]) };
+        case 'calibra':
+          return { ...b, p2: applicaSnap(pos, [b.p1]) };
         case 'disegno':
           return { ...b, punti: [...b.punti, pos.x, pos.y] };
         case 'callout':
           return { ...b, corrente: pos };
+        default:
+          return b;
       }
     });
   };
@@ -279,6 +362,7 @@ export function StageEditor(p: Props) {
       return;
     }
     disegnoAttivo.current = false;
+    if (bozza.tipo === 'angolo' || bozza.tipo === 'piano') return; // multi-tocco
     setIndicatoreSnap(null);
     const b = bozza;
     setBozza(null);
@@ -289,6 +373,12 @@ export function StageEditor(p: Props) {
         break;
       case 'freccia':
         if (distanza(b.p1, b.p2) >= minimo) p.onNuovaFreccia(b.p1, b.p2);
+        break;
+      case 'raggio':
+        if (distanza(b.centro, b.bordo) >= minimo) p.onNuovoRaggio(b.centro, b.bordo);
+        break;
+      case 'calibra':
+        if (distanza(b.p1, b.p2) >= minimo * 2) p.onCalibra(b.p1, b.p2);
         break;
       case 'disegno':
         if (b.punti.length >= 6) p.onNuovoDisegno(b.punti);
@@ -309,17 +399,21 @@ export function StageEditor(p: Props) {
     const lista = annLive
       ? p.annotazioni.map((a) => (a.id === annLive.id ? annLive : a))
       : p.annotazioni;
-    return [...lista].sort((a, b) => a.zIndex - b.zIndex);
-  }, [p.annotazioni, annLive]);
+    return lista.filter(p.filtroVisibile).sort((a, b) => a.zIndex - b.zIndex);
+  }, [p.annotazioni, annLive, p.filtroVisibile]);
 
-  const bozzaAnnotazione = useMemo((): Annotazione | null => {
-    if (!bozza) return null;
-    const stile = {
+  const stileBozza = useMemo(
+    () => ({
       colore: '#2f81f7',
       spessore: Math.max(2, Math.round(Math.max(p.foto.larghezzaPx, p.foto.altezzaPx) / 600)),
       dimensioneTesto: Math.max(18, Math.round(Math.max(p.foto.larghezzaPx, p.foto.altezzaPx) / 50))
-    };
-    const base = { id: '__bozza__', fotoId: p.foto.id, zIndex: 9999, stile };
+    }),
+    [p.foto.larghezzaPx, p.foto.altezzaPx]
+  );
+
+  const bozzaAnnotazione = useMemo((): Annotazione | null => {
+    if (!bozza) return null;
+    const base = { id: '__bozza__', fotoId: p.foto.id, zIndex: 9999, stile: stileBozza };
     switch (bozza.tipo) {
       case 'quota':
         return {
@@ -336,6 +430,20 @@ export function StageEditor(p: Props) {
         };
       case 'freccia':
         return { ...base, tipo: 'freccia', p1: bozza.p1, p2: bozza.p2 };
+      case 'calibra':
+        // anteprima del segmento di calibrazione
+        return { ...base, tipo: 'disegno', punti: [bozza.p1.x, bozza.p1.y, bozza.p2.x, bozza.p2.y] };
+      case 'raggio':
+        return {
+          ...base,
+          tipo: 'quotaRaggio',
+          centro: bozza.centro,
+          bordo: bozza.bordo,
+          modo: 'raggio',
+          valore: null,
+          unita: 'cm',
+          stato: 'stimata'
+        };
       case 'disegno':
         return { ...base, tipo: 'disegno', punti: bozza.punti };
       case 'callout': {
@@ -343,8 +451,10 @@ export function StageEditor(p: Props) {
         const r = normalizzaRect(bozza.inizio, bozza.corrente);
         return { ...base, tipo: 'disegno', punti: rettangoloInPunti(r) };
       }
+      default:
+        return null;
     }
-  }, [bozza, p.foto]);
+  }, [bozza, p.foto, stileBozza]);
 
   const selezionata = annotazioniVisibili.find((a) => a.id === p.selezioneId) ?? null;
   const raggioManiglia = 15 / vista.scala;
@@ -355,6 +465,8 @@ export function StageEditor(p: Props) {
     setAnnLive(null);
     p.onCommit(p.annotazioni.map((a) => (a.id === live.id ? live : a)));
   };
+
+  const suggerimento = testoSuggerimento(p.strumento, bozza);
 
   return (
     <div ref={contenitore} className="editor-stage">
@@ -416,8 +528,41 @@ export function StageEditor(p: Props) {
           )}
         </Layer>
 
-        {/* Maniglie di modifica: ampie, pensate per il tocco */}
+        {/* Riferimenti di calibrazione + maniglie ampie pensate per il tocco */}
         <Layer>
+          {p.foto.piano && p.strumento === 'piano' && (
+            <Line
+              points={p.foto.piano.punti.flatMap((pt) => [pt.x, pt.y])}
+              closed
+              stroke="#34c759"
+              strokeWidth={2 / vista.scala}
+              dash={[10 / vista.scala, 6 / vista.scala]}
+              listening={false}
+            />
+          )}
+          {(bozza?.tipo === 'angolo' || bozza?.tipo === 'piano') && (
+            <>
+              {bozza.punti.map((pt, i) => (
+                <Circle
+                  key={i}
+                  x={pt.x}
+                  y={pt.y}
+                  radius={raggioManiglia * 0.6}
+                  fill="#2f81f7"
+                  listening={false}
+                />
+              ))}
+              {bozza.punti.length > 1 && (
+                <Line
+                  points={bozza.punti.flatMap((pt) => [pt.x, pt.y])}
+                  stroke="#2f81f7"
+                  strokeWidth={2 / vista.scala}
+                  dash={[8 / vista.scala, 6 / vista.scala]}
+                  listening={false}
+                />
+              )}
+            </>
+          )}
           {indicatoreSnap && (
             <Circle
               x={indicatoreSnap.x}
@@ -436,13 +581,28 @@ export function StageEditor(p: Props) {
               onLive={setAnnLive}
               onFine={committaLive}
               applicaSnap={applicaSnap}
-              ortoAttivo={p.ortoAttivo}
+              vincolo={p.vincolo}
             />
           )}
         </Layer>
       </Stage>
+      {suggerimento && <div className="suggerimento-stage">{suggerimento}</div>}
     </div>
   );
+}
+
+function testoSuggerimento(strumento: Strumento, bozza: Bozza): string | null {
+  if (strumento === 'angolo') {
+    const n = bozza?.tipo === 'angolo' ? bozza.punti.length : 0;
+    return ['Tocca il vertice dell’angolo', 'Tocca il primo lato', 'Tocca il secondo lato'][n];
+  }
+  if (strumento === 'piano') {
+    const n = bozza?.tipo === 'piano' ? bozza.punti.length : 0;
+    return `Piano di riferimento: tocca i 4 angoli di un rettangolo reale (${n}/4) — alto-sx, alto-dx, basso-dx, basso-sx`;
+  }
+  if (strumento === 'calibra') return 'Trascina tra due punti a distanza nota';
+  if (strumento === 'raggio') return 'Trascina dal centro al bordo';
+  return null;
 }
 
 function normalizzaRect(a: Punto, b: Punto): Rettangolo {
@@ -515,6 +675,14 @@ function AnnotazioneShape({
             c.stroke();
           } else if (prim.kind === 'rettangolo') {
             c.strokeRect(prim.rect.x, prim.rect.y, prim.rect.width, prim.rect.height);
+          } else if (prim.kind === 'cerchio') {
+            c.beginPath();
+            c.arc(prim.centro.x, prim.centro.y, prim.raggio, 0, Math.PI * 2);
+            c.stroke();
+          } else if (prim.kind === 'arco') {
+            c.beginPath();
+            c.arc(prim.centro.x, prim.centro.y, prim.raggio, prim.inizio, prim.fine, prim.antiorario);
+            c.stroke();
           } else if (prim.kind === 'testo') {
             const w = Math.max(60, prim.testo.length * prim.dimensione * 0.6);
             c.fillRect(prim.posizione.x - w / 2, prim.posizione.y - prim.dimensione, w, prim.dimensione * 2);
@@ -541,6 +709,23 @@ function boxAnnotazione(a: Annotazione): Rettangolo {
     case 'quota': {
       const g = geometriaQuota(a);
       punti.push(a.p1, a.p2, g.q1, g.q2);
+      break;
+    }
+    case 'quotaAngolo':
+      punti.push(
+        a.vertice,
+        a.a,
+        a.b,
+        { x: a.vertice.x - a.raggioArco, y: a.vertice.y - a.raggioArco },
+        { x: a.vertice.x + a.raggioArco, y: a.vertice.y + a.raggioArco }
+      );
+      break;
+    case 'quotaRaggio': {
+      const r = Math.hypot(a.bordo.x - a.centro.x, a.bordo.y - a.centro.y);
+      punti.push(
+        { x: a.centro.x - r, y: a.centro.y - r },
+        { x: a.centro.x + r, y: a.centro.y + r }
+      );
       break;
     }
     case 'freccia':
@@ -577,7 +762,7 @@ function ManiglieAnnotazione({
   onLive,
   onFine,
   applicaSnap,
-  ortoAttivo
+  vincolo
 }: {
   ann: Annotazione;
   raggio: number;
@@ -585,7 +770,7 @@ function ManiglieAnnotazione({
   onLive: (a: Annotazione | null) => void;
   onFine: () => void;
   applicaSnap: (p: Punto, escludi?: Punto[]) => Punto;
-  ortoAttivo: boolean;
+  vincolo: ModalitaVincolo;
 }) {
   const maniglia = (
     chiave: string,
@@ -612,6 +797,12 @@ function ManiglieAnnotazione({
     />
   );
 
+  const applicaVincolo = (origine: Punto, punto: Punto): Punto => {
+    if (vincolo === 'orto') return vincolaOrto(origine, punto);
+    if (vincolo === 'angolo15') return vincolaAngolo(origine, punto, 15);
+    return punto;
+  };
+
   switch (ann.tipo) {
     case 'quota': {
       const g = geometriaQuota(ann);
@@ -621,8 +812,7 @@ function ManiglieAnnotazione({
             'p1',
             ann.p1,
             (n) => {
-              let p1 = n;
-              if (ortoAttivo && ann.sottotipo === 'allineata') p1 = vincolaOrto(ann.p2, n);
+              const p1 = ann.sottotipo === 'allineata' ? applicaVincolo(ann.p2, n) : n;
               return { ...ann, p1 };
             },
             { snap: true, escludi: [ann.p1] }
@@ -631,8 +821,7 @@ function ManiglieAnnotazione({
             'p2',
             ann.p2,
             (n) => {
-              let p2 = n;
-              if (ortoAttivo && ann.sottotipo === 'allineata') p2 = vincolaOrto(ann.p1, n);
+              const p2 = ann.sottotipo === 'allineata' ? applicaVincolo(ann.p1, n) : n;
               return { ...ann, p2 };
             },
             { snap: true, escludi: [ann.p2] }
@@ -644,11 +833,46 @@ function ManiglieAnnotazione({
         </>
       );
     }
+    case 'quotaAngolo': {
+      const angoloMedio = (() => {
+        const a1 = Math.atan2(ann.a.y - ann.vertice.y, ann.a.x - ann.vertice.x);
+        const a2 = Math.atan2(ann.b.y - ann.vertice.y, ann.b.x - ann.vertice.x);
+        let delta = a2 - a1;
+        while (delta > Math.PI) delta -= 2 * Math.PI;
+        while (delta < -Math.PI) delta += 2 * Math.PI;
+        return a1 + delta / 2;
+      })();
+      return (
+        <>
+          {maniglia('vertice', ann.vertice, (n) => ({ ...ann, vertice: n }), { snap: true, escludi: [ann.vertice] })}
+          {maniglia('a', ann.a, (n) => ({ ...ann, a: n }), { snap: true, escludi: [ann.a] })}
+          {maniglia('b', ann.b, (n) => ({ ...ann, b: n }), { snap: true, escludi: [ann.b] })}
+          {maniglia(
+            'arco',
+            {
+              x: ann.vertice.x + ann.raggioArco * Math.cos(angoloMedio),
+              y: ann.vertice.y + ann.raggioArco * Math.sin(angoloMedio)
+            },
+            (n) => ({
+              ...ann,
+              raggioArco: Math.max(20, Math.hypot(n.x - ann.vertice.x, n.y - ann.vertice.y))
+            })
+          )}
+        </>
+      );
+    }
+    case 'quotaRaggio':
+      return (
+        <>
+          {maniglia('centro', ann.centro, (n) => ({ ...ann, centro: n }), { snap: true, escludi: [ann.centro] })}
+          {maniglia('bordo', ann.bordo, (n) => ({ ...ann, bordo: n }), { snap: true, escludi: [ann.bordo] })}
+        </>
+      );
     case 'freccia':
       return (
         <>
           {maniglia('p1', ann.p1, (n) => ({ ...ann, p1: n }))}
-          {maniglia('p2', ann.p2, (n) => ({ ...ann, p2: n }))}
+          {maniglia('p2', ann.p2, (n) => ({ ...ann, p2: applicaVincolo(ann.p1, n) }))}
         </>
       );
     case 'callout': {

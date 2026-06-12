@@ -34,10 +34,26 @@ report PDF strutturati. Progettata per l'uso reale sul campo: **funziona al
 - ✅ PWA installabile, app shell in cache, archiviazione persistente richiesta
   al browser, avviso preventivo di quota piena
 
-Fase 2 (calibrazione scala, quote avanzate, prospettiva/omografia, snap a
-bordi, layer, dettatura vocale) e Fase 3 (cloud, clienti, preventivi) seguono
-sul nucleo stabile. Il modello dati le predispone già (campo `scala` per foto,
-tipi annotazione estendibili).
+## Stato — Fase 2 (quotatura avanzata e precisione)
+
+- ✅ **Calibrazione di scala**: segmento di lunghezza nota → rapporto px↔reale;
+  le quote successive vengono calcolate automaticamente (marcate `auto`,
+  ricalcolate quando la geometria cambia, mai sovrascrivono un valore manuale).
+  Una quota già misurata può diventare riferimento di scala ("Usa come scala").
+- ✅ **Quotatura in prospettiva (omografia/DLT)**: 4 punti di un rettangolo
+  reale noto (porta, piastrella…) → tutte le misure su quel piano vengono
+  calcolate correggendo la prospettiva (`src/geometry/omografia.ts`).
+- ✅ **Quote angolari** (vertice + due lati, arco con frecce, gradi calcolati
+  dalla geometria — sul piano rettificato se calibrato) e **raggio/diametro**
+  (circonferenza di riferimento, modalità R/⌀).
+- ✅ **Snap angolare** (vincolo direzioni a 15°, ciclo Off→Orto→15°) e
+  **snap a bordi/spigoli** (rilevamento contorni Sobel locale).
+- ✅ **Layer**: mostra/nascondi separatamente quote, note e callout.
+- ✅ **Dettatura vocale** delle note dato in italiano (Web Speech API, it-IT).
+
+Fase 3 (cloud, clienti, preventivi) segue sul nucleo stabile. Restano per
+un'iterazione futura della Fase 2: metrologia 3D da punti di fuga e quote ad
+arco/baseline dedicate (le catene coprono già le quote in serie).
 
 ## Stack
 

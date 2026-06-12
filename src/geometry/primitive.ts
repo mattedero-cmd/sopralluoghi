@@ -5,13 +5,16 @@ import type {
   Freccia,
   Punto,
   Quota,
+  QuotaAngolare,
+  QuotaRaggio,
   Rettangolo,
   TestoFoto
 } from '../db/types';
 import { COLORE_REALE, COLORE_STIMATA } from '../db/types';
-import { formattaMisura } from '../utils/format';
+import { formattaMisura, formattaNumero } from '../utils/format';
 import {
   direzioneQuota,
+  distanza,
   dot,
   normale,
   normalizza,
@@ -42,6 +45,25 @@ export type Primitiva =
       sfondo: string | null;
     }
   | { kind: 'rettangolo'; rect: Rettangolo; colore: string; spessore: number; riempimento?: string }
+  | {
+      kind: 'cerchio';
+      centro: Punto;
+      raggio: number;
+      colore: string;
+      spessore: number;
+      tratteggio?: number[];
+    }
+  | {
+      kind: 'arco';
+      centro: Punto;
+      raggio: number;
+      /** angoli in radianti */
+      inizio: number;
+      fine: number;
+      antiorario: boolean;
+      colore: string;
+      spessore: number;
+    }
   | {
       kind: 'ritaglio';
       /** regione dell'immagine originale da disegnare */
@@ -213,6 +235,139 @@ export function misuraLarghezzaTesto(testo: string, dimensione: number): number 
 }
 
 // ---------------------------------------------------------------------------
+// Quota angolare e quota raggio/diametro (Fase 2)
+// ---------------------------------------------------------------------------
+
+export function etichettaAngolo(q: Pick<QuotaAngolare, 'valore' | 'stato'>): string {
+  const base = q.valore === null ? '?' : `${formattaNumero(q.valore)}°`;
+  return q.stato === 'stimata' ? `≈ ${base}` : base;
+}
+
+export function primitiveQuotaAngolare(q: QuotaAngolare): Primitiva[] {
+  const colore = coloreQuota(q);
+  const sp = q.stile.spessore;
+  const dimFreccia = sp * 4 + 6;
+  const prim: Primitiva[] = [];
+
+  const a1 = Math.atan2(q.a.y - q.vertice.y, q.a.x - q.vertice.x);
+  const a2 = Math.atan2(q.b.y - q.vertice.y, q.b.x - q.vertice.x);
+  // arco lungo il percorso minore tra i due lati
+  let delta = a2 - a1;
+  while (delta > Math.PI) delta -= 2 * Math.PI;
+  while (delta < -Math.PI) delta += 2 * Math.PI;
+  const raggio = Math.max(20, q.raggioArco);
+
+  // lati dell'angolo
+  prim.push(
+    { kind: 'linea', punti: [q.vertice.x, q.vertice.y, q.a.x, q.a.y], colore, spessore: sp * 0.75 },
+    { kind: 'linea', punti: [q.vertice.x, q.vertice.y, q.b.x, q.b.y], colore, spessore: sp * 0.75 }
+  );
+
+  prim.push({
+    kind: 'arco',
+    centro: q.vertice,
+    raggio,
+    inizio: a1,
+    fine: a1 + delta,
+    antiorario: delta < 0,
+    colore,
+    spessore: sp
+  });
+
+  // frecce tangenti alle estremità dell'arco
+  const puntoArco = (ang: number): Punto => ({
+    x: q.vertice.x + raggio * Math.cos(ang),
+    y: q.vertice.y + raggio * Math.sin(ang)
+  });
+  const tangente = (ang: number, verso: number): Punto => ({
+    x: -Math.sin(ang) * verso,
+    y: Math.cos(ang) * verso
+  });
+  const segno = Math.sign(delta) || 1;
+  prim.push(
+    freccette(puntoArco(a1), tangente(a1, -segno), dimFreccia, colore),
+    freccette(puntoArco(a1 + delta), tangente(a1 + delta, segno), dimFreccia, colore)
+  );
+
+  // valore a metà arco, all'esterno
+  const angMedio = a1 + delta / 2;
+  const dimTesto = q.stile.dimensioneTesto;
+  prim.push({
+    kind: 'testo',
+    testo: etichettaAngolo(q),
+    posizione: {
+      x: q.vertice.x + (raggio + dimTesto * 0.9) * Math.cos(angMedio),
+      y: q.vertice.y + (raggio + dimTesto * 0.9) * Math.sin(angMedio)
+    },
+    rotazioneDeg: 0,
+    dimensione: dimTesto,
+    colore,
+    sfondo: 'rgba(255,255,255,0.72)'
+  });
+
+  return prim;
+}
+
+export function etichettaRaggio(q: Pick<QuotaRaggio, 'valore' | 'unita' | 'stato' | 'modo'>): string {
+  const prefisso = q.modo === 'diametro' ? '⌀ ' : 'R ';
+  const base = q.valore === null ? `${prefisso}?` : `${prefisso}${formattaMisura(q.valore, q.unita)}`;
+  return q.stato === 'stimata' ? `≈ ${base}` : base;
+}
+
+export function primitiveQuotaRaggio(q: QuotaRaggio): Primitiva[] {
+  const colore = coloreQuota(q);
+  const sp = q.stile.spessore;
+  const dimFreccia = sp * 4 + 6;
+  const r = distanza(q.centro, q.bordo);
+  const d = normalizza(sottrai(q.bordo, q.centro));
+  const prim: Primitiva[] = [];
+
+  // circonferenza di riferimento tratteggiata
+  prim.push({
+    kind: 'cerchio',
+    centro: q.centro,
+    raggio: r,
+    colore,
+    spessore: sp * 0.6,
+    tratteggio: [sp * 4, sp * 3]
+  });
+
+  const inizio = q.modo === 'diametro' ? sottrai(q.centro, scala(d, r)) : q.centro;
+  prim.push({
+    kind: 'linea',
+    punti: [inizio.x, inizio.y, q.bordo.x, q.bordo.y],
+    colore,
+    spessore: sp
+  });
+  prim.push(freccette(q.bordo, d, dimFreccia, colore));
+  if (q.modo === 'diametro') {
+    prim.push(freccette(inizio, scala(d, -1), dimFreccia, colore));
+  } else {
+    // croce sul centro
+    const c = sp * 3;
+    prim.push(
+      { kind: 'linea', punti: [q.centro.x - c, q.centro.y, q.centro.x + c, q.centro.y], colore, spessore: sp * 0.75 },
+      { kind: 'linea', punti: [q.centro.x, q.centro.y - c, q.centro.x, q.centro.y + c], colore, spessore: sp * 0.75 }
+    );
+  }
+
+  const dimTesto = q.stile.dimensioneTesto;
+  const n = normale(d);
+  const medio = scala(somma(inizio, q.bordo), 0.5);
+  prim.push({
+    kind: 'testo',
+    testo: etichettaRaggio(q),
+    posizione: somma(medio, scala(n, n.y > 0 ? -dimTesto * 0.85 : dimTesto * 0.85)),
+    rotazioneDeg: 0,
+    dimensione: dimTesto,
+    colore,
+    sfondo: 'rgba(255,255,255,0.72)'
+  });
+
+  return prim;
+}
+
+// ---------------------------------------------------------------------------
 // Altre annotazioni
 // ---------------------------------------------------------------------------
 
@@ -319,6 +474,10 @@ export function primitiveAnnotazione(a: Annotazione): Primitiva[] {
   switch (a.tipo) {
     case 'quota':
       return primitiveQuota(a);
+    case 'quotaAngolo':
+      return primitiveQuotaAngolare(a);
+    case 'quotaRaggio':
+      return primitiveQuotaRaggio(a);
     case 'freccia':
       return primitiveFreccia(a);
     case 'testo':

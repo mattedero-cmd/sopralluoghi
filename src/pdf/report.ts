@@ -2,7 +2,7 @@ import pdfMake from 'pdfmake/build/pdfmake';
 import pdfFonts from 'pdfmake/build/vfs_fonts';
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { db } from '../db/db';
-import type { Annotazione, Foto, Progetto, Quota } from '../db/types';
+import type { Annotazione, Foto, Progetto, Quota, StatoMisura } from '../db/types';
 import { leggiImpostazioni } from '../db/repository';
 import { renderFotoAnnotata } from '../render/renderAnnotata';
 import { caricaImmagine, fotoIllegibile } from '../utils/image';
@@ -134,11 +134,43 @@ export async function generaReportPdf(
   });
 }
 
+interface RigaMisura {
+  tipo: string;
+  misura: string;
+  stato: StatoMisura;
+}
+
+/** Tutte le misure di una foto (lineari, angolari, raggi) per le tabelle */
+function righeMisureFoto(annotazioni: Annotazione[]): RigaMisura[] {
+  const righe: RigaMisura[] = [];
+  for (const a of [...annotazioni].sort((x, y) => x.zIndex - y.zIndex)) {
+    if (a.tipo === 'quota') {
+      righe.push({
+        tipo: descrizioneSottotipo(a.sottotipo),
+        misura: formattaMisura(a.valore, a.unita),
+        stato: a.stato
+      });
+    } else if (a.tipo === 'quotaAngolo') {
+      righe.push({
+        tipo: 'Angolare',
+        misura: a.valore === null ? '—' : `${formattaNumero(a.valore)}°`,
+        stato: a.stato
+      });
+    } else if (a.tipo === 'quotaRaggio') {
+      const prefisso = a.modo === 'diametro' ? '⌀ ' : 'R ';
+      righe.push({
+        tipo: a.modo === 'diametro' ? 'Diametro' : 'Raggio',
+        misura: a.valore === null ? '—' : `${prefisso}${formattaMisura(a.valore, a.unita)}`,
+        stato: a.stato
+      });
+    }
+  }
+  return righe;
+}
+
 function sezioneFoto(f: Foto, indice: number, annotazioni: Annotazione[]): Content[] {
   const titolo = `${indice + 1}. ${f.didascalia || `Foto ${indice + 1}`}`;
-  const quote = annotazioni
-    .filter((a): a is Quota => a.tipo === 'quota')
-    .sort((a, b) => a.zIndex - b.zIndex);
+  const misure = righeMisureFoto(annotazioni);
   const callouts = annotazioni.filter((a) => a.tipo === 'callout');
   const catene = calcolaCatene(annotazioni);
 
@@ -162,15 +194,15 @@ function sezioneFoto(f: Foto, indice: number, annotazioni: Annotazione[]): Conte
     out.push({ text: f.noteDato.trim(), style: 'corpo', margin: [0, 10, 0, 6] });
   }
 
-  if (quote.length > 0) {
-    const corpoTabella = quote.map((q, i) => [
+  if (misure.length > 0) {
+    const corpoTabella = misure.map((m, i) => [
       { text: String(i + 1), style: 'td' },
-      { text: descrizioneSottotipo(q.sottotipo), style: 'td' },
-      { text: formattaMisura(q.valore, q.unita), style: 'td', bold: true },
+      { text: m.tipo, style: 'td' },
+      { text: m.misura, style: 'td', bold: true },
       {
-        text: q.stato === 'reale' ? 'Reale' : 'Stimata',
+        text: m.stato === 'reale' ? 'Reale' : 'Stimata',
         style: 'td',
-        color: q.stato === 'reale' ? ROSSO_REALE : ARANCIO_STIMATA,
+        color: m.stato === 'reale' ? ROSSO_REALE : ARANCIO_STIMATA,
         bold: true
       }
     ]);
@@ -225,19 +257,17 @@ function tabellaRiassuntiva(
 ): Content[] {
   const righe: unknown[][] = [];
   fotoList.forEach((f, indice) => {
-    const quote = (annotazioniPerFoto.get(f.id) ?? []).filter(
-      (a): a is Quota => a.tipo === 'quota'
-    );
-    quote.forEach((q, i) => {
+    const misure = righeMisureFoto(annotazioniPerFoto.get(f.id) ?? []);
+    misure.forEach((m, i) => {
       righe.push([
         { text: `${indice + 1}.${i + 1}`, style: 'td' },
         { text: f.didascalia || `Foto ${indice + 1}`, style: 'td' },
-        { text: descrizioneSottotipo(q.sottotipo), style: 'td' },
-        { text: formattaMisura(q.valore, q.unita), style: 'td', bold: true },
+        { text: m.tipo, style: 'td' },
+        { text: m.misura, style: 'td', bold: true },
         {
-          text: q.stato === 'reale' ? 'Reale' : 'Stimata',
+          text: m.stato === 'reale' ? 'Reale' : 'Stimata',
           style: 'td',
-          color: q.stato === 'reale' ? ROSSO_REALE : ARANCIO_STIMATA,
+          color: m.stato === 'reale' ? ROSSO_REALE : ARANCIO_STIMATA,
           bold: true
         }
       ]);
