@@ -495,6 +495,55 @@ h2 {
   line-height: 1;
 }
 
+/* Gruppi di strumenti: ordine visivo per categorie */
+.gruppo-strumenti {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--sfondo);
+  border: 1px solid var(--bordo);
+  border-radius: 14px;
+  flex-shrink: 0;
+}
+
+.gruppo-strumenti .btn {
+  border: none;
+  background: transparent;
+  min-height: 50px;
+}
+
+.gruppo-strumenti .btn.attivo {
+  background: var(--accento);
+}
+
+/* Zoom flottante sullo stage: sempre a portata di pollice */
+.zoom-flottante {
+  position: absolute;
+  right: 10px;
+  bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 40;
+}
+
+.zoom-flottante button {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 1px solid var(--bordo);
+  background: rgba(26, 32, 41, 0.85);
+  color: var(--testo);
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+}
+
+.zoom-flottante button:active {
+  background: var(--accento);
+}
+
 .pannello-proprieta {
   background: var(--sfondo-2);
   border-top: 1px solid var(--bordo);

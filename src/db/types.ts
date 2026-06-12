@@ -167,6 +167,7 @@ export type TipoAnnotazione =
   | 'quota'
   | 'quotaAngolo'
   | 'quotaRaggio'
+  | 'quotaRett'
   | 'testo'
   | 'disegno'
   | 'freccia'
@@ -222,6 +223,22 @@ export interface QuotaAngolare extends AnnotazioneBase {
   stato: StatoMisura;
 }
 
+/**
+ * Quota rettangolo: un solo oggetto che misura base × altezza di un
+ * elemento (finestra, porta, pannello). Nel report compare come voce
+ * unica "Rettangolo — B × H"; i valori si calcolano anche in
+ * prospettiva tramite la calibrazione della foto.
+ */
+export interface QuotaRettangolo extends AnnotazioneBase {
+  tipo: 'quotaRett';
+  rect: Rettangolo;
+  valoreBase: number | null;
+  valoreAltezza: number | null;
+  valoreAuto?: boolean;
+  unita: Unita;
+  stato: StatoMisura;
+}
+
 /** Quota radiale o di diametro: centro + punto sul bordo */
 export interface QuotaRaggio extends AnnotazioneBase {
   tipo: 'quotaRaggio';
@@ -266,6 +283,7 @@ export type Annotazione =
   | Quota
   | QuotaAngolare
   | QuotaRaggio
+  | QuotaRettangolo
   | TestoFoto
   | DisegnoLibero
   | Freccia
@@ -292,6 +310,19 @@ export interface Impostazioni {
   /** Moltiplicatore della dimensione di quote e testi (leggibilità) */
   fattoreDimensione: number;
   stileDefault: Stile;
+  /** Lato massimo delle foto archiviate, in px (qualità vs spazio) */
+  fotoLatoMax: number;
+  /** IVA predefinita per i nuovi preventivi */
+  ivaDefault: number;
+  /** Personalizzazione del report PDF */
+  pdf: {
+    /** colore di intestazioni e titoli */
+    colore: string;
+    /** testo personalizzato del piè di pagina (vuoto = nome azienda) */
+    pieDiPagina: string;
+    mostraGeotag: boolean;
+    mostraDataScatto: boolean;
+  };
   /** Configurazione del backup cloud (Supabase), opzionale */
   cloud?: ConfigCloud | null;
 }
@@ -315,7 +346,10 @@ export const IMPOSTAZIONI_DEFAULT: Impostazioni = {
   sogliaSnap: 24,
   unitaDefault: 'cm',
   fattoreDimensione: 1,
-  stileDefault: { colore: '#ff3b30', spessore: 3, dimensioneTesto: 28 }
+  stileDefault: { colore: '#ff3b30', spessore: 3, dimensioneTesto: 28 },
+  fotoLatoMax: 2560,
+  ivaDefault: 22,
+  pdf: { colore: '#1a4f8b', pieDiPagina: '', mostraGeotag: true, mostraDataScatto: true }
 };
 
 /** Colori convenzionali per la distinzione reale/stimata in tutta l'app */

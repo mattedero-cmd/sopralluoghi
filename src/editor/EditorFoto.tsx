@@ -10,6 +10,7 @@ import type {
   Quota,
   QuotaAngolare,
   QuotaRaggio,
+  QuotaRettangolo,
   Rettangolo,
   SottotipoQuota,
   StatoMisura,
@@ -27,12 +28,14 @@ import { calcolaCatene, sommaCatenaInUnita } from '../geometry/catene';
 import {
   applicaValoriAuto,
   haCalibrazione,
+  misureRettangolo,
   valoreAutomatico
 } from '../geometry/calibrazione';
 import { omografiaPiano } from '../geometry/omografia';
 import { lunghezzaPxQuota } from '../geometry/punti';
-import { RicercaBordi } from '../geometry/bordi';
+import { RicercaBordi, rilevaFigura } from '../geometry/bordi';
 import { distanza } from '../geometry/punti';
+import { etichettaRettangolo } from '../geometry/primitive';
 import {
   aInputDataOra,
   analizzaMisura,
@@ -52,6 +55,7 @@ function categoriaAnnotazione(a: Annotazione): CategoriaLayer {
     case 'quota':
     case 'quotaAngolo':
     case 'quotaRaggio':
+    case 'quotaRett':
       return 'quote';
     case 'callout':
       return 'callout';
@@ -76,9 +80,13 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     callout: true
   });
   const [schedaNote, setSchedaNote] = useState(false);
+  const [schedaOpzioni, setSchedaOpzioni] = useState(false);
   const [testoInModifica, setTestoInModifica] = useState<string | null>(null);
   const [schedaScala, setSchedaScala] = useState<{ px: number } | null>(null);
   const [schedaPiano, setSchedaPiano] = useState<{ punti: [Punto, Punto, Punto, Punto] } | null>(null);
+  /** quota rettangolo proposta dall'autoquotatura, in attesa di conferma */
+  const [proposta, setProposta] = useState<QuotaRettangolo | null>(null);
+  const cacheAnalisi = useRef<{ img: HTMLImageElement; analisi: RicercaBordi } | null>(null);
   const passato = useRef<Annotazione[][]>([]);
   const futuro = useRef<Annotazione[][]>([]);
   const timerSalvataggio = useRef<number | null>(null);
@@ -112,16 +120,29 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [foto?.id]);
 
-  // Rilevamento bordi: costruito solo quando serve (lavoro CPU una tantum)
-  const ricercaBordi = useMemo(() => {
-    if (!bordiAttivo || !immagine || !foto) return null;
+  // Analisi dell'immagine (bordi + autoquotatura): costruita una volta
+  // per foto, alla prima richiesta, e riusata da entrambe le funzioni
+  const ottieniAnalisi = useCallback((): RicercaBordi | null => {
+    if (!immagine || !foto) return null;
+    if (cacheAnalisi.current?.img === immagine) return cacheAnalisi.current.analisi;
     try {
-      return new RicercaBordi(immagine, foto.larghezzaPx, foto.altezzaPx);
+      const analisi = new RicercaBordi(immagine, foto.larghezzaPx, foto.altezzaPx);
+      cacheAnalisi.current = { img: immagine, analisi };
+      return analisi;
     } catch {
       return null;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bordiAttivo, immagine]);
+  }, [immagine, foto]);
+
+  const ricercaBordi = useMemo(
+    () => (bordiAttivo ? ottieniAnalisi() : null),
+    [bordiAttivo, ottieniAnalisi]
+  );
+
+  // la proposta di autoquotatura decade cambiando strumento
+  useEffect(() => {
+    if (strumento !== 'auto') setProposta(null);
+  }, [strumento]);
 
   // ---------------------------------------------------------------------------
   // Autosave transazionale con debounce breve + flush garantito
@@ -222,6 +243,15 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     if (q.valore === null) setTimeout(() => inputValore.current?.focus(), 60);
   };
 
+  const creaRettangolo = (rect: Rettangolo) => {
+    if (!fabbrica || !annotazioni) return;
+    const q = fabbrica.quotaRettangolo(rect, annotazioni);
+    commit([...annotazioni, q]);
+    setSelezioneId(q.id);
+    setStrumento('seleziona');
+    if (q.valoreBase === null) setTimeout(() => inputValore.current?.focus(), 60);
+  };
+
   const creaAngolo = (vertice: Punto, a: Punto, b: Punto) => {
     if (!fabbrica || !annotazioni) return;
     const q = fabbrica.quotaAngolare(vertice, a, b, annotazioni);
@@ -237,6 +267,41 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     setSelezioneId(q.id);
     setStrumento('seleziona');
     if (q.valore === null) setTimeout(() => inputValore.current?.focus(), 60);
+  };
+
+  // ---------------------------------------------------------------------------
+  // Autoquotatura: tocca una figura netta → quote proposte da accettare
+  // ---------------------------------------------------------------------------
+
+  const autoTocco = (punto: Punto) => {
+    if (!fabbrica || !annotazioni || !foto) return;
+    const analisi = ottieniAnalisi();
+    const figura = analisi ? rilevaFigura(analisi, punto) : null;
+    if (!figura) {
+      setProposta(null);
+      mostraToast(
+        'info',
+        'Nessuna figura netta rilevata qui: tocca al centro di un elemento con bordi a contrasto, o usa le quote manuali.'
+      );
+      return;
+    }
+    // un solo oggetto base × altezza, mostrato in blu finché non accettato
+    const q = fabbrica.quotaRettangolo(figura.rettangolo, annotazioni);
+    setProposta({ ...q, stile: { ...q.stile, colore: '#2f81f7' } });
+  };
+
+  const accettaProposta = () => {
+    if (!proposta || !annotazioni) return;
+    // si ripristina il colore predefinito: il blu è solo per l'anteprima
+    const definitiva = {
+      ...proposta,
+      stile: { ...proposta.stile, colore: impostazioni.stileDefault.colore }
+    };
+    commit([...annotazioni, definitiva]);
+    setSelezioneId(definitiva.id);
+    setProposta(null);
+    // senza calibrazione i valori vanno inseriti a mano: focus sul campo
+    if (definitiva.valoreBase === null) setTimeout(() => inputValore.current?.focus(), 60);
   };
 
   const creaTesto = (pos: Punto) => {
@@ -373,10 +438,6 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       ? annotazioni.find((a) => a.id === testoInModifica && a.tipo === 'testo')
       : null;
 
-  const cicloVincolo = () => {
-    setVincolo((v) => (v === 'off' ? 'orto' : v === 'orto' ? 'angolo15' : 'off'));
-  };
-
   const toggleLayer = (cat: CategoriaLayer) => {
     setLayerVisibili((l) => {
       const nuovi = { ...l, [cat]: !l[cat] };
@@ -427,9 +488,12 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         sogliaSnap={impostazioni.sogliaSnap}
         ricercaBordi={ricercaBordi}
         filtroVisibile={(a) => layerVisibili[categoriaAnnotazione(a)]}
+        proposte={proposta ? [proposta] : []}
+        onAutoTocco={autoTocco}
         onSeleziona={setSelezioneId}
         onCommit={commitGeometria}
         onNuovaQuota={creaQuota}
+        onNuovoRett={creaRettangolo}
         onNuovoAngolo={creaAngolo}
         onNuovoRaggio={creaRaggio}
         onNuovoTesto={creaTesto}
@@ -440,48 +504,125 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         onPiano={(punti) => setSchedaPiano({ punti })}
       />
 
-      {selezionata && (
-        <PannelloProprieta
-          ann={selezionata}
-          annotazioni={annotazioni}
-          foto={foto}
-          inputValore={inputValore}
-          onModifica={aggiornaSelezionata}
-          onElimina={eliminaSelezionata}
-          onModificaTesto={() => setTestoInModifica(selezionata.id)}
-          onCalibraDaQuota={(q) => void calibraDaQuota(q)}
-        />
+      {proposta ? (
+        <div className="pannello-proprieta" role="group" aria-label="Quota proposta">
+          <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
+            ✨ Figura rilevata: {etichettaRettangolo(proposta)}
+          </span>
+          <button className="btn primario" onClick={accettaProposta}>
+            ✓ Accetta
+          </button>
+          <button className="btn pericolo" onClick={() => setProposta(null)}>
+            ✕ Annulla
+          </button>
+        </div>
+      ) : (
+        selezionata && (
+          <PannelloProprieta
+            ann={selezionata}
+            annotazioni={annotazioni}
+            foto={foto}
+            inputValore={inputValore}
+            onModifica={aggiornaSelezionata}
+            onElimina={eliminaSelezionata}
+            onModificaTesto={() => setTestoInModifica(selezionata.id)}
+            onCalibraDaQuota={(q) => void calibraDaQuota(q)}
+          />
+        )
       )}
 
       <nav className="editor-toolbar" aria-label="Strumenti">
-        <BtnStrumento attivo={strumento === 'seleziona'} onClick={() => setStrumento('seleziona')} icona="☝️" testo="Seleziona" />
-        <BtnStrumento attivo={strumento === 'quotaO'} onClick={() => setStrumento('quotaO')} icona="↔" testo="Quota O" />
-        <BtnStrumento attivo={strumento === 'quotaV'} onClick={() => setStrumento('quotaV')} icona="↕" testo="Quota V" />
-        <BtnStrumento attivo={strumento === 'quotaA'} onClick={() => setStrumento('quotaA')} icona="⤡" testo="Allineata" />
-        <BtnStrumento attivo={strumento === 'angolo'} onClick={() => setStrumento('angolo')} icona="∠" testo="Angolo" />
-        <BtnStrumento attivo={strumento === 'raggio'} onClick={() => setStrumento('raggio')} icona="◔" testo="Raggio" />
-        <BtnStrumento attivo={strumento === 'callout'} onClick={() => setStrumento('callout')} icona="🔍" testo="Dettaglio" />
-        <BtnStrumento attivo={strumento === 'testo'} onClick={() => setStrumento('testo')} icona="T" testo="Testo" />
-        <BtnStrumento attivo={strumento === 'freccia'} onClick={() => setStrumento('freccia')} icona="➚" testo="Freccia" />
-        <BtnStrumento attivo={strumento === 'disegno'} onClick={() => setStrumento('disegno')} icona="✏️" testo="Disegno" />
-        <BtnStrumento attivo={strumento === 'calibra'} onClick={() => setStrumento('calibra')} icona="📐" testo="Scala" />
-        <BtnStrumento attivo={strumento === 'piano'} onClick={() => setStrumento('piano')} icona="▱" testo="Piano" />
-        <BtnStrumento attivo={snapAttivo} onClick={() => setSnapAttivo(!snapAttivo)} icona="🧲" testo="Snap" />
-        <BtnStrumento
-          attivo={vincolo !== 'off'}
-          onClick={cicloVincolo}
-          icona={vincolo === 'angolo15' ? '∠15°' : '∟'}
-          testo={vincolo === 'off' ? 'Vincolo' : vincolo === 'orto' ? 'Orto' : '15°'}
-        />
-        <BtnStrumento attivo={bordiAttivo} onClick={() => setBordiAttivo(!bordiAttivo)} icona="◫" testo="Bordi" />
-        <BtnStrumento attivo={layerVisibili.quote} onClick={() => toggleLayer('quote')} icona={layerVisibili.quote ? '👁' : '🚫'} testo="Quote" />
-        <BtnStrumento attivo={layerVisibili.note} onClick={() => toggleLayer('note')} icona={layerVisibili.note ? '👁' : '🚫'} testo="Note" />
-        <BtnStrumento attivo={layerVisibili.callout} onClick={() => toggleLayer('callout')} icona={layerVisibili.callout ? '👁' : '🚫'} testo="Dett." />
-        <BtnStrumento attivo={false} onClick={() => window.dispatchEvent(new CustomEvent('editor:zoom', { detail: 1.3 }))} icona="＋" testo="Zoom" />
-        <BtnStrumento attivo={false} onClick={() => window.dispatchEvent(new CustomEvent('editor:zoom', { detail: 1 / 1.3 }))} icona="－" testo="Zoom" />
-        <BtnStrumento attivo={false} onClick={() => window.dispatchEvent(new Event('editor:adatta'))} icona="⤢" testo="Adatta" />
+        <span className="gruppo-strumenti">
+          <BtnStrumento attivo={strumento === 'seleziona'} onClick={() => setStrumento('seleziona')} icona="☝️" testo="Seleziona" />
+          <BtnStrumento attivo={strumento === 'auto'} onClick={() => setStrumento('auto')} icona="✨" testo="Auto" />
+        </span>
+        <span className="gruppo-strumenti">
+          <BtnStrumento attivo={strumento === 'quotaO'} onClick={() => setStrumento('quotaO')} icona="↔" testo="Quota O" />
+          <BtnStrumento attivo={strumento === 'quotaV'} onClick={() => setStrumento('quotaV')} icona="↕" testo="Quota V" />
+          <BtnStrumento attivo={strumento === 'quotaA'} onClick={() => setStrumento('quotaA')} icona="⤡" testo="Allineata" />
+          <BtnStrumento attivo={strumento === 'rettangolo'} onClick={() => setStrumento('rettangolo')} icona="▭" testo="Rett." />
+          <BtnStrumento attivo={strumento === 'angolo'} onClick={() => setStrumento('angolo')} icona="∠" testo="Angolo" />
+          <BtnStrumento attivo={strumento === 'raggio'} onClick={() => setStrumento('raggio')} icona="◔" testo="Raggio" />
+        </span>
+        <span className="gruppo-strumenti">
+          <BtnStrumento attivo={strumento === 'callout'} onClick={() => setStrumento('callout')} icona="🔍" testo="Dettaglio" />
+          <BtnStrumento attivo={strumento === 'testo'} onClick={() => setStrumento('testo')} icona="T" testo="Testo" />
+          <BtnStrumento attivo={strumento === 'freccia'} onClick={() => setStrumento('freccia')} icona="➚" testo="Freccia" />
+          <BtnStrumento attivo={strumento === 'disegno'} onClick={() => setStrumento('disegno')} icona="✏️" testo="Disegno" />
+        </span>
+        <span className="gruppo-strumenti">
+          <BtnStrumento attivo={strumento === 'calibra'} onClick={() => setStrumento('calibra')} icona="📐" testo="Scala" />
+          <BtnStrumento attivo={strumento === 'piano'} onClick={() => setStrumento('piano')} icona="▱" testo="Piano" />
+        </span>
+        <span className="gruppo-strumenti">
+          <BtnStrumento
+            attivo={snapAttivo || vincolo !== 'off' || bordiAttivo}
+            onClick={() => setSchedaOpzioni(true)}
+            icona="⚙"
+            testo="Opzioni"
+          />
+        </span>
       </nav>
 
+      {schedaOpzioni && (
+        <Modale titolo="Opzioni di disegno" onChiudi={() => setSchedaOpzioni(false)}>
+          <div className="campo">
+            <label>Aggancio (snap)</label>
+            <span className="segmenti" role="group">
+              <button className={snapAttivo ? 'attivo' : ''} onClick={() => setSnapAttivo(true)}>
+                🧲 Punti quota
+              </button>
+              <button className={!snapAttivo ? 'attivo' : ''} onClick={() => setSnapAttivo(false)}>
+                Libero
+              </button>
+            </span>
+          </div>
+          <div className="campo">
+            <label>Aggancio ai bordi dell'immagine (contorni)</label>
+            <span className="segmenti" role="group">
+              <button className={bordiAttivo ? 'attivo' : ''} onClick={() => setBordiAttivo(true)}>
+                ◫ Attivo
+              </button>
+              <button className={!bordiAttivo ? 'attivo' : ''} onClick={() => setBordiAttivo(false)}>
+                Spento
+              </button>
+            </span>
+          </div>
+          <div className="campo">
+            <label>Vincolo di direzione</label>
+            <span className="segmenti" role="group">
+              <button className={vincolo === 'off' ? 'attivo' : ''} onClick={() => setVincolo('off')}>
+                Libero
+              </button>
+              <button className={vincolo === 'orto' ? 'attivo' : ''} onClick={() => setVincolo('orto')}>
+                ∟ Orto
+              </button>
+              <button className={vincolo === 'angolo15' ? 'attivo' : ''} onClick={() => setVincolo('angolo15')}>
+                ∠ 15°
+              </button>
+            </span>
+          </div>
+          <div className="campo">
+            <label>Livelli visibili</label>
+            <span className="segmenti" role="group">
+              <button className={layerVisibili.quote ? 'attivo' : ''} onClick={() => toggleLayer('quote')}>
+                📏 Quote
+              </button>
+              <button className={layerVisibili.note ? 'attivo' : ''} onClick={() => toggleLayer('note')}>
+                🗒 Note
+              </button>
+              <button className={layerVisibili.callout ? 'attivo' : ''} onClick={() => toggleLayer('callout')}>
+                🔍 Dettagli
+              </button>
+            </span>
+          </div>
+          <div className="riga-pulsanti">
+            <button className="btn primario" onClick={() => setSchedaOpzioni(false)}>
+              Fatto
+            </button>
+          </div>
+        </Modale>
+      )}
       {schedaNote && (
         <SchedaNoteFoto
           foto={foto}
@@ -644,6 +785,9 @@ function PannelloProprieta({
           onCalibraDaQuota={onCalibraDaQuota}
         />
       )}
+      {ann.tipo === 'quotaRett' && (
+        <ProprietaRettangolo rett={ann} foto={foto} inputValore={inputValore} onModifica={onModifica} />
+      )}
       {ann.tipo === 'quotaAngolo' && (
         <ProprietaAngolo angolo={ann} foto={foto} onModifica={onModifica} />
       )}
@@ -658,7 +802,10 @@ function PannelloProprieta({
           A＋
         </button>
       </span>
-      {(ann.tipo === 'quota' || ann.tipo === 'quotaAngolo' || ann.tipo === 'quotaRaggio') && (
+      {(ann.tipo === 'quota' ||
+        ann.tipo === 'quotaAngolo' ||
+        ann.tipo === 'quotaRaggio' ||
+        ann.tipo === 'quotaRett') && (
         <PaletteColori
           colore={ann.stile.colore}
           onScegli={(c) => onModifica({ stile: { ...ann.stile, colore: c } })}
@@ -838,6 +985,71 @@ function ProprietaQuota({
           {catena.completa ? '' : ' (parz.)'}
         </span>
       )}
+    </>
+  );
+}
+
+function ProprietaRettangolo({
+  rett,
+  foto,
+  inputValore,
+  onModifica
+}: {
+  rett: QuotaRettangolo;
+  foto: Foto;
+  inputValore: React.RefObject<HTMLInputElement>;
+  onModifica: (m: Partial<QuotaRettangolo>) => void;
+}) {
+  const calibrata = haCalibrazione(foto);
+  return (
+    <>
+      <label style={{ color: 'var(--testo-2)', fontSize: 13 }}>B</label>
+      <CampoMisura
+        key={`${rett.id}-b`}
+        valore={rett.valoreBase}
+        valoreAuto={rett.valoreAuto}
+        calcolabile={false}
+        inputRef={inputValore}
+        onValore={(v) => onModifica({ valoreBase: v, valoreAuto: false })}
+        onRiattivaAuto={() => {}}
+      />
+      <label style={{ color: 'var(--testo-2)', fontSize: 13 }}>H</label>
+      <CampoMisura
+        key={`${rett.id}-h`}
+        valore={rett.valoreAltezza}
+        valoreAuto={rett.valoreAuto}
+        calcolabile={calibrata}
+        onValore={(v) => onModifica({ valoreAltezza: v, valoreAuto: false })}
+        onRiattivaAuto={() => {
+          const m = misureRettangolo(rett.rect, foto, rett.unita);
+          if (m) onModifica({ valoreBase: m.base, valoreAltezza: m.altezza, valoreAuto: true });
+        }}
+      />
+      <select
+        aria-label="Unità"
+        value={rett.unita}
+        onChange={(e) => {
+          const unita = e.target.value as Unita;
+          if (rett.valoreAuto) {
+            const m = misureRettangolo(rett.rect, foto, unita);
+            onModifica({ unita, valoreBase: m?.base ?? rett.valoreBase, valoreAltezza: m?.altezza ?? rett.valoreAltezza });
+          } else {
+            onModifica({ unita });
+          }
+        }}
+        style={{ minHeight: 44, borderRadius: 10, background: 'var(--sfondo)', border: '1px solid var(--bordo)', padding: '0 8px' }}
+      >
+        <option value="mm">mm</option>
+        <option value="cm">cm</option>
+        <option value="m">m</option>
+      </select>
+      <span className="segmenti" role="group" aria-label="Stato della misura">
+        {(['reale', 'stimata'] as StatoMisura[]).map((s) => (
+          <button key={s} className={rett.stato === s ? 'attivo' : ''} onClick={() => onModifica({ stato: s })}>
+            {s === 'reale' ? 'Reale' : '≈ Stimata'}
+          </button>
+        ))}
+      </span>
     </>
   );
 }

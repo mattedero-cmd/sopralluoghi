@@ -13,7 +13,13 @@ import { ConfermaDialog, StatoApp, type RichiestaConferma } from '../components/
 import { SelettoreCliente } from './ClientiPage';
 import { mostraToast } from '../state/toast';
 import { condividiOScarica, nomeFileSicuro } from '../utils/share';
-import { analizzaMisura, formattaNumero, aInputDataOra, daInputDataOra } from '../utils/format';
+import {
+  analizzaMisura,
+  formattaNumero,
+  aInputDataOra,
+  daInputDataOra,
+  inMillimetri
+} from '../utils/format';
 
 const euro = (v: number) =>
   `€ ${v.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -140,6 +146,18 @@ export function PreventivoPage({ id }: { id: string }) {
             descrizione: `${nomeFoto} — ${a.modo === 'diametro' ? 'diametro' : 'raggio'}`,
             quantita: a.valore,
             unita: a.unita,
+            prezzoUnitario: 0
+          });
+        } else if (a.tipo === 'quotaRett' && a.valoreBase !== null && a.valoreAltezza !== null) {
+          // il rettangolo entra come superficie: utile per posa/finiture
+          const areaMq =
+            (inMillimetri(a.valoreBase, a.unita) / 1000) *
+            (inMillimetri(a.valoreAltezza, a.unita) / 1000);
+          nuove.push({
+            id: nuovoId(),
+            descrizione: `${nomeFoto} — rettangolo ${formattaNumero(a.valoreBase)} × ${formattaNumero(a.valoreAltezza)} ${a.unita}`,
+            quantita: Math.round(areaMq * 100) / 100,
+            unita: 'm²',
             prezzoUnitario: 0
           });
         }

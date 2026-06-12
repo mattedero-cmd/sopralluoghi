@@ -354,6 +354,7 @@ export async function creaPreventivo(
   clienteId: ID | null
 ): Promise<Preventivo> {
   const numero = await prossimoNumeroPreventivo();
+  const impostazioni = await leggiImpostazioni();
   const p: Preventivo = {
     id: nuovoId(),
     progettoId,
@@ -363,7 +364,7 @@ export async function creaPreventivo(
     stato: 'bozza',
     voci: [],
     scontoPercento: 0,
-    ivaPercento: 22,
+    ivaPercento: impostazioni.ivaDefault,
     note: '',
     creatoIl: ora(),
     modificatoIl: ora()
@@ -413,7 +414,8 @@ export async function leggiImpostazioni(): Promise<Impostazioni> {
     ...IMPOSTAZIONI_DEFAULT,
     ...i,
     professionista: { ...IMPOSTAZIONI_DEFAULT.professionista, ...i.professionista },
-    stileDefault: { ...IMPOSTAZIONI_DEFAULT.stileDefault, ...i.stileDefault }
+    stileDefault: { ...IMPOSTAZIONI_DEFAULT.stileDefault, ...i.stileDefault },
+    pdf: { ...IMPOSTAZIONI_DEFAULT.pdf, ...i.pdf }
   };
 }
 

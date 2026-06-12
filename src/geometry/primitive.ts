@@ -7,6 +7,7 @@ import type {
   Quota,
   QuotaAngolare,
   QuotaRaggio,
+  QuotaRettangolo,
   Rettangolo,
   TestoFoto
 } from '../db/types';
@@ -308,6 +309,61 @@ export function primitiveQuotaAngolare(q: QuotaAngolare): Primitiva[] {
   return prim;
 }
 
+export function etichettaRettangolo(
+  q: Pick<QuotaRettangolo, 'valoreBase' | 'valoreAltezza' | 'unita' | 'stato'>
+): string {
+  const base = q.valoreBase === null ? '?' : formattaNumero(q.valoreBase);
+  const altezza = q.valoreAltezza === null ? '?' : formattaNumero(q.valoreAltezza);
+  const testo = `${base} × ${altezza} ${q.unita}`;
+  return q.stato === 'stimata' ? `≈ ${testo}` : testo;
+}
+
+/**
+ * Quota rettangolo: contorno + quota della base (sopra) e dell'altezza
+ * (a sinistra), disegnate riusando la geometria delle quote lineari.
+ */
+export function primitiveQuotaRettangolo(q: QuotaRettangolo): Primitiva[] {
+  const r = q.rect;
+  const offset = Math.max(24, q.stile.dimensioneTesto * 1.1);
+  const prim: Primitiva[] = [
+    {
+      kind: 'rettangolo',
+      rect: r,
+      colore: coloreQuota(q),
+      spessore: q.stile.spessore * 0.75
+    }
+  ];
+  const comune = {
+    id: q.id,
+    fotoId: q.fotoId,
+    tipo: 'quota' as const,
+    zIndex: q.zIndex,
+    stile: q.stile,
+    posizioneTesto: 'sopra' as const,
+    stato: q.stato,
+    unita: q.unita
+  };
+  prim.push(
+    ...primitiveQuota({
+      ...comune,
+      sottotipo: 'orizzontale',
+      p1: { x: r.x, y: r.y },
+      p2: { x: r.x + r.width, y: r.y },
+      offset: -offset,
+      valore: q.valoreBase
+    }),
+    ...primitiveQuota({
+      ...comune,
+      sottotipo: 'verticale',
+      p1: { x: r.x, y: r.y },
+      p2: { x: r.x, y: r.y + r.height },
+      offset,
+      valore: q.valoreAltezza
+    })
+  );
+  return prim;
+}
+
 export function etichettaRaggio(q: Pick<QuotaRaggio, 'valore' | 'unita' | 'stato' | 'modo'>): string {
   const prefisso = q.modo === 'diametro' ? '⌀ ' : 'R ';
   const base = q.valore === null ? `${prefisso}?` : `${prefisso}${formattaMisura(q.valore, q.unita)}`;
@@ -478,6 +534,8 @@ export function primitiveAnnotazione(a: Annotazione): Primitiva[] {
       return primitiveQuotaAngolare(a);
     case 'quotaRaggio':
       return primitiveQuotaRaggio(a);
+    case 'quotaRett':
+      return primitiveQuotaRettangolo(a);
     case 'freccia':
       return primitiveFreccia(a);
     case 'testo':

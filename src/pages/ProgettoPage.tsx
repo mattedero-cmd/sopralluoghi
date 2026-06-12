@@ -2,7 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import type { Foto, Progetto, StatoProgetto } from '../db/types';
-import { aggiungiFoto, aggiornaProgetto, creaPreventivo, eliminaFoto } from '../db/repository';
+import {
+  aggiungiFoto,
+  aggiornaProgetto,
+  creaPreventivo,
+  eliminaFoto,
+  leggiImpostazioni
+} from '../db/repository';
+import type { OpzioniReport } from '../pdf/report';
 import { SelettoreCliente } from './ClientiPage';
 import { EtichettaStatoPreventivo } from './PreventivoPage';
 import { fotoIllegibile, importaFoto } from '../utils/image';
@@ -41,6 +48,7 @@ export function ProgettoPage({ id }: { id: string }) {
   const [modificaDati, setModificaDati] = useState(false);
   const [importInCorso, setImportInCorso] = useState(false);
   const [pdfInCorso, setPdfInCorso] = useState<string | null>(null);
+  const [opzioniPdfAperte, setOpzioniPdfAperte] = useState(false);
   const inputCamera = useRef<HTMLInputElement>(null);
   const inputGalleria = useRef<HTMLInputElement>(null);
 
@@ -65,9 +73,10 @@ export function ProgettoPage({ id }: { id: string }) {
     setImportInCorso(true);
     let importate = 0;
     try {
+      const { fotoLatoMax } = await leggiImpostazioni();
       for (const file of Array.from(files)) {
         try {
-          const dati = await importaFoto(file);
+          const dati = await importaFoto(file, fotoLatoMax);
           await aggiungiFoto(id, {
             ...dati,
             didascalia: '',
@@ -135,16 +144,12 @@ export function ProgettoPage({ id }: { id: string }) {
     });
   };
 
-  const generaPdf = async () => {
-    if (foto.length === 0) {
-      mostraToast('info', 'Aggiungi almeno una foto per generare il report.');
-      return;
-    }
+  const generaPdf = async (opzioni: OpzioniReport) => {
     try {
       setPdfInCorso('Preparazione…');
       // import dinamico: il motore PDF (~2 MB) non pesa sull'avvio dell'app
       const { generaReportPdf } = await import('../pdf/report');
-      const blob = await generaReportPdf(progetto, (msg) => setPdfInCorso(msg));
+      const blob = await generaReportPdf(progetto, (msg) => setPdfInCorso(msg), opzioni);
       setPdfInCorso(null);
       await condividiOScarica(blob, nomeFileSicuro(`report_${progetto.nome}`, 'pdf'), progetto.nome);
     } catch (e) {
@@ -191,7 +196,17 @@ export function ProgettoPage({ id }: { id: string }) {
           >
             🖼️ Galleria
           </button>
-          <button className="btn" disabled={pdfInCorso !== null} onClick={generaPdf}>
+          <button
+            className="btn"
+            disabled={pdfInCorso !== null}
+            onClick={() => {
+              if (foto.length === 0) {
+                mostraToast('info', 'Aggiungi almeno una foto per generare il report.');
+                return;
+              }
+              setOpzioniPdfAperte(true);
+            }}
+          >
             📄 Report PDF
           </button>
         </div>
@@ -273,6 +288,16 @@ export function ProgettoPage({ id }: { id: string }) {
         </div>
       </main>
 
+      {opzioniPdfAperte && (
+        <FormOpzioniReport
+          foto={foto}
+          onChiudi={() => setOpzioniPdfAperte(false)}
+          onGenera={(opzioni) => {
+            setOpzioniPdfAperte(false);
+            void generaPdf(opzioni);
+          }}
+        />
+      )}
       {modificaDati && <FormDatiProgetto progetto={progetto} onChiudi={() => setModificaDati(false)} />}
       <ConfermaDialog richiesta={conferma} onChiudi={() => setConferma(null)} />
       {menu && <MenuContesto posizione={menu.pos} voci={menu.voci} onChiudi={() => setMenu(null)} />}
@@ -379,4 +404,140 @@ export function useFotoProgetto(progettoId: string | undefined) {
     };
   }, [progettoId]);
   return lista;
+}
+
+/**
+ * Opzioni del report PDF: quali foto includere, layout e sezioni.
+ */
+function FormOpzioniReport({
+  foto,
+  onChiudi,
+  onGenera
+}: {
+  foto: Foto[];
+  onChiudi: () => void;
+  onGenera: (opzioni: OpzioniReport) => void;
+}) {
+  const [selezione, setSelezione] = useState<Set<string>>(new Set(foto.map((f) => f.id)));
+  const [fotoPerPagina, setFotoPerPagina] = useState<1 | 2>(1);
+  const [includiIndice, setIncludiIndice] = useState(true);
+  const [includiRiepilogo, setIncludiRiepilogo] = useState(true);
+  const [includiNoteDato, setIncludiNoteDato] = useState(true);
+  const [includiTabellaMisure, setIncludiTabellaMisure] = useState(true);
+
+  const commuta = (id: string) => {
+    setSelezione((prev) => {
+      const nuova = new Set(prev);
+      if (nuova.has(id)) nuova.delete(id);
+      else nuova.add(id);
+      return nuova;
+    });
+  };
+
+  const Interruttore = ({
+    attivo,
+    onCommuta,
+    testo
+  }: {
+    attivo: boolean;
+    onCommuta: () => void;
+    testo: string;
+  }) => (
+    <button
+      className={`btn${attivo ? ' attivo' : ''}`}
+      style={{ justifyContent: 'flex-start', width: '100%', marginBottom: 8 }}
+      onClick={onCommuta}
+    >
+      {attivo ? '☑' : '☐'} {testo}
+    </button>
+  );
+
+  return (
+    <Modale titolo="Opzioni del report PDF" onChiudi={onChiudi}>
+      <div className="campo">
+        <label>
+          Foto da includere ({selezione.size} di {foto.length})
+        </label>
+        <div className="griglia-foto" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))' }}>
+          {foto.map((f, i) => (
+            <button
+              key={f.id}
+              className="cella-foto"
+              style={{
+                outline: selezione.has(f.id) ? '3px solid var(--accento)' : 'none',
+                opacity: selezione.has(f.id) ? 1 : 0.45
+              }}
+              onClick={() => commuta(f.id)}
+            >
+              <ImmagineBlob dati={f.miniatura} tipo={f.miniaturaTipo} alt={f.didascalia || `Foto ${i + 1}`} />
+              {selezione.has(f.id) && (
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: 4,
+                    left: 4,
+                    background: 'var(--accento)',
+                    color: '#fff',
+                    borderRadius: 999,
+                    padding: '2px 8px',
+                    fontWeight: 700,
+                    fontSize: 13
+                  }}
+                >
+                  ✓
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+        <div className="riga-pulsanti" style={{ marginTop: 8 }}>
+          <button className="btn" onClick={() => setSelezione(new Set(foto.map((f) => f.id)))}>
+            Tutte
+          </button>
+          <button className="btn" onClick={() => setSelezione(new Set())}>
+            Nessuna
+          </button>
+        </div>
+      </div>
+      <div className="campo">
+        <label>Layout delle foto</label>
+        <span className="segmenti" role="group">
+          <button className={fotoPerPagina === 1 ? 'attivo' : ''} onClick={() => setFotoPerPagina(1)}>
+            1 per pagina (grande)
+          </button>
+          <button className={fotoPerPagina === 2 ? 'attivo' : ''} onClick={() => setFotoPerPagina(2)}>
+            2 per pagina (compatto)
+          </button>
+        </span>
+      </div>
+      <div className="campo">
+        <label>Sezioni del documento</label>
+        <Interruttore attivo={includiIndice} onCommuta={() => setIncludiIndice(!includiIndice)} testo="Indice con numeri di pagina" />
+        <Interruttore attivo={includiNoteDato} onCommuta={() => setIncludiNoteDato(!includiNoteDato)} testo="Note dato delle foto" />
+        <Interruttore attivo={includiTabellaMisure} onCommuta={() => setIncludiTabellaMisure(!includiTabellaMisure)} testo="Tabella misure per ogni foto" />
+        <Interruttore attivo={includiRiepilogo} onCommuta={() => setIncludiRiepilogo(!includiRiepilogo)} testo="Riepilogo finale delle misure" />
+      </div>
+      <div className="riga-pulsanti">
+        <button className="btn" onClick={onChiudi}>
+          Annulla
+        </button>
+        <button
+          className="btn primario"
+          disabled={selezione.size === 0}
+          onClick={() =>
+            onGenera({
+              fotoIds: selezione.size === foto.length ? null : Array.from(selezione),
+              fotoPerPagina,
+              includiIndice,
+              includiRiepilogo,
+              includiNoteDato,
+              includiTabellaMisure
+            })
+          }
+        >
+          📄 Genera ({selezione.size} foto)
+        </button>
+      </div>
+    </Modale>
+  );
 }

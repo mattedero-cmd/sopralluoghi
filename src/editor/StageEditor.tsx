@@ -12,9 +12,11 @@ import { traslaAnnotazione } from './fabbrica';
 
 export type Strumento =
   | 'seleziona'
+  | 'auto'
   | 'quotaO'
   | 'quotaV'
   | 'quotaA'
+  | 'rettangolo'
   | 'angolo'
   | 'raggio'
   | 'testo'
@@ -23,6 +25,23 @@ export type Strumento =
   | 'callout'
   | 'calibra'
   | 'piano';
+
+/**
+ * Strumenti a due punti: ciascun punto viene fissato SOLO al rilascio
+ * del dito (premi → aggiusta con la lente → rilascia), così il primo
+ * punto non va mai corretto a posteriori.
+ */
+function strumentoDuePunti(s: Strumento): boolean {
+  return (
+    s === 'quotaO' ||
+    s === 'quotaV' ||
+    s === 'quotaA' ||
+    s === 'rettangolo' ||
+    s === 'freccia' ||
+    s === 'raggio' ||
+    s === 'calibra'
+  );
+}
 
 /** Vincolo direzionale: nessuno, orto (H/V) o snap angolare a 15° */
 export type ModalitaVincolo = 'off' | 'orto' | 'angolo15';
@@ -40,9 +59,14 @@ interface Props {
   ricercaBordi: RicercaBordi | null;
   /** layer: quali categorie di annotazioni mostrare */
   filtroVisibile: (a: Annotazione) => boolean;
+  /** quote proposte dall'autoquotatura, in attesa di conferma */
+  proposte: Annotazione[];
   onSeleziona: (id: string | null) => void;
+  /** tocco con lo strumento autoquotatura */
+  onAutoTocco: (p: Punto) => void;
   onCommit: (annotazioni: Annotazione[]) => void;
   onNuovaQuota: (p1: Punto, p2: Punto, sottotipo: SottotipoQuota) => void;
+  onNuovoRett: (rect: Rettangolo) => void;
   onNuovoAngolo: (vertice: Punto, a: Punto, b: Punto) => void;
   onNuovoRaggio: (centro: Punto, bordo: Punto) => void;
   onNuovoTesto: (posizione: Punto) => void;
@@ -64,11 +88,43 @@ type Bozza =
   | { tipo: 'freccia'; p1: Punto; p2: Punto }
   | { tipo: 'raggio'; centro: Punto; bordo: Punto }
   | { tipo: 'calibra'; p1: Punto; p2: Punto }
+  | { tipo: 'rett'; p1: Punto; p2: Punto }
   | { tipo: 'disegno'; punti: number[] }
   | { tipo: 'callout'; inizio: Punto; corrente: Punto }
   | { tipo: 'angolo'; punti: Punto[] }
   | { tipo: 'piano'; punti: Punto[] }
   | null;
+
+/** primo punto già fissato di una bozza a due punti */
+function puntoFisso(b: Bozza): Punto | null {
+  if (!b) return null;
+  switch (b.tipo) {
+    case 'quota':
+    case 'freccia':
+    case 'calibra':
+    case 'rett':
+      return b.p1;
+    case 'raggio':
+      return b.centro;
+    default:
+      return null;
+  }
+}
+
+/** aggiorna il secondo punto di una bozza a due punti */
+function conSecondoPunto(b: NonNullable<Bozza>, punto: Punto): NonNullable<Bozza> {
+  switch (b.tipo) {
+    case 'quota':
+    case 'freccia':
+    case 'calibra':
+    case 'rett':
+      return { ...b, p2: punto };
+    case 'raggio':
+      return { ...b, bordo: punto };
+    default:
+      return b;
+  }
+}
 
 const SCALA_MIN = 0.05;
 const SCALA_MAX = 12;
@@ -258,6 +314,17 @@ export function StageEditor(p: Props) {
   // Creazione annotazioni (bozze)
   // -------------------------------------------------------------------------
 
+  /** punto elaborato per gli strumenti a due punti (snap + vincolo) */
+  const elaboraPuntoDue = (pos: Punto): Punto => {
+    const fisso = puntoFisso(bozza);
+    let punto =
+      p.strumento === 'freccia' ? pos : applicaSnap(pos, fisso ? [fisso] : undefined);
+    if (fisso && (p.strumento === 'quotaA' || p.strumento === 'freccia')) {
+      punto = applicaVincolo(fisso, punto);
+    }
+    return punto;
+  };
+
   const suPointerDown = (e: Konva.KonvaEventObject<PointerEvent>) => {
     const stage = stageRef.current;
     if (!stage) return;
@@ -272,38 +339,17 @@ export function StageEditor(p: Props) {
       return;
     }
 
+    // strumenti a due punti: ogni punto si fissa al rilascio
+    if (strumentoDuePunti(p.strumento)) {
+      const punto = elaboraPuntoDue(pos);
+      setPuntoPendente(punto);
+      setPuntoLente(punto);
+      if (bozza && puntoFisso(bozza)) setBozza(conSecondoPunto(bozza, punto));
+      disegnoAttivo.current = true;
+      return;
+    }
+
     switch (p.strumento) {
-      case 'quotaO':
-      case 'quotaV':
-      case 'quotaA': {
-        const p1 = applicaSnap(pos);
-        const sottotipo: SottotipoQuota =
-          p.strumento === 'quotaO' ? 'orizzontale' : p.strumento === 'quotaV' ? 'verticale' : 'allineata';
-        setBozza({ tipo: 'quota', sottotipo, p1, p2: p1 });
-        setPuntoLente(p1);
-        disegnoAttivo.current = true;
-        break;
-      }
-      case 'freccia': {
-        setBozza({ tipo: 'freccia', p1: pos, p2: pos });
-        setPuntoLente(pos);
-        disegnoAttivo.current = true;
-        break;
-      }
-      case 'raggio': {
-        const centro = applicaSnap(pos);
-        setBozza({ tipo: 'raggio', centro, bordo: centro });
-        setPuntoLente(centro);
-        disegnoAttivo.current = true;
-        break;
-      }
-      case 'calibra': {
-        const p1 = applicaSnap(pos);
-        setBozza({ tipo: 'calibra', p1, p2: p1 });
-        setPuntoLente(p1);
-        disegnoAttivo.current = true;
-        break;
-      }
       case 'disegno': {
         setBozza({ tipo: 'disegno', punti: [pos.x, pos.y] });
         setPuntoLente(pos);
@@ -317,7 +363,8 @@ export function StageEditor(p: Props) {
         break;
       }
       // strumenti a punto singolo: premi → aggiusta con la lente → rilascia
-      case 'testo': {
+      case 'testo':
+      case 'auto': {
         setPuntoPendente(pos);
         setPuntoLente(pos);
         disegnoAttivo.current = true;
@@ -334,10 +381,70 @@ export function StageEditor(p: Props) {
     }
   };
 
-  /** conferma del punto pendente al rilascio (angolo, piano, testo) */
+  /** conferma del punto pendente al rilascio */
   const confermaPuntoPendente = (punto: Punto) => {
     if (p.strumento === 'testo') {
       p.onNuovoTesto(punto);
+      return;
+    }
+    if (p.strumento === 'auto') {
+      p.onAutoTocco(punto);
+      return;
+    }
+    if (strumentoDuePunti(p.strumento)) {
+      const fisso = puntoFisso(bozza);
+      if (!fisso) {
+        // primo punto fissato: si attende il secondo
+        switch (p.strumento) {
+          case 'quotaO':
+          case 'quotaV':
+          case 'quotaA': {
+            const sottotipo: SottotipoQuota =
+              p.strumento === 'quotaO'
+                ? 'orizzontale'
+                : p.strumento === 'quotaV'
+                  ? 'verticale'
+                  : 'allineata';
+            setBozza({ tipo: 'quota', sottotipo, p1: punto, p2: punto });
+            break;
+          }
+          case 'freccia':
+            setBozza({ tipo: 'freccia', p1: punto, p2: punto });
+            break;
+          case 'raggio':
+            setBozza({ tipo: 'raggio', centro: punto, bordo: punto });
+            break;
+          case 'calibra':
+            setBozza({ tipo: 'calibra', p1: punto, p2: punto });
+            break;
+          case 'rettangolo':
+            setBozza({ tipo: 'rett', p1: punto, p2: punto });
+            break;
+        }
+        return;
+      }
+      // secondo punto: troppo vicino al primo → si resta in attesa
+      const minimo = 8 / vista.scala;
+      if (distanza(fisso, punto) < minimo) return;
+      const b = conSecondoPunto(bozza!, punto);
+      setBozza(null);
+      switch (b.tipo) {
+        case 'quota':
+          p.onNuovaQuota(b.p1, b.p2, b.sottotipo);
+          break;
+        case 'freccia':
+          p.onNuovaFreccia(b.p1, b.p2);
+          break;
+        case 'raggio':
+          p.onNuovoRaggio(b.centro, b.bordo);
+          break;
+        case 'calibra':
+          if (distanza(b.p1, b.p2) >= minimo * 2) p.onCalibra(b.p1, b.p2);
+          break;
+        case 'rett':
+          p.onNuovoRett(normalizzaRect(b.p1, b.p2));
+          break;
+      }
       return;
     }
     if (p.strumento === 'angolo') {
@@ -366,9 +473,17 @@ export function StageEditor(p: Props) {
     const pos = posImmagine();
     if (!pos) return;
 
-    // strumento a punto singolo: il punto pendente segue il dito
+    // punto pendente: segue il dito finché non viene rilasciato
     if (puntoPendente !== null) {
-      const punto = p.strumento === 'testo' ? pos : applicaSnap(pos);
+      let punto: Punto;
+      if (strumentoDuePunti(p.strumento)) {
+        punto = elaboraPuntoDue(pos);
+        // il secondo punto aggiorna l'anteprima in tempo reale
+        if (bozza && puntoFisso(bozza)) setBozza(conSecondoPunto(bozza, punto));
+      } else {
+        const senzaSnap = p.strumento === 'testo' || p.strumento === 'auto';
+        punto = senzaSnap ? pos : applicaSnap(pos);
+      }
       setPuntoPendente(punto);
       setPuntoLente(punto);
       return;
@@ -378,27 +493,6 @@ export function StageEditor(p: Props) {
     setBozza((b) => {
       if (!b) return b;
       switch (b.tipo) {
-        case 'quota': {
-          let p2 = applicaSnap(pos, [b.p1]);
-          if (b.sottotipo === 'allineata') p2 = applicaVincolo(b.p1, p2);
-          setPuntoLente(p2);
-          return { ...b, p2 };
-        }
-        case 'freccia': {
-          const p2 = applicaVincolo(b.p1, pos);
-          setPuntoLente(p2);
-          return { ...b, p2 };
-        }
-        case 'raggio': {
-          const bordo = applicaSnap(pos, [b.centro]);
-          setPuntoLente(bordo);
-          return { ...b, bordo };
-        }
-        case 'calibra': {
-          const p2 = applicaSnap(pos, [b.p1]);
-          setPuntoLente(p2);
-          return { ...b, p2 };
-        }
         case 'disegno':
           setPuntoLente(pos);
           return { ...b, punti: [...b.punti, pos.x, pos.y] };
@@ -426,24 +520,13 @@ export function StageEditor(p: Props) {
     }
 
     if (!bozza) return;
-    if (bozza.tipo === 'angolo' || bozza.tipo === 'piano') return; // multi-tocco
+    // bozze multi-rilascio: restano in attesa del punto successivo
+    if (bozza.tipo !== 'disegno' && bozza.tipo !== 'callout') return;
     setIndicatoreSnap(null);
     const b = bozza;
     setBozza(null);
     const minimo = 8 / vista.scala;
     switch (b.tipo) {
-      case 'quota':
-        if (distanza(b.p1, b.p2) >= minimo) p.onNuovaQuota(b.p1, b.p2, b.sottotipo);
-        break;
-      case 'freccia':
-        if (distanza(b.p1, b.p2) >= minimo) p.onNuovaFreccia(b.p1, b.p2);
-        break;
-      case 'raggio':
-        if (distanza(b.centro, b.bordo) >= minimo) p.onNuovoRaggio(b.centro, b.bordo);
-        break;
-      case 'calibra':
-        if (distanza(b.p1, b.p2) >= minimo * 2) p.onCalibra(b.p1, b.p2);
-        break;
       case 'disegno':
         if (b.punti.length >= 6) p.onNuovoDisegno(b.punti);
         break;
@@ -478,6 +561,15 @@ export function StageEditor(p: Props) {
   const bozzaAnnotazione = useMemo((): Annotazione | null => {
     if (!bozza) return null;
     const base = { id: '__bozza__', fotoId: p.foto.id, zIndex: 9999, stile: stileBozza };
+    // in attesa del secondo punto i due punti coincidono: nessuna anteprima
+    const fisso = puntoFisso(bozza);
+    const secondo =
+      bozza.tipo === 'quota' || bozza.tipo === 'freccia' || bozza.tipo === 'calibra' || bozza.tipo === 'rett'
+        ? bozza.p2
+        : bozza.tipo === 'raggio'
+          ? bozza.bordo
+          : null;
+    if (fisso && secondo && distanza(fisso, secondo) < 2) return null;
     switch (bozza.tipo) {
       case 'quota':
         return {
@@ -490,6 +582,16 @@ export function StageEditor(p: Props) {
           valore: null,
           unita: 'cm',
           posizioneTesto: 'sopra',
+          stato: 'reale'
+        };
+      case 'rett':
+        return {
+          ...base,
+          tipo: 'quotaRett',
+          rect: normalizzaRect(bozza.p1, bozza.p2),
+          valoreBase: null,
+          valoreAltezza: null,
+          unita: 'cm',
           stato: 'reale'
         };
       case 'freccia':
@@ -519,6 +621,9 @@ export function StageEditor(p: Props) {
         return null;
     }
   }, [bozza, p.foto, stileBozza]);
+
+  /** marker del primo punto fissato (in attesa del secondo) */
+  const primoFissato = puntoFisso(bozza);
 
   const selezionata = annotazioniVisibili.find((a) => a.id === p.selezioneId) ?? null;
   const raggioManiglia = 15 / vista.scala;
@@ -590,6 +695,18 @@ export function StageEditor(p: Props) {
               onTrascinata={() => {}}
             />
           )}
+          {p.proposte.map((a) => (
+            <AnnotazioneShape
+              key={a.id}
+              ann={a}
+              immagine={p.immagine}
+              selezionata={false}
+              interattiva={false}
+              hitWidth={1}
+              onSeleziona={() => {}}
+              onTrascinata={() => {}}
+            />
+          ))}
         </Layer>
 
         {/* Riferimenti di calibrazione + maniglie ampie pensate per il tocco */}
@@ -626,6 +743,17 @@ export function StageEditor(p: Props) {
                 />
               )}
             </>
+          )}
+          {primoFissato && (
+            <Circle
+              x={primoFissato.x}
+              y={primoFissato.y}
+              radius={raggioManiglia * 0.55}
+              fill="#2f81f7"
+              stroke="#ffffff"
+              strokeWidth={2 / vista.scala}
+              listening={false}
+            />
           )}
           {puntoPendente && (
             <>
@@ -687,6 +815,24 @@ export function StageEditor(p: Props) {
           contenitore={dimensioni}
         />
       )}
+      {/* zoom sempre a portata di pollice, senza occupare la toolbar */}
+      <div className="zoom-flottante">
+        <button
+          aria-label="Ingrandisci"
+          onClick={() => zoomVerso({ x: dimensioni.w / 2, y: dimensioni.h / 2 }, 1.3)}
+        >
+          ＋
+        </button>
+        <button
+          aria-label="Riduci"
+          onClick={() => zoomVerso({ x: dimensioni.w / 2, y: dimensioni.h / 2 }, 1 / 1.3)}
+        >
+          －
+        </button>
+        <button aria-label="Adatta alla vista" onClick={() => adatta(dimensioni.w, dimensioni.h)}>
+          ⤢
+        </button>
+      </div>
       {suggerimento && <div className="suggerimento-stage">{suggerimento}</div>}
     </div>
   );
@@ -796,6 +942,14 @@ function Lente({
 }
 
 function testoSuggerimento(strumento: Strumento, bozza: Bozza): string | null {
+  if (strumento === 'auto') {
+    return 'Tocca una figura netta (porta, finestra, piastrella…): le quote appaiono da sole';
+  }
+  if (strumentoDuePunti(strumento)) {
+    return puntoFisso(bozza)
+      ? 'Secondo punto: premi, aggiusta con la lente, rilascia per fissare'
+      : 'Primo punto: premi, aggiusta con la lente, rilascia per fissare';
+  }
   if (strumento === 'angolo') {
     const n = bozza?.tipo === 'angolo' ? bozza.punti.length : 0;
     return ['Tocca il vertice dell’angolo', 'Tocca il primo lato', 'Tocca il secondo lato'][n];
@@ -929,6 +1083,14 @@ function boxAnnotazione(a: Annotazione): Rettangolo {
       punti.push(
         { x: a.centro.x - r, y: a.centro.y - r },
         { x: a.centro.x + r, y: a.centro.y + r }
+      );
+      break;
+    }
+    case 'quotaRett': {
+      const margine = Math.max(24, a.stile.dimensioneTesto * 1.1) + a.stile.dimensioneTesto;
+      punti.push(
+        { x: a.rect.x - margine, y: a.rect.y - margine },
+        { x: a.rect.x + a.rect.width, y: a.rect.y + a.rect.height }
       );
       break;
     }
@@ -1079,6 +1241,36 @@ function ManiglieAnnotazione({
           {maniglia('bordo', ann.bordo, (n) => ({ ...ann, bordo: n }), { snap: true, escludi: [ann.bordo] })}
         </>
       );
+    case 'quotaRett': {
+      const r = ann.rect;
+      const angoli: Array<[string, Punto, Punto]> = [
+        // [chiave, angolo trascinato, angolo opposto (fisso)]
+        ['nw', { x: r.x, y: r.y }, { x: r.x + r.width, y: r.y + r.height }],
+        ['ne', { x: r.x + r.width, y: r.y }, { x: r.x, y: r.y + r.height }],
+        ['se', { x: r.x + r.width, y: r.y + r.height }, { x: r.x, y: r.y }],
+        ['sw', { x: r.x, y: r.y + r.height }, { x: r.x + r.width, y: r.y }]
+      ];
+      return (
+        <>
+          {angoli.map(([chiave, pos, opposto]) =>
+            maniglia(
+              chiave,
+              pos,
+              (n) => ({
+                ...ann,
+                rect: {
+                  x: Math.min(n.x, opposto.x),
+                  y: Math.min(n.y, opposto.y),
+                  width: Math.abs(n.x - opposto.x),
+                  height: Math.abs(n.y - opposto.y)
+                }
+              }),
+              { snap: true, escludi: [pos] }
+            )
+          )}
+        </>
+      );
+    }
     case 'freccia':
       return (
         <>

@@ -1,4 +1,4 @@
-import type { Annotazione, Foto, Punto, Unita } from '../db/types';
+import type { Annotazione, Foto, Punto, Rettangolo, Unita } from '../db/types';
 import { daMillimetri, inMillimetri } from '../utils/format';
 import { applicaOmografia, omografiaPiano, type Omografia } from './omografia';
 import { direzioneQuota, distanza, dot, scala as scalaPunto, somma, sottrai } from './punti';
@@ -97,12 +97,41 @@ export function valoreAutomatico(a: Annotazione, foto: CalibrazioneFoto): number
 }
 
 /**
+ * Base e altezza reali di un rettangolo immagine, dalla calibrazione.
+ * Con il piano prospettico i lati sono misurati sul piano rettificato.
+ */
+export function misureRettangolo(
+  rect: Rettangolo,
+  foto: CalibrazioneFoto,
+  unita: Unita
+): { base: number; altezza: number } | null {
+  const altoSx: Punto = { x: rect.x, y: rect.y };
+  const altoDx: Punto = { x: rect.x + rect.width, y: rect.y };
+  const bassoSx: Punto = { x: rect.x, y: rect.y + rect.height };
+  const b = distanzaReale(foto, altoSx, altoDx);
+  const h = distanzaReale(foto, altoSx, bassoSx);
+  if (!b || !h) return null;
+  return {
+    base: arrotondaMisura(daMillimetri(inMillimetri(b.valore, b.unita), unita)),
+    altezza: arrotondaMisura(daMillimetri(inMillimetri(h.valore, h.unita), unita))
+  };
+}
+
+/**
  * Ricalcola i valori automatici dopo una modifica di geometria o di
  * calibrazione. Regola di automaticità: esplicita se presente, altrimenti
  * una quota senza valore è candidata al riempimento automatico.
  */
 export function applicaValoriAuto(annotazioni: Annotazione[], foto: CalibrazioneFoto): Annotazione[] {
   return annotazioni.map((a) => {
+    if (a.tipo === 'quotaRett') {
+      const auto = a.valoreAuto ?? (a.valoreBase === null && a.valoreAltezza === null);
+      if (!auto) return a;
+      const m = misureRettangolo(a.rect, foto, a.unita);
+      if (!m) return a;
+      if (m.base === a.valoreBase && m.altezza === a.valoreAltezza && a.valoreAuto === true) return a;
+      return { ...a, valoreBase: m.base, valoreAltezza: m.altezza, valoreAuto: true };
+    }
     if (a.tipo !== 'quota' && a.tipo !== 'quotaAngolo' && a.tipo !== 'quotaRaggio') return a;
     const auto = a.valoreAuto ?? a.valore === null;
     if (!auto) return a;

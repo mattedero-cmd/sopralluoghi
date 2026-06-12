@@ -9,23 +9,46 @@ import { calcolaCatene, sommaCatenaInUnita } from '../geometry/catene';
 import { formattaData, formattaDataOra, formattaMisura, formattaNumero } from '../utils/format';
 
 const GRIGIO = '#555555';
-const BLU = '#1a4f8b';
 const ROSSO_REALE = '#c0392b';
 const ARANCIO_STIMATA = '#b9770e';
 
 /** Lato massimo delle immagini incorporate nel PDF (peso file contenuto) */
 const LATO_MAX_PDF = 1600;
 
+/** Opzioni di esportazione, scelte al momento della generazione */
+export interface OpzioniReport {
+  /** id delle foto da includere; null = tutte */
+  fotoIds: string[] | null;
+  /** 1 = foto grande per pagina; 2 = compatto, due foto per pagina */
+  fotoPerPagina: 1 | 2;
+  includiIndice: boolean;
+  includiRiepilogo: boolean;
+  includiNoteDato: boolean;
+  includiTabellaMisure: boolean;
+}
+
+export const OPZIONI_REPORT_DEFAULT: OpzioniReport = {
+  fotoIds: null,
+  fotoPerPagina: 1,
+  includiIndice: true,
+  includiRiepilogo: true,
+  includiNoteDato: true,
+  includiTabellaMisure: true
+};
+
 export async function generaReportPdf(
   progetto: Progetto,
-  avanzamento?: (msg: string) => void
+  avanzamento?: (msg: string) => void,
+  opzioni: OpzioniReport = OPZIONI_REPORT_DEFAULT
 ): Promise<Blob> {
   avanzamento?.('Lettura dati…');
   const impostazioni = await leggiImpostazioni();
+  const BLU = impostazioni.pdf.colore || '#1a4f8b';
   // le foto danneggiate (contenuto perso dal browser) non possono
   // comparire nel report: vengono saltate, il resto del PDF si genera
   const fotoList = (await db.foto.where('progettoId').equals(progetto.id).toArray())
     .filter((f) => !fotoIllegibile(f))
+    .filter((f) => opzioni.fotoIds === null || opzioni.fotoIds.includes(f.id))
     .sort((a, b) => a.ordine - b.ordine);
   const annotazioniPerFoto = new Map<string, Annotazione[]>();
   for (const f of fotoList) {
@@ -73,27 +96,32 @@ export async function generaReportPdf(
   );
 
   // --- Indice ---------------------------------------------------------------
-  contenuto.push({
-    toc: { title: { text: 'Indice', style: 'h1' } },
-    pageBreak: 'before'
-  } as Content);
+  if (opzioni.includiIndice) {
+    contenuto.push({
+      toc: { title: { text: 'Indice', style: 'h1' } },
+      pageBreak: 'before'
+    } as Content);
+  }
 
   // --- Una sezione per foto ---------------------------------------------------
   fotoList.forEach((f, indice) => {
     const annotazioni = annotazioniPerFoto.get(f.id) ?? [];
-    contenuto.push(...sezioneFoto(f, indice, annotazioni));
+    contenuto.push(...sezioneFoto(f, indice, annotazioni, opzioni, impostazioni.pdf));
   });
 
   // --- Tabella riassuntiva delle misure ---------------------------------------
-  contenuto.push(...tabellaRiassuntiva(fotoList, annotazioniPerFoto));
+  if (opzioni.includiRiepilogo) {
+    contenuto.push(...tabellaRiassuntiva(fotoList, annotazioniPerFoto));
+  }
 
+  const pieDiPagina = impostazioni.pdf.pieDiPagina.trim() || prof.azienda || prof.nome || '';
   const def: TDocumentDefinitions = {
     pageSize: 'A4',
     pageMargins: [40, 50, 40, 50],
     info: { title: `Report — ${progetto.nome}`, author: prof.nome || 'Sopralluoghi' },
     footer: (pagina, totale) => ({
       columns: [
-        { text: prof.azienda || prof.nome || '', style: 'pie' },
+        { text: pieDiPagina, style: 'pie' },
         { text: `Pagina ${pagina} di ${totale}`, style: 'pie', alignment: 'right' }
       ],
       margin: [40, 16, 40, 0]
@@ -156,38 +184,62 @@ function righeMisureFoto(annotazioni: Annotazione[]): RigaMisura[] {
         misura: a.valore === null ? '—' : `${prefisso}${formattaMisura(a.valore, a.unita)}`,
         stato: a.stato
       });
+    } else if (a.tipo === 'quotaRett') {
+      // un elemento unico: base × altezza, mai due misure scollegate
+      const b = a.valoreBase === null ? '?' : formattaNumero(a.valoreBase);
+      const h = a.valoreAltezza === null ? '?' : formattaNumero(a.valoreAltezza);
+      righe.push({
+        tipo: 'Rettangolo (b × h)',
+        misura: `${b} × ${h} ${a.unita}`,
+        stato: a.stato
+      });
     }
   }
   return righe;
 }
 
-function sezioneFoto(f: Foto, indice: number, annotazioni: Annotazione[]): Content[] {
+function sezioneFoto(
+  f: Foto,
+  indice: number,
+  annotazioni: Annotazione[],
+  opzioni: OpzioniReport,
+  pdfImp: { mostraGeotag: boolean; mostraDataScatto: boolean }
+): Content[] {
   const titolo = `${indice + 1}. ${f.didascalia || `Foto ${indice + 1}`}`;
   const misure = righeMisureFoto(annotazioni);
   const callouts = annotazioni.filter((a) => a.tipo === 'callout');
   const catene = calcolaCatene(annotazioni);
+  // layout compatto: due foto per pagina, immagine più bassa
+  const altezzaFoto = opzioni.fotoPerPagina === 2 ? 290 : 540;
+  const interrompi = opzioni.fotoPerPagina === 2 ? indice % 2 === 0 : true;
+
+  const sottotitolo = [
+    pdfImp.mostraDataScatto ? `Scattata il ${formattaDataOra(f.dataScatto)}` : '',
+    pdfImp.mostraGeotag && f.geotag
+      ? `GPS ${f.geotag.lat.toFixed(5)}, ${f.geotag.lng.toFixed(5)}`
+      : ''
+  ]
+    .filter(Boolean)
+    .join(' — ');
 
   const out: Content[] = [
     {
       text: titolo,
       style: 'h2',
       tocItem: true,
-      pageBreak: 'before'
-    } as Content,
-    {
-      text: `Scattata il ${formattaDataOra(f.dataScatto)}${
-        f.geotag ? ` — GPS ${f.geotag.lat.toFixed(5)}, ${f.geotag.lng.toFixed(5)}` : ''
-      }`,
-      style: 'didascalia'
-    },
-    { image: `foto_${f.id}`, fit: [515, 540], alignment: 'center' }
+      ...(interrompi ? { pageBreak: 'before' } : { margin: [0, 18, 0, 6] })
+    } as Content
   ];
+  if (sottotitolo) {
+    out.push({ text: sottotitolo, style: 'didascalia' });
+  }
+  out.push({ image: `foto_${f.id}`, fit: [515, altezzaFoto], alignment: 'center' });
 
-  if (f.noteDato.trim()) {
+  if (opzioni.includiNoteDato && f.noteDato.trim()) {
     out.push({ text: f.noteDato.trim(), style: 'corpo', margin: [0, 10, 0, 6] });
   }
 
-  if (misure.length > 0) {
+  if (opzioni.includiTabellaMisure && misure.length > 0) {
     const corpoTabella = misure.map((m, i) => [
       { text: String(i + 1), style: 'td' },
       { text: m.tipo, style: 'td' },
@@ -218,16 +270,18 @@ function sezioneFoto(f: Foto, indice: number, annotazioni: Annotazione[]): Conte
     });
   }
 
-  for (const c of catene) {
-    const sommaU = sommaCatenaInUnita(c);
-    if (sommaU !== null) {
-      out.push({
-        text: `Catena di ${c.quote.length} quote — totale: ${formattaNumero(sommaU)} ${c.unita}${
-          c.completa ? '' : ' (parziale: alcune quote sono senza valore)'
-        }`,
-        style: 'corpo',
-        bold: true
-      });
+  if (opzioni.includiTabellaMisure) {
+    for (const c of catene) {
+      const sommaU = sommaCatenaInUnita(c);
+      if (sommaU !== null) {
+        out.push({
+          text: `Catena di ${c.quote.length} quote — totale: ${formattaNumero(sommaU)} ${c.unita}${
+            c.completa ? '' : ' (parziale: alcune quote sono senza valore)'
+          }`,
+          style: 'corpo',
+          bold: true
+        });
+      }
     }
   }
 

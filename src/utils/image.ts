@@ -1,7 +1,7 @@
 import exifr from 'exifr';
 import type { Foto, Geotag } from '../db/types';
 
-/** Lato massimo dell'immagine archiviata: qualità da documentazione tecnica */
+/** Lato massimo predefinito dell'immagine archiviata (configurabile) */
 const LATO_MAX = 2560;
 const LATO_MINIATURA = 400;
 const QUALITA_JPEG = 0.87;
@@ -56,7 +56,7 @@ export function blobMiniatura(f: Pick<Foto, 'miniatura' | 'miniaturaTipo'>): Blo
  * l'orientamento, ridimensiona al lato massimo e genera la miniatura.
  * Da qui in poi il blob archiviato non viene mai più modificato.
  */
-export async function importaFoto(file: File | Blob): Promise<FotoImportata> {
+export async function importaFoto(file: File | Blob, latoMax = LATO_MAX): Promise<FotoImportata> {
   if (file.size > MAX_FILE_BYTE) {
     throw new Error('Foto troppo grande (oltre 80 MB): riduci la risoluzione e riprova.');
   }
@@ -82,7 +82,7 @@ export async function importaFoto(file: File | Blob): Promise<FotoImportata> {
 
   const bitmap = await decodificaImmagine(file);
   try {
-    const principale = await ridimensiona(bitmap, LATO_MAX, QUALITA_JPEG);
+    const principale = await ridimensiona(bitmap, latoMax, QUALITA_JPEG);
     const miniatura = await ridimensiona(bitmap, LATO_MINIATURA, QUALITA_MINIATURA);
     return {
       origine: await principale.blob.arrayBuffer(),

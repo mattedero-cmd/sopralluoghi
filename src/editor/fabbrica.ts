@@ -9,13 +9,14 @@ import type {
   Quota,
   QuotaAngolare,
   QuotaRaggio,
+  QuotaRettangolo,
   Rettangolo,
   SottotipoQuota,
   Stile,
   TestoFoto
 } from '../db/types';
 import { nuovoId } from '../utils/id';
-import { haCalibrazione, valoreAutomatico } from '../geometry/calibrazione';
+import { haCalibrazione, misureRettangolo, valoreAutomatico } from '../geometry/calibrazione';
 
 /**
  * Creazione delle annotazioni con valori predefiniti proporzionati
@@ -85,6 +86,32 @@ export class FabbricaAnnotazioni {
       stile: this.stileBase()
     };
     q.valore = valoreAutomatico(q, this.foto);
+    return q;
+  }
+
+  /** Quota rettangolo: un solo oggetto per base × altezza */
+  quotaRettangolo(rect: Rettangolo, esistenti: Annotazione[]): QuotaRettangolo {
+    const calibrata = haCalibrazione(this.foto);
+    const q: QuotaRettangolo = {
+      id: nuovoId(),
+      fotoId: this.foto.id,
+      tipo: 'quotaRett',
+      rect,
+      valoreBase: null,
+      valoreAltezza: null,
+      valoreAuto: calibrata,
+      unita: this.impostazioni.unitaDefault,
+      stato: calibrata ? 'stimata' : 'reale',
+      zIndex: this.prossimoZ(esistenti),
+      stile: this.stileBase()
+    };
+    if (calibrata) {
+      const m = misureRettangolo(rect, this.foto, q.unita);
+      if (m) {
+        q.valoreBase = m.base;
+        q.valoreAltezza = m.altezza;
+      }
+    }
     return q;
   }
 
@@ -213,6 +240,8 @@ export function traslaAnnotazione(a: Annotazione, dx: number, dy: number): Annot
         centro: { x: a.centro.x + dx, y: a.centro.y + dy },
         bordo: { x: a.bordo.x + dx, y: a.bordo.y + dy }
       };
+    case 'quotaRett':
+      return { ...a, rect: { ...a.rect, x: a.rect.x + dx, y: a.rect.y + dy } };
     case 'testo':
       return { ...a, posizione: { x: a.posizione.x + dx, y: a.posizione.y + dy } };
     case 'disegno': {

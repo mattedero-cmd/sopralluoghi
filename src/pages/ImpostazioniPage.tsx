@@ -160,6 +160,70 @@ export function ImpostazioniPage() {
           />
         </div>
 
+        <h2>Foto</h2>
+        <div className="campo">
+          <label>Risoluzione delle foto archiviate (lato massimo)</label>
+          <select
+            value={String(imp.fotoLatoMax)}
+            onChange={(e) => aggiorna({ fotoLatoMax: Number(e.target.value) })}
+          >
+            <option value="1600">1600 px — leggera (più foto in meno spazio)</option>
+            <option value="2560">2560 px — consigliata</option>
+            <option value="3200">3200 px — massima (occupa più spazio)</option>
+          </select>
+        </div>
+
+        <h2>Report PDF</h2>
+        <div className="campo">
+          <label>Colore di titoli e intestazioni</label>
+          <input
+            type="color"
+            value={imp.pdf.colore}
+            onChange={(e) => aggiorna({ pdf: { ...imp.pdf, colore: e.target.value } })}
+            style={{ height: 48, padding: 4 }}
+          />
+        </div>
+        <div className="campo">
+          <label>Piè di pagina personalizzato (vuoto = nome azienda)</label>
+          <input
+            value={imp.pdf.pieDiPagina}
+            onChange={(e) => aggiorna({ pdf: { ...imp.pdf, pieDiPagina: e.target.value } })}
+            placeholder="es. P.IVA 01234567890 — www.esempio.it"
+          />
+        </div>
+        <div className="campo">
+          <label>Dati sotto ogni foto</label>
+          <span className="segmenti" role="group">
+            <button
+              className={imp.pdf.mostraDataScatto ? 'attivo' : ''}
+              onClick={() => aggiorna({ pdf: { ...imp.pdf, mostraDataScatto: !imp.pdf.mostraDataScatto } })}
+            >
+              📅 Data scatto
+            </button>
+            <button
+              className={imp.pdf.mostraGeotag ? 'attivo' : ''}
+              onClick={() => aggiorna({ pdf: { ...imp.pdf, mostraGeotag: !imp.pdf.mostraGeotag } })}
+            >
+              📍 Geotag
+            </button>
+          </span>
+        </div>
+
+        <h2>Preventivi</h2>
+        <div className="campo">
+          <label>IVA predefinita (%)</label>
+          <input
+            type="number"
+            min={0}
+            max={100}
+            value={imp.ivaDefault}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              if (Number.isFinite(v) && v >= 0 && v <= 100) aggiorna({ ivaDefault: v });
+            }}
+          />
+        </div>
+
         <h2>Backup e sicurezza dei dati</h2>
         <p style={{ color: 'var(--testo-2)' }}>
           Il backup locale contiene tutto l'archivio (progetti, foto originali e annotazioni) in un
@@ -202,7 +266,7 @@ export function ImpostazioniPage() {
           Sopralluoghi — applicazione offline-first. I dati restano sul dispositivo; il backup su
           file e il backup cloud sono le copie di sicurezza esterne.
           <br />
-          Versione 0.3.0 — build {__BUILD__} (UTC). Se hai appena aggiornato e la data non
+          Versione 0.4.0 — build {__BUILD__} (UTC). Se hai appena aggiornato e la data non
           corrisponde, chiudi e riapri l'app con la rete attiva.
         </p>
       </main>
