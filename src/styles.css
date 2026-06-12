@@ -220,6 +220,16 @@ textarea {
   color: var(--ok);
 }
 
+.badge.rifiutato {
+  background: #4d1f1f;
+  color: var(--pericolo);
+}
+
+h2 {
+  font-size: 17px;
+  margin: 22px 0 10px;
+}
+
 /* Griglia foto */
 .griglia-foto {
   display: grid;

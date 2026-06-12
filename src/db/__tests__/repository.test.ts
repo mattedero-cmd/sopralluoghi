@@ -2,15 +2,21 @@ import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../db';
 import {
+  aggiornaCliente,
   aggiungiFoto,
   creaCartella,
+  creaCliente,
+  creaPreventivo,
   creaProgetto,
   duplicaProgetto,
   eliminaCartella,
+  eliminaCliente,
   eliminaProgetto,
   migraFotoLegacy,
+  prossimoNumeroPreventivo,
   salvaAnnotazioniFoto,
-  spostaCartella
+  spostaCartella,
+  totaliPreventivo
 } from '../repository';
 import type { Foto, Quota } from '../types';
 
@@ -54,7 +60,9 @@ beforeEach(async () => {
     db.progetti.clear(),
     db.foto.clear(),
     db.annotazioni.clear(),
-    db.impostazioni.clear()
+    db.impostazioni.clear(),
+    db.clienti.clear(),
+    db.preventivi.clear()
   ]);
 });
 
@@ -186,5 +194,65 @@ describe('autosave annotazioni', () => {
     // redo / risalvataggio identico
     await salvaAnnotazioniFoto(f.id, [quotaPer(f.id, 'a')]);
     expect(await db.annotazioni.count()).toBe(1);
+  });
+});
+
+describe('anagrafica clienti (Fase 3)', () => {
+  it('rinominare un cliente aggiorna il nome denormalizzato sui progetti', async () => {
+    const cliente = await creaCliente({ nome: 'Rossi Mario' });
+    const p = await creaProgetto(
+      { nome: 'Bagno', cliente: cliente.nome, luogo: '', clienteId: cliente.id },
+      null
+    );
+    await aggiornaCliente(cliente.id, { nome: 'Rossi Mario SRL' });
+    expect((await db.progetti.get(p.id))?.cliente).toBe('Rossi Mario SRL');
+  });
+
+  it('eliminare un cliente scollega progetti e preventivi senza eliminarli', async () => {
+    const cliente = await creaCliente({ nome: 'Bianchi' });
+    const p = await creaProgetto(
+      { nome: 'Tetto', cliente: 'Bianchi', luogo: '', clienteId: cliente.id },
+      null
+    );
+    const prev = await creaPreventivo(p.id, cliente.id);
+    await eliminaCliente(cliente.id);
+    expect(await db.clienti.count()).toBe(0);
+    expect((await db.progetti.get(p.id))?.clienteId).toBeNull();
+    expect((await db.preventivi.get(prev.id))?.clienteId).toBeNull();
+    expect((await db.progetti.get(p.id))?.cliente).toBe('Bianchi'); // il nome resta
+  });
+});
+
+describe('preventivi (Fase 3)', () => {
+  it('numerazione progressiva per anno', async () => {
+    const anno = new Date().getFullYear();
+    expect(await prossimoNumeroPreventivo()).toBe(`${anno}-001`);
+    await creaPreventivo(null, null);
+    expect(await prossimoNumeroPreventivo()).toBe(`${anno}-002`);
+  });
+
+  it('eliminare un progetto scollega i preventivi senza eliminarli', async () => {
+    const p = await creaProgetto({ nome: 'Casa', cliente: '', luogo: '' }, null);
+    const prev = await creaPreventivo(p.id, null);
+    await eliminaProgetto(p.id);
+    const dopo = await db.preventivi.get(prev.id);
+    expect(dopo).toBeDefined();
+    expect(dopo?.progettoId).toBeNull();
+  });
+
+  it('totali: imponibile, sconto, IVA e totale', () => {
+    const totali = totaliPreventivo({
+      voci: [
+        { id: 'a', descrizione: 'Posa', quantita: 10, unita: 'm²', prezzoUnitario: 25 },
+        { id: 'b', descrizione: 'Materiale', quantita: 1, unita: 'corpo', prezzoUnitario: 250 }
+      ],
+      scontoPercento: 10,
+      ivaPercento: 22
+    });
+    expect(totali.imponibile).toBe(500);
+    expect(totali.sconto).toBe(50);
+    expect(totali.scontato).toBe(450);
+    expect(totali.iva).toBeCloseTo(99);
+    expect(totali.totale).toBeCloseTo(549);
   });
 });

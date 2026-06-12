@@ -2,6 +2,8 @@ import { useRotta } from './router';
 import { Archivio } from './pages/Archivio';
 import { ProgettoPage } from './pages/ProgettoPage';
 import { ImpostazioniPage } from './pages/ImpostazioniPage';
+import { ClientiPage, ClientePage } from './pages/ClientiPage';
+import { PreventivoPage } from './pages/PreventivoPage';
 import { EditorFoto } from './editor/EditorFoto';
 import { Toasts } from './components/comuni';
 
@@ -12,6 +14,9 @@ export function App() {
       {rotta.nome === 'archivio' && <Archivio cartellaId={rotta.cartellaId} key={rotta.cartellaId ?? 'radice'} />}
       {rotta.nome === 'progetto' && <ProgettoPage id={rotta.id} key={rotta.id} />}
       {rotta.nome === 'foto' && <EditorFoto fotoId={rotta.id} key={rotta.id} />}
+      {rotta.nome === 'clienti' && <ClientiPage />}
+      {rotta.nome === 'cliente' && <ClientePage id={rotta.id} key={rotta.id} />}
+      {rotta.nome === 'preventivo' && <PreventivoPage id={rotta.id} key={rotta.id} />}
       {rotta.nome === 'impostazioni' && <ImpostazioniPage />}
       <Toasts />
     </>

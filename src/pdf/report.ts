@@ -1,5 +1,4 @@
-import pdfMake from 'pdfmake/build/pdfmake';
-import pdfFonts from 'pdfmake/build/vfs_fonts';
+import { pdfMake } from './engine';
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { db } from '../db/db';
 import type { Annotazione, Foto, Progetto, Quota, StatoMisura } from '../db/types';
@@ -8,12 +7,6 @@ import { renderFotoAnnotata } from '../render/renderAnnotata';
 import { caricaImmagine, fotoIllegibile } from '../utils/image';
 import { calcolaCatene, sommaCatenaInUnita } from '../geometry/catene';
 import { formattaData, formattaDataOra, formattaMisura, formattaNumero } from '../utils/format';
-
-// vfs_fonts esporta direttamente la mappa dei font; alcune versioni
-// la annidano in pdfMake.vfs: si gestiscono entrambe le forme.
-const vfs = (pdfFonts as unknown as { pdfMake?: { vfs?: Record<string, string> } }).pdfMake?.vfs ??
-  (pdfFonts as unknown as Record<string, string>);
-pdfMake.vfs = vfs;
 
 const GRIGIO = '#555555';
 const BLU = '#1a4f8b';

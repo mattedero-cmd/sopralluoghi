@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import type { Foto, Progetto, StatoProgetto } from '../db/types';
-import { aggiungiFoto, aggiornaProgetto, eliminaFoto } from '../db/repository';
+import { aggiungiFoto, aggiornaProgetto, creaPreventivo, eliminaFoto } from '../db/repository';
+import { SelettoreCliente } from './ClientiPage';
+import { EtichettaStatoPreventivo } from './PreventivoPage';
 import { fotoIllegibile, importaFoto } from '../utils/image';
 import { naviga } from '../router';
 import {
@@ -24,6 +26,13 @@ export function ProgettoPage({ id }: { id: string }) {
     async () => {
       const lista = await db.foto.where('progettoId').equals(id).toArray();
       return lista.sort((a, b) => a.ordine - b.ordine);
+    },
+    [id]
+  );
+  const preventivi = useLiveQuery(
+    async () => {
+      const lista = await db.preventivi.where('progettoId').equals(id).toArray();
+      return lista.sort((a, b) => b.data - a.data);
     },
     [id]
   );
@@ -206,6 +215,7 @@ export function ProgettoPage({ id }: { id: string }) {
           onChange={(e) => void acquisisci(e.target.files)}
         />
 
+        <h2>Foto ({foto.length})</h2>
         {foto.length === 0 ? (
           <div className="vuoto">
             <div className="grande">📷</div>
@@ -238,6 +248,29 @@ export function ProgettoPage({ id }: { id: string }) {
             ))}
           </div>
         )}
+
+        <h2>Preventivi ({preventivi?.length ?? 0})</h2>
+        {(preventivi ?? []).map((p) => (
+          <button key={p.id} className="scheda" onClick={() => naviga({ nome: 'preventivo', id: p.id })}>
+            <span style={{ fontSize: 24 }}>💶</span>
+            <span className="corpo">
+              <div className="titolo">Preventivo {p.numero}</div>
+              <div className="sotto">{p.voci.length} voci</div>
+            </span>
+            <EtichettaStatoPreventivo stato={p.stato} />
+          </button>
+        ))}
+        <div className="riga-pulsanti">
+          <button
+            className="btn"
+            onClick={async () => {
+              const p = await creaPreventivo(progetto.id, progetto.clienteId ?? null);
+              naviga({ nome: 'preventivo', id: p.id });
+            }}
+          >
+            ＋ Nuovo preventivo
+          </button>
+        </div>
       </main>
 
       {modificaDati && <FormDatiProgetto progetto={progetto} onChiudi={() => setModificaDati(false)} />}
@@ -272,8 +305,10 @@ function SelettoreStato({ progetto }: { progetto: Progetto }) {
 function FormDatiProgetto({ progetto, onChiudi }: { progetto: Progetto; onChiudi: () => void }) {
   const [nome, setNome] = useState(progetto.nome);
   const [cliente, setCliente] = useState(progetto.cliente);
+  const [clienteId, setClienteId] = useState<string | null>(progetto.clienteId ?? null);
   const [luogo, setLuogo] = useState(progetto.luogo);
   const [note, setNote] = useState(progetto.note);
+  const [scegliCliente, setScegliCliente] = useState(false);
 
   // Autosave alla chiusura: nessun dato perso anche senza "Salva" esplicito
   const salva = async () => {
@@ -281,7 +316,7 @@ function FormDatiProgetto({ progetto, onChiudi }: { progetto: Progetto; onChiudi
       mostraToast('errore', 'Il nome del progetto non può essere vuoto.');
       return;
     }
-    await aggiornaProgetto(progetto.id, { nome: nome.trim(), cliente, luogo, note });
+    await aggiornaProgetto(progetto.id, { nome: nome.trim(), cliente, clienteId, luogo, note });
     onChiudi();
   };
 
@@ -292,9 +327,23 @@ function FormDatiProgetto({ progetto, onChiudi }: { progetto: Progetto; onChiudi
         <input value={nome} onChange={(e) => setNome(e.target.value)} />
       </div>
       <div className="campo">
-        <label>Cliente</label>
-        <input value={cliente} onChange={(e) => setCliente(e.target.value)} />
+        <label>Cliente {clienteId ? '(collegato all’anagrafica)' : ''}</label>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input value={cliente} onChange={(e) => setCliente(e.target.value)} style={{ flex: 1 }} />
+          <button className="btn" onClick={() => setScegliCliente(true)} type="button">
+            👥
+          </button>
+        </div>
       </div>
+      {scegliCliente && (
+        <SelettoreCliente
+          onChiudi={() => setScegliCliente(false)}
+          onScegli={(c) => {
+            setClienteId(c?.id ?? null);
+            if (c) setCliente(c.nome);
+          }}
+        />
+      )}
       <div className="campo">
         <label>Luogo / indirizzo</label>
         <input value={luogo} onChange={(e) => setLuogo(e.target.value)} />

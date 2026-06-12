@@ -1,5 +1,13 @@
 import Dexie, { type Table } from 'dexie';
-import type { Annotazione, Cartella, Foto, Impostazioni, Progetto } from './types';
+import type {
+  Annotazione,
+  Cartella,
+  Cliente,
+  Foto,
+  Impostazioni,
+  Preventivo,
+  Progetto
+} from './types';
 
 /**
  * IndexedDB è l'unica fonte di verità dell'applicazione.
@@ -12,6 +20,8 @@ export class SopralluoghiDB extends Dexie {
   foto!: Table<Foto, string>;
   annotazioni!: Table<Annotazione, string>;
   impostazioni!: Table<Impostazioni, string>;
+  clienti!: Table<Cliente, string>;
+  preventivi!: Table<Preventivo, string>;
 
   constructor() {
     super('sopralluoghi');
@@ -21,6 +31,16 @@ export class SopralluoghiDB extends Dexie {
       foto: 'id, progettoId',
       annotazioni: 'id, fotoId',
       impostazioni: 'id'
+    });
+    // Fase 3: anagrafica clienti e preventivi
+    this.version(2).stores({
+      cartelle: 'id, parentId',
+      progetti: 'id, cartellaId, clienteId, modificatoIl',
+      foto: 'id, progettoId',
+      annotazioni: 'id, fotoId',
+      impostazioni: 'id',
+      clienti: 'id, nome',
+      preventivi: 'id, progettoId, clienteId, numero'
     });
   }
 }

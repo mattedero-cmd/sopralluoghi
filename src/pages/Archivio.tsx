@@ -127,6 +127,9 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
       <header className="barra">
         <h1>{corrente ? corrente.nome : 'Sopralluoghi'}</h1>
         <StatoApp />
+        <button className="btn icona" aria-label="Clienti" onClick={() => naviga({ nome: 'clienti' })}>
+          👥
+        </button>
         <button
           className="btn icona"
           aria-label="Impostazioni"
@@ -423,29 +426,65 @@ export function SelettoreCartella({
   );
 }
 
-/** Ricerca testuale su progetti, note e didascalie/note dato delle foto */
+/** Ricerca testuale su progetti, foto, clienti e preventivi */
 function RisultatiRicerca({ query }: { query: string }) {
   const risultati = useLiveQuery(async () => {
     const q = query.toLowerCase();
-    const [progetti, foto] = await Promise.all([db.progetti.toArray(), db.foto.toArray()]);
+    const [progetti, foto, clienti, preventivi] = await Promise.all([
+      db.progetti.toArray(),
+      db.foto.toArray(),
+      db.clienti.toArray(),
+      db.preventivi.toArray()
+    ]);
     const progettiTrovati = progetti.filter((p) =>
       [p.nome, p.cliente, p.luogo, p.note].some((t) => t.toLowerCase().includes(q))
     );
     const fotoTrovate = foto.filter((f) =>
       [f.didascalia, f.noteDato].some((t) => t.toLowerCase().includes(q))
     );
+    const clientiTrovati = clienti.filter((c) =>
+      [c.nome, c.telefono, c.email, c.indirizzo, c.note].some((t) => t.toLowerCase().includes(q))
+    );
+    const preventiviTrovati = preventivi.filter(
+      (p) =>
+        p.numero.toLowerCase().includes(q) ||
+        p.note.toLowerCase().includes(q) ||
+        p.voci.some((v) => v.descrizione.toLowerCase().includes(q))
+    );
     const nomiProgetto = new Map(progetti.map((p) => [p.id, p.nome]));
-    return { progettiTrovati, fotoTrovate, nomiProgetto };
+    return { progettiTrovati, fotoTrovate, clientiTrovati, preventiviTrovati, nomiProgetto };
   }, [query]);
 
   if (!risultati) return null;
-  const { progettiTrovati, fotoTrovate, nomiProgetto } = risultati;
+  const { progettiTrovati, fotoTrovate, clientiTrovati, preventiviTrovati, nomiProgetto } =
+    risultati;
 
   return (
     <>
-      {progettiTrovati.length === 0 && fotoTrovate.length === 0 && (
-        <div className="vuoto">Nessun risultato per “{query}”.</div>
-      )}
+      {progettiTrovati.length === 0 &&
+        fotoTrovate.length === 0 &&
+        clientiTrovati.length === 0 &&
+        preventiviTrovati.length === 0 && (
+          <div className="vuoto">Nessun risultato per “{query}”.</div>
+        )}
+      {clientiTrovati.map((c) => (
+        <button key={c.id} className="scheda" onClick={() => naviga({ nome: 'cliente', id: c.id })}>
+          <span style={{ fontSize: 26 }}>👤</span>
+          <span className="corpo">
+            <div className="titolo">{c.nome}</div>
+            <div className="sotto">{[c.telefono, c.email].filter(Boolean).join(' · ')}</div>
+          </span>
+        </button>
+      ))}
+      {preventiviTrovati.map((p) => (
+        <button key={p.id} className="scheda" onClick={() => naviga({ nome: 'preventivo', id: p.id })}>
+          <span style={{ fontSize: 26 }}>💶</span>
+          <span className="corpo">
+            <div className="titolo">Preventivo {p.numero}</div>
+            <div className="sotto">{formattaData(p.data)} · {p.voci.length} voci</div>
+          </span>
+        </button>
+      ))}
       {progettiTrovati.map((p) => (
         <button key={p.id} className="scheda" onClick={() => naviga({ nome: 'progetto', id: p.id })}>
           <span style={{ fontSize: 26 }}>📋</span>

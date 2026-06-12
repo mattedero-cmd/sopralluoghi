@@ -3,9 +3,11 @@ import {
   IMPOSTAZIONI_DEFAULT,
   type Annotazione,
   type Cartella,
+  type Cliente,
   type Foto,
   type ID,
   type Impostazioni,
+  type Preventivo,
   type Progetto
 } from './types';
 import { nuovoId } from '../utils/id';
@@ -88,15 +90,20 @@ async function idCartelleDiscendenti(id: ID): Promise<ID[]> {
  */
 export async function eliminaCartella(id: ID): Promise<void> {
   await scrivi('eliminare la cartella', () =>
-    db.transaction('rw', [db.cartelle, db.progetti, db.foto, db.annotazioni], async () => {
-      const cartelle = await idCartelleDiscendenti(id);
-      const progetti = await db.progetti.where('cartellaId').anyOf(cartelle).primaryKeys();
-      const foto = await db.foto.where('progettoId').anyOf(progetti).primaryKeys();
-      await db.annotazioni.where('fotoId').anyOf(foto).delete();
-      await db.foto.bulkDelete(foto);
-      await db.progetti.bulkDelete(progetti);
-      await db.cartelle.bulkDelete(cartelle);
-    })
+    db.transaction(
+      'rw',
+      [db.cartelle, db.progetti, db.foto, db.annotazioni, db.preventivi],
+      async () => {
+        const cartelle = await idCartelleDiscendenti(id);
+        const progetti = await db.progetti.where('cartellaId').anyOf(cartelle).primaryKeys();
+        const foto = await db.foto.where('progettoId').anyOf(progetti).primaryKeys();
+        await db.annotazioni.where('fotoId').anyOf(foto).delete();
+        await db.foto.bulkDelete(foto);
+        await db.preventivi.where('progettoId').anyOf(progetti).modify({ progettoId: null });
+        await db.progetti.bulkDelete(progetti);
+        await db.cartelle.bulkDelete(cartelle);
+      }
+    )
   );
 }
 
@@ -113,7 +120,8 @@ export async function contenutoCartella(id: ID): Promise<{ progetti: number; fot
 // ---------------------------------------------------------------------------
 
 export async function creaProgetto(
-  dati: Pick<Progetto, 'nome' | 'cliente' | 'luogo'> & Partial<Pick<Progetto, 'note' | 'stato'>>,
+  dati: Pick<Progetto, 'nome' | 'cliente' | 'luogo'> &
+    Partial<Pick<Progetto, 'note' | 'stato' | 'clienteId'>>,
   cartellaId: ID | null
 ): Promise<Progetto> {
   const p: Progetto = {
@@ -121,6 +129,7 @@ export async function creaProgetto(
     cartellaId,
     nome: dati.nome.trim(),
     cliente: dati.cliente.trim(),
+    clienteId: dati.clienteId ?? null,
     luogo: dati.luogo.trim(),
     stato: dati.stato ?? 'bozza',
     note: dati.note ?? '',
@@ -146,10 +155,12 @@ export async function spostaProgetto(id: ID, cartellaId: ID | null): Promise<voi
 
 export async function eliminaProgetto(id: ID): Promise<void> {
   await scrivi('eliminare il progetto', () =>
-    db.transaction('rw', [db.progetti, db.foto, db.annotazioni], async () => {
+    db.transaction('rw', [db.progetti, db.foto, db.annotazioni, db.preventivi], async () => {
       const foto = await db.foto.where('progettoId').equals(id).primaryKeys();
       await db.annotazioni.where('fotoId').anyOf(foto).delete();
       await db.foto.bulkDelete(foto);
+      // i preventivi sono documenti commerciali: si scollegano, non si eliminano
+      await db.preventivi.where('progettoId').equals(id).modify({ progettoId: null });
       await db.progetti.delete(id);
     })
   );
@@ -264,6 +275,130 @@ export async function salvaAnnotazioniFoto(fotoId: ID, annotazioni: Annotazione[
 
 export async function eliminaAnnotazione(id: ID): Promise<void> {
   await scrivi("eliminare l'annotazione", () => db.annotazioni.delete(id));
+}
+
+// ---------------------------------------------------------------------------
+// Anagrafica clienti (Fase 3)
+// ---------------------------------------------------------------------------
+
+export async function creaCliente(
+  dati: Partial<Omit<Cliente, 'id' | 'creatoIl' | 'modificatoIl'>> & Pick<Cliente, 'nome'>
+): Promise<Cliente> {
+  const c: Cliente = {
+    id: nuovoId(),
+    nome: dati.nome.trim(),
+    telefono: dati.telefono ?? '',
+    email: dati.email ?? '',
+    indirizzo: dati.indirizzo ?? '',
+    note: dati.note ?? '',
+    creatoIl: ora(),
+    modificatoIl: ora()
+  };
+  await scrivi('creare il cliente', () => db.clienti.add(c));
+  return c;
+}
+
+export async function aggiornaCliente(
+  id: ID,
+  modifiche: Partial<Omit<Cliente, 'id' | 'creatoIl'>>
+): Promise<void> {
+  await scrivi('salvare il cliente', () =>
+    db.transaction('rw', [db.clienti, db.progetti], async () => {
+      await db.clienti.update(id, { ...modifiche, modificatoIl: ora() });
+      // il nome denormalizzato sui progetti collegati resta allineato
+      if (modifiche.nome !== undefined) {
+        await db.progetti
+          .where('clienteId')
+          .equals(id)
+          .modify({ cliente: modifiche.nome.trim(), modificatoIl: ora() });
+      }
+    })
+  );
+}
+
+/**
+ * Eliminazione cliente: i progetti e i preventivi collegati NON vengono
+ * eliminati, solo scollegati (il nome resta come testo sui progetti).
+ */
+export async function eliminaCliente(id: ID): Promise<void> {
+  await scrivi('eliminare il cliente', () =>
+    db.transaction('rw', [db.clienti, db.progetti, db.preventivi], async () => {
+      await db.progetti.where('clienteId').equals(id).modify({ clienteId: null });
+      await db.preventivi.where('clienteId').equals(id).modify({ clienteId: null });
+      await db.clienti.delete(id);
+    })
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Preventivi (Fase 3)
+// ---------------------------------------------------------------------------
+
+/** Numero progressivo per anno: "2026-001", "2026-002", … */
+export async function prossimoNumeroPreventivo(): Promise<string> {
+  const anno = new Date().getFullYear();
+  const tutti = await db.preventivi.toArray();
+  const prefisso = `${anno}-`;
+  let max = 0;
+  for (const p of tutti) {
+    if (p.numero.startsWith(prefisso)) {
+      const n = Number(p.numero.slice(prefisso.length));
+      if (Number.isFinite(n)) max = Math.max(max, n);
+    }
+  }
+  return `${prefisso}${String(max + 1).padStart(3, '0')}`;
+}
+
+export async function creaPreventivo(
+  progettoId: ID | null,
+  clienteId: ID | null
+): Promise<Preventivo> {
+  const numero = await prossimoNumeroPreventivo();
+  const p: Preventivo = {
+    id: nuovoId(),
+    progettoId,
+    clienteId,
+    numero,
+    data: ora(),
+    stato: 'bozza',
+    voci: [],
+    scontoPercento: 0,
+    ivaPercento: 22,
+    note: '',
+    creatoIl: ora(),
+    modificatoIl: ora()
+  };
+  await scrivi('creare il preventivo', () => db.preventivi.add(p));
+  return p;
+}
+
+export async function aggiornaPreventivo(
+  id: ID,
+  modifiche: Partial<Omit<Preventivo, 'id' | 'creatoIl'>>
+): Promise<void> {
+  await scrivi('salvare il preventivo', () =>
+    db.preventivi.update(id, { ...modifiche, modificatoIl: ora() })
+  );
+}
+
+export async function eliminaPreventivo(id: ID): Promise<void> {
+  await scrivi('eliminare il preventivo', () => db.preventivi.delete(id));
+}
+
+export interface TotaliPreventivo {
+  imponibile: number;
+  sconto: number;
+  scontato: number;
+  iva: number;
+  totale: number;
+}
+
+export function totaliPreventivo(p: Pick<Preventivo, 'voci' | 'scontoPercento' | 'ivaPercento'>): TotaliPreventivo {
+  const imponibile = p.voci.reduce((s, v) => s + v.quantita * v.prezzoUnitario, 0);
+  const sconto = (imponibile * (p.scontoPercento || 0)) / 100;
+  const scontato = imponibile - sconto;
+  const iva = (scontato * (p.ivaPercento || 0)) / 100;
+  return { imponibile, sconto, scontato, iva, totale: scontato + iva };
 }
 
 // ---------------------------------------------------------------------------

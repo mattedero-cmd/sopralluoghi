@@ -24,10 +24,56 @@ export interface Progetto {
   /** null = radice dell'archivio */
   cartellaId: ID | null;
   nome: string;
+  /** nome cliente denormalizzato (mostrato ovunque, anche senza anagrafica) */
   cliente: string;
+  /** collegamento all'anagrafica clienti, opzionale */
+  clienteId?: ID | null;
   luogo: string;
   stato: StatoProgetto;
   /** Note generali del progetto, riportate nel PDF */
+  note: string;
+  creatoIl: number;
+  modificatoIl: number;
+}
+
+// ---------------------------------------------------------------------------
+// Anagrafica clienti e preventivi (Fase 3)
+// ---------------------------------------------------------------------------
+
+export interface Cliente {
+  id: ID;
+  nome: string;
+  telefono: string;
+  email: string;
+  indirizzo: string;
+  note: string;
+  creatoIl: number;
+  modificatoIl: number;
+}
+
+export type StatoPreventivo = 'bozza' | 'inviato' | 'accettato' | 'rifiutato';
+
+export interface VocePreventivo {
+  id: ID;
+  descrizione: string;
+  quantita: number;
+  /** unità libera: m, m², cm, ore, corpo… */
+  unita: string;
+  prezzoUnitario: number;
+}
+
+export interface Preventivo {
+  id: ID;
+  /** sopralluogo di riferimento; null se il progetto è stato eliminato */
+  progettoId: ID | null;
+  clienteId: ID | null;
+  /** numero documento, modificabile (es. "2026-003") */
+  numero: string;
+  data: number;
+  stato: StatoPreventivo;
+  voci: VocePreventivo[];
+  scontoPercento: number;
+  ivaPercento: number;
   note: string;
   creatoIl: number;
   modificatoIl: number;
@@ -246,6 +292,21 @@ export interface Impostazioni {
   /** Moltiplicatore della dimensione di quote e testi (leggibilità) */
   fattoreDimensione: number;
   stileDefault: Stile;
+  /** Configurazione del backup cloud (Supabase), opzionale */
+  cloud?: ConfigCloud | null;
+}
+
+export interface ConfigCloud {
+  /** URL del progetto Supabase, es. https://xyz.supabase.co */
+  url: string;
+  /** chiave anon (public) del progetto */
+  anonKey: string;
+  email: string;
+  /** token di sessione persistito dopo l'accesso */
+  refreshToken: string | null;
+  userId: string | null;
+  /** ultimo backup riuscito (timestamp), per lo stato sempre visibile */
+  ultimoBackup: number | null;
 }
 
 export const IMPOSTAZIONI_DEFAULT: Impostazioni = {

@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Impostazioni, Unita } from '../db/types';
+import type { ConfigCloud, Impostazioni, Unita } from '../db/types';
+import {
+  accediCloud,
+  backupSuCloud,
+  disconnettiCloud,
+  elencaBackupCloud,
+  ripristinaDaCloud,
+  type FileCloud
+} from '../cloud/supabaseBackup';
+import { formattaDataOra } from '../utils/format';
 import {
   leggiImpostazioni,
   salvaImpostazioni,
@@ -173,6 +182,9 @@ export function ImpostazioniPage() {
         />
         {operazione && <p style={{ color: 'var(--testo-2)', marginTop: 10 }}>{operazione}</p>}
 
+        <h2>Backup cloud (Supabase)</h2>
+        <SezioneCloud imp={imp} aggiorna={aggiorna} ricaricaImpostazioni={() => void leggiImpostazioni().then(setImp)} />
+
         <h2>Spazio di archiviazione</h2>
         {storage ? (
           <p style={{ color: storage.percentuale > 80 ? 'var(--pericolo)' : 'var(--testo-2)' }}>
@@ -187,13 +199,200 @@ export function ImpostazioniPage() {
         )}
 
         <p style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 30 }}>
-          Sopralluoghi — applicazione offline-first. I dati restano sul dispositivo; il file di
-          backup è l'unica copia esterna.
+          Sopralluoghi — applicazione offline-first. I dati restano sul dispositivo; il backup su
+          file e il backup cloud sono le copie di sicurezza esterne.
           <br />
-          Versione 0.2.0 — build {__BUILD__} (UTC). Se hai appena aggiornato e la data non
+          Versione 0.3.0 — build {__BUILD__} (UTC). Se hai appena aggiornato e la data non
           corrisponde, chiudi e riapri l'app con la rete attiva.
         </p>
       </main>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Backup cloud: stato sempre visibile, accesso, backup e ripristino.
+// Offline-first: il cloud è solo una copia di sicurezza, mai un requisito.
+// ---------------------------------------------------------------------------
+
+function SezioneCloud({
+  imp,
+  aggiorna,
+  ricaricaImpostazioni
+}: {
+  imp: Impostazioni;
+  aggiorna: (m: Partial<Impostazioni>) => void;
+  ricaricaImpostazioni: () => void;
+}) {
+  const cloud = imp.cloud ?? null;
+  const [url, setUrl] = useState(cloud?.url ?? '');
+  const [anonKey, setAnonKey] = useState(cloud?.anonKey ?? '');
+  const [email, setEmail] = useState(cloud?.email ?? '');
+  const [password, setPassword] = useState('');
+  const [operazione, setOperazione] = useState<string | null>(null);
+  const [lista, setLista] = useState<FileCloud[] | null>(null);
+
+  const connesso = Boolean(cloud?.refreshToken);
+
+  const salvaConfig = () => {
+    const nuova: ConfigCloud = {
+      url: url.trim(),
+      anonKey: anonKey.trim(),
+      email: email.trim(),
+      refreshToken: cloud?.refreshToken ?? null,
+      userId: cloud?.userId ?? null,
+      ultimoBackup: cloud?.ultimoBackup ?? null
+    };
+    aggiorna({ cloud: nuova });
+  };
+
+  const accedi = async () => {
+    salvaConfig();
+    setOperazione('Accesso al cloud…');
+    try {
+      await accediCloud(email.trim(), password);
+      setPassword('');
+      mostraToast('successo', 'Accesso al cloud riuscito.');
+      ricaricaImpostazioni();
+    } catch (e) {
+      mostraToast('errore', e instanceof Error ? e.message : 'Accesso non riuscito.');
+    } finally {
+      setOperazione(null);
+    }
+  };
+
+  const backupCloud = async () => {
+    setOperazione('Backup sul cloud…');
+    try {
+      const nome = await backupSuCloud(setOperazione);
+      mostraToast('successo', `Backup caricato sul cloud: ${nome}`);
+      ricaricaImpostazioni();
+      setLista(null);
+    } catch (e) {
+      mostraToast('errore', e instanceof Error ? e.message : 'Backup cloud non riuscito.');
+    } finally {
+      setOperazione(null);
+    }
+  };
+
+  const mostraElenco = async () => {
+    setOperazione('Lettura elenco backup…');
+    try {
+      setLista(await elencaBackupCloud());
+    } catch (e) {
+      mostraToast('errore', e instanceof Error ? e.message : 'Elenco non disponibile.');
+    } finally {
+      setOperazione(null);
+    }
+  };
+
+  const ripristina = async (nome: string) => {
+    if (
+      !window.confirm(
+        `Ripristinare "${nome}" dal cloud? Il contenuto verrà unito all'archivio attuale (gli elementi con lo stesso id vengono sovrascritti).`
+      )
+    ) {
+      return;
+    }
+    setOperazione('Ripristino dal cloud…');
+    try {
+      const esito = await ripristinaDaCloud(nome, setOperazione);
+      mostraToast(
+        'successo',
+        `Ripristino completato: ${esito.progetti} progetti, ${esito.foto} foto.`
+      );
+    } catch (e) {
+      mostraToast('errore', e instanceof Error ? e.message : 'Ripristino non riuscito.');
+    } finally {
+      setOperazione(null);
+    }
+  };
+
+  return (
+    <>
+      <p style={{ color: 'var(--testo-2)' }}>
+        Copia di sicurezza unidirezionale (dispositivo → cloud) su un tuo progetto Supabase
+        gratuito. Setup una tantum: crea il progetto su supabase.com, un utente
+        (Authentication), un bucket privato chiamato «backup» con le policy per gli utenti
+        autenticati, poi incolla qui URL e chiave anon.
+      </p>
+      <div className="campo">
+        <label>URL del progetto (https://xxx.supabase.co)</label>
+        <input value={url} onChange={(e) => setUrl(e.target.value)} onBlur={salvaConfig} inputMode="url" />
+      </div>
+      <div className="campo">
+        <label>Chiave anon (public)</label>
+        <input value={anonKey} onChange={(e) => setAnonKey(e.target.value)} onBlur={salvaConfig} />
+      </div>
+      {!connesso ? (
+        <>
+          <div className="campo">
+            <label>Email</label>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          </div>
+          <div className="campo">
+            <label>Password</label>
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          </div>
+          <div className="riga-pulsanti">
+            <button
+              className="btn primario"
+              disabled={operazione !== null || !url.trim() || !anonKey.trim() || !email.trim() || !password}
+              onClick={() => void accedi()}
+            >
+              🔐 Accedi al cloud
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p style={{ fontWeight: 700 }}>
+            ✅ Connesso come {cloud?.email}.{' '}
+            <span style={{ color: 'var(--testo-2)', fontWeight: 400 }}>
+              {cloud?.ultimoBackup
+                ? `Ultimo backup cloud: ${formattaDataOra(cloud.ultimoBackup)}.`
+                : 'Nessun backup cloud ancora eseguito.'}
+            </span>
+          </p>
+          <div className="riga-pulsanti">
+            <button className="btn primario" disabled={operazione !== null} onClick={() => void backupCloud()}>
+              ☁️ Backup adesso
+            </button>
+            <button className="btn" disabled={operazione !== null} onClick={() => void mostraElenco()}>
+              📋 Elenco backup
+            </button>
+            <button
+              className="btn"
+              disabled={operazione !== null}
+              onClick={() => {
+                void disconnettiCloud().then(ricaricaImpostazioni);
+              }}
+            >
+              Disconnetti
+            </button>
+          </div>
+          {lista && (
+            <div style={{ marginTop: 12 }}>
+              {lista.length === 0 && <p style={{ color: 'var(--testo-2)' }}>Nessun backup sul cloud.</p>}
+              {lista.map((f) => (
+                <div key={f.name} className="scheda" style={{ cursor: 'default' }}>
+                  <span className="corpo">
+                    <div className="titolo" style={{ fontSize: 15 }}>{f.name}</div>
+                    <div className="sotto">
+                      {f.size !== null ? formattaByte(f.size) : ''}{' '}
+                      {f.updatedAt ? `· ${formattaDataOra(new Date(f.updatedAt).getTime())}` : ''}
+                    </div>
+                  </span>
+                  <button className="btn" disabled={operazione !== null} onClick={() => void ripristina(f.name)}>
+                    Ripristina
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+      {operazione && <p style={{ color: 'var(--testo-2)' }}>{operazione}</p>}
+    </>
   );
 }

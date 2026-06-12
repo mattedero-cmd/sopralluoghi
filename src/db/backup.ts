@@ -1,8 +1,16 @@
 import JSZip from 'jszip';
 import { db } from './db';
-import type { Annotazione, Cartella, Foto, Impostazioni, Progetto } from './types';
+import type {
+  Annotazione,
+  Cartella,
+  Cliente,
+  Foto,
+  Impostazioni,
+  Preventivo,
+  Progetto
+} from './types';
 
-const VERSIONE_BACKUP = 1;
+const VERSIONE_BACKUP = 2;
 
 interface ManifestBackup {
   app: 'sopralluoghi';
@@ -14,6 +22,9 @@ interface ManifestBackup {
   foto: Array<Omit<Foto, 'origine' | 'miniatura'>>;
   annotazioni: Annotazione[];
   impostazioni: Impostazioni | null;
+  /** dalla versione 2 */
+  clienti?: Cliente[];
+  preventivi?: Preventivo[];
 }
 
 /**
@@ -22,13 +33,16 @@ interface ManifestBackup {
  */
 export async function esportaBackup(avanzamento?: (msg: string) => void): Promise<Blob> {
   avanzamento?.('Lettura archivio…');
-  const [cartelle, progetti, foto, annotazioni, impostazioni] = await Promise.all([
-    db.cartelle.toArray(),
-    db.progetti.toArray(),
-    db.foto.toArray(),
-    db.annotazioni.toArray(),
-    db.impostazioni.get('app')
-  ]);
+  const [cartelle, progetti, foto, annotazioni, impostazioni, clienti, preventivi] =
+    await Promise.all([
+      db.cartelle.toArray(),
+      db.progetti.toArray(),
+      db.foto.toArray(),
+      db.annotazioni.toArray(),
+      db.impostazioni.get('app'),
+      db.clienti.toArray(),
+      db.preventivi.toArray()
+    ]);
 
   const manifest: ManifestBackup = {
     app: 'sopralluoghi',
@@ -38,7 +52,9 @@ export async function esportaBackup(avanzamento?: (msg: string) => void): Promis
     progetti,
     foto: foto.map(({ origine: _o, miniatura: _m, ...resto }) => resto),
     annotazioni,
-    impostazioni: impostazioni ?? null
+    impostazioni: impostazioni ?? null,
+    clienti,
+    preventivi
   };
 
   const zip = new JSZip();
@@ -115,13 +131,16 @@ export async function importaBackup(
   avanzamento?.('Scrittura nel database…');
   await db.transaction(
     'rw',
-    [db.cartelle, db.progetti, db.foto, db.annotazioni, db.impostazioni],
+    [db.cartelle, db.progetti, db.foto, db.annotazioni, db.impostazioni, db.clienti, db.preventivi],
     async () => {
       await db.cartelle.bulkPut(manifest.cartelle);
       await db.progetti.bulkPut(manifest.progetti);
       await db.foto.bulkPut(fotoComplete);
       await db.annotazioni.bulkPut(manifest.annotazioni);
       if (manifest.impostazioni) await db.impostazioni.put(manifest.impostazioni);
+      // presenti dalla versione 2 del backup
+      if (manifest.clienti) await db.clienti.bulkPut(manifest.clienti);
+      if (manifest.preventivi) await db.preventivi.bulkPut(manifest.preventivi);
     }
   );
 

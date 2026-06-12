@@ -51,9 +51,27 @@ report PDF strutturati. Progettata per l'uso reale sul campo: **funziona al
 - ✅ **Layer**: mostra/nascondi separatamente quote, note e callout.
 - ✅ **Dettatura vocale** delle note dato in italiano (Web Speech API, it-IT).
 
-Fase 3 (cloud, clienti, preventivi) segue sul nucleo stabile. Restano per
-un'iterazione futura della Fase 2: metrologia 3D da punti di fuga e quote ad
-arco/baseline dedicate (le catene coprono già le quote in serie).
+## Stato — Fase 3 (cloud e gestione lavoro)
+
+- ✅ **Anagrafica clienti**: CRUD completo, ricerca, scheda cliente con
+  storico lavori (sopralluoghi e preventivi collegati). Eliminare un cliente
+  scollega i documenti senza eliminarli; rinominarlo aggiorna i progetti.
+- ✅ **Preventivi collegati ai sopralluoghi**: numerazione progressiva per
+  anno, voci con quantità/unità/prezzo, **importazione delle misure rilevate**
+  (quote con valore → voci), sconto e IVA, totali, stato
+  bozza/inviato/accettato/rifiutato, **PDF del preventivo** con intestazione
+  professionale e condivisione.
+- ✅ **Backup cloud offline-first** (Supabase via REST, senza SDK): copia
+  unidirezionale dispositivo→cloud del backup completo, elenco dei backup,
+  ripristino, stato dell'ultimo backup sempre visibile. Il cloud è solo una
+  copia di sicurezza: l'app non ne dipende mai. Setup una tantum nelle
+  Impostazioni (progetto Supabase gratuito + bucket privato "backup").
+- ✅ Ricerca globale estesa a clienti e preventivi; lente di ingrandimento
+  con mirino per il posizionamento di precisione al tocco.
+
+Restano per iterazioni future: metrologia 3D da punti di fuga, quote ad
+arco/baseline dedicate (le catene coprono già le quote in serie), sync cloud
+bidirezionale.
 
 ## Stack
 
