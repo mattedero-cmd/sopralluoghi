@@ -71,6 +71,8 @@ interface Props {
   onSeleziona: (id: string | null) => void;
   /** tocco con lo strumento autoquotatura */
   onAutoTocco: (p: Punto) => void;
+  /** evidenziatura con lo strumento autoquotatura (oggetto completo) */
+  onAutoTraccia: (punti: Punto[]) => void;
   onCommit: (annotazioni: Annotazione[]) => void;
   onNuovaQuota: (p1: Punto, p2: Punto, sottotipo: SottotipoQuota) => void;
   onNuovoRett: (rect: Rettangolo) => void;
@@ -156,6 +158,8 @@ export function StageEditor(p: Props) {
    * posizione guardando la lente.
    */
   const [puntoPendente, setPuntoPendente] = useState<Punto | null>(null);
+  /** tratto dell'evidenziatore (strumento auto): coordinate piatte */
+  const [tracciaAuto, setTracciaAuto] = useState<number[] | null>(null);
   const pinch = useRef<{ dist: number; centro: Punto } | null>(null);
   const disegnoAttivo = useRef(false);
 
@@ -164,6 +168,7 @@ export function StageEditor(p: Props) {
     setBozza(null);
     setPuntoPendente(null);
     setPuntoLente(null);
+    setTracciaAuto(null);
     disegnoAttivo.current = false;
   }, [p.strumento]);
 
@@ -291,6 +296,7 @@ export function StageEditor(p: Props) {
     if (bozza) setBozza(null);
     setPuntoPendente(null);
     setPuntoLente(null);
+    setTracciaAuto(null);
     disegnoAttivo.current = false;
     const rect = contenitore.current?.getBoundingClientRect();
     if (!rect) return;
@@ -370,10 +376,17 @@ export function StageEditor(p: Props) {
         break;
       }
       // strumenti a punto singolo: premi → aggiusta con la lente → rilascia
-      case 'testo':
+      case 'testo': {
+        setPuntoPendente(pos);
+        setPuntoLente(pos);
+        disegnoAttivo.current = true;
+        break;
+      }
+      // auto: tocco singolo oppure evidenziatura dell'oggetto completo
       case 'auto': {
         setPuntoPendente(pos);
         setPuntoLente(pos);
+        setTracciaAuto([pos.x, pos.y]);
         disegnoAttivo.current = true;
         break;
       }
@@ -395,6 +408,31 @@ export function StageEditor(p: Props) {
       return;
     }
     if (p.strumento === 'auto') {
+      // se il dito ha tracciato un segno esteso → evidenziatura
+      // dell'oggetto completo; altrimenti tocco singolo
+      const traccia = tracciaAuto;
+      setTracciaAuto(null);
+      if (traccia && traccia.length >= 4) {
+        let x1 = Infinity;
+        let x2 = -Infinity;
+        let y1 = Infinity;
+        let y2 = -Infinity;
+        for (let i = 0; i < traccia.length; i += 2) {
+          x1 = Math.min(x1, traccia[i]);
+          x2 = Math.max(x2, traccia[i]);
+          y1 = Math.min(y1, traccia[i + 1]);
+          y2 = Math.max(y2, traccia[i + 1]);
+        }
+        const estensione = Math.hypot(x2 - x1, y2 - y1);
+        if (estensione > 24 / vista.scala) {
+          const punti: Punto[] = [];
+          for (let i = 0; i < traccia.length; i += 2) {
+            punti.push({ x: traccia[i], y: traccia[i + 1] });
+          }
+          p.onAutoTraccia(punti);
+          return;
+        }
+      }
       p.onAutoTocco(punto);
       return;
     }
@@ -490,6 +528,9 @@ export function StageEditor(p: Props) {
       } else {
         const senzaSnap = p.strumento === 'testo' || p.strumento === 'auto';
         punto = senzaSnap ? pos : applicaSnap(pos);
+        if (p.strumento === 'auto') {
+          setTracciaAuto((t) => (t ? [...t, pos.x, pos.y] : t));
+        }
       }
       setPuntoPendente(punto);
       setPuntoLente(punto);
@@ -758,6 +799,16 @@ export function StageEditor(p: Props) {
               )}
             </>
           )}
+          {tracciaAuto && tracciaAuto.length >= 4 && (
+            <Line
+              points={tracciaAuto}
+              stroke="rgba(255, 214, 10, 0.45)"
+              strokeWidth={26 / vista.scala}
+              lineCap="round"
+              lineJoin="round"
+              listening={false}
+            />
+          )}
           {primoFissato && (
             <Circle
               x={primoFissato.x}
@@ -957,7 +1008,7 @@ function Lente({
 
 function testoSuggerimento(strumento: Strumento, bozza: Bozza): string | null {
   if (strumento === 'auto') {
-    return 'Tocca una figura netta (porta, finestra, piastrella…): le quote appaiono da sole';
+    return 'Tocca una figura netta, oppure evidenziala con un tratto per quotare l’oggetto completo';
   }
   if (strumentoDuePunti(strumento)) {
     return puntoFisso(bozza)

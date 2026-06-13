@@ -33,7 +33,7 @@ import {
 } from '../geometry/calibrazione';
 import { omografiaPiano } from '../geometry/omografia';
 import { lunghezzaPxQuota } from '../geometry/punti';
-import { RicercaBordi, rilevaFigura } from '../geometry/bordi';
+import { RicercaBordi, rilevaFigura, rilevaFiguraEvidenziata } from '../geometry/bordi';
 import { distanza } from '../geometry/punti';
 import { etichettaRettangolo } from '../geometry/primitive';
 import {
@@ -281,15 +281,13 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   // Autoquotatura: tocca una figura netta → quote proposte da accettare
   // ---------------------------------------------------------------------------
 
-  const autoTocco = (punto: Punto) => {
-    if (!fabbrica || !annotazioni || !foto) return;
-    const analisi = ottieniAnalisi();
-    const figura = analisi ? rilevaFigura(analisi, punto) : null;
+  const proponiFigura = (figura: ReturnType<typeof rilevaFigura>) => {
+    if (!fabbrica || !annotazioni) return;
     if (!figura) {
       setProposta(null);
       mostraToast(
         'info',
-        'Nessuna figura netta rilevata qui: tocca al centro di un elemento con bordi a contrasto, o usa le quote manuali.'
+        'Nessuna figura netta rilevata: tocca al centro di un elemento a contrasto, oppure evidenzialo con un tratto.'
       );
       return;
     }
@@ -297,6 +295,17 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     // figura, mostrato in blu finché non accettato
     const q = fabbrica.quotaRettangolo(figura.punti, annotazioni);
     setProposta({ ...q, stile: { ...q.stile, colore: '#2f81f7' } });
+  };
+
+  const autoTocco = (punto: Punto) => {
+    const analisi = ottieniAnalisi();
+    proponiFigura(analisi ? rilevaFigura(analisi, punto) : null);
+  };
+
+  /** evidenziatore: i bordi vengono cercati fuori dalla zona tracciata */
+  const autoTraccia = (punti: Punto[]) => {
+    const analisi = ottieniAnalisi();
+    proponiFigura(analisi ? rilevaFiguraEvidenziata(analisi, punti) : null);
   };
 
   const accettaProposta = () => {
@@ -499,6 +508,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         filtroVisibile={(a) => layerVisibili[categoriaAnnotazione(a)]}
         proposte={proposta ? [proposta] : []}
         onAutoTocco={autoTocco}
+        onAutoTraccia={autoTraccia}
         onSeleziona={setSelezioneId}
         onCommit={commitGeometria}
         onNuovaQuota={creaQuota}

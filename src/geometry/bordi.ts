@@ -85,7 +85,7 @@ export class RicercaBordi {
 }
 
 // ---------------------------------------------------------------------------
-// Autoquotatura: rilevamento della figura toccata
+// Autoquotatura: rilevamento della figura toccata o evidenziata
 // ---------------------------------------------------------------------------
 
 export interface FiguraRilevata {
@@ -99,104 +99,119 @@ interface RettaLato {
   b: number;
 }
 
-/**
- * Rileva la figura "netta" (porta, finestra, piastrella, pannello…)
- * che contiene il punto toccato. La forma NON è un rettangolo
- * ortogonale: ogni lato viene TRACCIATO seguendo il fronte di
- * contrasto (campioni lungo il bordo + fit ai minimi quadrati), così
- * il quadrilatero segue i bordi reali anche quando la prospettiva li
- * inclina. Restituisce null se non c'è una figura sufficientemente netta.
- */
-export function rilevaFigura(ricerca: RicercaBordi, p: Punto): FiguraRilevata | null {
+interface CampiAnalisi {
+  lum: Float32Array;
+  w: number;
+  h: number;
+  fattore: number;
+}
+
+const BANDA = 2; // media su 5 righe/colonne: robusto al rumore
+const SOGLIA_FORTE = 16; // salto di luminanza (0–255) che definisce un bordo
+
+function estraiCampi(ricerca: RicercaBordi): CampiAnalisi {
   // accesso ai campi privati della classe (stesso modulo)
-  const { lum, w, h, fattore } = ricerca as unknown as {
-    lum: Float32Array;
-    w: number;
-    h: number;
-    fattore: number;
-  };
-  const cx = Math.round(p.x * fattore);
-  const cy = Math.round(p.y * fattore);
-  if (cx < 2 || cy < 2 || cx > w - 3 || cy > h - 3) return null;
+  return ricerca as unknown as CampiAnalisi;
+}
 
-  const BANDA = 2; // mediamo su 5 righe/colonne: robusto al rumore
-  const SOGLIA_FORTE = 16; // salto di luminanza (0–255) che definisce un bordo
-  const MIN_DIST = 3;
-
-  /** profilo mediato lungo x alla riga cy (banda ±BANDA) */
-  const lungoX = (x: number): number => {
+/** profilo di luminanza lungo x alla riga cy, mediato su una banda */
+function profiloX(c: CampiAnalisi, cy: number) {
+  return (x: number): number => {
     let somma = 0;
     let n = 0;
     for (let dy = -BANDA; dy <= BANDA; dy++) {
       const y = cy + dy;
-      if (y >= 0 && y < h) {
-        somma += lum[y * w + x];
+      if (y >= 0 && y < c.h) {
+        somma += c.lum[y * c.w + x];
         n++;
       }
     }
     return somma / n;
   };
-  const lungoY = (y: number): number => {
+}
+
+function profiloY(c: CampiAnalisi, cx: number) {
+  return (y: number): number => {
     let somma = 0;
     let n = 0;
     for (let dx = -BANDA; dx <= BANDA; dx++) {
       const x = cx + dx;
-      if (x >= 0 && x < w) {
-        somma += lum[y * w + x];
+      if (x >= 0 && x < c.w) {
+        somma += c.lum[y * c.w + x];
         n++;
       }
     }
     return somma / n;
   };
+}
 
-  /**
-   * Scansione dal centro verso l'esterno: distanza del primo fronte
-   * di contrasto forte (massimo locale del gradiente sopra soglia).
-   */
-  const primoBordo = (
-    profilo: (t: number) => number,
-    da: number,
-    verso: 1 | -1,
-    limite: number
-  ): number | null => {
-    let migliore: number | null = null;
-    let miglioreGrad = 0;
-    for (let dist = MIN_DIST; ; dist++) {
-      const t = da + verso * dist;
-      if (t < 1 || t > limite - 2) break;
-      const grad = Math.abs(profilo(t + 1) - profilo(t - 1)) / 2;
-      const gradSucc =
-        t + verso >= 1 && t + verso <= limite - 2
-          ? Math.abs(profilo(t + verso + 1) - profilo(t + verso - 1)) / 2
-          : 0;
-      if (grad >= SOGLIA_FORTE && grad >= gradSucc) {
-        return dist; // primo fronte deciso: è il bordo della figura
-      }
-      if (grad > miglioreGrad) {
-        miglioreGrad = grad;
-        migliore = dist;
-      }
+/**
+ * Posizione (assoluta) del primo fronte di contrasto deciso scandendo
+ * da `da` nella direzione `verso`. null se non c'è un bordo netto.
+ */
+function primoFronte(
+  profilo: (t: number) => number,
+  da: number,
+  verso: 1 | -1,
+  limite: number,
+  minDist = 3
+): number | null {
+  let migliore: number | null = null;
+  let miglioreGrad = 0;
+  for (let dist = minDist; ; dist++) {
+    const t = da + verso * dist;
+    if (t < 1 || t > limite - 2) break;
+    const grad = Math.abs(profilo(t + 1) - profilo(t - 1)) / 2;
+    const tSucc = t + verso;
+    const gradSucc =
+      tSucc >= 1 && tSucc <= limite - 2 ? Math.abs(profilo(tSucc + 1) - profilo(tSucc - 1)) / 2 : 0;
+    if (grad >= SOGLIA_FORTE && grad >= gradSucc) {
+      return t; // primo fronte deciso: è il bordo della figura
     }
-    // nessun fronte deciso: si accetta il massimo se comunque marcato
-    return miglioreGrad >= SOGLIA_FORTE * 0.6 ? migliore : null;
-  };
+    if (grad > miglioreGrad) {
+      miglioreGrad = grad;
+      migliore = t;
+    }
+  }
+  // nessun fronte deciso: si accetta il massimo se comunque marcato
+  return miglioreGrad >= SOGLIA_FORTE * 0.6 ? migliore : null;
+}
 
-  const sinistra = primoBordo(lungoX, cx, -1, w);
-  const destra = primoBordo(lungoX, cx, 1, w);
-  const sopra = primoBordo(lungoY, cy, -1, h);
-  const sotto = primoBordo(lungoY, cy, 1, h);
-  if (sinistra === null || destra === null || sopra === null || sotto === null) return null;
+/** fronte più marcato in un intorno di `centro` (fallback per l'evidenziatore) */
+function fronteVicino(
+  profilo: (t: number) => number,
+  centro: number,
+  raggio: number,
+  limite: number
+): number | null {
+  let migliore: number | null = null;
+  let miglioreGrad = 0;
+  for (let t = Math.max(1, centro - raggio); t <= Math.min(limite - 2, centro + raggio); t++) {
+    const grad = Math.abs(profilo(t + 1) - profilo(t - 1)) / 2;
+    if (grad > miglioreGrad) {
+      miglioreGrad = grad;
+      migliore = t;
+    }
+  }
+  return miglioreGrad >= SOGLIA_FORTE * 0.6 ? migliore : null;
+}
 
-  const xL = cx - sinistra;
-  const xR = cx + destra;
-  const yT = cy - sopra;
-  const yB = cy + sotto;
+/**
+ * Dai quattro semi (posizioni stimate dei lati) costruisce il
+ * quadrilatero: ogni lato viene TRACCIATO seguendo il fronte di
+ * contrasto (campioni a finestra mobile + fit ai minimi quadrati) e
+ * gli angoli nascono dall'intersezione dei lati — la forma segue i
+ * bordi reali anche quando la prospettiva li inclina.
+ */
+function costruisciQuadrilatero(
+  c: CampiAnalisi,
+  xL: number,
+  xR: number,
+  yT: number,
+  yB: number
+): FiguraRilevata | null {
+  const { lum, w, h, fattore } = c;
   if (xR - xL < 14 || yB - yT < 14) return null;
-
-  // -------------------------------------------------------------------------
-  // Tracciamento dei lati: si segue il fronte di contrasto campione per
-  // campione (finestra mobile) e si interpola la retta del lato.
-  // -------------------------------------------------------------------------
 
   const grad = (x: number, y: number, orizzontale: boolean): number => {
     // gradiente perpendicolare al lato, mediato su 3 righe/colonne
@@ -221,11 +236,11 @@ export function rilevaFigura(ricerca: RicercaBordi, p: Punto): FiguraRilevata | 
     let sv = 0;
     let stt = 0;
     let stv = 0;
-    for (const c of campioni) {
-      st += c.t;
-      sv += c.v;
-      stt += c.t * c.t;
-      stv += c.t * c.v;
+    for (const q of campioni) {
+      st += q.t;
+      sv += q.v;
+      stt += q.t * q.t;
+      stv += q.t * q.v;
     }
     const den = n * stt - st * st;
     if (Math.abs(den) < 1e-9) return null;
@@ -234,11 +249,6 @@ export function rilevaFigura(ricerca: RicercaBordi, p: Punto): FiguraRilevata | 
     return { a, b: (sv - a * st) / n };
   };
 
-  /**
-   * Traccia un lato verticale (x ≈ costante) tra tMin e tMax (coordinate y):
-   * a ogni passo cerca il massimo del gradiente orizzontale in una
-   * finestra attorno alla x del passo precedente.
-   */
   const tracciaLato = (vIniziale: number, tMin: number, tMax: number, verticale: boolean): RettaLato => {
     const campioni: Array<{ t: number; v: number }> = [];
     const passi = 9;
@@ -300,4 +310,85 @@ export function rilevaFigura(ricerca: RicercaBordi, p: Punto): FiguraRilevata | 
 
   const inImmagine = (q: Punto): Punto => ({ x: q.x / fattore, y: q.y / fattore });
   return { punti: [inImmagine(altoSx), inImmagine(altoDx), inImmagine(bassoDx), inImmagine(bassoSx)] };
+}
+
+/**
+ * Rilevamento dal TOCCO: dal punto si scandisce nelle quattro direzioni
+ * fino al primo fronte di contrasto — la figura più interna che
+ * contiene il punto.
+ */
+export function rilevaFigura(ricerca: RicercaBordi, p: Punto): FiguraRilevata | null {
+  const c = estraiCampi(ricerca);
+  const cx = Math.round(p.x * c.fattore);
+  const cy = Math.round(p.y * c.fattore);
+  if (cx < 2 || cy < 2 || cx > c.w - 3 || cy > c.h - 3) return null;
+
+  const lungoX = profiloX(c, cy);
+  const lungoY = profiloY(c, cx);
+  const xL = primoFronte(lungoX, cx, -1, c.w);
+  const xR = primoFronte(lungoX, cx, 1, c.w);
+  const yT = primoFronte(lungoY, cy, -1, c.h);
+  const yB = primoFronte(lungoY, cy, 1, c.h);
+  if (xL === null || xR === null || yT === null || yB === null) return null;
+
+  return costruisciQuadrilatero(c, xL, xR, yT, yB);
+}
+
+/**
+ * Rilevamento dall'EVIDENZIATORE: l'utente traccia un segno sopra
+ * l'oggetto completo; i bordi vengono cercati ALL'ESTERNO della zona
+ * evidenziata, ignorando cornici e dettagli interni (es. il riquadro
+ * ornamentale di una porta).
+ */
+export function rilevaFiguraEvidenziata(
+  ricerca: RicercaBordi,
+  traccia: Punto[]
+): FiguraRilevata | null {
+  const c = estraiCampi(ricerca);
+  if (traccia.length < 2) return null;
+
+  let x1 = Infinity;
+  let x2 = -Infinity;
+  let y1 = Infinity;
+  let y2 = -Infinity;
+  for (const p of traccia) {
+    const x = p.x * c.fattore;
+    const y = p.y * c.fattore;
+    x1 = Math.min(x1, x);
+    x2 = Math.max(x2, x);
+    y1 = Math.min(y1, y);
+    y2 = Math.max(y2, y);
+  }
+  x1 = Math.max(2, Math.round(x1));
+  x2 = Math.min(c.w - 3, Math.round(x2));
+  y1 = Math.max(2, Math.round(y1));
+  y2 = Math.min(c.h - 3, Math.round(y2));
+  if (x2 - x1 < 8 || y2 - y1 < 8) return null;
+
+  const cx = Math.round((x1 + x2) / 2);
+  const cy = Math.round((y1 + y2) / 2);
+  const lungoX = profiloX(c, cy);
+  const lungoY = profiloY(c, cx);
+
+  // si parte poco dentro il bordo dell'evidenziatura e si cerca il primo
+  // fronte verso l'esterno; se l'evidenziatura ha leggermente superato il
+  // bordo, fallback sul fronte più marcato vicino al bordo della traccia
+  const inset = 4;
+  const cerca = (
+    profilo: (t: number) => number,
+    daBordo: number,
+    verso: 1 | -1,
+    limite: number,
+    raggioFallback: number
+  ): number | null =>
+    primoFronte(profilo, daBordo - verso * inset, verso, limite, 1) ??
+    fronteVicino(profilo, daBordo, raggioFallback, limite);
+
+  const xL = cerca(lungoX, x1, -1, c.w, Math.max(4, Math.round((x2 - x1) * 0.15)));
+  const xR = cerca(lungoX, x2, 1, c.w, Math.max(4, Math.round((x2 - x1) * 0.15)));
+  const yT = cerca(lungoY, y1, -1, c.h, Math.max(4, Math.round((y2 - y1) * 0.15)));
+  const yB = cerca(lungoY, y2, 1, c.h, Math.max(4, Math.round((y2 - y1) * 0.15)));
+  if (xL === null || xR === null || yT === null || yB === null) return null;
+
+  return costruisciQuadrilatero(c, xL, xR, yT, yB);
 }

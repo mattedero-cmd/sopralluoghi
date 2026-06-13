@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RicercaBordi, rilevaFigura } from '../bordi';
+import { RicercaBordi, rilevaFigura, rilevaFiguraEvidenziata } from '../bordi';
 import { misureRettangolo, applicaValoriAuto } from '../calibrazione';
 import type { Punto, QuotaRettangolo } from '../../db/types';
 
@@ -67,6 +67,48 @@ describe('autoquotatura: rilevamento figura', () => {
     vicino(bassoSx, 72, 160, 6);
     expect(bassoSx.x - altoSx.x).toBeGreaterThan(6); // inclinazione rilevata
     expect(altoDx.x - bassoDx.x).toBeGreaterThan(6);
+  });
+
+  it('evidenziatore: con un riquadro ornamentale interno rileva l’oggetto completo', () => {
+    // porta chiara (50,30)-(170,170) su sfondo scuro, con cornice
+    // ornamentale più scura all'interno: (75,55)-(145,145)
+    const w = 220;
+    const h = 200;
+    const lum = new Float32Array(w * h).fill(40);
+    for (let y = 30; y <= 170; y++) {
+      for (let x = 50; x <= 170; x++) lum[y * w + x] = 200;
+    }
+    const cornice = (x: number, y: number) =>
+      ((x === 75 || x === 76 || x === 144 || x === 145) && y >= 55 && y <= 145) ||
+      ((y === 55 || y === 56 || y === 144 || y === 145) && x >= 75 && x <= 145);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (cornice(x, y)) lum[y * w + x] = 90;
+      }
+    }
+    const analisi = RicercaBordi.daDati(lum, w, h, 1);
+
+    // tocco al centro: si aggancia alla cornice interna (figura più interna)
+    const tocco = rilevaFigura(analisi, { x: 110, y: 100 });
+    expect(tocco).not.toBeNull();
+    expect(tocco!.punti[0].x).toBeGreaterThan(65); // bordo interno, non la porta
+
+    // evidenziatura sopra l'oggetto completo: rileva la PORTA intera,
+    // ignorando la cornice ornamentale dentro la zona tracciata
+    const traccia: Punto[] = [
+      { x: 60, y: 45 },
+      { x: 110, y: 100 },
+      { x: 160, y: 155 },
+      { x: 60, y: 155 },
+      { x: 160, y: 45 }
+    ];
+    const figura = rilevaFiguraEvidenziata(analisi, traccia);
+    expect(figura).not.toBeNull();
+    const [altoSx, altoDx, bassoDx, bassoSx] = figura!.punti;
+    vicino(altoSx, 50, 30, 6);
+    vicino(altoDx, 170, 30, 6);
+    vicino(bassoDx, 170, 170, 6);
+    vicino(bassoSx, 50, 170, 6);
   });
 
   it('su una zona uniforme non propone nulla', () => {
