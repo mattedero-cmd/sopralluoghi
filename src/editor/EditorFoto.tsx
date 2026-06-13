@@ -326,8 +326,11 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       stile: { ...proposta.stile, colore: impostazioni.stileDefault.colore }
     };
     commit([...annotazioni, definitiva]);
-    setSelezioneId(definitiva.id);
     setProposta(null);
+    setSelezioneId(definitiva.id);
+    // si passa a Seleziona: così appaiono le maniglie sui 4 angoli e la
+    // figura accettata è subito modificabile (trascinamento dei vertici)
+    setStrumento('seleziona');
     // senza calibrazione i valori vanno inseriti a mano: focus sul campo
     if (definitiva.valoreBase === null) setTimeout(() => inputValore.current?.focus(), 60);
   };

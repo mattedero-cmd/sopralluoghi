@@ -56,7 +56,10 @@ export class FabbricaAnnotazioni {
       sottotipo,
       p1,
       p2,
-      offset: Math.max(28, Math.round(this.lato * 0.035)),
+      // la linea di quota nasce ESATTAMENTE sui punti scelti (nessuna linea
+      // di estensione): trascinando la maniglia centrale la si sposta e
+      // solo allora compaiono le linee guida
+      offset: 0,
       valore: null,
       valoreAuto: calibrata,
       unita: this.impostazioni.unitaDefault,

@@ -641,7 +641,7 @@ export function StageEditor(p: Props) {
           sottotipo: bozza.sottotipo,
           p1: bozza.p1,
           p2: bozza.p2,
-          offset: Math.max(28, Math.round(Math.max(p.foto.larghezzaPx, p.foto.altezzaPx) * 0.035)),
+          offset: 0, // anteprima coerente: linea sui punti, senza linee guida
           valore: null,
           unita: 'cm',
           posizioneTesto: 'sopra',

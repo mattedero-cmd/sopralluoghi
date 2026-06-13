@@ -12,6 +12,7 @@ import type {
   TestoFoto
 } from '../db/types';
 import { COLORE_REALE, COLORE_STIMATA, quadrilateroQuotaRett } from '../db/types';
+import { misureElemento } from './calibrazione';
 import { formattaMisura, formattaNumero } from '../utils/format';
 import {
   direzioneQuota,
@@ -309,12 +310,22 @@ export function primitiveQuotaAngolare(q: QuotaAngolare): Primitiva[] {
   return prim;
 }
 
-export function etichettaRettangolo(
-  q: Pick<QuotaRettangolo, 'valoreBase' | 'valoreAltezza' | 'unita' | 'stato'>
-): string {
-  const base = q.valoreBase === null ? '?' : formattaNumero(q.valoreBase);
-  const altezza = q.valoreAltezza === null ? '?' : formattaNumero(q.valoreAltezza);
-  const testo = `${base} × ${altezza} ${q.unita}`;
+export function etichettaRettangolo(q: QuotaRettangolo): string {
+  const m = misureElemento(q);
+  const n = (v: number | null) => (v === null ? '?' : formattaNumero(v));
+  const nome =
+    m.forma === 'rettangolo' ? 'Rettangolo' : m.forma === 'trapezio' ? 'Trapezio' : 'Quadrilatero';
+  let testo: string;
+  if (m.forma === 'rettangolo') {
+    testo = `${nome} ${n(m.baseSup)} × ${n(m.latoSx)} ${q.unita}`;
+  } else if (m.forma === 'trapezio') {
+    testo =
+      n(m.baseSup) !== n(m.baseInf)
+        ? `${nome} basi ${n(m.baseSup)}/${n(m.baseInf)} × h ${n(m.latoSx)} ${q.unita}`
+        : `${nome} ${n(m.baseSup)} × lati ${n(m.latoSx)}/${n(m.latoDx)} ${q.unita}`;
+  } else {
+    testo = `${nome} ${n(m.baseSup)}/${n(m.latoDx)}/${n(m.baseInf)}/${n(m.latoSx)} ${q.unita}`;
+  }
   return q.stato === 'stimata' ? `≈ ${testo}` : testo;
 }
 
@@ -353,10 +364,27 @@ export function primitiveQuotaRettangolo(q: QuotaRettangolo): Primitiva[] {
   };
   // base: lungo il lato alto, linea di quota all'esterno (sopra)
   // altezza: lungo il lato sinistro, linea di quota all'esterno (a sinistra)
+  const m = misureElemento(q);
   prim.push(
-    ...primitiveQuota({ ...comune, p1: altoSx, p2: altoDx, offset: -offset, valore: q.valoreBase }),
-    ...primitiveQuota({ ...comune, p1: altoSx, p2: bassoSx, offset, valore: q.valoreAltezza })
+    ...primitiveQuota({ ...comune, p1: altoSx, p2: altoDx, offset: -offset, valore: m.baseSup }),
+    ...primitiveQuota({ ...comune, p1: altoSx, p2: bassoSx, offset, valore: m.latoSx })
   );
+  // per trapezi e quadrilateri si quotano anche i lati che differiscono,
+  // così la forma è descritta per intero sulla foto (non solo b × h)
+  if (m.forma !== 'rettangolo') {
+    if (m.baseInf !== null && m.baseSup !== m.baseInf) {
+      // base inferiore: linea di quota all'esterno, sotto
+      prim.push(
+        ...primitiveQuota({ ...comune, p1: bassoSx, p2: bassoDx, offset, valore: m.baseInf })
+      );
+    }
+    if (m.latoDx !== null && m.latoSx !== m.latoDx) {
+      // lato destro: linea di quota all'esterno, a destra
+      prim.push(
+        ...primitiveQuota({ ...comune, p1: altoDx, p2: bassoDx, offset: -offset, valore: m.latoDx })
+      );
+    }
+  }
 
   // nomenclatura dell'elemento: badge al centro della figura, per
   // distinguere le forme quotate l'una dall'altra (foto e report)

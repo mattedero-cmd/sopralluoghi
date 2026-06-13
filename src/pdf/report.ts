@@ -6,6 +6,7 @@ import { leggiImpostazioni } from '../db/repository';
 import { renderFotoAnnotata } from '../render/renderAnnotata';
 import { caricaImmagine, fotoIllegibile } from '../utils/image';
 import { calcolaCatene, sommaCatenaInUnita } from '../geometry/catene';
+import { misureElemento } from '../geometry/calibrazione';
 import { formattaData, formattaDataOra, formattaMisura, formattaNumero } from '../utils/format';
 
 const GRIGIO = '#555555';
@@ -185,15 +186,27 @@ function righeMisureFoto(annotazioni: Annotazione[]): RigaMisura[] {
         stato: a.stato
       });
     } else if (a.tipo === 'quotaRett') {
-      // un elemento unico (base × altezza), nomenclaturato per essere
-      // riconoscibile sulla foto: mai due misure scollegate
-      const b = a.valoreBase === null ? '?' : formattaNumero(a.valoreBase);
-      const h = a.valoreAltezza === null ? '?' : formattaNumero(a.valoreAltezza);
-      righe.push({
-        tipo: a.etichetta ? `Elemento ${a.etichetta} (b × h)` : 'Elemento (b × h)',
-        misura: `${b} × ${h} ${a.unita}`,
-        stato: a.stato
-      });
+      // un elemento unico, classificato per forma (rettangolo/trapezio/
+      // quadrilatero) e nomenclaturato: una sola voce, mai misure scollegate
+      const m = misureElemento(a);
+      const n = (v: number | null) => (v === null ? '?' : formattaNumero(v));
+      const nome =
+        m.forma === 'rettangolo' ? 'Rettangolo' : m.forma === 'trapezio' ? 'Trapezio' : 'Quadrilatero';
+      const prefisso = a.etichetta ? `${nome} ${a.etichetta}` : nome;
+      let misura: string;
+      if (m.forma === 'rettangolo') {
+        misura = `${n(m.baseSup)} × ${n(m.latoSx)} ${a.unita}`;
+      } else if (m.forma === 'trapezio') {
+        // riporta le due basi (lati paralleli) e l'altezza del lato che differisce
+        const basiOrizz = n(m.baseSup) !== n(m.baseInf);
+        misura = basiOrizz
+          ? `basi ${n(m.baseSup)} / ${n(m.baseInf)}, h ${n(m.latoSx)} ${a.unita}`
+          : `base ${n(m.baseSup)}, lati ${n(m.latoSx)} / ${n(m.latoDx)} ${a.unita}`;
+      } else {
+        // quadrilatero generico: tutti e quattro i lati (sup, dx, inf, sx)
+        misura = `lati ${n(m.baseSup)} / ${n(m.latoDx)} / ${n(m.baseInf)} / ${n(m.latoSx)} ${a.unita}`;
+      }
+      righe.push({ tipo: prefisso, misura, stato: a.stato });
     }
   }
   return righe;

@@ -1,4 +1,11 @@
-import { quadrilateroQuotaRett, type Annotazione, type Foto, type Punto, type Unita } from '../db/types';
+import {
+  quadrilateroQuotaRett,
+  type Annotazione,
+  type Foto,
+  type Punto,
+  type QuotaRettangolo,
+  type Unita
+} from '../db/types';
 import { daMillimetri, inMillimetri } from '../utils/format';
 import { applicaOmografia, omografiaPiano, type Omografia } from './omografia';
 import { direzioneQuota, distanza, dot, scala as scalaPunto, somma, sottrai } from './punti';
@@ -140,4 +147,67 @@ export function applicaValoriAuto(annotazioni: Annotazione[], foto: Calibrazione
     if (v === a.valore && a.valoreAuto === true) return a;
     return { ...a, valore: v, valoreAuto: true };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Classificazione della forma dell'elemento (rettangolo / trapezio / …)
+// ---------------------------------------------------------------------------
+
+export type FormaElemento = 'rettangolo' | 'trapezio' | 'quadrilatero';
+
+/**
+ * Classifica un quadrilatero dalla geometria nell'immagine:
+ * - rettangolo: lati opposti ~uguali a coppie;
+ * - trapezio: una sola coppia di lati opposti differisce (es. una parete
+ *   sotto un tetto inclinato, o una finestra trapezoidale);
+ * - quadrilatero: entrambe le coppie differiscono.
+ * Indipendente dalla calibrazione: si basa sui rapporti dei lati.
+ */
+export function classificaForma(punti: [Punto, Punto, Punto, Punto]): FormaElemento {
+  const [aSx, aDx, bDx, bSx] = punti;
+  const sup = distanza(aSx, aDx);
+  const inf = distanza(bSx, bDx);
+  const sx = distanza(aSx, bSx);
+  const dx = distanza(aDx, bDx);
+  const diffOrizz = Math.abs(sup - inf) / Math.max(sup, inf, 1);
+  const diffVert = Math.abs(sx - dx) / Math.max(sx, dx, 1);
+  const tol = 0.06; // 6%: tolleranza per imprecisioni di tocco/rilevamento
+  if (diffOrizz <= tol && diffVert <= tol) return 'rettangolo';
+  if (diffOrizz > tol && diffVert > tol) return 'quadrilatero';
+  return 'trapezio';
+}
+
+export interface MisureElemento {
+  forma: FormaElemento;
+  /** lati reali nell'unità della quota (null se non determinabili) */
+  baseSup: number | null;
+  baseInf: number | null;
+  latoSx: number | null;
+  latoDx: number | null;
+  unita: Unita;
+}
+
+/**
+ * Misure dei quattro lati dell'elemento. I valori di riferimento sono
+ * la base superiore (valoreBase) e il lato sinistro (valoreAltezza);
+ * gli altri due lati si ricavano dai rapporti in pixel, così la forma è
+ * descritta per intero anche senza calibrazione e i valori manuali
+ * restano la fonte.
+ */
+export function misureElemento(q: QuotaRettangolo): MisureElemento {
+  const [aSx, aDx, bDx, bSx] = quadrilateroQuotaRett(q);
+  const supPx = distanza(aSx, aDx);
+  const infPx = distanza(bSx, bDx);
+  const sxPx = distanza(aSx, bSx);
+  const dxPx = distanza(aDx, bDx);
+  const proporziona = (rif: number | null, pxRif: number, px: number): number | null =>
+    rif === null || pxRif < 1e-6 ? null : arrotondaMisura((rif * px) / pxRif);
+  return {
+    forma: classificaForma([aSx, aDx, bDx, bSx]),
+    baseSup: q.valoreBase,
+    baseInf: proporziona(q.valoreBase, supPx, infPx),
+    latoSx: q.valoreAltezza,
+    latoDx: proporziona(q.valoreAltezza, sxPx, dxPx),
+    unita: q.unita
+  };
 }

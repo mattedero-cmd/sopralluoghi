@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { RicercaBordi, rilevaFigura, rilevaFiguraEvidenziata } from '../bordi';
-import { misureRettangolo, applicaValoriAuto } from '../calibrazione';
-import type { Punto, QuotaRettangolo } from '../../db/types';
+import { misureRettangolo, applicaValoriAuto, classificaForma, misureElemento } from '../calibrazione';
+import { primitiveQuota } from '../primitive';
+import type { Punto, Quota, QuotaRettangolo } from '../../db/types';
 
 /**
  * Immagine sintetica: sfondo scuro (40) con un rettangolo chiaro (210)
@@ -201,5 +202,91 @@ describe('quota elemento (quadrilatero)', () => {
     expect(eAuto.valoreAuto).toBe(true);
     expect(eMan.valoreBase).toBe(90);
     expect(eMan.valoreAltezza).toBe(210);
+  });
+});
+
+describe('classificazione forma elemento', () => {
+  const stile = { colore: '#ff3b30', spessore: 3, dimensioneTesto: 24 };
+  const base = (punti: [Punto, Punto, Punto, Punto], extra = {}): QuotaRettangolo => ({
+    id: 'e1',
+    fotoId: 'f1',
+    tipo: 'quotaRett',
+    punti,
+    valoreBase: 100,
+    valoreAltezza: 200,
+    unita: 'cm',
+    stato: 'reale',
+    zIndex: 1,
+    stile,
+    ...extra
+  });
+
+  it('rettangolo: lati opposti uguali', () => {
+    const q = base([
+      { x: 0, y: 0 },
+      { x: 200, y: 0 },
+      { x: 200, y: 100 },
+      { x: 0, y: 100 }
+    ]);
+    expect(classificaForma(q.punti)).toBe('rettangolo');
+    expect(misureElemento(q).forma).toBe('rettangolo');
+  });
+
+  it('trapezio: base superiore diversa dall’inferiore (parete sotto tetto inclinato)', () => {
+    const q = base([
+      { x: 40, y: 0 },
+      { x: 160, y: 0 }, // base sup = 120
+      { x: 200, y: 100 },
+      { x: 0, y: 100 } // base inf = 200
+    ]);
+    expect(classificaForma(q.punti)).toBe('trapezio');
+    const m = misureElemento(q);
+    expect(m.forma).toBe('trapezio');
+    // base inferiore ricavata in proporzione: 100 cm * (200px/120px) ≈ 166.67
+    expect(m.baseSup).toBe(100);
+    expect(m.baseInf).toBeCloseTo(166.67, 1);
+  });
+
+  it('quadrilatero: entrambe le coppie di lati differiscono', () => {
+    const q = base([
+      { x: 0, y: 0 },
+      { x: 180, y: 20 },
+      { x: 150, y: 130 },
+      { x: 10, y: 90 }
+    ]);
+    expect(classificaForma(q.punti)).toBe('quadrilatero');
+  });
+});
+
+describe('quota lineare: linee di estensione solo con offset', () => {
+  const stile = { colore: '#ff3b30', spessore: 3, dimensioneTesto: 24 };
+  const quota = (offset: number): Quota => ({
+    id: 'q1',
+    fotoId: 'f1',
+    tipo: 'quota',
+    sottotipo: 'orizzontale',
+    p1: { x: 0, y: 0 },
+    p2: { x: 100, y: 0 },
+    offset,
+    valore: 50,
+    unita: 'cm',
+    posizioneTesto: 'sopra',
+    stato: 'reale',
+    zIndex: 1,
+    stile
+  });
+
+  it('offset 0: nessuna linea di estensione (linea di quota sui punti)', () => {
+    const prim = primitiveQuota(quota(0));
+    const linee = prim.filter((p) => p.kind === 'linea');
+    // solo la linea di quota, nessuna linea di estensione
+    expect(linee.length).toBe(1);
+  });
+
+  it('offset > 0: compaiono le due linee di estensione', () => {
+    const prim = primitiveQuota(quota(40));
+    const linee = prim.filter((p) => p.kind === 'linea');
+    // linea di quota + 2 linee di estensione
+    expect(linee.length).toBe(3);
   });
 });
