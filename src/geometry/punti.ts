@@ -49,3 +49,19 @@ export function vincolaAngolo(p1: Punto, p2: Punto, passoGradi = 15): Punto {
   const angolo = Math.round(Math.atan2(d.y, d.x) / passo) * passo;
   return { x: p1.x + r * Math.cos(angolo), y: p1.y + r * Math.sin(angolo) };
 }
+
+/**
+ * Circumcentro di un triangolo (= centro del cerchio passante per 3 punti).
+ * Restituisce null se i punti sono collineari (cerchio impossibile).
+ */
+export function circumcentro(a: Punto, b: Punto, c: Punto): Punto | null {
+  const mAB: Punto = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  const mBC: Punto = { x: (b.x + c.x) / 2, y: (b.y + c.y) / 2 };
+  // direzione perpendicolare al lato (ruota di 90°)
+  const dAB: Punto = { x: -(b.y - a.y), y: b.x - a.x };
+  const dBC: Punto = { x: -(c.y - b.y), y: c.x - b.x };
+  const det = dAB.x * dBC.y - dAB.y * dBC.x;
+  if (Math.abs(det) < 1e-9) return null;
+  const t = ((mBC.x - mAB.x) * dBC.y - (mBC.y - mAB.y) * dBC.x) / det;
+  return { x: mAB.x + t * dAB.x, y: mAB.y + t * dAB.y };
+}

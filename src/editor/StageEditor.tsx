@@ -13,7 +13,7 @@ import { primitiveAnnotazione } from '../geometry/primitive';
 import { geometriaQuota } from '../geometry/primitive';
 import { disegnaPrimitiva } from '../render/renderAnnotata';
 import { puntiAggancio, snapPunto } from '../geometry/snap';
-import { distanza, dot, normale, sottrai, vincolaAngolo, vincolaOrto } from '../geometry/punti';
+import { circumcentro, distanza, dot, normale, sottrai, vincolaAngolo, vincolaOrto } from '../geometry/punti';
 import type { RicercaBordi } from '../geometry/bordi';
 import { traslaAnnotazione } from './fabbrica';
 
@@ -29,6 +29,7 @@ export type Strumento =
   | 'penta'
   | 'angolo'
   | 'raggio'
+  | 'cerchio3p'
   | 'testo'
   | 'disegno'
   | 'freccia'
@@ -85,12 +86,16 @@ interface Props {
   onNuovoPoligono: (punti: Punto[]) => void;
   onNuovoAngolo: (vertice: Punto, a: Punto, b: Punto) => void;
   onNuovoRaggio: (centro: Punto, bordo: Punto) => void;
+  /** cerchio da 3 punti sull'arco: il centro è calcolato dal circumcentro */
+  onNuovoCerchio3p: (centro: Punto, bordo: Punto) => void;
   onNuovoTesto: (posizione: Punto) => void;
   onNuovaFreccia: (p1: Punto, p2: Punto) => void;
   onNuovoDisegno: (punti: number[]) => void;
   onNuovoCallout: (sorgente: Rettangolo) => void;
   onCalibra: (p1: Punto, p2: Punto) => void;
   onPiano: (punti: [Punto, Punto, Punto, Punto]) => void;
+  /** segnala un errore geometrico (es. punti collineari nel cerchio a 3p) */
+  onErrore?: (msg: string) => void;
 }
 
 interface Vista {
@@ -110,6 +115,7 @@ type Bozza =
   | { tipo: 'angolo'; punti: Punto[] }
   | { tipo: 'quad'; punti: Punto[] }
   | { tipo: 'poli'; punti: Punto[]; lati: number }
+  | { tipo: 'cerchio3p'; punti: Punto[] }
   | { tipo: 'piano'; punti: Punto[] }
   | null;
 
@@ -403,6 +409,7 @@ export function StageEditor(p: Props) {
       case 'quad':
       case 'tri':
       case 'penta':
+      case 'cerchio3p':
       case 'piano': {
         const punto = applicaSnap(pos);
         setPuntoPendente(punto);
@@ -532,6 +539,21 @@ export function StageEditor(p: Props) {
         p.onNuovoPoligono(punti);
       } else {
         setBozza({ tipo: 'poli', punti, lati });
+      }
+      return;
+    }
+    if (p.strumento === 'cerchio3p') {
+      const punti = bozza?.tipo === 'cerchio3p' ? [...bozza.punti, punto] : [punto];
+      if (punti.length === 3) {
+        setBozza(null);
+        const centro = circumcentro(punti[0], punti[1], punti[2]);
+        if (centro) {
+          p.onNuovoCerchio3p(centro, punti[0]);
+        } else {
+          p.onErrore?.('I 3 punti sono allineati: impossibile trovare il centro del cerchio. Riprova.');
+        }
+      } else {
+        setBozza({ tipo: 'cerchio3p', punti });
       }
       return;
     }
@@ -812,7 +834,8 @@ export function StageEditor(p: Props) {
           {(bozza?.tipo === 'angolo' ||
             bozza?.tipo === 'piano' ||
             bozza?.tipo === 'quad' ||
-            bozza?.tipo === 'poli') && (
+            bozza?.tipo === 'poli' ||
+            bozza?.tipo === 'cerchio3p') && (
             <>
               {bozza.punti.map((pt, i) => (
                 <Circle
@@ -1044,7 +1067,7 @@ function Lente({
 
 function testoSuggerimento(strumento: Strumento, bozza: Bozza): string | null {
   if (strumento === 'auto') {
-    return 'Tocca una figura netta, oppure evidenziala con un tratto per quotare l’oggetto completo';
+    return "Tocca una figura netta, oppure evidenziala con un tratto per quotare l'oggetto completo";
   }
   if (strumentoDuePunti(strumento)) {
     return puntoFisso(bozza)
@@ -1061,9 +1084,17 @@ function testoSuggerimento(strumento: Strumento, bozza: Bozza): string | null {
     const n = bozza?.tipo === 'poli' ? bozza.punti.length : 0;
     return `${nome} a ${lati} lati (${n}/${lati}): tocca i vertici in ordine`;
   }
+  if (strumento === 'cerchio3p') {
+    const n = bozza?.tipo === 'cerchio3p' ? bozza.punti.length : 0;
+    return [
+      "Cerchio 3 punti (1/3): tocca un punto sull'arco",
+      "Cerchio 3 punti (2/3): tocca un secondo punto sull'arco",
+      "Cerchio 3 punti (3/3): tocca un terzo punto sull'arco per trovare il centro"
+    ][n];
+  }
   if (strumento === 'angolo') {
     const n = bozza?.tipo === 'angolo' ? bozza.punti.length : 0;
-    return ['Tocca il vertice dell’angolo', 'Tocca il primo lato', 'Tocca il secondo lato'][n];
+    return ["Tocca il vertice dell'angolo", 'Tocca il primo lato', 'Tocca il secondo lato'][n];
   }
   if (strumento === 'piano') {
     const n = bozza?.tipo === 'piano' ? bozza.punti.length : 0;

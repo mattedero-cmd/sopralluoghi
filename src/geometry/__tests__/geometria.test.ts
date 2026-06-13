@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Quota } from '../../db/types';
 import { geometriaQuota } from '../primitive';
-import { vincolaOrto, lunghezzaPxQuota } from '../punti';
+import { vincolaOrto, lunghezzaPxQuota, circumcentro } from '../punti';
 import { puntiAggancio, snapPunto, sonoInCatena } from '../snap';
 import { calcolaCatene, sommaCatenaInUnita } from '../catene';
 import { analizzaMisura, inMillimetri, daMillimetri } from '../../utils/format';
@@ -148,5 +148,35 @@ describe('formati e conversioni', () => {
     expect(inMillimetri(2.5, 'm')).toBe(2500);
     expect(inMillimetri(12, 'cm')).toBe(120);
     expect(daMillimetri(1500, 'cm')).toBe(150);
+  });
+});
+
+describe('circumcentro (cerchio da 3 punti)', () => {
+  it('cerchio su origine con r=5: triangolo pitagorico 3-4-5 inscritto', () => {
+    // punti sul cerchio centrato in (0,0) raggio 5
+    const A = { x: 5, y: 0 };
+    const B = { x: 0, y: 5 };
+    const C = { x: -5, y: 0 };
+    const c = circumcentro(A, B, C);
+    expect(c).not.toBeNull();
+    expect(c!.x).toBeCloseTo(0, 5);
+    expect(c!.y).toBeCloseTo(0, 5);
+    // distanza di A dal centro = raggio = 5
+    expect(Math.hypot(c!.x - A.x, c!.y - A.y)).toBeCloseTo(5, 4);
+  });
+
+  it('centro traslato (50, 80) raggio 30', () => {
+    const cx = 50, cy = 80, r = 30;
+    const A = { x: cx + r, y: cy };
+    const B = { x: cx, y: cy + r };
+    const C = { x: cx - r, y: cy };
+    const c = circumcentro(A, B, C);
+    expect(c).not.toBeNull();
+    expect(c!.x).toBeCloseTo(cx, 3);
+    expect(c!.y).toBeCloseTo(cy, 3);
+  });
+
+  it('punti collineari: restituisce null', () => {
+    expect(circumcentro({ x: 0, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 2 })).toBeNull();
   });
 });

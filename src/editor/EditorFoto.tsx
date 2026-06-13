@@ -301,6 +301,21 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     if (q.valore === null) setTimeout(() => inputValore.current?.focus(), 60);
   };
 
+  /** cerchio da 3 punti sull'arco: centro già calcolato dal circumcentro */
+  const creaCerchio3p = (centro: Punto, bordo: Punto) => {
+    if (!fabbrica || !annotazioni) return;
+    let q = fabbrica.quotaRaggio(centro, bordo, annotazioni);
+    q = { ...q, modo: 'diametro' };
+    if (foto && haCalibrazione(foto)) {
+      const v = valoreAutomatico(q, foto);
+      q = { ...q, valore: v, valoreAuto: true };
+    }
+    commit([...annotazioni, q]);
+    setSelezioneId(q.id);
+    setStrumento('seleziona');
+    if (q.valore === null) setTimeout(() => inputValore.current?.focus(), 60);
+  };
+
   // ---------------------------------------------------------------------------
   // Autoquotatura: tocca una figura netta → quote proposte da accettare
   // ---------------------------------------------------------------------------
@@ -573,6 +588,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         onNuovoPoligono={creaPoligono}
         onNuovoAngolo={creaAngolo}
         onNuovoRaggio={creaRaggio}
+        onNuovoCerchio3p={creaCerchio3p}
+        onErrore={(msg) => mostraToast('errore', msg)}
         onNuovoTesto={creaTesto}
         onNuovaFreccia={creaFreccia}
         onNuovoDisegno={creaDisegno}
@@ -626,6 +643,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           <BtnStrumento attivo={strumento === 'penta'} onClick={() => setStrumento('penta')} icona="⬠" testo="5 lati" />
           <BtnStrumento attivo={strumento === 'angolo'} onClick={() => setStrumento('angolo')} icona="∠" testo="Angolo" />
           <BtnStrumento attivo={strumento === 'raggio'} onClick={() => setStrumento('raggio')} icona="◔" testo="Raggio" />
+          <BtnStrumento attivo={strumento === 'cerchio3p'} onClick={() => setStrumento('cerchio3p')} icona="○" testo="Cerchio 3p" />
         </span>
         <span className="gruppo-strumenti">
           <BtnStrumento attivo={strumento === 'callout'} onClick={() => setStrumento('callout')} icona="🔍" testo="Dettaglio" />
