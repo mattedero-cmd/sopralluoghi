@@ -146,6 +146,32 @@ function profiloY(c: CampiAnalisi, cx: number) {
 }
 
 /**
+ * Soglia di contrasto adattiva da una regione: dal range di luminanza
+ * (5°–95° percentile per ignorare gli estremi). Su scene a basso
+ * contrasto (bianco su bianco) si abbassa; su scene contrastate si alza
+ * per non agganciare la texture. Risultato in unità di gradiente.
+ */
+function sogliaAdattiva(c: CampiAnalisi, x1: number, x2: number, y1: number, y2: number): number {
+  const xa = Math.max(0, Math.floor(x1));
+  const xb = Math.min(c.w - 1, Math.ceil(x2));
+  const ya = Math.max(0, Math.floor(y1));
+  const yb = Math.min(c.h - 1, Math.ceil(y2));
+  const valori: number[] = [];
+  const passoX = Math.max(1, Math.floor((xb - xa) / 60));
+  const passoY = Math.max(1, Math.floor((yb - ya) / 60));
+  for (let y = ya; y <= yb; y += passoY) {
+    for (let x = xa; x <= xb; x += passoX) valori.push(c.lum[y * c.w + x]);
+  }
+  if (valori.length < 4) return SOGLIA_FORTE;
+  valori.sort((p, q) => p - q);
+  const p5 = valori[Math.floor(valori.length * 0.05)];
+  const p95 = valori[Math.floor(valori.length * 0.95)];
+  const range = p95 - p5;
+  // ~12% del range, limitato tra 6 (scene pallide) e 28 (scene contrastate)
+  return Math.max(6, Math.min(28, range * 0.12));
+}
+
+/**
  * Posizione (assoluta) del primo fronte di contrasto deciso scandendo
  * da `da` nella direzione `verso`. null se non c'è un bordo netto.
  */
@@ -154,6 +180,7 @@ function primoFronte(
   da: number,
   verso: 1 | -1,
   limite: number,
+  soglia: number,
   minDist = 3
 ): number | null {
   let migliore: number | null = null;
@@ -165,7 +192,7 @@ function primoFronte(
     const tSucc = t + verso;
     const gradSucc =
       tSucc >= 1 && tSucc <= limite - 2 ? Math.abs(profilo(tSucc + 1) - profilo(tSucc - 1)) / 2 : 0;
-    if (grad >= SOGLIA_FORTE && grad >= gradSucc) {
+    if (grad >= soglia && grad >= gradSucc) {
       return t; // primo fronte deciso: è il bordo della figura
     }
     if (grad > miglioreGrad) {
@@ -174,7 +201,7 @@ function primoFronte(
     }
   }
   // nessun fronte deciso: si accetta il massimo se comunque marcato
-  return miglioreGrad >= SOGLIA_FORTE * 0.6 ? migliore : null;
+  return miglioreGrad >= soglia * 0.6 ? migliore : null;
 }
 
 /** fronte più marcato in un intorno di `centro` (fallback per l'evidenziatore) */
@@ -182,7 +209,8 @@ function fronteVicino(
   profilo: (t: number) => number,
   centro: number,
   raggio: number,
-  limite: number
+  limite: number,
+  soglia: number
 ): number | null {
   let migliore: number | null = null;
   let miglioreGrad = 0;
@@ -193,7 +221,7 @@ function fronteVicino(
       migliore = t;
     }
   }
-  return miglioreGrad >= SOGLIA_FORTE * 0.6 ? migliore : null;
+  return miglioreGrad >= soglia * 0.6 ? migliore : null;
 }
 
 /**
@@ -228,10 +256,10 @@ function costruisciQuadrilatero(
     return somma / 6;
   };
 
-  /** fit ai minimi quadrati: v = a·t + b sui campioni raccolti */
-  const fitRetta = (campioni: Array<{ t: number; v: number }>): RettaLato | null => {
+  /** fit ai minimi quadrati: v = a·t + b sui campioni dati */
+  const fitGrezzo = (campioni: Array<{ t: number; v: number }>): RettaLato | null => {
     const n = campioni.length;
-    if (n < 4) return null;
+    if (n < 3) return null;
     let st = 0;
     let sv = 0;
     let stt = 0;
@@ -245,29 +273,67 @@ function costruisciQuadrilatero(
     const den = n * stt - st * st;
     if (Math.abs(den) < 1e-9) return null;
     const a = (n * stv - st * sv) / den;
-    if (Math.abs(a) > 0.6) return null; // lato troppo inclinato: non plausibile
     return { a, b: (sv - a * st) / n };
   };
 
-  const tracciaLato = (vIniziale: number, tMin: number, tMax: number, verticale: boolean): RettaLato => {
+  /**
+   * Fit robusto: dopo un primo fit, scarta i campioni più lontani dalla
+   * retta (texture, maniglie, riflessi) e rifà il fit sui buoni. Così un
+   * bordo reale non viene deviato da pochi punti rumorosi.
+   */
+  const fitRetta = (campioni: Array<{ t: number; v: number }>): RettaLato | null => {
+    if (campioni.length < 3) return null;
+    let retta = fitGrezzo(campioni);
+    if (!retta) return null;
+    for (let iter = 0; iter < 2 && campioni.length >= 5; iter++) {
+      const residui = campioni
+        .map((q) => Math.abs(q.v - (retta!.a * q.t + retta!.b)))
+        .sort((p, q) => p - q);
+      const mediana = residui[Math.floor(residui.length / 2)];
+      const soglia = Math.max(2, mediana * 2.5);
+      const buoni = campioni.filter((q) => Math.abs(q.v - (retta!.a * q.t + retta!.b)) <= soglia);
+      if (buoni.length < 3 || buoni.length === campioni.length) break;
+      const nuova = fitGrezzo(buoni);
+      if (!nuova) break;
+      retta = nuova;
+    }
+    // pendenza troppo estrema: non plausibile per un lato di elemento
+    if (Math.abs(retta.a) > 1.2) return null;
+    return retta;
+  };
+
+  const tracciaLato = (
+    vIniziale: number,
+    tMin: number,
+    tMax: number,
+    verticale: boolean,
+    soglia: number
+  ): RettaLato => {
     const campioni: Array<{ t: number; v: number }> = [];
-    const passi = 9;
-    const FINESTRA = 7;
+    const span = tMax - tMin;
+    const passi = 13;
+    // finestra proporzionale alla campata: segue i bordi molto inclinati
+    // dalla prospettiva, dove il lato si sposta molto da un capo all'altro
+    const finestra = Math.max(7, Math.round(span * 0.22));
     let vPrec = vIniziale;
     for (let i = 0; i < passi; i++) {
-      const t = Math.round(tMin + ((tMax - tMin) * i) / (passi - 1));
+      const t = Math.round(tMin + (span * i) / (passi - 1));
       let meglioV = -1;
       let meglioG = 0;
-      for (let dv = -FINESTRA; dv <= FINESTRA; dv++) {
+      for (let dv = -finestra; dv <= finestra; dv++) {
         const v = Math.round(vPrec) + dv;
         if (v < 1 || v > (verticale ? w : h) - 2) continue;
         const g = verticale ? grad(v, t, true) : grad(t, v, false);
-        if (g > meglioG) {
-          meglioG = g;
+        // privilegia i bordi vicini alla traccia del passo precedente:
+        // riduce l'aggancio a texture lontane dal bordo vero
+        const penalita = 1 - Math.min(0.4, Math.abs(dv) / (finestra * 3));
+        const punteggio = g * penalita;
+        if (punteggio > meglioG) {
+          meglioG = punteggio;
           meglioV = v;
         }
       }
-      if (meglioV >= 0 && meglioG >= SOGLIA_FORTE * 0.6) {
+      if (meglioV >= 0 && meglioG >= soglia) {
         campioni.push({ t, v: meglioV });
         vPrec = meglioV;
       }
@@ -276,13 +342,18 @@ function costruisciQuadrilatero(
     return fitRetta(campioni) ?? { a: 0, b: vIniziale };
   };
 
+  // soglia di contrasto ADATTIVA: dal range di luminanza nell'area della
+  // figura. Su scene a basso contrasto (bianco su bianco) si abbassa, su
+  // scene contrastate si alza per non agganciare la texture.
+  const soglia = sogliaAdattiva(c, xL, xR, yT, yB);
+
   // margini dai presunti angoli, per non campionare gli spigoli
   const mY = Math.max(2, Math.round((yB - yT) * 0.18));
   const mX = Math.max(2, Math.round((xR - xL) * 0.18));
-  const latoSinistro = tracciaLato(xL, yT + mY, yB - mY, true); // x = a·y + b
-  const latoDestro = tracciaLato(xR, yT + mY, yB - mY, true);
-  const latoAlto = tracciaLato(yT, xL + mX, xR - mX, false); // y = a·x + b
-  const latoBasso = tracciaLato(yB, xL + mX, xR - mX, false);
+  const latoSinistro = tracciaLato(xL, yT + mY, yB - mY, true, soglia); // x = a·y + b
+  const latoDestro = tracciaLato(xR, yT + mY, yB - mY, true, soglia);
+  const latoAlto = tracciaLato(yT, xL + mX, xR - mX, false, soglia); // y = a·x + b
+  const latoBasso = tracciaLato(yB, xL + mX, xR - mX, false, soglia);
 
   /** intersezione tra un lato verticale (x = a·y+b) e uno orizzontale (y = c·x+d) */
   const interseca = (vert: RettaLato, oriz: RettaLato): Punto | null => {
@@ -323,12 +394,15 @@ export function rilevaFigura(ricerca: RicercaBordi, p: Punto): FiguraRilevata | 
   const cy = Math.round(p.y * c.fattore);
   if (cx < 2 || cy < 2 || cx > c.w - 3 || cy > c.h - 3) return null;
 
+  // soglia di partenza dal contrasto locale attorno al punto toccato
+  const r = Math.round(Math.min(c.w, c.h) * 0.25);
+  const soglia = sogliaAdattiva(c, cx - r, cx + r, cy - r, cy + r);
   const lungoX = profiloX(c, cy);
   const lungoY = profiloY(c, cx);
-  const xL = primoFronte(lungoX, cx, -1, c.w);
-  const xR = primoFronte(lungoX, cx, 1, c.w);
-  const yT = primoFronte(lungoY, cy, -1, c.h);
-  const yB = primoFronte(lungoY, cy, 1, c.h);
+  const xL = primoFronte(lungoX, cx, -1, c.w, soglia);
+  const xR = primoFronte(lungoX, cx, 1, c.w, soglia);
+  const yT = primoFronte(lungoY, cy, -1, c.h, soglia);
+  const yB = primoFronte(lungoY, cy, 1, c.h, soglia);
   if (xL === null || xR === null || yT === null || yB === null) return null;
 
   return costruisciQuadrilatero(c, xL, xR, yT, yB);
@@ -369,6 +443,9 @@ export function rilevaFiguraEvidenziata(
   const cy = Math.round((y1 + y2) / 2);
   const lungoX = profiloX(c, cy);
   const lungoY = profiloY(c, cx);
+  // soglia adattiva su un'area un po' più larga della traccia
+  const margine = Math.round(Math.max(x2 - x1, y2 - y1) * 0.2);
+  const soglia = sogliaAdattiva(c, x1 - margine, x2 + margine, y1 - margine, y2 + margine);
 
   // si parte poco dentro il bordo dell'evidenziatura e si cerca il primo
   // fronte verso l'esterno; se l'evidenziatura ha leggermente superato il
@@ -381,8 +458,8 @@ export function rilevaFiguraEvidenziata(
     limite: number,
     raggioFallback: number
   ): number | null =>
-    primoFronte(profilo, daBordo - verso * inset, verso, limite, 1) ??
-    fronteVicino(profilo, daBordo, raggioFallback, limite);
+    primoFronte(profilo, daBordo - verso * inset, verso, limite, soglia, 1) ??
+    fronteVicino(profilo, daBordo, raggioFallback, limite, soglia);
 
   const xL = cerca(lungoX, x1, -1, c.w, Math.max(4, Math.round((x2 - x1) * 0.15)));
   const xR = cerca(lungoX, x2, 1, c.w, Math.max(4, Math.round((x2 - x1) * 0.15)));

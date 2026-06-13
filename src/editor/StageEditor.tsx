@@ -24,6 +24,7 @@ export type Strumento =
   | 'quotaV'
   | 'quotaA'
   | 'rettangolo'
+  | 'quad'
   | 'angolo'
   | 'raggio'
   | 'testo'
@@ -76,6 +77,8 @@ interface Props {
   onCommit: (annotazioni: Annotazione[]) => void;
   onNuovaQuota: (p1: Punto, p2: Punto, sottotipo: SottotipoQuota) => void;
   onNuovoRett: (rect: Rettangolo) => void;
+  /** elemento da 4 angoli toccati direttamente (prospettiva qualsiasi) */
+  onNuovoQuad: (punti: [Punto, Punto, Punto, Punto]) => void;
   onNuovoAngolo: (vertice: Punto, a: Punto, b: Punto) => void;
   onNuovoRaggio: (centro: Punto, bordo: Punto) => void;
   onNuovoTesto: (posizione: Punto) => void;
@@ -101,6 +104,7 @@ type Bozza =
   | { tipo: 'disegno'; punti: number[] }
   | { tipo: 'callout'; inizio: Punto; corrente: Punto }
   | { tipo: 'angolo'; punti: Punto[] }
+  | { tipo: 'quad'; punti: Punto[] }
   | { tipo: 'piano'; punti: Punto[] }
   | null;
 
@@ -391,6 +395,7 @@ export function StageEditor(p: Props) {
         break;
       }
       case 'angolo':
+      case 'quad':
       case 'piano': {
         const punto = applicaSnap(pos);
         setPuntoPendente(punto);
@@ -499,6 +504,16 @@ export function StageEditor(p: Props) {
         p.onNuovoAngolo(punti[0], punti[1], punti[2]);
       } else {
         setBozza({ tipo: 'angolo', punti });
+      }
+      return;
+    }
+    if (p.strumento === 'quad') {
+      const punti = bozza?.tipo === 'quad' ? [...bozza.punti, punto] : [punto];
+      if (punti.length === 4) {
+        setBozza(null);
+        p.onNuovoQuad(punti as [Punto, Punto, Punto, Punto]);
+      } else {
+        setBozza({ tipo: 'quad', punti });
       }
       return;
     }
@@ -776,7 +791,7 @@ export function StageEditor(p: Props) {
               listening={false}
             />
           )}
-          {(bozza?.tipo === 'angolo' || bozza?.tipo === 'piano') && (
+          {(bozza?.tipo === 'angolo' || bozza?.tipo === 'piano' || bozza?.tipo === 'quad') && (
             <>
               {bozza.punti.map((pt, i) => (
                 <Circle
@@ -1014,6 +1029,10 @@ function testoSuggerimento(strumento: Strumento, bozza: Bozza): string | null {
     return puntoFisso(bozza)
       ? 'Secondo punto: premi, aggiusta con la lente, rilascia per fissare'
       : 'Primo punto: premi, aggiusta con la lente, rilascia per fissare';
+  }
+  if (strumento === 'quad') {
+    const n = bozza?.tipo === 'quad' ? bozza.punti.length : 0;
+    return `Elemento a 4 angoli (${n}/4): tocca alto-sx, alto-dx, basso-dx, basso-sx`;
   }
   if (strumento === 'angolo') {
     const n = bozza?.tipo === 'angolo' ? bozza.punti.length : 0;

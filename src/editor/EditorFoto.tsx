@@ -260,6 +260,16 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     if (q.valoreBase === null) setTimeout(() => inputValore.current?.focus(), 60);
   };
 
+  /** elemento da 4 angoli toccati: affidabile per prospettiva qualsiasi */
+  const creaQuad = (punti: [Punto, Punto, Punto, Punto]) => {
+    if (!fabbrica || !annotazioni) return;
+    const q = fabbrica.quotaRettangolo(punti, annotazioni);
+    commit([...annotazioni, q]);
+    setSelezioneId(q.id);
+    setStrumento('seleziona');
+    if (q.valoreBase === null) setTimeout(() => inputValore.current?.focus(), 60);
+  };
+
   const creaAngolo = (vertice: Punto, a: Punto, b: Punto) => {
     if (!fabbrica || !annotazioni) return;
     const q = fabbrica.quotaAngolare(vertice, a, b, annotazioni);
@@ -513,6 +523,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         onCommit={commitGeometria}
         onNuovaQuota={creaQuota}
         onNuovoRett={creaRettangolo}
+        onNuovoQuad={creaQuad}
         onNuovoAngolo={creaAngolo}
         onNuovoRaggio={creaRaggio}
         onNuovoTesto={creaTesto}
@@ -560,6 +571,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           <BtnStrumento attivo={strumento === 'quotaV'} onClick={() => setStrumento('quotaV')} icona="↕" testo="Quota V" />
           <BtnStrumento attivo={strumento === 'quotaA'} onClick={() => setStrumento('quotaA')} icona="⤡" testo="Allineata" />
           <BtnStrumento attivo={strumento === 'rettangolo'} onClick={() => setStrumento('rettangolo')} icona="▭" testo="Rett." />
+          <BtnStrumento attivo={strumento === 'quad'} onClick={() => setStrumento('quad')} icona="◇" testo="4 angoli" />
           <BtnStrumento attivo={strumento === 'angolo'} onClick={() => setStrumento('angolo')} icona="∠" testo="Angolo" />
           <BtnStrumento attivo={strumento === 'raggio'} onClick={() => setStrumento('raggio')} icona="◔" testo="Raggio" />
         </span>

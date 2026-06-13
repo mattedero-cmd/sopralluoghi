@@ -44,7 +44,28 @@ const vicino = (p: Punto, x: number, y: number, tolleranza = 5) => {
   expect(Math.abs(p.y - y)).toBeLessThanOrEqual(tolleranza);
 };
 
+/** Figura a BASSO contrasto (195 su 180): come un'anta bianca su mobile bianco */
+function immagineBassoContrasto(): RicercaBordi {
+  const w = 220;
+  const h = 180;
+  const lum = new Float32Array(w * h).fill(180);
+  for (let y = 50; y <= 130; y++) {
+    for (let x = 60; x <= 160; x++) lum[y * w + x] = 195;
+  }
+  return RicercaBordi.daDati(lum, w, h, 1);
+}
+
 describe('autoquotatura: rilevamento figura', () => {
+  it('basso contrasto (bianco su bianco): la soglia adattiva rileva comunque', () => {
+    // salto di soli 15 livelli: la soglia fissa precedente lo perdeva,
+    // quella adattiva al contrasto della scena lo riconosce
+    const figura = rilevaFigura(immagineBassoContrasto(), { x: 110, y: 90 });
+    expect(figura).not.toBeNull();
+    const [altoSx, , bassoDx] = figura!.punti;
+    vicino(altoSx, 60, 50, 6);
+    vicino(bassoDx, 160, 130, 6);
+  });
+
   it('figura ortogonale: i 4 angoli coincidono con i bordi', () => {
     const figura = rilevaFigura(immagineOrtogonale(), { x: 110, y: 90 });
     expect(figura).not.toBeNull();
