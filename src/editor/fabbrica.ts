@@ -8,6 +8,7 @@ import type {
   Punto,
   Quota,
   QuotaAngolare,
+  QuotaPoligono,
   QuotaRaggio,
   QuotaRettangolo,
   Rettangolo,
@@ -17,7 +18,12 @@ import type {
 } from '../db/types';
 import { quadrilateroQuotaRett } from '../db/types';
 import { nuovoId } from '../utils/id';
-import { haCalibrazione, misureRettangolo, valoreAutomatico } from '../geometry/calibrazione';
+import {
+  haCalibrazione,
+  misurePoligono,
+  misureRettangolo,
+  valoreAutomatico
+} from '../geometry/calibrazione';
 
 /**
  * Creazione delle annotazioni con valori predefiniti proporzionati
@@ -121,6 +127,35 @@ export class FabbricaAnnotazioni {
         q.valoreBase = m.base;
         q.valoreAltezza = m.altezza;
       }
+    }
+    return q;
+  }
+
+  /**
+   * Quota elemento poligonale (3, 5… lati): un solo oggetto che misura
+   * ogni lato. Riceve i vertici in ordine ed è numerato automaticamente
+   * (1, 2, 3…) come la quota rettangolo.
+   */
+  quotaPoligono(punti: Punto[], esistenti: Annotazione[]): QuotaPoligono {
+    const calibrata = haCalibrazione(this.foto);
+    const numero =
+      esistenti.filter((a) => a.tipo === 'quotaRett' || a.tipo === 'quotaPoligono').length + 1;
+    const q: QuotaPoligono = {
+      id: nuovoId(),
+      fotoId: this.foto.id,
+      tipo: 'quotaPoligono',
+      punti,
+      etichetta: String(numero),
+      lati: punti.map(() => null),
+      valoreAuto: calibrata,
+      unita: this.impostazioni.unitaDefault,
+      stato: calibrata ? 'stimata' : 'reale',
+      zIndex: this.prossimoZ(esistenti),
+      stile: this.stileBase()
+    };
+    if (calibrata) {
+      const lati = misurePoligono(punti, this.foto, q.unita);
+      if (lati) q.lati = lati;
     }
     return q;
   }
@@ -260,6 +295,8 @@ export function traslaAnnotazione(a: Annotazione, dx: number, dy: number): Annot
       const { rect: _r, ...resto } = a;
       return { ...resto, punti };
     }
+    case 'quotaPoligono':
+      return { ...a, punti: a.punti.map((p) => ({ x: p.x + dx, y: p.y + dy })) };
     case 'testo':
       return { ...a, posizione: { x: a.posizione.x + dx, y: a.posizione.y + dy } };
     case 'disegno': {

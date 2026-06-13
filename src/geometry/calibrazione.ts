@@ -3,6 +3,7 @@ import {
   type Annotazione,
   type Foto,
   type Punto,
+  type QuotaPoligono,
   type QuotaRettangolo,
   type Unita
 } from '../db/types';
@@ -139,6 +140,14 @@ export function applicaValoriAuto(annotazioni: Annotazione[], foto: Calibrazione
       if (m.base === a.valoreBase && m.altezza === a.valoreAltezza && a.valoreAuto === true) return a;
       return { ...a, valoreBase: m.base, valoreAltezza: m.altezza, valoreAuto: true };
     }
+    if (a.tipo === 'quotaPoligono') {
+      const auto = a.valoreAuto ?? a.lati.every((l) => l === null);
+      if (!auto) return a;
+      const lati = misurePoligono(a.punti, foto, a.unita);
+      if (!lati) return a;
+      if (a.valoreAuto === true && lati.every((l, i) => l === a.lati[i])) return a;
+      return { ...a, lati, valoreAuto: true };
+    }
     if (a.tipo !== 'quota' && a.tipo !== 'quotaAngolo' && a.tipo !== 'quotaRaggio') return a;
     const auto = a.valoreAuto ?? a.valore === null;
     if (!auto) return a;
@@ -210,4 +219,54 @@ export function misureElemento(q: QuotaRettangolo): MisureElemento {
     latoDx: proporziona(q.valoreAltezza, sxPx, dxPx),
     unita: q.unita
   };
+}
+
+// ---------------------------------------------------------------------------
+// Elemento poligonale (3, 5… lati)
+// ---------------------------------------------------------------------------
+
+/** Nome della forma in base al numero di lati (3 = triangolo, 5 = pentagono…) */
+export function nomePoligono(nLati: number): string {
+  switch (nLati) {
+    case 3:
+      return 'Triangolo';
+    case 4:
+      return 'Quadrilatero';
+    case 5:
+      return 'Pentagono';
+    case 6:
+      return 'Esagono';
+    case 7:
+      return 'Ettagono';
+    case 8:
+      return 'Ottagono';
+    default:
+      return `Poligono ${nLati} lati`;
+  }
+}
+
+/**
+ * Lunghezza reale di ciascun lato del poligono dalla calibrazione:
+ * lati[i] è il segmento da punti[i] a punti[i+1] (l'ultimo chiude su
+ * punti[0]). null se la foto non è calibrata.
+ */
+export function misurePoligono(
+  punti: Punto[],
+  foto: CalibrazioneFoto,
+  unita: Unita
+): (number | null)[] | null {
+  if (punti.length < 3) return null;
+  if (!haCalibrazione(foto)) return null;
+  return punti.map((p, i) => {
+    const succ = punti[(i + 1) % punti.length];
+    const m = distanzaReale(foto, p, succ);
+    return m ? arrotondaMisura(daMillimetri(inMillimetri(m.valore, m.unita), unita)) : null;
+  });
+}
+
+/** Perimetro reale del poligono (somma dei lati noti); null se nessun lato noto */
+export function perimetroPoligono(q: QuotaPoligono): number | null {
+  const noti = q.lati.filter((l): l is number => l !== null);
+  if (noti.length === 0) return null;
+  return arrotondaMisura(noti.reduce((s, l) => s + l, 0));
 }

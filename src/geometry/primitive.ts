@@ -6,13 +6,14 @@ import type {
   Punto,
   Quota,
   QuotaAngolare,
+  QuotaPoligono,
   QuotaRaggio,
   QuotaRettangolo,
   Rettangolo,
   TestoFoto
 } from '../db/types';
 import { COLORE_REALE, COLORE_STIMATA, quadrilateroQuotaRett } from '../db/types';
-import { misureElemento } from './calibrazione';
+import { misureElemento, nomePoligono } from './calibrazione';
 import { formattaMisura, formattaNumero } from '../utils/format';
 import {
   direzioneQuota,
@@ -418,6 +419,86 @@ export function primitiveQuotaRettangolo(q: QuotaRettangolo): Primitiva[] {
   return prim;
 }
 
+export function etichettaPoligono(q: QuotaPoligono): string {
+  const nome = nomePoligono(q.punti.length);
+  const valori = q.lati.map((l) => (l === null ? '?' : formattaNumero(l)));
+  const testo = `${nome} ${valori.join('/')} ${q.unita}`;
+  return q.stato === 'stimata' ? `≈ ${testo}` : testo;
+}
+
+/**
+ * Quota elemento poligonale (3, 5… lati): contorno chiuso che segue i
+ * vertici + quota di ciascun lato, allineata e spinta all'esterno della
+ * figura. Riusa la geometria delle quote lineari, come la quota rettangolo.
+ */
+export function primitiveQuotaPoligono(q: QuotaPoligono): Primitiva[] {
+  const punti = q.punti;
+  const n = punti.length;
+  const colore = coloreQuota(q);
+  const offset = Math.max(24, q.stile.dimensioneTesto * 1.1);
+  const contorno: number[] = [];
+  for (const pt of punti) contorno.push(pt.x, pt.y);
+  if (n > 0) contorno.push(punti[0].x, punti[0].y);
+  const prim: Primitiva[] = [
+    { kind: 'polilinea', punti: contorno, colore, spessore: q.stile.spessore * 0.75 }
+  ];
+
+  const centro: Punto = {
+    x: punti.reduce((s, p) => s + p.x, 0) / n,
+    y: punti.reduce((s, p) => s + p.y, 0) / n
+  };
+  const comune = {
+    id: q.id,
+    fotoId: q.fotoId,
+    tipo: 'quota' as const,
+    sottotipo: 'allineata' as const,
+    zIndex: q.zIndex,
+    stile: q.stile,
+    posizioneTesto: 'sopra' as const,
+    stato: q.stato,
+    unita: q.unita
+  };
+  // ogni lato è quotato all'esterno: l'offset viene spinto nel verso
+  // che allontana la linea di quota dal centro della figura
+  for (let i = 0; i < n; i++) {
+    const a = punti[i];
+    const b = punti[(i + 1) % n];
+    const d = normalizza(sottrai(b, a));
+    const nrm = normale(d);
+    const medio = scala(somma(a, b), 0.5);
+    const verso = sottrai(medio, centro);
+    const segno = dot(nrm, verso) >= 0 ? 1 : -1;
+    prim.push(
+      ...primitiveQuota({ ...comune, p1: a, p2: b, offset: offset * segno, valore: q.lati[i] ?? null })
+    );
+  }
+
+  // nomenclatura: badge al centro della figura (come la quota rettangolo)
+  if (q.etichetta) {
+    const dim = q.stile.dimensioneTesto;
+    const mezzaL = Math.max(dim * 0.9, misuraLarghezzaTesto(q.etichetta, dim) / 2 + dim * 0.4);
+    prim.push(
+      {
+        kind: 'rettangolo',
+        rect: { x: centro.x - mezzaL, y: centro.y - dim * 0.8, width: mezzaL * 2, height: dim * 1.6 },
+        colore,
+        spessore: 0,
+        riempimento: colore
+      },
+      {
+        kind: 'testo',
+        testo: q.etichetta,
+        posizione: centro,
+        rotazioneDeg: 0,
+        dimensione: dim,
+        colore: '#ffffff',
+        sfondo: null
+      }
+    );
+  }
+  return prim;
+}
+
 export function etichettaRaggio(q: Pick<QuotaRaggio, 'valore' | 'unita' | 'stato' | 'modo'>): string {
   const prefisso = q.modo === 'diametro' ? '⌀ ' : 'R ';
   const base = q.valore === null ? `${prefisso}?` : `${prefisso}${formattaMisura(q.valore, q.unita)}`;
@@ -590,6 +671,8 @@ export function primitiveAnnotazione(a: Annotazione): Primitiva[] {
       return primitiveQuotaRaggio(a);
     case 'quotaRett':
       return primitiveQuotaRettangolo(a);
+    case 'quotaPoligono':
+      return primitiveQuotaPoligono(a);
     case 'freccia':
       return primitiveFreccia(a);
     case 'testo':

@@ -25,6 +25,8 @@ export type Strumento =
   | 'quotaA'
   | 'rettangolo'
   | 'quad'
+  | 'tri'
+  | 'penta'
   | 'angolo'
   | 'raggio'
   | 'testo'
@@ -79,6 +81,8 @@ interface Props {
   onNuovoRett: (rect: Rettangolo) => void;
   /** elemento da 4 angoli toccati direttamente (prospettiva qualsiasi) */
   onNuovoQuad: (punti: [Punto, Punto, Punto, Punto]) => void;
+  /** elemento poligonale (triangolo, pentagono…) da N angoli toccati */
+  onNuovoPoligono: (punti: Punto[]) => void;
   onNuovoAngolo: (vertice: Punto, a: Punto, b: Punto) => void;
   onNuovoRaggio: (centro: Punto, bordo: Punto) => void;
   onNuovoTesto: (posizione: Punto) => void;
@@ -105,6 +109,7 @@ type Bozza =
   | { tipo: 'callout'; inizio: Punto; corrente: Punto }
   | { tipo: 'angolo'; punti: Punto[] }
   | { tipo: 'quad'; punti: Punto[] }
+  | { tipo: 'poli'; punti: Punto[]; lati: number }
   | { tipo: 'piano'; punti: Punto[] }
   | null;
 
@@ -396,6 +401,8 @@ export function StageEditor(p: Props) {
       }
       case 'angolo':
       case 'quad':
+      case 'tri':
+      case 'penta':
       case 'piano': {
         const punto = applicaSnap(pos);
         setPuntoPendente(punto);
@@ -514,6 +521,17 @@ export function StageEditor(p: Props) {
         p.onNuovoQuad(punti as [Punto, Punto, Punto, Punto]);
       } else {
         setBozza({ tipo: 'quad', punti });
+      }
+      return;
+    }
+    if (p.strumento === 'tri' || p.strumento === 'penta') {
+      const lati = p.strumento === 'tri' ? 3 : 5;
+      const punti = bozza?.tipo === 'poli' ? [...bozza.punti, punto] : [punto];
+      if (punti.length === lati) {
+        setBozza(null);
+        p.onNuovoPoligono(punti);
+      } else {
+        setBozza({ tipo: 'poli', punti, lati });
       }
       return;
     }
@@ -791,7 +809,10 @@ export function StageEditor(p: Props) {
               listening={false}
             />
           )}
-          {(bozza?.tipo === 'angolo' || bozza?.tipo === 'piano' || bozza?.tipo === 'quad') && (
+          {(bozza?.tipo === 'angolo' ||
+            bozza?.tipo === 'piano' ||
+            bozza?.tipo === 'quad' ||
+            bozza?.tipo === 'poli') && (
             <>
               {bozza.punti.map((pt, i) => (
                 <Circle
@@ -1034,6 +1055,12 @@ function testoSuggerimento(strumento: Strumento, bozza: Bozza): string | null {
     const n = bozza?.tipo === 'quad' ? bozza.punti.length : 0;
     return `Elemento a 4 angoli (${n}/4): tocca alto-sx, alto-dx, basso-dx, basso-sx`;
   }
+  if (strumento === 'tri' || strumento === 'penta') {
+    const lati = strumento === 'tri' ? 3 : 5;
+    const nome = strumento === 'tri' ? 'Triangolo' : 'Pentagono';
+    const n = bozza?.tipo === 'poli' ? bozza.punti.length : 0;
+    return `${nome} a ${lati} lati (${n}/${lati}): tocca i vertici in ordine`;
+  }
   if (strumento === 'angolo') {
     const n = bozza?.tipo === 'angolo' ? bozza.punti.length : 0;
     return ['Tocca il vertice dell’angolo', 'Tocca il primo lato', 'Tocca il secondo lato'][n];
@@ -1173,6 +1200,13 @@ function boxAnnotazione(a: Annotazione): Rettangolo {
     case 'quotaRett': {
       const margine = Math.max(24, a.stile.dimensioneTesto * 1.1) + a.stile.dimensioneTesto;
       for (const q of quadrilateroQuotaRett(a)) {
+        punti.push({ x: q.x - margine, y: q.y - margine }, { x: q.x + margine, y: q.y + margine });
+      }
+      break;
+    }
+    case 'quotaPoligono': {
+      const margine = Math.max(24, a.stile.dimensioneTesto * 1.1) + a.stile.dimensioneTesto;
+      for (const q of a.punti) {
         punti.push({ x: q.x - margine, y: q.y - margine }, { x: q.x + margine, y: q.y + margine });
       }
       break;
@@ -1338,6 +1372,21 @@ function ManiglieAnnotazione({
                 const { rect: _r, ...resto } = ann;
                 return { ...resto, punti: nuovi };
               },
+              { snap: true, escludi: [pos] }
+            )
+          )}
+        </>
+      );
+    }
+    case 'quotaPoligono': {
+      const punti = ann.punti;
+      return (
+        <>
+          {punti.map((pos, i) =>
+            maniglia(
+              `vertice-${i}`,
+              pos,
+              (n) => ({ ...ann, punti: punti.map((q, j) => (j === i ? n : q)) }),
               { snap: true, escludi: [pos] }
             )
           )}

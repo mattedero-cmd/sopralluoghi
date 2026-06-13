@@ -9,6 +9,7 @@ import type {
   Punto,
   Quota,
   QuotaAngolare,
+  QuotaPoligono,
   QuotaRaggio,
   QuotaRettangolo,
   Rettangolo,
@@ -28,7 +29,9 @@ import { calcolaCatene, sommaCatenaInUnita } from '../geometry/catene';
 import {
   applicaValoriAuto,
   haCalibrazione,
+  misurePoligono,
   misureRettangolo,
+  nomePoligono,
   valoreAutomatico
 } from '../geometry/calibrazione';
 import { omografiaPiano } from '../geometry/omografia';
@@ -56,6 +59,7 @@ function categoriaAnnotazione(a: Annotazione): CategoriaLayer {
     case 'quotaAngolo':
     case 'quotaRaggio':
     case 'quotaRett':
+    case 'quotaPoligono':
       return 'quote';
     case 'callout':
       return 'callout';
@@ -270,6 +274,16 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     if (q.valoreBase === null) setTimeout(() => inputValore.current?.focus(), 60);
   };
 
+  /** elemento poligonale (triangolo, pentagono…) da N angoli toccati */
+  const creaPoligono = (punti: Punto[]) => {
+    if (!fabbrica || !annotazioni) return;
+    const q = fabbrica.quotaPoligono(punti, annotazioni);
+    commit([...annotazioni, q]);
+    setSelezioneId(q.id);
+    setStrumento('seleziona');
+    if (q.lati.every((l) => l === null)) setTimeout(() => inputValore.current?.focus(), 60);
+  };
+
   const creaAngolo = (vertice: Punto, a: Punto, b: Punto) => {
     if (!fabbrica || !annotazioni) return;
     const q = fabbrica.quotaAngolare(vertice, a, b, annotazioni);
@@ -333,6 +347,35 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     setStrumento('seleziona');
     // senza calibrazione i valori vanno inseriti a mano: focus sul campo
     if (definitiva.valoreBase === null) setTimeout(() => inputValore.current?.focus(), 60);
+  };
+
+  /**
+   * Accetta la figura rilevata come CERCHIO: si inscrive una circonferenza
+   * nei bordi rilevati (centro = baricentro, diametro = media tra larghezza
+   * e altezza della figura) e si crea una quota di diametro.
+   */
+  const accettaCerchio = () => {
+    if (!proposta || !annotazioni || !fabbrica || !foto) return;
+    const pts = proposta.punti;
+    const centro: Punto = {
+      x: (pts[0].x + pts[1].x + pts[2].x + pts[3].x) / 4,
+      y: (pts[0].y + pts[1].y + pts[2].y + pts[3].y) / 4
+    };
+    const larghezza = (distanza(pts[0], pts[1]) + distanza(pts[3], pts[2])) / 2;
+    const altezza = (distanza(pts[0], pts[3]) + distanza(pts[1], pts[2])) / 2;
+    const raggio = (larghezza + altezza) / 4;
+    const bordo: Punto = { x: centro.x + raggio, y: centro.y };
+    let q = fabbrica.quotaRaggio(centro, bordo, annotazioni);
+    q = { ...q, modo: 'diametro' };
+    if (haCalibrazione(foto)) {
+      const v = valoreAutomatico(q, foto);
+      q = { ...q, valore: v, valoreAuto: true };
+    }
+    commit([...annotazioni, q]);
+    setProposta(null);
+    setSelezioneId(q.id);
+    setStrumento('seleziona');
+    if (q.valore === null) setTimeout(() => inputValore.current?.focus(), 60);
   };
 
   const creaTesto = (pos: Punto) => {
@@ -527,6 +570,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         onNuovaQuota={creaQuota}
         onNuovoRett={creaRettangolo}
         onNuovoQuad={creaQuad}
+        onNuovoPoligono={creaPoligono}
         onNuovoAngolo={creaAngolo}
         onNuovoRaggio={creaRaggio}
         onNuovoTesto={creaTesto}
@@ -543,7 +587,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             ✨ Figura rilevata: {etichettaRettangolo(proposta)}
           </span>
           <button className="btn primario" onClick={accettaProposta}>
-            ✓ Accetta
+            ✓ Elemento
+          </button>
+          <button className="btn" onClick={accettaCerchio} title="Inscrivi una circonferenza nella figura rilevata">
+            ◯ Cerchio
           </button>
           <button className="btn pericolo" onClick={() => setProposta(null)}>
             ✕ Annulla
@@ -575,6 +622,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           <BtnStrumento attivo={strumento === 'quotaA'} onClick={() => setStrumento('quotaA')} icona="⤡" testo="Allineata" />
           <BtnStrumento attivo={strumento === 'rettangolo'} onClick={() => setStrumento('rettangolo')} icona="▭" testo="Rett." />
           <BtnStrumento attivo={strumento === 'quad'} onClick={() => setStrumento('quad')} icona="◇" testo="4 angoli" />
+          <BtnStrumento attivo={strumento === 'tri'} onClick={() => setStrumento('tri')} icona="△" testo="3 lati" />
+          <BtnStrumento attivo={strumento === 'penta'} onClick={() => setStrumento('penta')} icona="⬠" testo="5 lati" />
           <BtnStrumento attivo={strumento === 'angolo'} onClick={() => setStrumento('angolo')} icona="∠" testo="Angolo" />
           <BtnStrumento attivo={strumento === 'raggio'} onClick={() => setStrumento('raggio')} icona="◔" testo="Raggio" />
         </span>
@@ -822,6 +871,9 @@ function PannelloProprieta({
       {ann.tipo === 'quotaRett' && (
         <ProprietaRettangolo rett={ann} foto={foto} inputValore={inputValore} onModifica={onModifica} />
       )}
+      {ann.tipo === 'quotaPoligono' && (
+        <ProprietaPoligono poli={ann} foto={foto} inputValore={inputValore} onModifica={onModifica} />
+      )}
       {ann.tipo === 'quotaAngolo' && (
         <ProprietaAngolo angolo={ann} foto={foto} onModifica={onModifica} />
       )}
@@ -839,7 +891,8 @@ function PannelloProprieta({
       {(ann.tipo === 'quota' ||
         ann.tipo === 'quotaAngolo' ||
         ann.tipo === 'quotaRaggio' ||
-        ann.tipo === 'quotaRett') && (
+        ann.tipo === 'quotaRett' ||
+        ann.tipo === 'quotaPoligono') && (
         <PaletteColori
           colore={ann.stile.colore}
           onScegli={(c) => onModifica({ stile: { ...ann.stile, colore: c } })}
@@ -1089,6 +1142,130 @@ function ProprietaRettangolo({
       <span className="segmenti" role="group" aria-label="Stato della misura">
         {(['reale', 'stimata'] as StatoMisura[]).map((s) => (
           <button key={s} className={rett.stato === s ? 'attivo' : ''} onClick={() => onModifica({ stato: s })}>
+            {s === 'reale' ? 'Reale' : '≈ Stimata'}
+          </button>
+        ))}
+      </span>
+    </>
+  );
+}
+
+/** Campo misura di un singolo lato del poligono, con sincronizzazione esterna */
+function CampoLato({
+  valore,
+  inputRef,
+  onValore
+}: {
+  valore: number | null;
+  inputRef?: React.RefObject<HTMLInputElement>;
+  onValore: (v: number | null) => void;
+}) {
+  const [testo, setTesto] = useState(valore === null ? '' : String(valore).replace('.', ','));
+  const valoreRef = useRef(valore);
+  useEffect(() => {
+    if (valore !== valoreRef.current) {
+      valoreRef.current = valore;
+      setTesto(valore === null ? '' : String(valore).replace('.', ','));
+    }
+  }, [valore]);
+  return (
+    <input
+      ref={inputRef}
+      className="input-misura"
+      style={{ width: 64 }}
+      type="text"
+      inputMode="decimal"
+      placeholder="lato"
+      value={testo}
+      onChange={(e) => {
+        const t = e.target.value;
+        setTesto(t);
+        const v = analizzaMisura(t);
+        if (t.trim() !== '' && v === null) return;
+        valoreRef.current = v;
+        onValore(v);
+      }}
+    />
+  );
+}
+
+function ProprietaPoligono({
+  poli,
+  foto,
+  inputValore,
+  onModifica
+}: {
+  poli: QuotaPoligono;
+  foto: Foto;
+  inputValore: React.RefObject<HTMLInputElement>;
+  onModifica: (m: Partial<QuotaPoligono>) => void;
+}) {
+  const calibrata = haCalibrazione(foto);
+  const aggiornaLato = (i: number, v: number | null) => {
+    const lati = poli.lati.map((l, j) => (j === i ? v : l));
+    onModifica({ lati, valoreAuto: false });
+  };
+  return (
+    <>
+      <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{nomePoligono(poli.punti.length)}</span>
+      <input
+        className="input-misura"
+        style={{ width: 56 }}
+        value={poli.etichetta ?? ''}
+        maxLength={4}
+        aria-label="Nomenclatura dell'elemento"
+        placeholder="n°"
+        onChange={(e) => onModifica({ etichetta: e.target.value })}
+      />
+      {poli.lati.map((l, i) => (
+        <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <label style={{ color: 'var(--testo-2)', fontSize: 13 }}>L{i + 1}</label>
+          <CampoLato
+            valore={l}
+            inputRef={i === 0 ? inputValore : undefined}
+            onValore={(v) => aggiornaLato(i, v)}
+          />
+        </span>
+      ))}
+      {calibrata &&
+        (poli.valoreAuto ? (
+          <span style={{ color: 'var(--ok)', fontSize: 13, fontWeight: 700 }} title="Calcolato dalla calibrazione">
+            auto
+          </span>
+        ) : (
+          <button
+            className="btn"
+            style={{ minHeight: 44, padding: '0 10px' }}
+            title="Ricalcola i lati dalla calibrazione"
+            onClick={() => {
+              const lati = misurePoligono(poli.punti, foto, poli.unita);
+              if (lati) onModifica({ lati, valoreAuto: true });
+            }}
+          >
+            ↻ auto
+          </button>
+        ))}
+      <select
+        aria-label="Unità"
+        value={poli.unita}
+        onChange={(e) => {
+          const unita = e.target.value as Unita;
+          if (poli.valoreAuto) {
+            const lati = misurePoligono(poli.punti, foto, unita);
+            onModifica({ unita, lati: lati ?? poli.lati });
+          } else {
+            onModifica({ unita });
+          }
+        }}
+        style={{ minHeight: 44, borderRadius: 10, background: 'var(--sfondo)', border: '1px solid var(--bordo)', padding: '0 8px' }}
+      >
+        <option value="mm">mm</option>
+        <option value="cm">cm</option>
+        <option value="m">m</option>
+      </select>
+      <span className="segmenti" role="group" aria-label="Stato della misura">
+        {(['reale', 'stimata'] as StatoMisura[]).map((s) => (
+          <button key={s} className={poli.stato === s ? 'attivo' : ''} onClick={() => onModifica({ stato: s })}>
             {s === 'reale' ? 'Reale' : '≈ Stimata'}
           </button>
         ))}

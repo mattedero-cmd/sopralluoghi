@@ -6,7 +6,7 @@ import { leggiImpostazioni } from '../db/repository';
 import { renderFotoAnnotata } from '../render/renderAnnotata';
 import { caricaImmagine, fotoIllegibile } from '../utils/image';
 import { calcolaCatene, sommaCatenaInUnita } from '../geometry/catene';
-import { misureElemento } from '../geometry/calibrazione';
+import { misureElemento, nomePoligono, perimetroPoligono } from '../geometry/calibrazione';
 import { formattaData, formattaDataOra, formattaMisura, formattaNumero } from '../utils/format';
 
 const GRIGIO = '#555555';
@@ -206,6 +206,17 @@ function righeMisureFoto(annotazioni: Annotazione[]): RigaMisura[] {
         // quadrilatero generico: tutti e quattro i lati (sup, dx, inf, sx)
         misura = `lati ${n(m.baseSup)} / ${n(m.latoDx)} / ${n(m.baseInf)} / ${n(m.latoSx)} ${a.unita}`;
       }
+      righe.push({ tipo: prefisso, misura, stato: a.stato });
+    } else if (a.tipo === 'quotaPoligono') {
+      // elemento poligonale (triangolo, pentagono…): una sola voce con
+      // il nome della forma, i lati e il perimetro quando determinabile
+      const nome = nomePoligono(a.punti.length);
+      const prefisso = a.etichetta ? `${nome} ${a.etichetta}` : nome;
+      const n = (v: number | null) => (v === null ? '?' : formattaNumero(v));
+      const lati = `lati ${a.lati.map(n).join(' / ')} ${a.unita}`;
+      const perimetro = perimetroPoligono(a);
+      const misura =
+        perimetro !== null ? `${lati} (perim. ${formattaNumero(perimetro)} ${a.unita})` : lati;
       righe.push({ tipo: prefisso, misura, stato: a.stato });
     }
   }

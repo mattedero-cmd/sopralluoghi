@@ -1,8 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { RicercaBordi, rilevaFigura, rilevaFiguraEvidenziata } from '../bordi';
-import { misureRettangolo, applicaValoriAuto, classificaForma, misureElemento } from '../calibrazione';
-import { primitiveQuota } from '../primitive';
-import type { Punto, Quota, QuotaRettangolo } from '../../db/types';
+import {
+  misureRettangolo,
+  applicaValoriAuto,
+  classificaForma,
+  misureElemento,
+  misurePoligono,
+  nomePoligono,
+  perimetroPoligono
+} from '../calibrazione';
+import { primitiveQuota, primitiveQuotaPoligono, etichettaPoligono } from '../primitive';
+import type { Punto, Quota, QuotaPoligono, QuotaRettangolo } from '../../db/types';
 
 /**
  * Immagine sintetica: sfondo scuro (40) con un rettangolo chiaro (210)
@@ -255,6 +263,102 @@ describe('classificazione forma elemento', () => {
       { x: 10, y: 90 }
     ]);
     expect(classificaForma(q.punti)).toBe('quadrilatero');
+  });
+});
+
+describe('elemento poligonale (3 / 5 lati)', () => {
+  const stile = { colore: '#ff3b30', spessore: 3, dimensioneTesto: 24 };
+  const fotoScala = { scala: { px: 100, reale: 50, unita: 'cm' as const }, piano: null };
+  const poligono = (punti: Punto[], extra: Partial<QuotaPoligono> = {}): QuotaPoligono => ({
+    id: 'p1',
+    fotoId: 'f1',
+    tipo: 'quotaPoligono',
+    punti,
+    etichetta: '1',
+    lati: punti.map(() => null),
+    unita: 'cm',
+    stato: 'reale',
+    zIndex: 1,
+    stile,
+    ...extra
+  });
+
+  it('nomePoligono: 3 = Triangolo, 5 = Pentagono', () => {
+    expect(nomePoligono(3)).toBe('Triangolo');
+    expect(nomePoligono(5)).toBe('Pentagono');
+    expect(nomePoligono(7)).toBe('Ettagono');
+    expect(nomePoligono(9)).toBe('Poligono 9 lati');
+  });
+
+  it('misurePoligono: lunghezza reale di ogni lato dalla scala', () => {
+    // triangolo rettangolo 3-4-5 in px (×100): lati 300, 400, 500 px
+    const tri: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 300, y: 0 },
+      { x: 0, y: 400 }
+    ];
+    const lati = misurePoligono(tri, fotoScala, 'cm');
+    expect(lati).not.toBeNull();
+    // scala 100px = 50cm → 300px = 150cm, 400px = 200cm, ipotenusa 500px = 250cm
+    expect(lati![0]).toBeCloseTo(150);
+    expect(lati![1]).toBeCloseTo(250);
+    expect(lati![2]).toBeCloseTo(200);
+  });
+
+  it('misurePoligono: null senza calibrazione', () => {
+    expect(misurePoligono([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 0, y: 10 }], { scala: null, piano: null }, 'cm')).toBeNull();
+  });
+
+  it('applicaValoriAuto riempie i lati di un poligono, rispetta i valori manuali', () => {
+    const tri: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 300, y: 0 },
+      { x: 0, y: 400 }
+    ];
+    const auto = poligono(tri, { stato: 'stimata', valoreAuto: true });
+    const manuale = poligono(tri, { id: 'p2', lati: [10, 20, 30], valoreAuto: false });
+    const esito = applicaValoriAuto([auto, manuale], fotoScala);
+    const eAuto = esito.find((a) => a.id === 'p1') as QuotaPoligono;
+    const eMan = esito.find((a) => a.id === 'p2') as QuotaPoligono;
+    expect(eAuto.lati[0]).toBeCloseTo(150);
+    expect(eAuto.lati[1]).toBeCloseTo(250);
+    expect(eAuto.valoreAuto).toBe(true);
+    expect(eMan.lati).toEqual([10, 20, 30]);
+  });
+
+  it('perimetroPoligono: somma dei lati noti', () => {
+    expect(perimetroPoligono(poligono([{ x: 0, y: 0 }], { lati: [10, 20, 30] }))).toBeCloseTo(60);
+    expect(perimetroPoligono(poligono([{ x: 0, y: 0 }], { lati: [null, null] }))).toBeNull();
+  });
+
+  it('etichettaPoligono: nome forma + lati, prefisso ≈ se stimata', () => {
+    const penta = poligono(
+      [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 120, y: 80 },
+        { x: 50, y: 130 },
+        { x: -20, y: 80 }
+      ],
+      { lati: [100, 50, 50, 100, 50], stato: 'stimata' }
+    );
+    const testo = etichettaPoligono(penta);
+    expect(testo.startsWith('≈ Pentagono')).toBe(true);
+  });
+
+  it('primitiveQuotaPoligono: contorno chiuso + una quota per lato', () => {
+    const penta = poligono([
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 120, y: 80 },
+      { x: 50, y: 130 },
+      { x: -20, y: 80 }
+    ]);
+    const prim = primitiveQuotaPoligono(penta);
+    const contorni = prim.filter((p) => p.kind === 'polilinea');
+    expect(contorni.length).toBe(1);
+    // contorno chiuso: 5 vertici + ritorno al primo = 6 punti (12 coordinate)
+    expect((contorni[0] as { punti: number[] }).punti.length).toBe(12);
   });
 });
 

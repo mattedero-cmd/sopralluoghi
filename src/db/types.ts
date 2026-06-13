@@ -168,6 +168,7 @@ export type TipoAnnotazione =
   | 'quotaAngolo'
   | 'quotaRaggio'
   | 'quotaRett'
+  | 'quotaPoligono'
   | 'testo'
   | 'disegno'
   | 'freccia'
@@ -263,6 +264,31 @@ export function quadrilateroQuotaRett(
   ];
 }
 
+/**
+ * Quota elemento poligonale: una figura a N lati (3 = triangolo,
+ * 5 = pentagono, ecc.). Generalizza la quota rettangolo ai poligoni
+ * con un numero qualsiasi di vertici; ogni lato porta la propria
+ * misura. Nel report compare come voce unica con il nome della forma.
+ */
+export interface QuotaPoligono extends AnnotazioneBase {
+  tipo: 'quotaPoligono';
+  /** vertici in ordine (almeno 3) */
+  punti: Punto[];
+  /**
+   * Nomenclatura dell'elemento (es. "1", "2", "A"…), come per la quota
+   * rettangolo: visibile sulla foto e nel report.
+   */
+  etichetta?: string;
+  /**
+   * Lunghezza reale di ciascun lato: lati[i] è il lato da punti[i] a
+   * punti[i+1] (l'ultimo chiude su punti[0]). null = non determinata.
+   */
+  lati: (number | null)[];
+  valoreAuto?: boolean;
+  unita: Unita;
+  stato: StatoMisura;
+}
+
 /** Quota radiale o di diametro: centro + punto sul bordo */
 export interface QuotaRaggio extends AnnotazioneBase {
   tipo: 'quotaRaggio';
@@ -308,6 +334,7 @@ export type Annotazione =
   | QuotaAngolare
   | QuotaRaggio
   | QuotaRettangolo
+  | QuotaPoligono
   | TestoFoto
   | DisegnoLibero
   | Freccia

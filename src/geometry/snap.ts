@@ -20,6 +20,8 @@ export function puntiAggancio(annotazioni: Annotazione[], escludiId?: string): P
       punti.push(a.centro, a.bordo);
     } else if (a.tipo === 'quotaRett') {
       punti.push(...quadrilateroQuotaRett(a));
+    } else if (a.tipo === 'quotaPoligono') {
+      punti.push(...a.punti);
     }
   }
   return punti;
