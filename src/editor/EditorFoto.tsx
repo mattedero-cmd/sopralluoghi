@@ -90,6 +90,13 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [schedaPiano, setSchedaPiano] = useState<{ punti: [Punto, Punto, Punto, Punto] } | null>(null);
   /** quota rettangolo proposta dall'autoquotatura, in attesa di conferma */
   const [proposta, setProposta] = useState<QuotaRettangolo | null>(null);
+  /** sorgente del rilevamento (tocco o evidenziatura): permette di
+   *  ri-rilevare live al variare della tolleranza */
+  const [propostaSorgente, setPropostaSorgente] = useState<
+    { tipo: 'tocco'; punto: Punto } | { tipo: 'traccia'; punti: Punto[] } | null
+  >(null);
+  /** fattore di soglia del rilevamento: <1 rileva bordi più deboli */
+  const [tolleranza, setTolleranza] = useState(1);
   const cacheAnalisi = useRef<{ img: HTMLImageElement; analisi: RicercaBordi } | null>(null);
   const passato = useRef<Annotazione[][]>([]);
   const futuro = useRef<Annotazione[][]>([]);
@@ -145,7 +152,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
 
   // la proposta di autoquotatura decade cambiando strumento
   useEffect(() => {
-    if (strumento !== 'auto') setProposta(null);
+    if (strumento !== 'auto') {
+      setProposta(null);
+      setPropostaSorgente(null);
+    }
   }, [strumento]);
 
   // ---------------------------------------------------------------------------
@@ -326,25 +336,63 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       setProposta(null);
       mostraToast(
         'info',
-        'Nessuna figura netta rilevata: tocca al centro di un elemento a contrasto, oppure evidenzialo con un tratto.'
+        'Nessuna figura netta rilevata: tocca al centro di un elemento a contrasto, oppure evidenzialo con un tratto. Puoi anche allentare la tolleranza dei bordi.'
       );
       return;
     }
     // un solo oggetto base × altezza che segue i bordi reali della
     // figura, mostrato in blu finché non accettato
     const q = fabbrica.quotaRettangolo(figura.punti, annotazioni);
-    setProposta({ ...q, stile: { ...q.stile, colore: '#2f81f7' } });
+    setProposta((prec) => ({
+      ...q,
+      // si conserva l'id mentre si trascina il cursore: l'anteprima si
+      // aggiorna senza ricomparire da capo
+      id: prec?.id ?? q.id,
+      stile: { ...q.stile, colore: '#2f81f7' }
+    }));
   };
 
   const autoTocco = (punto: Punto) => {
+    setPropostaSorgente({ tipo: 'tocco', punto });
+    setTolleranza(1);
+    setProposta(null);
     const analisi = ottieniAnalisi();
-    proponiFigura(analisi ? rilevaFigura(analisi, punto) : null);
+    proponiFigura(analisi ? rilevaFigura(analisi, punto, 1) : null);
   };
 
   /** evidenziatore: i bordi vengono cercati fuori dalla zona tracciata */
   const autoTraccia = (punti: Punto[]) => {
+    setPropostaSorgente({ tipo: 'traccia', punti });
+    setTolleranza(1);
+    setProposta(null);
     const analisi = ottieniAnalisi();
-    proponiFigura(analisi ? rilevaFiguraEvidenziata(analisi, punti) : null);
+    proponiFigura(analisi ? rilevaFiguraEvidenziata(analisi, punti, 1) : null);
+  };
+
+  /**
+   * Ricalcolo live al variare del cursore di tolleranza: ri-rileva la
+   * figura dalla stessa sorgente (tocco o evidenziatura) con il nuovo
+   * fattore di soglia. Un fattore basso aggancia bordi più deboli.
+   */
+  const aggiornaTolleranza = (fattore: number) => {
+    setTolleranza(fattore);
+    const sorgente = propostaSorgente;
+    if (!sorgente || !fabbrica || !annotazioni) return;
+    const analisi = ottieniAnalisi();
+    if (!analisi) return;
+    const figura =
+      sorgente.tipo === 'tocco'
+        ? rilevaFigura(analisi, sorgente.punto, fattore)
+        : rilevaFiguraEvidenziata(analisi, sorgente.punti, fattore);
+    // a tolleranze estreme può non trovare nulla: si mantiene l'ultima
+    // anteprima valida, senza toast ripetuti durante il trascinamento
+    if (!figura) return;
+    const q = fabbrica.quotaRettangolo(figura.punti, annotazioni);
+    setProposta((prec) => ({
+      ...q,
+      id: prec?.id ?? q.id,
+      stile: { ...q.stile, colore: '#2f81f7' }
+    }));
   };
 
   const accettaProposta = () => {
@@ -356,6 +404,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     };
     commit([...annotazioni, definitiva]);
     setProposta(null);
+    setPropostaSorgente(null);
     setSelezioneId(definitiva.id);
     // si passa a Seleziona: così appaiono le maniglie sui 4 angoli e la
     // figura accettata è subito modificabile (trascinamento dei vertici)
@@ -388,6 +437,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     }
     commit([...annotazioni, q]);
     setProposta(null);
+    setPropostaSorgente(null);
     setSelezioneId(q.id);
     setStrumento('seleziona');
     if (q.valore === null) setTimeout(() => inputValore.current?.focus(), 60);
@@ -603,13 +653,38 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
             ✨ Figura rilevata: {etichettaRettangolo(proposta)}
           </span>
+          {propostaSorgente && (
+            <span
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}
+              title="Trascina verso destra per agganciare bordi più deboli, verso sinistra solo i bordi netti"
+            >
+              <span style={{ fontSize: 12, color: 'var(--testo-2)' }}>Bordi netti</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={5}
+                aria-label="Tolleranza dei bordi"
+                value={Math.round(((1.6 - tolleranza) / 1.2) * 100)}
+                onChange={(e) => aggiornaTolleranza(1.6 - (Number(e.target.value) / 100) * 1.2)}
+                style={{ width: 96 }}
+              />
+              <span style={{ fontSize: 12, color: 'var(--testo-2)' }}>deboli</span>
+            </span>
+          )}
           <button className="btn primario" onClick={accettaProposta}>
             ✓ Elemento
           </button>
           <button className="btn" onClick={accettaCerchio} title="Inscrivi una circonferenza nella figura rilevata">
             ◯ Cerchio
           </button>
-          <button className="btn pericolo" onClick={() => setProposta(null)}>
+          <button
+            className="btn pericolo"
+            onClick={() => {
+              setProposta(null);
+              setPropostaSorgente(null);
+            }}
+          >
             ✕ Annulla
           </button>
         </div>

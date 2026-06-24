@@ -75,6 +75,16 @@ describe('autoquotatura: rilevamento figura', () => {
     vicino(bassoDx, 160, 130, 6);
   });
 
+  it('tolleranza: una soglia severa (×3) non rileva più un bordo debole', () => {
+    // lo stesso bordo a basso contrasto rilevato con tolleranza normale
+    // sparisce con una soglia molto più severa, e ricompare allentandola
+    const img = immagineBassoContrasto();
+    const punto = { x: 110, y: 90 };
+    expect(rilevaFigura(img, punto)).not.toBeNull(); // tolleranza normale
+    expect(rilevaFigura(img, punto, 3)).toBeNull(); // soglia ×3: troppo severa
+    expect(rilevaFigura(img, punto, 0.6)).not.toBeNull(); // allentata: torna
+  });
+
   it('figura ortogonale: i 4 angoli coincidono con i bordi', () => {
     const figura = rilevaFigura(immagineOrtogonale(), { x: 110, y: 90 });
     expect(figura).not.toBeNull();

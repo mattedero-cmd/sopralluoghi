@@ -236,7 +236,8 @@ function costruisciQuadrilatero(
   xL: number,
   xR: number,
   yT: number,
-  yB: number
+  yB: number,
+  fattoreSoglia = 1
 ): FiguraRilevata | null {
   const { lum, w, h, fattore } = c;
   if (xR - xL < 14 || yB - yT < 14) return null;
@@ -344,8 +345,10 @@ function costruisciQuadrilatero(
 
   // soglia di contrasto ADATTIVA: dal range di luminanza nell'area della
   // figura. Su scene a basso contrasto (bianco su bianco) si abbassa, su
-  // scene contrastate si alza per non agganciare la texture.
-  const soglia = sogliaAdattiva(c, xL, xR, yT, yB);
+  // scene contrastate si alza per non agganciare la texture. Il
+  // `fattoreSoglia` (cursore "tolleranza") la moltiplica: <1 rileva bordi
+  // più deboli, >1 considera solo bordi netti.
+  const soglia = sogliaAdattiva(c, xL, xR, yT, yB) * fattoreSoglia;
 
   // margini dai presunti angoli, per non campionare gli spigoli
   const mY = Math.max(2, Math.round((yB - yT) * 0.18));
@@ -388,15 +391,20 @@ function costruisciQuadrilatero(
  * fino al primo fronte di contrasto — la figura più interna che
  * contiene il punto.
  */
-export function rilevaFigura(ricerca: RicercaBordi, p: Punto): FiguraRilevata | null {
+export function rilevaFigura(
+  ricerca: RicercaBordi,
+  p: Punto,
+  fattoreSoglia = 1
+): FiguraRilevata | null {
   const c = estraiCampi(ricerca);
   const cx = Math.round(p.x * c.fattore);
   const cy = Math.round(p.y * c.fattore);
   if (cx < 2 || cy < 2 || cx > c.w - 3 || cy > c.h - 3) return null;
 
-  // soglia di partenza dal contrasto locale attorno al punto toccato
+  // soglia di partenza dal contrasto locale attorno al punto toccato,
+  // scalata dal fattore di tolleranza (cursore)
   const r = Math.round(Math.min(c.w, c.h) * 0.25);
-  const soglia = sogliaAdattiva(c, cx - r, cx + r, cy - r, cy + r);
+  const soglia = sogliaAdattiva(c, cx - r, cx + r, cy - r, cy + r) * fattoreSoglia;
   const lungoX = profiloX(c, cy);
   const lungoY = profiloY(c, cx);
   const xL = primoFronte(lungoX, cx, -1, c.w, soglia);
@@ -405,7 +413,7 @@ export function rilevaFigura(ricerca: RicercaBordi, p: Punto): FiguraRilevata | 
   const yB = primoFronte(lungoY, cy, 1, c.h, soglia);
   if (xL === null || xR === null || yT === null || yB === null) return null;
 
-  return costruisciQuadrilatero(c, xL, xR, yT, yB);
+  return costruisciQuadrilatero(c, xL, xR, yT, yB, fattoreSoglia);
 }
 
 /**
@@ -416,7 +424,8 @@ export function rilevaFigura(ricerca: RicercaBordi, p: Punto): FiguraRilevata | 
  */
 export function rilevaFiguraEvidenziata(
   ricerca: RicercaBordi,
-  traccia: Punto[]
+  traccia: Punto[],
+  fattoreSoglia = 1
 ): FiguraRilevata | null {
   const c = estraiCampi(ricerca);
   if (traccia.length < 2) return null;
@@ -445,7 +454,8 @@ export function rilevaFiguraEvidenziata(
   const lungoY = profiloY(c, cx);
   // soglia adattiva su un'area un po' più larga della traccia
   const margine = Math.round(Math.max(x2 - x1, y2 - y1) * 0.2);
-  const soglia = sogliaAdattiva(c, x1 - margine, x2 + margine, y1 - margine, y2 + margine);
+  const soglia =
+    sogliaAdattiva(c, x1 - margine, x2 + margine, y1 - margine, y2 + margine) * fattoreSoglia;
 
   // si parte poco dentro il bordo dell'evidenziatura e si cerca il primo
   // fronte verso l'esterno; se l'evidenziatura ha leggermente superato il
@@ -467,5 +477,5 @@ export function rilevaFiguraEvidenziata(
   const yB = cerca(lungoY, y2, 1, c.h, Math.max(4, Math.round((y2 - y1) * 0.15)));
   if (xL === null || xR === null || yT === null || yB === null) return null;
 
-  return costruisciQuadrilatero(c, xL, xR, yT, yB);
+  return costruisciQuadrilatero(c, xL, xR, yT, yB, fattoreSoglia);
 }
