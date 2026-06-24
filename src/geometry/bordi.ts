@@ -7,6 +7,8 @@ import type { Punto } from '../db/types';
  */
 export class RicercaBordi {
   private lum: Float32Array;
+  /** colore RGB (ridotto): 3 byte per pixel, per il riempimento "secchiello" */
+  private rgb: Uint8Array;
   private w: number;
   private h: number;
   /** fattore immagine→ridotta */
@@ -25,19 +27,35 @@ export class RicercaBordi {
     ctx.drawImage(immagine, 0, 0, this.w, this.h);
     const rgba = ctx.getImageData(0, 0, this.w, this.h).data;
     this.lum = new Float32Array(this.w * this.h);
+    this.rgb = new Uint8Array(this.w * this.h * 3);
     for (let i = 0; i < this.lum.length; i++) {
       const j = i * 4;
       this.lum[i] = 0.299 * rgba[j] + 0.587 * rgba[j + 1] + 0.114 * rgba[j + 2];
+      this.rgb[i * 3] = rgba[j];
+      this.rgb[i * 3 + 1] = rgba[j + 1];
+      this.rgb[i * 3 + 2] = rgba[j + 2];
     }
   }
 
   /** Costruzione da dati grezzi (per i test, senza canvas) */
-  static daDati(lum: Float32Array, w: number, h: number, fattore = 1): RicercaBordi {
+  static daDati(lum: Float32Array, w: number, h: number, fattore = 1, rgb?: Uint8Array): RicercaBordi {
     const r = Object.create(RicercaBordi.prototype) as RicercaBordi;
     r.lum = lum;
     r.w = w;
     r.h = h;
     r.fattore = fattore;
+    if (rgb) {
+      r.rgb = rgb;
+    } else {
+      // in assenza di colore si usa la luminanza come grigio
+      r.rgb = new Uint8Array(w * h * 3);
+      for (let i = 0; i < lum.length; i++) {
+        const v = Math.max(0, Math.min(255, Math.round(lum[i])));
+        r.rgb[i * 3] = v;
+        r.rgb[i * 3 + 1] = v;
+        r.rgb[i * 3 + 2] = v;
+      }
+    }
     return r;
   }
 
@@ -101,6 +119,7 @@ interface RettaLato {
 
 interface CampiAnalisi {
   lum: Float32Array;
+  rgb: Uint8Array;
   w: number;
   h: number;
   fattore: number;
@@ -478,4 +497,233 @@ export function rilevaFiguraEvidenziata(
   if (xL === null || xR === null || yT === null || yB === null) return null;
 
   return costruisciQuadrilatero(c, xL, xR, yT, yB, fattoreSoglia);
+}
+
+// ---------------------------------------------------------------------------
+// Riempimento "secchiello": dal punto toccato si espande la regione di
+// colore simile (come la bacchetta magica di un editor), se ne traccia il
+// contorno e lo si semplifica in un poligono — qualunque forma, non solo
+// quadrilateri. La `tolleranza` è la distanza di colore ammessa (0–255).
+// ---------------------------------------------------------------------------
+
+/** Distanza di Chebyshev tra un pixel RGB e un colore di riferimento */
+function distanzaColore(rgb: Uint8Array, i: number, r0: number, g0: number, b0: number): number {
+  const j = i * 3;
+  return Math.max(
+    Math.abs(rgb[j] - r0),
+    Math.abs(rgb[j + 1] - g0),
+    Math.abs(rgb[j + 2] - b0)
+  );
+}
+
+/** Semplificazione di Douglas–Peucker su una polilinea (coordinate ridotte) */
+function douglasPeucker(punti: Array<[number, number]>, eps: number): Array<[number, number]> {
+  if (punti.length < 3) return punti;
+  const [ax, ay] = punti[0];
+  const [bx, by] = punti[punti.length - 1];
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len = Math.hypot(dx, dy) || 1;
+  let dMax = 0;
+  let idx = 0;
+  for (let i = 1; i < punti.length - 1; i++) {
+    const [px, py] = punti[i];
+    const d = Math.abs((px - ax) * dy - (py - ay) * dx) / len;
+    if (d > dMax) {
+      dMax = d;
+      idx = i;
+    }
+  }
+  if (dMax > eps) {
+    const sin = douglasPeucker(punti.slice(0, idx + 1), eps);
+    const des = douglasPeucker(punti.slice(idx), eps);
+    return sin.slice(0, -1).concat(des);
+  }
+  return [punti[0], punti[punti.length - 1]];
+}
+
+/**
+ * Semplifica un contorno CHIUSO: lo spezza al vertice più lontano dal
+ * punto iniziale (i due estremi naturali della forma) e applica
+ * Douglas–Peucker alle due metà. Necessario perché DP su una polilinea
+ * con estremi coincidenti collasserebbe a un solo punto.
+ */
+function semplificaChiuso(contorno: Array<[number, number]>, eps: number): Array<[number, number]> {
+  if (contorno.length < 4) return contorno;
+  const [ax, ay] = contorno[0];
+  let far = 0;
+  let fd = -1;
+  for (let i = 1; i < contorno.length; i++) {
+    const d = (contorno[i][0] - ax) ** 2 + (contorno[i][1] - ay) ** 2;
+    if (d > fd) {
+      fd = d;
+      far = i;
+    }
+  }
+  const a = douglasPeucker(contorno.slice(0, far + 1), eps);
+  const b = douglasPeucker(contorno.slice(far), eps);
+  // a e b condividono i due estremi (start e far): si scartano i duplicati
+  return a.slice(0, -1).concat(b.slice(0, -1));
+}
+
+/** Tracciamento del contorno (Moore-neighbor) di una maschera booleana */
+function tracciaContorno(mask: Uint8Array, bw: number, bh: number): Array<[number, number]> {
+  let sx = -1;
+  let sy = -1;
+  for (let y = 0; y < bh && sy < 0; y++) {
+    for (let x = 0; x < bw; x++) {
+      if (mask[y * bw + x]) {
+        sx = x;
+        sy = y;
+        break;
+      }
+    }
+  }
+  if (sx < 0) return [];
+  const dirs = [
+    [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]
+  ];
+  const dentro = (x: number, y: number) =>
+    x >= 0 && y >= 0 && x < bw && y < bh && mask[y * bw + x] === 1;
+  const contorno: Array<[number, number]> = [[sx, sy]];
+  let cx = sx;
+  let cy = sy;
+  let dir = 0;
+  const maxPassi = bw * bh * 8;
+  for (let passo = 0; passo < maxPassi; passo++) {
+    let trovato = false;
+    for (let k = 0; k < 8; k++) {
+      const d = (dir + k) % 8;
+      const nx = cx + dirs[d][0];
+      const ny = cy + dirs[d][1];
+      if (dentro(nx, ny)) {
+        cx = nx;
+        cy = ny;
+        contorno.push([cx, cy]);
+        dir = (((d + 4) % 8) + 1) % 8;
+        trovato = true;
+        break;
+      }
+    }
+    if (!trovato) break;
+    if (cx === sx && cy === sy) break;
+  }
+  return contorno;
+}
+
+/**
+ * Riempimento dal tocco: espande la regione di colore connesso attorno al
+ * seme (media di un intorno 3×3) entro la `tolleranza`, ne traccia il
+ * contorno e lo riduce a un poligono. `clip` opzionale limita la ricerca
+ * (usato dall'evidenziatore). null se la regione è troppo piccola o invade
+ * tutta l'area (il colore è quello dello sfondo).
+ */
+export function rilevaRiempimento(
+  ricerca: RicercaBordi,
+  seme: Punto,
+  tolleranza: number,
+  clip?: { x1: number; y1: number; x2: number; y2: number }
+): Punto[] | null {
+  const c = estraiCampi(ricerca);
+  const { w, h, rgb, fattore } = c;
+  const sx = Math.round(seme.x * fattore);
+  const sy = Math.round(seme.y * fattore);
+  if (sx < 0 || sy < 0 || sx >= w || sy >= h) return null;
+
+  let r0 = 0;
+  let g0 = 0;
+  let b0 = 0;
+  let np = 0;
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const x = sx + dx;
+      const y = sy + dy;
+      if (x >= 0 && y >= 0 && x < w && y < h) {
+        const j = (y * w + x) * 3;
+        r0 += rgb[j];
+        g0 += rgb[j + 1];
+        b0 += rgb[j + 2];
+        np++;
+      }
+    }
+  }
+  r0 /= np;
+  g0 /= np;
+  b0 /= np;
+
+  const cx1 = clip ? Math.max(0, Math.round(clip.x1 * fattore)) : 0;
+  const cy1 = clip ? Math.max(0, Math.round(clip.y1 * fattore)) : 0;
+  const cx2 = clip ? Math.min(w - 1, Math.round(clip.x2 * fattore)) : w - 1;
+  const cy2 = clip ? Math.min(h - 1, Math.round(clip.y2 * fattore)) : h - 1;
+
+  const visit = new Uint8Array(w * h);
+  const stack: number[] = [sy * w + sx];
+  visit[sy * w + sx] = 1;
+  let count = 0;
+  const maxCount = Math.min(w * h, 400000);
+  let minx = sx;
+  let maxx = sx;
+  let miny = sy;
+  let maxy = sy;
+
+  while (stack.length) {
+    const idx = stack.pop()!;
+    count++;
+    if (count > maxCount) return null;
+    const px = idx % w;
+    const py = (idx / w) | 0;
+    if (px < minx) minx = px;
+    if (px > maxx) maxx = px;
+    if (py < miny) miny = py;
+    if (py > maxy) maxy = py;
+    const vicini = [idx - 1, idx + 1, idx - w, idx + w];
+    const xs = [px - 1, px + 1, px, px];
+    const ys = [py, py, py - 1, py + 1];
+    for (let k = 0; k < 4; k++) {
+      const nx = xs[k];
+      const ny = ys[k];
+      if (nx < cx1 || nx > cx2 || ny < cy1 || ny > cy2) continue;
+      const ni = vicini[k];
+      if (visit[ni]) continue;
+      if (distanzaColore(rgb, ni, r0, g0, b0) <= tolleranza) {
+        visit[ni] = 1;
+        stack.push(ni);
+      }
+    }
+  }
+
+  if (count < 16) return null;
+  const clipArea = (cx2 - cx1 + 1) * (cy2 - cy1 + 1);
+  if (count > clipArea * 0.92) return null;
+
+  const areaW = maxx - minx + 1;
+  const areaH = maxy - miny + 1;
+  const bw = areaW + 2;
+  const bh = areaH + 2;
+  const mask = new Uint8Array(bw * bh);
+  for (let y = miny; y <= maxy; y++) {
+    for (let x = minx; x <= maxx; x++) {
+      if (visit[y * w + x]) mask[(y - miny + 1) * bw + (x - minx + 1)] = 1;
+    }
+  }
+
+  let contorno = tracciaContorno(mask, bw, bh);
+  if (contorno.length < 3) return null;
+  if (contorno.length > 600) {
+    const passo = Math.ceil(contorno.length / 600);
+    contorno = contorno.filter((_, i) => i % passo === 0);
+  }
+
+  let eps = Math.max(2, (areaW + areaH) * 0.02);
+  let poly = semplificaChiuso(contorno, eps);
+  for (let iter = 0; iter < 6 && poly.length > 14; iter++) {
+    eps *= 1.6;
+    poly = semplificaChiuso(contorno, eps);
+  }
+  if (poly.length < 3) return null;
+
+  return poly.map(([x, y]) => ({
+    x: (x - 1 + minx) / fattore,
+    y: (y - 1 + miny) / fattore
+  }));
 }

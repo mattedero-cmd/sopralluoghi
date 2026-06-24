@@ -36,9 +36,9 @@ import {
 } from '../geometry/calibrazione';
 import { omografiaPiano } from '../geometry/omografia';
 import { lunghezzaPxQuota } from '../geometry/punti';
-import { RicercaBordi, rilevaFigura, rilevaFiguraEvidenziata } from '../geometry/bordi';
+import { RicercaBordi, rilevaRiempimento } from '../geometry/bordi';
 import { distanza } from '../geometry/punti';
-import { etichettaRettangolo } from '../geometry/primitive';
+import { etichettaPoligono } from '../geometry/primitive';
 import {
   aInputDataOra,
   analizzaMisura,
@@ -88,15 +88,15 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [testoInModifica, setTestoInModifica] = useState<string | null>(null);
   const [schedaScala, setSchedaScala] = useState<{ px: number } | null>(null);
   const [schedaPiano, setSchedaPiano] = useState<{ punti: [Punto, Punto, Punto, Punto] } | null>(null);
-  /** quota rettangolo proposta dall'autoquotatura, in attesa di conferma */
-  const [proposta, setProposta] = useState<QuotaRettangolo | null>(null);
+  /** figura proposta dall'autoquotatura (riempimento), in attesa di conferma */
+  const [proposta, setProposta] = useState<QuotaPoligono | null>(null);
   /** sorgente del rilevamento (tocco o evidenziatura): permette di
    *  ri-rilevare live al variare della tolleranza */
   const [propostaSorgente, setPropostaSorgente] = useState<
     { tipo: 'tocco'; punto: Punto } | { tipo: 'traccia'; punti: Punto[] } | null
   >(null);
-  /** fattore di soglia del rilevamento: <1 rileva bordi più deboli */
-  const [tolleranza, setTolleranza] = useState(1);
+  /** tolleranza di colore del riempimento (0–255): più alta = regione più ampia */
+  const [tolleranza, setTolleranza] = useState(40);
   const cacheAnalisi = useRef<{ img: HTMLImageElement; analisi: RicercaBordi } | null>(null);
   const passato = useRef<Annotazione[][]>([]);
   const futuro = useRef<Annotazione[][]>([]);
@@ -330,19 +330,50 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   // Autoquotatura: tocca una figura netta → quote proposte da accettare
   // ---------------------------------------------------------------------------
 
-  const proponiFigura = (figura: ReturnType<typeof rilevaFigura>) => {
+  /** centro di una traccia: punto mediano, che cade sull'oggetto disegnato */
+  const semeTraccia = (punti: Punto[]): Punto => punti[Math.floor(punti.length / 2)];
+
+  /** riquadro che contiene la traccia (per limitare il riempimento) */
+  const clipTraccia = (punti: Punto[]) => {
+    let x1 = Infinity;
+    let y1 = Infinity;
+    let x2 = -Infinity;
+    let y2 = -Infinity;
+    for (const p of punti) {
+      x1 = Math.min(x1, p.x);
+      y1 = Math.min(y1, p.y);
+      x2 = Math.max(x2, p.x);
+      y2 = Math.max(y2, p.y);
+    }
+    const mx = (x2 - x1) * 0.12;
+    const my = (y2 - y1) * 0.12;
+    return { x1: x1 - mx, y1: y1 - my, x2: x2 + mx, y2: y2 + my };
+  };
+
+  /** esegue il riempimento dalla sorgente con la tolleranza data */
+  const rilevaDaSorgente = (
+    sorgente: { tipo: 'tocco'; punto: Punto } | { tipo: 'traccia'; punti: Punto[] },
+    tol: number
+  ): Punto[] | null => {
+    const analisi = ottieniAnalisi();
+    if (!analisi) return null;
+    return sorgente.tipo === 'tocco'
+      ? rilevaRiempimento(analisi, sorgente.punto, tol)
+      : rilevaRiempimento(analisi, semeTraccia(sorgente.punti), tol, clipTraccia(sorgente.punti));
+  };
+
+  const proponiFigura = (punti: Punto[] | null) => {
     if (!fabbrica || !annotazioni) return;
-    if (!figura) {
+    if (!punti) {
       setProposta(null);
       mostraToast(
         'info',
-        'Nessuna figura netta rilevata: tocca al centro di un elemento a contrasto, oppure evidenzialo con un tratto. Puoi anche allentare la tolleranza dei bordi.'
+        'Riempimento non riuscito: tocca dentro un’area di colore uniforme. Regola la tolleranza per allargare o restringere la selezione.'
       );
       return;
     }
-    // un solo oggetto base × altezza che segue i bordi reali della
-    // figura, mostrato in blu finché non accettato
-    const q = fabbrica.quotaRettangolo(figura.punti, annotazioni);
+    // poligono che segue il contorno della regione riempita, in blu
+    const q = fabbrica.quotaPoligono(punti, annotazioni);
     setProposta((prec) => ({
       ...q,
       // si conserva l'id mentre si trascina il cursore: l'anteprima si
@@ -353,41 +384,33 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   };
 
   const autoTocco = (punto: Punto) => {
-    setPropostaSorgente({ tipo: 'tocco', punto });
-    setTolleranza(1);
+    const sorgente = { tipo: 'tocco' as const, punto };
+    setPropostaSorgente(sorgente);
     setProposta(null);
-    const analisi = ottieniAnalisi();
-    proponiFigura(analisi ? rilevaFigura(analisi, punto, 1) : null);
+    proponiFigura(rilevaDaSorgente(sorgente, tolleranza));
   };
 
-  /** evidenziatore: i bordi vengono cercati fuori dalla zona tracciata */
+  /** evidenziatore: il riempimento parte dall'oggetto tracciato */
   const autoTraccia = (punti: Punto[]) => {
-    setPropostaSorgente({ tipo: 'traccia', punti });
-    setTolleranza(1);
+    const sorgente = { tipo: 'traccia' as const, punti };
+    setPropostaSorgente(sorgente);
     setProposta(null);
-    const analisi = ottieniAnalisi();
-    proponiFigura(analisi ? rilevaFiguraEvidenziata(analisi, punti, 1) : null);
+    proponiFigura(rilevaDaSorgente(sorgente, tolleranza));
   };
 
   /**
-   * Ricalcolo live al variare del cursore di tolleranza: ri-rileva la
-   * figura dalla stessa sorgente (tocco o evidenziatura) con il nuovo
-   * fattore di soglia. Un fattore basso aggancia bordi più deboli.
+   * Ricalcolo live al variare del cursore di tolleranza: ri-riempie dalla
+   * stessa sorgente con la nuova tolleranza di colore. Più alta = regione
+   * più ampia (include colori più diversi).
    */
-  const aggiornaTolleranza = (fattore: number) => {
-    setTolleranza(fattore);
-    const sorgente = propostaSorgente;
-    if (!sorgente || !fabbrica || !annotazioni) return;
-    const analisi = ottieniAnalisi();
-    if (!analisi) return;
-    const figura =
-      sorgente.tipo === 'tocco'
-        ? rilevaFigura(analisi, sorgente.punto, fattore)
-        : rilevaFiguraEvidenziata(analisi, sorgente.punti, fattore);
+  const aggiornaTolleranza = (tol: number) => {
+    setTolleranza(tol);
+    if (!propostaSorgente || !fabbrica || !annotazioni) return;
+    const punti = rilevaDaSorgente(propostaSorgente, tol);
     // a tolleranze estreme può non trovare nulla: si mantiene l'ultima
     // anteprima valida, senza toast ripetuti durante il trascinamento
-    if (!figura) return;
-    const q = fabbrica.quotaRettangolo(figura.punti, annotazioni);
+    if (!punti) return;
+    const q = fabbrica.quotaPoligono(punti, annotazioni);
     setProposta((prec) => ({
       ...q,
       id: prec?.id ?? q.id,
@@ -410,24 +433,29 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     // figura accettata è subito modificabile (trascinamento dei vertici)
     setStrumento('seleziona');
     // senza calibrazione i valori vanno inseriti a mano: focus sul campo
-    if (definitiva.valoreBase === null) setTimeout(() => inputValore.current?.focus(), 60);
+    if (definitiva.lati.every((l) => l === null)) setTimeout(() => inputValore.current?.focus(), 60);
   };
 
   /**
    * Accetta la figura rilevata come CERCHIO: si inscrive una circonferenza
-   * nei bordi rilevati (centro = baricentro, diametro = media tra larghezza
-   * e altezza della figura) e si crea una quota di diametro.
+   * nel riquadro del poligono (centro = centro del bounding box, diametro =
+   * media tra larghezza e altezza) e si crea una quota di diametro.
    */
   const accettaCerchio = () => {
     if (!proposta || !annotazioni || !fabbrica || !foto) return;
     const pts = proposta.punti;
-    const centro: Punto = {
-      x: (pts[0].x + pts[1].x + pts[2].x + pts[3].x) / 4,
-      y: (pts[0].y + pts[1].y + pts[2].y + pts[3].y) / 4
-    };
-    const larghezza = (distanza(pts[0], pts[1]) + distanza(pts[3], pts[2])) / 2;
-    const altezza = (distanza(pts[0], pts[3]) + distanza(pts[1], pts[2])) / 2;
-    const raggio = (larghezza + altezza) / 4;
+    let minx = Infinity;
+    let miny = Infinity;
+    let maxx = -Infinity;
+    let maxy = -Infinity;
+    for (const p of pts) {
+      minx = Math.min(minx, p.x);
+      miny = Math.min(miny, p.y);
+      maxx = Math.max(maxx, p.x);
+      maxy = Math.max(maxy, p.y);
+    }
+    const centro: Punto = { x: (minx + maxx) / 2, y: (miny + maxy) / 2 };
+    const raggio = (maxx - minx + (maxy - miny)) / 4;
     const bordo: Punto = { x: centro.x + raggio, y: centro.y };
     let q = fabbrica.quotaRaggio(centro, bordo, annotazioni);
     q = { ...q, modo: 'diametro' };
@@ -651,25 +679,25 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       {proposta ? (
         <div className="pannello-proprieta" role="group" aria-label="Quota proposta">
           <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
-            ✨ Figura rilevata: {etichettaRettangolo(proposta)}
+            ✨ Figura rilevata: {etichettaPoligono(proposta)}
           </span>
           {propostaSorgente && (
             <span
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}
-              title="Trascina verso destra per agganciare bordi più deboli, verso sinistra solo i bordi netti"
+              title="Tolleranza del riempimento: a destra include colori più diversi (area più ampia)"
             >
-              <span style={{ fontSize: 12, color: 'var(--testo-2)' }}>Bordi netti</span>
+              <span style={{ fontSize: 12, color: 'var(--testo-2)' }}>Preciso</span>
               <input
                 type="range"
-                min={0}
-                max={100}
-                step={5}
-                aria-label="Tolleranza dei bordi"
-                value={Math.round(((1.6 - tolleranza) / 1.2) * 100)}
-                onChange={(e) => aggiornaTolleranza(1.6 - (Number(e.target.value) / 100) * 1.2)}
+                min={8}
+                max={120}
+                step={4}
+                aria-label="Tolleranza del riempimento"
+                value={tolleranza}
+                onChange={(e) => aggiornaTolleranza(Number(e.target.value))}
                 style={{ width: 96 }}
               />
-              <span style={{ fontSize: 12, color: 'var(--testo-2)' }}>deboli</span>
+              <span style={{ fontSize: 12, color: 'var(--testo-2)' }}>Ampio</span>
             </span>
           )}
           <button className="btn primario" onClick={accettaProposta}>

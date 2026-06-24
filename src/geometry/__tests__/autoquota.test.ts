@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RicercaBordi, rilevaFigura, rilevaFiguraEvidenziata } from '../bordi';
+import { RicercaBordi, rilevaFigura, rilevaFiguraEvidenziata, rilevaRiempimento } from '../bordi';
 import {
   misureRettangolo,
   applicaValoriAuto,
@@ -161,6 +161,72 @@ describe('autoquotatura: rilevamento figura', () => {
 
   it('fuori dall’immagine non propone nulla', () => {
     expect(rilevaFigura(immagineOrtogonale(), { x: -10, y: 5 })).toBeNull();
+  });
+});
+
+describe('riempimento "secchiello": contorno → poligono', () => {
+  /** triangolo rettangolo chiaro (220) su sfondo scuro (40) */
+  function immagineTriangolo(): RicercaBordi {
+    const w = 140;
+    const h = 140;
+    const lum = new Float32Array(w * h).fill(40);
+    for (let y = 10; y <= 110; y++) {
+      for (let x = 10; x <= 120 - y; x++) lum[y * w + x] = 220;
+    }
+    return RicercaBordi.daDati(lum, w, h, 1);
+  }
+
+  /** rettangolo chiaro (220) su sfondo scuro (40) */
+  function immagineRettangolo(): RicercaBordi {
+    const w = 140;
+    const h = 140;
+    const lum = new Float32Array(w * h).fill(40);
+    for (let y = 20; y <= 100; y++) {
+      for (let x = 30; x <= 110; x++) lum[y * w + x] = 220;
+    }
+    return RicercaBordi.daDati(lum, w, h, 1);
+  }
+
+  it('un triangolo pieno produce un poligono a ~3 lati', () => {
+    const poly = rilevaRiempimento(immagineTriangolo(), { x: 25, y: 25 }, 40);
+    expect(poly).not.toBeNull();
+    expect(poly!.length).toBeGreaterThanOrEqual(3);
+    expect(poly!.length).toBeLessThanOrEqual(7);
+  });
+
+  it('un rettangolo pieno produce un poligono a ~4 lati', () => {
+    const poly = rilevaRiempimento(immagineRettangolo(), { x: 60, y: 60 }, 40);
+    expect(poly).not.toBeNull();
+    expect(poly!.length).toBeGreaterThanOrEqual(4);
+    expect(poly!.length).toBeLessThanOrEqual(7);
+  });
+
+  it('tolleranza troppo bassa non esce dal singolo colore di sfondo uniforme', () => {
+    const w = 120;
+    const h = 120;
+    const lum = new Float32Array(w * h).fill(120); // tutto uniforme
+    const analisi = RicercaBordi.daDati(lum, w, h, 1);
+    // il riempimento invade tutta l'area → rifiutato (è lo sfondo)
+    expect(rilevaRiempimento(analisi, { x: 60, y: 60 }, 40)).toBeNull();
+  });
+
+  it('tolleranza ampia ingloba colori vicini (regione più grande del triangolo stretto)', () => {
+    // due livelli: triangolo 220 con una fascia 200 attorno; tolleranza
+    // bassa prende solo il 220, alta prende anche il 200
+    const w = 140;
+    const h = 140;
+    const lum = new Float32Array(w * h).fill(40);
+    for (let y = 10; y <= 110; y++) {
+      for (let x = 10; x <= 120 - y; x++) lum[y * w + x] = y < 60 ? 220 : 200;
+    }
+    const analisi = RicercaBordi.daDati(lum, w, h, 1);
+    const stretto = rilevaRiempimento(analisi, { x: 25, y: 25 }, 8); // solo 220
+    const ampio = rilevaRiempimento(analisi, { x: 25, y: 25 }, 40); // 220 + 200
+    expect(stretto).not.toBeNull();
+    expect(ampio).not.toBeNull();
+    // l'area ampia arriva più in basso (y maggiore) del riempimento stretto
+    const maxY = (p: { y: number }[]) => Math.max(...p.map((q) => q.y));
+    expect(maxY(ampio!)).toBeGreaterThan(maxY(stretto!));
   });
 });
 
