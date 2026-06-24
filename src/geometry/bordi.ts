@@ -618,13 +618,27 @@ function tracciaContorno(mask: Uint8Array, bw: number, bh: number): Array<[numbe
  * (usato dall'evidenziatore). null se la regione è troppo piccola o invade
  * tutta l'area (il colore è quello dello sfondo).
  */
-export function rilevaRiempimento(
-  ricerca: RicercaBordi,
+/** Regione riempita: contorno denso in coordinate RIDOTTE + bounding box */
+export interface RegioneRiempita {
+  contorno: Array<[number, number]>;
+  minx: number;
+  miny: number;
+  maxx: number;
+  maxy: number;
+}
+
+/**
+ * Flood-fill + tracciamento del contorno (coordinate ridotte). Cuore
+ * condiviso da `rilevaRiempimento` (poligono semplificato) e dal motore
+ * ibrido a 4 lati (che lavora sul contorno denso). null se la regione è
+ * troppo piccola o invade (quasi) tutta l'area di ricerca.
+ */
+function floodEContorno(
+  c: CampiAnalisi,
   seme: Punto,
   tolleranza: number,
   clip?: { x1: number; y1: number; x2: number; y2: number }
-): Punto[] | null {
-  const c = estraiCampi(ricerca);
+): RegioneRiempita | null {
   const { w, h, rgb, fattore } = c;
   const sx = Math.round(seme.x * fattore);
   const sy = Math.round(seme.y * fattore);
@@ -713,21 +727,53 @@ export function rilevaRiempimento(
     const passo = Math.ceil(contorno.length / 600);
     contorno = contorno.filter((_, i) => i % passo === 0);
   }
+  // dal sistema della maschera (padding +1) alle coordinate ridotte
+  const reduced = contorno.map(([x, y]) => [x - 1 + minx, y - 1 + miny] as [number, number]);
+  return { contorno: reduced, minx, miny, maxx, maxy };
+}
 
-  // l'autoquotatura tratta solo forme elementari: si forza un poligono
-  // semplice di al massimo 4 lati (triangolo o quadrilatero). Per i
-  // contorni più complessi epsilon cresce gradualmente finché i vertici
-  // scendono a 4 — crescita dolce per non scavalcare 3/4 da un colpo.
+export function rilevaRiempimento(
+  ricerca: RicercaBordi,
+  seme: Punto,
+  tolleranza: number,
+  clip?: { x1: number; y1: number; x2: number; y2: number }
+): Punto[] | null {
+  const c = estraiCampi(ricerca);
+  const reg = floodEContorno(c, seme, tolleranza, clip);
+  if (!reg) return null;
+
+  const areaW = reg.maxx - reg.minx + 1;
+  const areaH = reg.maxy - reg.miny + 1;
+  // si forza un poligono semplice di al massimo 4 lati: epsilon cresce
+  // finché i vertici scendono a 4 (per i tool 3/5 lati c'è il manuale).
   let eps = Math.max(2, (areaW + areaH) * 0.015);
-  let poly = semplificaChiuso(contorno, eps);
+  let poly = semplificaChiuso(reg.contorno, eps);
   for (let iter = 0; iter < 24 && poly.length > 4; iter++) {
     eps *= 1.3;
-    poly = semplificaChiuso(contorno, eps);
+    poly = semplificaChiuso(reg.contorno, eps);
   }
   if (poly.length < 3) return null;
 
-  return poly.map(([x, y]) => ({
-    x: (x - 1 + minx) / fattore,
-    y: (y - 1 + miny) / fattore
-  }));
+  return poly.map(([x, y]) => ({ x: x / c.fattore, y: y / c.fattore }));
+}
+
+/** Regione/contorno grezzo del flood (coordinate ridotte), per il motore ibrido */
+export function regioneRiempita(
+  ricerca: RicercaBordi,
+  seme: Punto,
+  tolleranza: number,
+  clip?: { x1: number; y1: number; x2: number; y2: number }
+): RegioneRiempita | null {
+  return floodEContorno(estraiCampi(ricerca), seme, tolleranza, clip);
+}
+
+/** Campi interni (luminanza, colore, dimensioni ridotte) per il motore ibrido */
+export function campiRicerca(ricerca: RicercaBordi): {
+  lum: Float32Array;
+  rgb: Uint8Array;
+  w: number;
+  h: number;
+  fattore: number;
+} {
+  return estraiCampi(ricerca);
 }

@@ -36,9 +36,10 @@ import {
 } from '../geometry/calibrazione';
 import { omografiaPiano } from '../geometry/omografia';
 import { lunghezzaPxQuota } from '../geometry/punti';
-import { RicercaBordi, rilevaRiempimento } from '../geometry/bordi';
+import { RicercaBordi } from '../geometry/bordi';
+import { rilevaQuad4, type EsitoQuad4 } from '../geometry/quad4';
 import { distanza } from '../geometry/punti';
-import { etichettaPoligono } from '../geometry/primitive';
+import { etichettaRettangolo } from '../geometry/primitive';
 import {
   aInputDataOra,
   analizzaMisura,
@@ -88,15 +89,17 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [testoInModifica, setTestoInModifica] = useState<string | null>(null);
   const [schedaScala, setSchedaScala] = useState<{ px: number } | null>(null);
   const [schedaPiano, setSchedaPiano] = useState<{ punti: [Punto, Punto, Punto, Punto] } | null>(null);
-  /** figura proposta dall'autoquotatura (riempimento), in attesa di conferma */
-  const [proposta, setProposta] = useState<QuotaPoligono | null>(null);
+  /** elemento a 4 lati proposto dall'autoquotatura ibrida, da confermare */
+  const [proposta, setProposta] = useState<QuotaRettangolo | null>(null);
+  /** confidenza del rilevamento corrente (0–1) */
+  const [confidenza, setConfidenza] = useState(0);
   /** sorgente del rilevamento (tocco o evidenziatura): permette di
-   *  ri-rilevare live al variare della tolleranza */
+   *  ri-rilevare live al variare della sensibilità */
   const [propostaSorgente, setPropostaSorgente] = useState<
     { tipo: 'tocco'; punto: Punto } | { tipo: 'traccia'; punti: Punto[] } | null
   >(null);
-  /** tolleranza di colore del riempimento (0–255): più alta = regione più ampia */
-  const [tolleranza, setTolleranza] = useState(40);
+  /** sensibilità del motore ai bordi (0–100): più alta = bordi più deboli */
+  const [sensibilita, setSensibilita] = useState(50);
   const cacheAnalisi = useRef<{ img: HTMLImageElement; analisi: RicercaBordi } | null>(null);
   const passato = useRef<Annotazione[][]>([]);
   const futuro = useRef<Annotazione[][]>([]);
@@ -155,6 +158,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     if (strumento !== 'auto') {
       setProposta(null);
       setPropostaSorgente(null);
+      setConfidenza(0);
     }
   }, [strumento]);
 
@@ -327,53 +331,33 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   };
 
   // ---------------------------------------------------------------------------
-  // Autoquotatura: tocca una figura netta → quote proposte da accettare
+  // Autoquotatura ibrida a 4 lati: tocca un elemento → quota proposta
   // ---------------------------------------------------------------------------
 
-  /** centro di una traccia: punto mediano, che cade sull'oggetto disegnato */
-  const semeTraccia = (punti: Punto[]): Punto => punti[Math.floor(punti.length / 2)];
-
-  /** riquadro che contiene la traccia (per limitare il riempimento) */
-  const clipTraccia = (punti: Punto[]) => {
-    let x1 = Infinity;
-    let y1 = Infinity;
-    let x2 = -Infinity;
-    let y2 = -Infinity;
-    for (const p of punti) {
-      x1 = Math.min(x1, p.x);
-      y1 = Math.min(y1, p.y);
-      x2 = Math.max(x2, p.x);
-      y2 = Math.max(y2, p.y);
-    }
-    const mx = (x2 - x1) * 0.12;
-    const my = (y2 - y1) * 0.12;
-    return { x1: x1 - mx, y1: y1 - my, x2: x2 + mx, y2: y2 + my };
-  };
-
-  /** esegue il riempimento dalla sorgente con la tolleranza data */
+  /** esegue il motore ibrido dalla sorgente con la sensibilità data */
   const rilevaDaSorgente = (
     sorgente: { tipo: 'tocco'; punto: Punto } | { tipo: 'traccia'; punti: Punto[] },
-    tol: number
-  ): Punto[] | null => {
+    sens: number
+  ): EsitoQuad4 | null => {
     const analisi = ottieniAnalisi();
     if (!analisi) return null;
-    return sorgente.tipo === 'tocco'
-      ? rilevaRiempimento(analisi, sorgente.punto, tol)
-      : rilevaRiempimento(analisi, semeTraccia(sorgente.punti), tol, clipTraccia(sorgente.punti));
+    return rilevaQuad4(analisi, sorgente, { sensibilita: sens });
   };
 
-  const proponiFigura = (punti: Punto[] | null) => {
+  const proponiFigura = (esito: EsitoQuad4 | null) => {
     if (!fabbrica || !annotazioni) return;
-    if (!punti) {
+    if (!esito) {
       setProposta(null);
+      setConfidenza(0);
       mostraToast(
         'info',
-        'Riempimento non riuscito: tocca dentro un’area di colore uniforme. Regola la tolleranza per allargare o restringere la selezione.'
+        'Nessun elemento a 4 lati riconosciuto: tocca al centro di una superficie a contrasto, regola la sensibilità, oppure usa lo strumento manuale "4 angoli".'
       );
       return;
     }
-    // poligono che segue il contorno della regione riempita, in blu
-    const q = fabbrica.quotaPoligono(punti, annotazioni);
+    setConfidenza(esito.confidenza);
+    // elemento (rettangolo/trapezio/quadrilatero) che segue i bordi, in blu
+    const q = fabbrica.quotaRettangolo(esito.punti, annotazioni);
     setProposta((prec) => ({
       ...q,
       // si conserva l'id mentre si trascina il cursore: l'anteprima si
@@ -387,30 +371,30 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     const sorgente = { tipo: 'tocco' as const, punto };
     setPropostaSorgente(sorgente);
     setProposta(null);
-    proponiFigura(rilevaDaSorgente(sorgente, tolleranza));
+    proponiFigura(rilevaDaSorgente(sorgente, sensibilita));
   };
 
-  /** evidenziatore: il riempimento parte dall'oggetto tracciato */
+  /** evidenziatore: il motore cerca l'oggetto nella zona tracciata */
   const autoTraccia = (punti: Punto[]) => {
     const sorgente = { tipo: 'traccia' as const, punti };
     setPropostaSorgente(sorgente);
     setProposta(null);
-    proponiFigura(rilevaDaSorgente(sorgente, tolleranza));
+    proponiFigura(rilevaDaSorgente(sorgente, sensibilita));
   };
 
   /**
-   * Ricalcolo live al variare del cursore di tolleranza: ri-riempie dalla
-   * stessa sorgente con la nuova tolleranza di colore. Più alta = regione
-   * più ampia (include colori più diversi).
+   * Ricalcolo live al variare del cursore di sensibilità: ri-esegue il
+   * motore dalla stessa sorgente. Più alta = aggancia bordi più deboli.
    */
-  const aggiornaTolleranza = (tol: number) => {
-    setTolleranza(tol);
+  const aggiornaSensibilita = (sens: number) => {
+    setSensibilita(sens);
     if (!propostaSorgente || !fabbrica || !annotazioni) return;
-    const punti = rilevaDaSorgente(propostaSorgente, tol);
-    // a tolleranze estreme può non trovare nulla: si mantiene l'ultima
+    const esito = rilevaDaSorgente(propostaSorgente, sens);
+    // a valori estremi può non trovare nulla: si mantiene l'ultima
     // anteprima valida, senza toast ripetuti durante il trascinamento
-    if (!punti) return;
-    const q = fabbrica.quotaPoligono(punti, annotazioni);
+    if (!esito) return;
+    setConfidenza(esito.confidenza);
+    const q = fabbrica.quotaRettangolo(esito.punti, annotazioni);
     setProposta((prec) => ({
       ...q,
       id: prec?.id ?? q.id,
@@ -433,12 +417,12 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     // figura accettata è subito modificabile (trascinamento dei vertici)
     setStrumento('seleziona');
     // senza calibrazione i valori vanno inseriti a mano: focus sul campo
-    if (definitiva.lati.every((l) => l === null)) setTimeout(() => inputValore.current?.focus(), 60);
+    if (definitiva.valoreBase === null) setTimeout(() => inputValore.current?.focus(), 60);
   };
 
   /**
    * Accetta la figura rilevata come CERCHIO: si inscrive una circonferenza
-   * nel riquadro del poligono (centro = centro del bounding box, diametro =
+   * nel riquadro dell'elemento (centro = centro del bounding box, diametro =
    * media tra larghezza e altezza) e si crea una quota di diametro.
    */
   const accettaCerchio = () => {
@@ -679,48 +663,56 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       {proposta ? (
         <div className="pannello-proprieta" role="group" aria-label="Quota proposta">
           <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
-            ✨ Figura rilevata: {etichettaPoligono(proposta)}
+            ✨ {etichettaRettangolo(proposta)}
+          </span>
+          <span
+            style={{
+              fontSize: 12,
+              fontWeight: 700,
+              whiteSpace: 'nowrap',
+              color: confidenza >= 0.55 ? 'var(--ok)' : confidenza >= 0.4 ? '#ff9500' : 'var(--testo-2)'
+            }}
+            title="Confidenza del rilevamento automatico"
+          >
+            {confidenza >= 0.55 ? '● netto' : confidenza >= 0.4 ? '◐ incerto' : '○ debole'}
           </span>
           {propostaSorgente && (
             <span
               style={{ display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}
-              title="Tolleranza del riempimento: più alta = area più ampia. Usa −/＋ per regolare con precisione"
+              title="Sensibilità ai bordi: più alta aggancia bordi più deboli. Usa −/＋ per regolare con precisione"
             >
               <button
                 className="btn"
                 style={{ minHeight: 44, padding: '0 10px' }}
-                aria-label="Riduci tolleranza"
-                onClick={() => aggiornaTolleranza(Math.max(8, tolleranza - 2))}
+                aria-label="Riduci sensibilità"
+                onClick={() => aggiornaSensibilita(Math.max(0, sensibilita - 5))}
               >
                 −
               </button>
               <input
                 type="range"
-                min={8}
-                max={120}
-                step={2}
-                aria-label="Tolleranza del riempimento"
-                value={tolleranza}
-                onChange={(e) => aggiornaTolleranza(Number(e.target.value))}
+                min={0}
+                max={100}
+                step={5}
+                aria-label="Sensibilità ai bordi"
+                value={sensibilita}
+                onChange={(e) => aggiornaSensibilita(Number(e.target.value))}
                 style={{ width: 84 }}
               />
               <button
                 className="btn"
                 style={{ minHeight: 44, padding: '0 10px' }}
-                aria-label="Aumenta tolleranza"
-                onClick={() => aggiornaTolleranza(Math.min(120, tolleranza + 2))}
+                aria-label="Aumenta sensibilità"
+                onClick={() => aggiornaSensibilita(Math.min(100, sensibilita + 5))}
               >
                 ＋
               </button>
-              <span style={{ fontSize: 12, color: 'var(--testo-2)', minWidth: 22, textAlign: 'right' }}>
-                {tolleranza}
-              </span>
             </span>
           )}
           <button className="btn primario" onClick={accettaProposta}>
             ✓ Elemento
           </button>
-          <button className="btn" onClick={accettaCerchio} title="Inscrivi una circonferenza nella figura rilevata">
+          <button className="btn" onClick={accettaCerchio} title="Inscrivi una circonferenza nell'elemento rilevato">
             ◯ Cerchio
           </button>
           <button
@@ -728,6 +720,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             onClick={() => {
               setProposta(null);
               setPropostaSorgente(null);
+              setConfidenza(0);
             }}
           >
             ✕ Annulla
