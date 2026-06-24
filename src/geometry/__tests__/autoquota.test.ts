@@ -191,19 +191,18 @@ describe('riempimento "secchiello": contorno → poligono', () => {
     const poly = rilevaRiempimento(immagineTriangolo(), { x: 25, y: 25 }, 40);
     expect(poly).not.toBeNull();
     expect(poly!.length).toBeGreaterThanOrEqual(3);
-    expect(poly!.length).toBeLessThanOrEqual(5);
+    expect(poly!.length).toBeLessThanOrEqual(4);
   });
 
-  it('un rettangolo pieno produce un poligono a ~4 lati', () => {
+  it('un rettangolo pieno produce un poligono a 4 lati', () => {
     const poly = rilevaRiempimento(immagineRettangolo(), { x: 60, y: 60 }, 40);
     expect(poly).not.toBeNull();
-    expect(poly!.length).toBeGreaterThanOrEqual(4);
-    expect(poly!.length).toBeLessThanOrEqual(5);
+    expect(poly!.length).toBe(4);
   });
 
-  it('una forma complessa (cerchio) è comunque semplificata a ≤ 5 lati', () => {
+  it('una forma complessa (cerchio) è comunque semplificata a ≤ 4 lati', () => {
     // un disco pieno: il contorno avrebbe molti vertici, ma il
-    // rilevamento li limita a un poligono semplice (max 5)
+    // rilevamento li limita a un poligono semplice (max 4)
     const w = 160;
     const h = 160;
     const lum = new Float32Array(w * h).fill(40);
@@ -217,7 +216,7 @@ describe('riempimento "secchiello": contorno → poligono', () => {
     }
     const poly = rilevaRiempimento(RicercaBordi.daDati(lum, w, h, 1), { x: cx, y: cy }, 40);
     expect(poly).not.toBeNull();
-    expect(poly!.length).toBeLessThanOrEqual(5);
+    expect(poly!.length).toBeLessThanOrEqual(4);
     expect(poly!.length).toBeGreaterThanOrEqual(3);
   });
 

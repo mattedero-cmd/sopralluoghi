@@ -715,12 +715,12 @@ export function rilevaRiempimento(
   }
 
   // l'autoquotatura tratta solo forme elementari: si forza un poligono
-  // semplice di al massimo 5 lati (3=triangolo, 4, 5=pentagono). Per i
+  // semplice di al massimo 4 lati (triangolo o quadrilatero). Per i
   // contorni più complessi epsilon cresce gradualmente finché i vertici
-  // scendono a 5 — crescita dolce per non scavalcare 4/5 da un colpo.
+  // scendono a 4 — crescita dolce per non scavalcare 3/4 da un colpo.
   let eps = Math.max(2, (areaW + areaH) * 0.015);
   let poly = semplificaChiuso(contorno, eps);
-  for (let iter = 0; iter < 24 && poly.length > 5; iter++) {
+  for (let iter = 0; iter < 24 && poly.length > 4; iter++) {
     eps *= 1.3;
     poly = semplificaChiuso(contorno, eps);
   }
