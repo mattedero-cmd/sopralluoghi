@@ -1,7 +1,7 @@
 {
   "name": "sopralluoghi",
   "private": true,
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "PWA professionale per sopralluoghi tecnici: quotatura su foto e report PDF",
   "type": "module",
   "scripts": {

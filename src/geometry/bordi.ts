@@ -714,10 +714,14 @@ export function rilevaRiempimento(
     contorno = contorno.filter((_, i) => i % passo === 0);
   }
 
-  let eps = Math.max(2, (areaW + areaH) * 0.02);
+  // l'autoquotatura tratta solo forme elementari: si forza un poligono
+  // semplice di al massimo 5 lati (3=triangolo, 4, 5=pentagono). Per i
+  // contorni più complessi epsilon cresce gradualmente finché i vertici
+  // scendono a 5 — crescita dolce per non scavalcare 4/5 da un colpo.
+  let eps = Math.max(2, (areaW + areaH) * 0.015);
   let poly = semplificaChiuso(contorno, eps);
-  for (let iter = 0; iter < 6 && poly.length > 14; iter++) {
-    eps *= 1.6;
+  for (let iter = 0; iter < 24 && poly.length > 5; iter++) {
+    eps *= 1.3;
     poly = semplificaChiuso(contorno, eps);
   }
   if (poly.length < 3) return null;

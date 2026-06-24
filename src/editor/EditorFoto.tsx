@@ -683,21 +683,38 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           </span>
           {propostaSorgente && (
             <span
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}
-              title="Tolleranza del riempimento: a destra include colori più diversi (area più ampia)"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}
+              title="Tolleranza del riempimento: più alta = area più ampia. Usa −/＋ per regolare con precisione"
             >
-              <span style={{ fontSize: 12, color: 'var(--testo-2)' }}>Preciso</span>
+              <button
+                className="btn"
+                style={{ minHeight: 44, padding: '0 10px' }}
+                aria-label="Riduci tolleranza"
+                onClick={() => aggiornaTolleranza(Math.max(8, tolleranza - 2))}
+              >
+                −
+              </button>
               <input
                 type="range"
                 min={8}
                 max={120}
-                step={4}
+                step={2}
                 aria-label="Tolleranza del riempimento"
                 value={tolleranza}
                 onChange={(e) => aggiornaTolleranza(Number(e.target.value))}
-                style={{ width: 96 }}
+                style={{ width: 84 }}
               />
-              <span style={{ fontSize: 12, color: 'var(--testo-2)' }}>Ampio</span>
+              <button
+                className="btn"
+                style={{ minHeight: 44, padding: '0 10px' }}
+                aria-label="Aumenta tolleranza"
+                onClick={() => aggiornaTolleranza(Math.min(120, tolleranza + 2))}
+              >
+                ＋
+              </button>
+              <span style={{ fontSize: 12, color: 'var(--testo-2)', minWidth: 22, textAlign: 'right' }}>
+                {tolleranza}
+              </span>
             </span>
           )}
           <button className="btn primario" onClick={accettaProposta}>

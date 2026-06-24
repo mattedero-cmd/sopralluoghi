@@ -191,14 +191,34 @@ describe('riempimento "secchiello": contorno → poligono', () => {
     const poly = rilevaRiempimento(immagineTriangolo(), { x: 25, y: 25 }, 40);
     expect(poly).not.toBeNull();
     expect(poly!.length).toBeGreaterThanOrEqual(3);
-    expect(poly!.length).toBeLessThanOrEqual(7);
+    expect(poly!.length).toBeLessThanOrEqual(5);
   });
 
   it('un rettangolo pieno produce un poligono a ~4 lati', () => {
     const poly = rilevaRiempimento(immagineRettangolo(), { x: 60, y: 60 }, 40);
     expect(poly).not.toBeNull();
     expect(poly!.length).toBeGreaterThanOrEqual(4);
-    expect(poly!.length).toBeLessThanOrEqual(7);
+    expect(poly!.length).toBeLessThanOrEqual(5);
+  });
+
+  it('una forma complessa (cerchio) è comunque semplificata a ≤ 5 lati', () => {
+    // un disco pieno: il contorno avrebbe molti vertici, ma il
+    // rilevamento li limita a un poligono semplice (max 5)
+    const w = 160;
+    const h = 160;
+    const lum = new Float32Array(w * h).fill(40);
+    const cx = 80;
+    const cy = 80;
+    const r = 50;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if ((x - cx) ** 2 + (y - cy) ** 2 <= r * r) lum[y * w + x] = 220;
+      }
+    }
+    const poly = rilevaRiempimento(RicercaBordi.daDati(lum, w, h, 1), { x: cx, y: cy }, 40);
+    expect(poly).not.toBeNull();
+    expect(poly!.length).toBeLessThanOrEqual(5);
+    expect(poly!.length).toBeGreaterThanOrEqual(3);
   });
 
   it('tolleranza troppo bassa non esce dal singolo colore di sfondo uniforme', () => {
