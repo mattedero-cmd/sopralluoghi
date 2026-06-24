@@ -544,6 +544,60 @@ h2 {
   background: var(--accento);
 }
 
+/* Cursore di sensibilità dell'autoquotatura: fisso, verticale, a sinistra */
+.sensibilita-flottante {
+  position: fixed;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  z-index: 45;
+  background: rgba(26, 32, 41, 0.85);
+  border: 1px solid var(--bordo);
+  border-radius: 26px;
+  padding: 10px 6px;
+  backdrop-filter: blur(4px);
+}
+
+.sensibilita-flottante .passo {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--bordo);
+  background: var(--sfondo-3);
+  color: var(--testo);
+  font-size: 22px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.sensibilita-flottante .passo:active {
+  background: var(--accento);
+}
+
+.sensibilita-flottante .cursore-vert {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  -webkit-appearance: slider-vertical;
+  appearance: slider-vertical;
+  width: 38px;
+  height: 40vh;
+  max-height: 230px;
+  min-height: 120px;
+  accent-color: var(--accento);
+  cursor: pointer;
+}
+
+.sensibilita-flottante .etichetta {
+  font-size: 11px;
+  color: var(--testo-2);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .pannello-proprieta {
   background: var(--sfondo-2);
   border-top: 1px solid var(--bordo);

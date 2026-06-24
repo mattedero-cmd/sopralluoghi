@@ -1,5 +1,5 @@
 import type { Punto } from '../db/types';
-import { RicercaBordi, campiRicerca, regioneRiempita, rilevaFigura } from './bordi';
+import { RicercaBordi, campiRicerca, regioneRiempita, rilevaFigura, type RegioneRiempita } from './bordi';
 
 /**
  * Motore IBRIDO di rilevamento per oggetti a 4 lati (rettangoli e
@@ -501,14 +501,17 @@ export function rilevaQuad4(
   const floodTol = Math.round(lerp(16, 110, sens / 100));
   const sogliaScala = lerp(1.6, 0.5, sens / 100);
 
-  // seme (immagine) + clip
-  let semeImg: Punto;
-  let clip: { x1: number; y1: number; x2: number; y2: number } | undefined;
+  // --- semi candidati e riquadro indicato dall'evidenziatore ---
+  // Per il TOCCO: un solo seme. Per l'EVIDENZIATORE: il punto mediano del
+  // tratto + il centro del suo riquadro (robusto se il mediano cade sullo
+  // sfondo). NIENTE clip soffocante: il flood cresce libero e si ferma sui
+  // bordi reali — un tratto sottile non deve intrappolarlo in una striscia.
+  let semi: Punto[];
+  let bboxTraccia: { x1: number; y1: number; x2: number; y2: number } | null = null;
   if (sorgente.tipo === 'tocco') {
-    semeImg = sorgente.punto;
+    semi = [sorgente.punto];
   } else {
     const pts = sorgente.punti;
-    semeImg = pts[Math.floor(pts.length / 2)];
     let x1 = Infinity;
     let y1 = Infinity;
     let x2 = -Infinity;
@@ -519,9 +522,26 @@ export function rilevaQuad4(
       x2 = Math.max(x2, p.x);
       y2 = Math.max(y2, p.y);
     }
-    const mx = (x2 - x1) * 0.15;
-    const my = (y2 - y1) * 0.15;
-    clip = { x1: x1 - mx, y1: y1 - my, x2: x2 + mx, y2: y2 + my };
+    bboxTraccia = { x1, y1, x2, y2 };
+    semi = [pts[Math.floor(pts.length / 2)], { x: (x1 + x2) / 2, y: (y1 + y2) / 2 }];
+  }
+
+  // flood dal seme che produce la regione valida più ampia
+  let semeImg = semi[0];
+  let reg: RegioneRiempita | null = null;
+  for (const s of semi) {
+    const sx = s.x * fattore;
+    const sy = s.y * fattore;
+    if (sx < 1 || sy < 1 || sx > w - 2 || sy > h - 2) continue;
+    const r = regioneRiempita(ricerca, s, floodTol);
+    if (r) {
+      const area = (r.maxx - r.minx) * (r.maxy - r.miny);
+      const areaBest = reg ? (reg.maxx - reg.minx) * (reg.maxy - reg.miny) : -1;
+      if (area > areaBest) {
+        reg = r;
+        semeImg = s;
+      }
+    }
   }
   const seme: Punto = { x: semeImg.x * fattore, y: semeImg.y * fattore };
   if (seme.x < 1 || seme.y < 1 || seme.x > w - 2 || seme.y > h - 2) return null;
@@ -532,7 +552,6 @@ export function rilevaQuad4(
   const lt = rilevaFigura(ricerca, semeImg, sogliaScala);
   if (lt) candidati.push(ordinaQuad(lt.punti.map((p) => ({ x: p.x * fattore, y: p.y * fattore }))));
 
-  const reg = regioneRiempita(ricerca, semeImg, floodTol, clip);
   if (reg && reg.contorno.length >= 4) {
     const rar = rettangoloAreaMinima(reg.contorno);
     if (rar) candidati.push(ordinaQuad(rar));
@@ -540,16 +559,32 @@ export function rilevaQuad4(
     if (ext) candidati.push(ext);
   }
 
-  // ROI per Hough: il riquadro della regione (allargato) o una finestra
+  // ROI per Hough: unione del riquadro della regione e del tratto
+  // evidenziato (così Hough vede l'intero oggetto indicato), allargata;
+  // in mancanza, una finestra attorno al seme
   let roi: Roi;
-  if (reg) {
-    const dx = (reg.maxx - reg.minx) * 0.2;
-    const dy = (reg.maxy - reg.miny) * 0.2;
+  const boxes: Array<[number, number, number, number]> = [];
+  if (reg) boxes.push([reg.minx, reg.miny, reg.maxx, reg.maxy]);
+  if (bboxTraccia) {
+    boxes.push([
+      bboxTraccia.x1 * fattore,
+      bboxTraccia.y1 * fattore,
+      bboxTraccia.x2 * fattore,
+      bboxTraccia.y2 * fattore
+    ]);
+  }
+  if (boxes.length) {
+    const minx = Math.min(...boxes.map((b) => b[0]));
+    const miny = Math.min(...boxes.map((b) => b[1]));
+    const maxx = Math.max(...boxes.map((b) => b[2]));
+    const maxy = Math.max(...boxes.map((b) => b[3]));
+    const dx = (maxx - minx) * 0.25;
+    const dy = (maxy - miny) * 0.25;
     roi = {
-      x1: Math.max(1, Math.floor(reg.minx - dx)),
-      y1: Math.max(1, Math.floor(reg.miny - dy)),
-      x2: Math.min(w - 2, Math.ceil(reg.maxx + dx)),
-      y2: Math.min(h - 2, Math.ceil(reg.maxy + dy))
+      x1: Math.max(1, Math.floor(minx - dx)),
+      y1: Math.max(1, Math.floor(miny - dy)),
+      x2: Math.min(w - 2, Math.ceil(maxx + dx)),
+      y2: Math.min(h - 2, Math.ceil(maxy + dy))
     };
   } else {
     const r = Math.round(Math.min(w, h) * 0.4);

@@ -72,6 +72,22 @@ describe('motore ibrido quad4: rilevamento a 4 lati', () => {
     vicino(br, 160, 130, 12);
   });
 
+  it('evidenziatore: una passata sottile sopra il rettangolo lo rileva', () => {
+    // swipe quasi orizzontale dentro il rettangolo (bbox sottile in y):
+    // col vecchio clip la regione restava intrappolata in una striscia
+    const traccia: Punto[] = [
+      { x: 60, y: 78 },
+      { x: 90, y: 80 },
+      { x: 120, y: 82 },
+      { x: 145, y: 80 }
+    ];
+    const e = rilevaQuad4(rett(), { tipo: 'traccia', punti: traccia });
+    expect(e).not.toBeNull();
+    const [tl, , br] = e!.punti;
+    vicino(tl, 40, 30, 10);
+    vicino(br, 160, 130, 10);
+  });
+
   it('zona uniforme: nessun rilevamento', () => {
     const w = 160;
     const h = 160;

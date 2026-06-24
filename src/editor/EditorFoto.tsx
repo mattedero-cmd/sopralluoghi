@@ -676,39 +676,6 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           >
             {confidenza >= 0.55 ? '● netto' : confidenza >= 0.4 ? '◐ incerto' : '○ debole'}
           </span>
-          {propostaSorgente && (
-            <span
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}
-              title="Sensibilità ai bordi: più alta aggancia bordi più deboli. Usa −/＋ per regolare con precisione"
-            >
-              <button
-                className="btn"
-                style={{ minHeight: 44, padding: '0 10px' }}
-                aria-label="Riduci sensibilità"
-                onClick={() => aggiornaSensibilita(Math.max(0, sensibilita - 5))}
-              >
-                −
-              </button>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                step={5}
-                aria-label="Sensibilità ai bordi"
-                value={sensibilita}
-                onChange={(e) => aggiornaSensibilita(Number(e.target.value))}
-                style={{ width: 84 }}
-              />
-              <button
-                className="btn"
-                style={{ minHeight: 44, padding: '0 10px' }}
-                aria-label="Aumenta sensibilità"
-                onClick={() => aggiornaSensibilita(Math.min(100, sensibilita + 5))}
-              >
-                ＋
-              </button>
-            </span>
-          )}
           <button className="btn primario" onClick={accettaProposta}>
             ✓ Elemento
           </button>
@@ -739,6 +706,36 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             onCalibraDaQuota={(q) => void calibraDaQuota(q)}
           />
         )
+      )}
+
+      {proposta && propostaSorgente && (
+        <div className="sensibilita-flottante" role="group" aria-label="Sensibilità ai bordi">
+          <button
+            className="passo"
+            aria-label="Più sensibile (bordi deboli)"
+            onClick={() => aggiornaSensibilita(Math.min(100, sensibilita + 5))}
+          >
+            ＋
+          </button>
+          <input
+            type="range"
+            className="cursore-vert"
+            min={0}
+            max={100}
+            step={5}
+            aria-label="Sensibilità ai bordi"
+            value={sensibilita}
+            onChange={(e) => aggiornaSensibilita(Number(e.target.value))}
+          />
+          <button
+            className="passo"
+            aria-label="Meno sensibile (solo bordi netti)"
+            onClick={() => aggiornaSensibilita(Math.max(0, sensibilita - 5))}
+          >
+            −
+          </button>
+          <span className="etichetta">bordi</span>
+        </div>
       )}
 
       <nav className="editor-toolbar" aria-label="Strumenti">
