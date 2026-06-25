@@ -162,7 +162,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   /** quota aperta nell'ambiente dedicato: una quota lineare, oppure un
    *  singolo segmento (lato/diagonale) di un poligono */
   const [quotaInModifica, setQuotaInModifica] = useState<
-    { tipo: 'quota'; id: string } | { tipo: 'segmento'; id: string; indice: number } | null
+    | { tipo: 'quota'; id: string }
+    | { tipo: 'poligono'; id: string }
+    | { tipo: 'segmento'; id: string; indice: number }
+    | null
   >(null);
   const [testoInModifica, setTestoInModifica] = useState<string | null>(null);
   const [schedaScala, setSchedaScala] = useState<{ px: number } | null>(null);
@@ -348,6 +351,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     commit([...annotazioni, a]);
     setSelezioneId(a.id);
     setStrumento('seleziona');
+    // i poligoni si aprono subito nel loro ambiente dedicato
+    if (a.tipo === 'quotaPoligono') setQuotaInModifica({ tipo: 'poligono', id: a.id });
   };
 
   const creaRettangolo = (rect: Rettangolo) => {
@@ -380,6 +385,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     commit([...annotazioni, q]);
     setSelezioneId(q.id);
     setStrumento('seleziona');
+    setQuotaInModifica({ tipo: 'quota', id: q.id });
   };
 
   const creaRaggio = (centro: Punto, bordo: Punto) => {
@@ -388,7 +394,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     commit([...annotazioni, q]);
     setSelezioneId(q.id);
     setStrumento('seleziona');
-    if (q.valore === null) setTimeout(() => inputValore.current?.focus(), 60);
+    setQuotaInModifica({ tipo: 'quota', id: q.id });
   };
 
   /** cerchio da 3 punti sull'arco: centro già calcolato dal circumcentro */
@@ -403,7 +409,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     commit([...annotazioni, q]);
     setSelezioneId(q.id);
     setStrumento('seleziona');
-    if (q.valore === null) setTimeout(() => inputValore.current?.focus(), 60);
+    setQuotaInModifica({ tipo: 'quota', id: q.id });
   };
 
   // ---------------------------------------------------------------------------
@@ -486,6 +492,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     chiudiProposta();
     setSelezioneId(definitiva.id);
     setStrumento('seleziona');
+    setQuotaInModifica({ tipo: 'poligono', id: definitiva.id });
   };
 
   /**
@@ -518,7 +525,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     chiudiProposta();
     setSelezioneId(q.id);
     setStrumento('seleziona');
-    if (q.valore === null) setTimeout(() => inputValore.current?.focus(), 60);
+    setQuotaInModifica({ tipo: 'quota', id: q.id });
   };
 
   const creaTesto = (pos: Punto) => {
@@ -650,6 +657,23 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   }
 
   const selezionata = annotazioni.find((a) => a.id === selezioneId) ?? null;
+
+  /** annotazioni che si modificano nell'ambiente dedicato a tutto schermo:
+   *  un tocco le apre direttamente, senza pannello in basso */
+  const haAmbienteDedicato = (a: Annotazione) =>
+    a.tipo === 'quota' ||
+    a.tipo === 'quotaRaggio' ||
+    a.tipo === 'quotaAngolo' ||
+    a.tipo === 'quotaPoligono';
+
+  /** un tocco "secco" sulla quota apre subito l'ambiente di modifica */
+  const apriModifica = (id: string) => {
+    const a = annotazioni.find((x) => x.id === id);
+    if (!a) return;
+    if (a.tipo === 'quotaPoligono') setQuotaInModifica({ tipo: 'poligono', id });
+    else if (haAmbienteDedicato(a)) setQuotaInModifica({ tipo: 'quota', id });
+  };
+
   const testoTarget =
     testoInModifica !== null
       ? annotazioni.find((a) => a.id === testoInModifica && a.tipo === 'testo')
@@ -719,6 +743,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         onAutoTocco={autoTocco}
         onAutoTraccia={autoTraccia}
         onSeleziona={setSelezioneId}
+        onModifica={apriModifica}
         onCommit={commitGeometria}
         onNuovaQuota={creaQuota}
         onNuovoRett={creaRettangolo}
@@ -761,7 +786,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           </button>
         </div>
       ) : (
-        selezionata && (
+        selezionata &&
+        !haAmbienteDedicato(selezionata) && (
           <PannelloProprieta
             ann={selezionata}
             annotazioni={annotazioni}
@@ -1004,6 +1030,38 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           return null;
         })()}
       {quotaInModifica &&
+        quotaInModifica.tipo === 'poligono' &&
+        (() => {
+          const rif = quotaInModifica;
+          const poli = annotazioni.find((a) => a.id === rif.id && a.tipo === 'quotaPoligono') as
+            | QuotaPoligono
+            | undefined;
+          if (!poli) return null;
+          return (
+            <EditorPoligono
+              poli={poli}
+              foto={foto}
+              immagine={immagine}
+              onModifica={(mod) =>
+                commit(
+                  annotazioni.map((a) =>
+                    a.id === poli.id
+                      ? ({ ...poli, lati: undefined, offsetLati: undefined, ...mod } as QuotaPoligono)
+                      : a
+                  )
+                )
+              }
+              onModificaSegmento={(indice) => setQuotaInModifica({ tipo: 'segmento', id: poli.id, indice })}
+              onElimina={() => {
+                commit(annotazioni.filter((a) => a.id !== poli.id));
+                setSelezioneId(null);
+                setQuotaInModifica(null);
+              }}
+              onChiudi={() => setQuotaInModifica(null)}
+            />
+          );
+        })()}
+      {quotaInModifica &&
         quotaInModifica.tipo === 'segmento' &&
         (() => {
           const rif = quotaInModifica;
@@ -1011,6 +1069,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             | QuotaPoligono
             | undefined;
           if (!poli) return null;
+          // alla chiusura del segmento si torna all'ambiente del poligono
+          const tornaAlPoligono = () => setQuotaInModifica({ tipo: 'poligono', id: poli.id });
           const segs = segmentiPoligono(poli);
           const seg = segs[rif.indice];
           if (!seg) return null;
@@ -1046,16 +1106,17 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             <EditorQuota
               quota={quotaSeg}
               immagine={immagine}
-              onChiudi={() => setQuotaInModifica(null)}
+              onChiudi={tornaAlPoligono}
               onElimina={() => {
                 const nuovi = segs.filter((_, i) => i !== rif.indice);
                 if (nuovi.length === 0) {
                   commit(annotazioni.filter((a) => a.id !== poli.id));
                   setSelezioneId(null);
+                  setQuotaInModifica(null);
                 } else {
                   scriviPoligono({ segmenti: nuovi });
+                  tornaAlPoligono();
                 }
-                setQuotaInModifica(null);
               }}
               onSalva={(nuova) => {
                 const nuovoSeg: typeof seg = {
@@ -1076,7 +1137,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                   valoreAuto: false,
                   stile: nuova.stile
                 });
-                setQuotaInModifica(null);
+                tornaAlPoligono();
               }}
             />
           );
@@ -1875,6 +1936,284 @@ function EditorAngolo({
         </button>
         <button className="btn primario" onClick={salva}>
           ✓ Salva angolo
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Ambiente di modifica DEDICATO al poligono (rettangolo/trapezio/…): resta un
+// oggetto unico, con l'anteprima della forma e una quota-lato per volta. Ogni
+// lato si apre nel suo ambiente dedicato; qui stanno nomenclatura, diagonali,
+// unità, stato, colore. Nessun menu in basso.
+// ---------------------------------------------------------------------------
+
+function EditorPoligono({
+  poli,
+  foto,
+  immagine,
+  onModifica,
+  onModificaSegmento,
+  onElimina,
+  onChiudi
+}: {
+  poli: QuotaPoligono;
+  foto: Foto;
+  immagine: HTMLImageElement;
+  onModifica: (m: Partial<QuotaPoligono>) => void;
+  onModificaSegmento: (indice: number) => void;
+  onElimina: () => void;
+  onChiudi: () => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const contRef = useRef<HTMLDivElement>(null);
+  const n = poli.punti.length;
+  const segs = segmentiPoligono(poli);
+  const simboli = simboliPoligono(poli);
+  const calibrata = haCalibrazione(foto);
+  const colore = poli.stile.colore;
+
+  const scriviSegmenti = (segmenti: SegmentoQuota[], extra: Partial<QuotaPoligono> = {}) =>
+    onModifica({ segmenti, lati: undefined, offsetLati: undefined, valoreAuto: false, ...extra });
+
+  const haSegmento = (da: number, a: number) =>
+    segs.some((s) => (s.da === da && s.a === a) || (s.da === a && s.a === da));
+  const latiMancanti: Array<[number, number]> = [];
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    if (!haSegmento(i, j)) latiMancanti.push([i, j]);
+  }
+  const diagonaliPresenti = segs.some((s) => !segmentoELato(s, n));
+
+  const valSeg = (s: SegmentoQuota) =>
+    s.valore === null ? '?' : `${formattaNumero(s.valore)} ${poli.unita}`;
+
+  const aggiungiSegmento = (da: number, a: number) => {
+    const valore = calibrata ? misuraSegmento(poli.punti[da], poli.punti[a], foto, poli.unita) : null;
+    scriviSegmenti([...segs, { da, a, valore }]);
+  };
+
+  const scalaStile = (fattore: number) =>
+    onModifica({
+      stile: {
+        ...poli.stile,
+        spessore: Math.min(40, Math.max(1, poli.stile.spessore * fattore)),
+        dimensioneTesto: Math.min(200, Math.max(8, Math.round(poli.stile.dimensioneTesto * fattore)))
+      }
+    });
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const cont = contRef.current;
+    if (!canvas || !cont) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const w = cont.clientWidth;
+    const h = cont.clientHeight;
+    if (w === 0 || h === 0) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = '#05070a';
+    ctx.fillRect(0, 0, w, h);
+
+    // bounding box dei vertici, con margine, per inquadrare la forma
+    const xs = poli.punti.map((p) => p.x);
+    const ys = poli.punti.map((p) => p.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const bw = maxX - minX || 1;
+    const bh = maxY - minY || 1;
+    const s = Math.min((w * 0.8) / bw, (h * 0.78) / bh);
+    const cx0 = (minX + maxX) / 2;
+    const cy0 = (minY + maxY) / 2;
+    const toScreen = (p: Punto) => ({
+      x: w / 2 + (p.x - cx0) * s,
+      y: h / 2 + (p.y - cy0) * s
+    });
+
+    // sfondo: la zona reale della foto, in trasparenza
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    ctx.translate(w / 2, h / 2);
+    ctx.scale(s, s);
+    ctx.translate(-cx0, -cy0);
+    ctx.drawImage(immagine, 0, 0);
+    ctx.restore();
+    ctx.fillStyle = 'rgba(5,7,10,0.28)';
+    ctx.fillRect(0, 0, w, h);
+
+    // contorno del poligono, con alone scuro
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const [col, lw] of [['rgba(0,0,0,0.6)', 8], [colore, 3.5]] as Array<[string, number]>) {
+      ctx.strokeStyle = col;
+      ctx.lineWidth = lw;
+      ctx.beginPath();
+      poli.punti.forEach((p, i) => {
+        const q = toScreen(p);
+        if (i === 0) ctx.moveTo(q.x, q.y);
+        else ctx.lineTo(q.x, q.y);
+      });
+      ctx.closePath();
+      ctx.stroke();
+    }
+    // diagonali quotate
+    for (const seg of segs) {
+      if (segmentoELato(seg, n)) continue;
+      const a = toScreen(poli.punti[seg.da]);
+      const b = toScreen(poli.punti[seg.a]);
+      for (const [col, lw] of [['rgba(0,0,0,0.6)', 6], [colore, 2.5]] as Array<[string, number]>) {
+        ctx.strokeStyle = col;
+        ctx.lineWidth = lw;
+        ctx.setLineDash(col === colore ? [8, 5] : []);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+    }
+
+    // etichette: simbolo + valore al centro di ogni segmento quotato
+    const dim = Math.round(Math.min(w, h) * 0.045);
+    ctx.font = `bold ${dim}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    segs.forEach((seg, i) => {
+      const a = toScreen(poli.punti[seg.da]);
+      const b = toScreen(poli.punti[seg.a]);
+      const mx = (a.x + b.x) / 2;
+      const my = (a.y + b.y) / 2;
+      const t = `${simboli[i]} ${seg.valore === null ? '?' : formattaNumero(seg.valore)}`;
+      ctx.lineWidth = Math.max(2, dim * 0.22);
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+      ctx.strokeText(t, mx, my);
+      ctx.fillStyle = colore;
+      ctx.fillText(t, mx, my);
+    });
+    ctx.restore();
+  }, [immagine, poli, segs, simboli, colore, n]);
+
+  return (
+    <div className="editor-quota">
+      <header className="barra">
+        <button className="btn icona" aria-label="Chiudi" onClick={onChiudi}>
+          ✕
+        </button>
+        <h1>Modifica {nomeFormaPoligono(poli).toLowerCase()}</h1>
+      </header>
+      <div ref={contRef} className="eq-anteprima">
+        <canvas ref={canvasRef} />
+      </div>
+      <div className="eq-controlli">
+        <div className="campo">
+          <label>Nomenclatura (facoltativa)</label>
+          <input
+            value={poli.etichetta ?? ''}
+            maxLength={4}
+            placeholder="es. F1"
+            onChange={(e) => onModifica({ etichetta: e.target.value })}
+            style={{ width: 120 }}
+          />
+        </div>
+        <div className="campo">
+          <label>Quote dei lati — tocca per modificarle</label>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {segs.map((s, i) => (
+              <button
+                key={i}
+                className="btn"
+                style={{ minHeight: 44, padding: '0 12px', whiteSpace: 'nowrap' }}
+                onClick={() => onModificaSegmento(i)}
+              >
+                {simboli[i]} {valSeg(s)} ✎
+              </button>
+            ))}
+            {latiMancanti.length > 0 && (
+              <button
+                className="btn"
+                style={{ minHeight: 44, padding: '0 12px' }}
+                onClick={() => aggiungiSegmento(latiMancanti[0][0], latiMancanti[0][1])}
+              >
+                ＋ lato
+              </button>
+            )}
+            {n === 4 && (
+              <button
+                className={`btn${diagonaliPresenti ? ' attivo' : ''}`}
+                style={{ minHeight: 44, padding: '0 12px' }}
+                title="Quota le diagonali (rombo)"
+                onClick={() => {
+                  if (diagonaliPresenti) {
+                    scriviSegmenti(segs.filter((s) => segmentoELato(s, n)));
+                  } else {
+                    const d: SegmentoQuota[] = [
+                      [0, 2],
+                      [1, 3]
+                    ].map(([da, a]) => ({
+                      da,
+                      a,
+                      valore: calibrata ? misuraSegmento(poli.punti[da], poli.punti[a], foto, poli.unita) : null
+                    }));
+                    scriviSegmenti([...segs, ...d]);
+                  }
+                }}
+              >
+                ◇ Diagonali
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="campo">
+          <label>Unità e stato</label>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <select
+              value={poli.unita}
+              onChange={(e) => onModifica({ unita: e.target.value as Unita })}
+              style={{ width: 90 }}
+            >
+              <option value="mm">mm</option>
+              <option value="cm">cm</option>
+              <option value="m">m</option>
+            </select>
+            <span className="segmenti" role="group" aria-label="Stato della misura">
+              {(['reale', 'stimata'] as StatoMisura[]).map((s) => (
+                <button key={s} className={poli.stato === s ? 'attivo' : ''} onClick={() => onModifica({ stato: s })}>
+                  {s === 'reale' ? 'Reale' : '≈ Stimata'}
+                </button>
+              ))}
+            </span>
+          </div>
+        </div>
+        <div className="campo">
+          <label>Colore e dimensione</label>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <BottoneColore colore={colore} onScegli={(c) => onModifica({ stile: { ...poli.stile, colore: c } })} />
+            <span className="segmenti" role="group" aria-label="Dimensione">
+              <button aria-label="Riduci" onClick={() => scalaStile(1 / 1.25)}>
+                A−
+              </button>
+              <button aria-label="Aumenta" onClick={() => scalaStile(1.25)}>
+                A＋
+              </button>
+            </span>
+          </div>
+        </div>
+      </div>
+      <div className="eq-azioni">
+        <button className="btn pericolo" onClick={onElimina}>
+          🗑 Elimina
+        </button>
+        <button className="btn primario" onClick={onChiudi}>
+          ✓ Fine
         </button>
       </div>
     </div>

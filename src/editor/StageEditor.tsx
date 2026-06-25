@@ -83,6 +83,8 @@ interface Props {
   /** quote proposte dall'autoquotatura, in attesa di conferma */
   proposte: Annotazione[];
   onSeleziona: (id: string | null) => void;
+  /** tocco "secco" (senza trascinamento) su un'annotazione: apre la modifica */
+  onModifica: (id: string) => void;
   /** tocco con lo strumento autoquotatura */
   onAutoTocco: (p: Punto) => void;
   /** evidenziatura con lo strumento autoquotatura (oggetto completo) */
@@ -797,6 +799,7 @@ export function StageEditor(p: Props) {
               interattiva={p.strumento === 'seleziona'}
               hitWidth={Math.max(28 / vista.scala, 12)}
               onSeleziona={() => p.onSeleziona(a.id)}
+              onModifica={() => p.onModifica(a.id)}
               onTrascinata={(dx, dy) => {
                 p.onCommit(
                   p.annotazioni.map((x) => (x.id === a.id ? traslaAnnotazione(x, dx, dy) : x))
@@ -812,6 +815,7 @@ export function StageEditor(p: Props) {
               interattiva={false}
               hitWidth={1}
               onSeleziona={() => {}}
+              onModifica={() => {}}
               onTrascinata={() => {}}
             />
           )}
@@ -824,6 +828,7 @@ export function StageEditor(p: Props) {
               interattiva={false}
               hitWidth={1}
               onSeleziona={() => {}}
+              onModifica={() => {}}
               onTrascinata={() => {}}
             />
           ))}
@@ -1140,6 +1145,7 @@ function AnnotazioneShape({
   interattiva,
   hitWidth,
   onSeleziona,
+  onModifica,
   onTrascinata
 }: {
   ann: Annotazione;
@@ -1148,6 +1154,7 @@ function AnnotazioneShape({
   interattiva: boolean;
   hitWidth: number;
   onSeleziona: () => void;
+  onModifica: () => void;
   onTrascinata: (dx: number, dy: number) => void;
 }) {
   const prims = useMemo(() => primitiveAnnotazione(ann), [ann]);
@@ -1200,8 +1207,14 @@ function AnnotazioneShape({
         }
         c.restore();
       }}
-      onClick={onSeleziona}
-      onTap={onSeleziona}
+      onClick={() => {
+        onSeleziona();
+        onModifica();
+      }}
+      onTap={() => {
+        onSeleziona();
+        onModifica();
+      }}
       onDragStart={onSeleziona}
       onDragEnd={(e) => {
         const dx = e.target.x();
