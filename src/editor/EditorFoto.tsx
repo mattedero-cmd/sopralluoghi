@@ -40,7 +40,7 @@ import {
   misureRettangolo,
   valoreAutomatico
 } from '../geometry/calibrazione';
-import { nomeFormaPoligono, simboliPoligono } from '../geometry/primitive';
+import { nomeFormaPoligono, simboliPoligono, versiSegmento } from '../geometry/primitive';
 import { omografiaPiano } from '../geometry/omografia';
 import { lunghezzaPxQuota } from '../geometry/punti';
 import { RicercaBordi } from '../geometry/bordi';
@@ -1058,7 +1058,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                   valore: nuova.valore,
                   offset: nuova.offset,
                   posizioneTesto: nuova.posizioneTesto,
-                  nota: nuova.nota
+                  nota: nuova.nota,
+                  abbInizio: nuova.abbInizio,
+                  abbFine: nuova.abbFine
                 };
                 const nuoviSegs = segs.map((s, i) => (i === rif.indice ? nuovoSeg : s));
                 // valore/offset/posizione/nota → segmento; unità/stato/colore → poligono
@@ -1105,12 +1107,22 @@ function EditorQuota({
   const [nota, setNota] = useState(quota.nota ?? '');
   const [colore, setColore] = useState(quota.stile.colore);
   const [stato, setStato] = useState<StatoMisura>(quota.stato);
+  const [abbInizio, setAbbInizio] = useState(
+    quota.abbInizio === undefined ? '' : String(quota.abbInizio).replace('.', ',')
+  );
+  const [abbFine, setAbbFine] = useState(
+    quota.abbFine === undefined ? '' : String(quota.abbFine).replace('.', ',')
+  );
   /** moltiplicatore di dimensione applicato al salvataggio (spessore + testo) */
   const [scalaTesto, setScalaTesto] = useState(1);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const contRef = useRef<HTMLDivElement>(null);
 
   const valore = analizzaMisura(testoVal);
+  const abbA = analizzaMisura(abbInizio) ?? 0;
+  const abbB = analizzaMisura(abbFine) ?? 0;
+  const [versoA, versoB] = versiSegmento(quota.p1, quota.p2);
+  const tagliata = valore === null ? null : valore + abbA + abbB;
   const testoMisura =
     (stato === 'stimata' ? '≈ ' : '') + (valore === null ? '?' : formattaNumero(valore)) + ' ' + unita;
 
@@ -1250,6 +1262,8 @@ function EditorQuota({
       unita,
       posizioneTesto,
       nota: nota.trim() || undefined,
+      abbInizio: abbA || undefined,
+      abbFine: abbB || undefined,
       // un valore inserito a mano qui non viene più sovrascritto dalla calibrazione
       valoreAuto: false,
       stato,
@@ -1308,6 +1322,36 @@ function EditorQuota({
         <div className="campo">
           <label>Testo aggiuntivo (facoltativo)</label>
           <input value={nota} onChange={(e) => setNota(e.target.value)} placeholder="es. luce netta" maxLength={40} />
+        </div>
+        <div className="campo">
+          <label>Abbondanze (extra per il taglio)</label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span style={{ minWidth: 64, color: 'var(--testo-2)', fontSize: 13, textTransform: 'capitalize' }}>
+              {versoA}
+            </span>
+            <input
+              inputMode="decimal"
+              value={abbInizio}
+              onChange={(e) => setAbbInizio(e.target.value)}
+              placeholder="0"
+              style={{ flex: 1 }}
+            />
+            <span style={{ minWidth: 64, color: 'var(--testo-2)', fontSize: 13, textTransform: 'capitalize' }}>
+              {versoB}
+            </span>
+            <input
+              inputMode="decimal"
+              value={abbFine}
+              onChange={(e) => setAbbFine(e.target.value)}
+              placeholder="0"
+              style={{ flex: 1 }}
+            />
+          </div>
+          {tagliata !== null && (abbA > 0 || abbB > 0) && (
+            <span style={{ color: 'var(--ok)', fontSize: 13, fontWeight: 700, marginTop: 6 }}>
+              Misura da tagliare: {formattaNumero(tagliata)} {unita}
+            </span>
+          )}
         </div>
         <div className="campo">
           <label>Stato della misura</label>

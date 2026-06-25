@@ -12,6 +12,7 @@ import {
 } from '../calibrazione';
 import {
   simboliPoligono,
+  versiSegmento,
   primitiveQuota,
   primitiveQuotaPoligono,
   primitiveQuotaRettangolo,
@@ -21,7 +22,7 @@ import {
   coloreQuota
 } from '../primitive';
 import type { Punto, Quota, QuotaPoligono, QuotaRettangolo } from '../../db/types';
-import { segmentiPoligono } from '../../db/types';
+import { abbondanzaTotale, segmentiPoligono } from '../../db/types';
 
 /**
  * Immagine sintetica: sfondo scuro (40) con un rettangolo chiaro (210)
@@ -653,6 +654,20 @@ describe('poligono unico: classificazione per segmenti quotati', () => {
     const simb = simboliPoligono(tri);
     // lato 1→2 è il più lungo (250) → ipotenusa
     expect(simb[1]).toBe('ip');
+  });
+});
+
+describe('abbondanze', () => {
+  it('abbondanzaTotale = somma dei due estremi', () => {
+    expect(abbondanzaTotale({ abbInizio: 2, abbFine: 1 })).toBe(3);
+    expect(abbondanzaTotale({ abbInizio: 2 })).toBe(2);
+    expect(abbondanzaTotale({})).toBe(0);
+  });
+
+  it('versiSegmento: verticale → sopra/sotto, orizzontale → sinistra/destra', () => {
+    expect(versiSegmento({ x: 0, y: 0 }, { x: 0, y: 100 })).toEqual(['sopra', 'sotto']);
+    expect(versiSegmento({ x: 0, y: 100 }, { x: 0, y: 0 })).toEqual(['sotto', 'sopra']);
+    expect(versiSegmento({ x: 0, y: 0 }, { x: 100, y: 0 })).toEqual(['sinistra', 'destra']);
   });
 });
 

@@ -478,6 +478,16 @@ export function nomeFormaPoligono(q: QuotaPoligono): string {
  * ip (ipotenusa)/C/c; rombo → D/d (diagonali) + l (lati). Un `simbolo`
  * impostato a mano sul segmento prevale sempre.
  */
+/** Nomi dei due estremi di un segmento secondo la geometria (sopra/sotto o sinistra/destra) */
+export function versiSegmento(p1: Punto, p2: Punto): [string, string] {
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  if (Math.abs(dy) >= Math.abs(dx)) {
+    return p1.y <= p2.y ? ['sopra', 'sotto'] : ['sotto', 'sopra'];
+  }
+  return p1.x <= p2.x ? ['sinistra', 'destra'] : ['destra', 'sinistra'];
+}
+
 export function simboliPoligono(q: QuotaPoligono): string[] {
   const segs = segmentiPoligono(q);
   const n = q.punti.length;

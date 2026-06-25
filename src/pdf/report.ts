@@ -2,8 +2,8 @@ import { pdfMake } from './engine';
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { db } from '../db/db';
 import type { Annotazione, Foto, Progetto, Quota, StatoMisura } from '../db/types';
-import { segmentiPoligono } from '../db/types';
-import { nomeFormaPoligono, simboliPoligono } from '../geometry/primitive';
+import { abbondanzaTotale, segmentiPoligono } from '../db/types';
+import { nomeFormaPoligono, simboliPoligono, versiSegmento } from '../geometry/primitive';
 import { leggiImpostazioni } from '../db/repository';
 import { renderFotoAnnotata } from '../render/renderAnnotata';
 import { caricaImmagine, fotoIllegibile } from '../utils/image';
@@ -219,12 +219,31 @@ function righeMisureFoto(annotazioni: Annotazione[]): RigaMisura[] {
       const prefisso = a.etichetta ? `${nome} ${a.etichetta}` : nome;
       const n = (v: number | null) => (v === null ? '?' : formattaNumero(v));
       const simboli = simboliPoligono(a);
-      const parti = segmentiPoligono(a).map((s, i) => `${simboli[i]} ${n(s.valore)}`);
-      const quote = `${parti.join(', ')} ${a.unita}`;
+      const segs = segmentiPoligono(a);
+      // misure reali, con eventuale misura abbondata (per il taglio)
+      const parti = segs.map((s, i) => {
+        const abb = abbondanzaTotale(s);
+        if (abb > 0 && s.valore !== null) {
+          const [vA, vB] = versiSegmento(a.punti[s.da], a.punti[s.a]);
+          const dove = [
+            s.abbInizio ? `+${formattaNumero(s.abbInizio)} ${vA}` : '',
+            s.abbFine ? `+${formattaNumero(s.abbFine)} ${vB}` : ''
+          ]
+            .filter(Boolean)
+            .join(', ');
+          return `${simboli[i]} ${n(s.valore)} → taglio ${formattaNumero(s.valore + abb)} (${dove})`;
+        }
+        return `${simboli[i]} ${n(s.valore)}`;
+      });
+      const quote = `${parti.join('; ')} ${a.unita}`;
       const perimetro = perimetroReale(a);
-      const misura =
-        perimetro !== null ? `${quote} — perim. ${formattaNumero(perimetro)} ${a.unita}` : quote;
-      righe.push({ tipo: prefisso, misura, stato: a.stato });
+      const abbTot = segs.reduce((s, g) => s + abbondanzaTotale(g), 0);
+      let coda = '';
+      if (perimetro !== null) {
+        coda = ` — perim. reale ${formattaNumero(perimetro)} ${a.unita}`;
+        if (abbTot > 0) coda += `, abbondato ${formattaNumero(perimetro + abbTot)} ${a.unita}`;
+      }
+      righe.push({ tipo: prefisso, misura: quote + coda, stato: a.stato });
     }
   }
   return righe;

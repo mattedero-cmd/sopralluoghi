@@ -209,6 +209,13 @@ export interface Quota extends AnnotazioneBase {
   posizioneTesto: PosizioneTesto;
   /** Testo aggiuntivo opzionale, mostrato sotto la misura (es. "luce netta") */
   nota?: string;
+  /**
+   * Abbondanze (extra da aggiungere per il taglio/produzione), applicate ai
+   * due estremi della quota: `abbInizio` al punto p1, `abbFine` al punto p2.
+   * La misura da tagliare = valore + abbInizio + abbFine.
+   */
+  abbInizio?: number;
+  abbFine?: number;
   stato: StatoMisura;
 }
 
@@ -302,6 +309,14 @@ export interface SegmentoQuota {
   posizioneTesto?: PosizioneTesto;
   /** testo aggiuntivo opzionale */
   nota?: string;
+  /** abbondanze ai due estremi (al vertice `da` e al vertice `a`) */
+  abbInizio?: number;
+  abbFine?: number;
+}
+
+/** Abbondanza totale di un segmento/quota (somma dei due estremi) */
+export function abbondanzaTotale(s: { abbInizio?: number; abbFine?: number }): number {
+  return (s.abbInizio ?? 0) + (s.abbFine ?? 0);
 }
 
 /**
