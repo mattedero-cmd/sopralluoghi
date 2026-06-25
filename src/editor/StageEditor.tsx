@@ -199,6 +199,9 @@ export function StageEditor(p: Props) {
   const [, setVersioneDettagli] = useState(0);
   /** true mentre due o più dita sono sullo schermo (zoom/pan): niente select/drag */
   const gestoMulti = useRef(false);
+  /** versione "stato" del gesto a due dita: disattiva il pan a un dito dello
+   *  Stage, che altrimenti combatte con lo zoom pinch e fa "scappare" la foto */
+  const [zoomInCorso, setZoomInCorso] = useState(false);
 
   // I drafting multi-tocco (angolo, piano) si azzerano al cambio strumento
   useEffect(() => {
@@ -330,6 +333,9 @@ export function StageEditor(p: Props) {
     // da qui in poi nessuna annotazione va selezionata o spostata, solo zoom/pan
     if (e.evt.touches.length >= 2) {
       gestoMulti.current = true;
+      setZoomInCorso(true);
+      // ferma SUBITO l'eventuale pan a un dito dello Stage già iniziato
+      stageRef.current?.stopDrag();
       if (bozza) setBozza(null);
       setPuntoPendente(null);
       setPuntoLente(null);
@@ -374,7 +380,10 @@ export function StageEditor(p: Props) {
     pinch.current = null;
     // si esce dal gesto solo quando TUTTE le dita sono state sollevate, così
     // togliendo un dito alla volta non parte uno spostamento involontario
-    if (e.evt.touches.length === 0) gestoMulti.current = false;
+    if (e.evt.touches.length === 0) {
+      gestoMulti.current = false;
+      setZoomInCorso(false);
+    }
   };
 
   // -------------------------------------------------------------------------
@@ -818,9 +827,10 @@ export function StageEditor(p: Props) {
         scaleY={vista.scala}
         x={vista.x}
         y={vista.y}
-        draggable={p.strumento === 'seleziona' && !annLive}
+        draggable={p.strumento === 'seleziona' && !annLive && !zoomInCorso}
         onDragEnd={(e) => {
-          if (e.target === stageRef.current) {
+          // durante lo zoom a due dita il pan dello Stage non viene registrato
+          if (e.target === stageRef.current && !gestoMulti.current) {
             setVista((v) => ({ ...v, x: e.target.x(), y: e.target.y() }));
           }
         }}
