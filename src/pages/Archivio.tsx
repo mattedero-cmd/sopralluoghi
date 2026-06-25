@@ -87,12 +87,25 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
     }
   };
 
+  const generaZip = async (cartella: Cartella, opzioni: OpzioniReport) => {
+    try {
+      setPdfInCorso('Preparazione…');
+      const { esportaCartellaZip } = await import('../utils/zipExport');
+      const blob = await esportaCartellaZip(cartella, (msg) => setPdfInCorso(msg), opzioni);
+      setPdfInCorso(null);
+      await condividiOScarica(blob, nomeFileSicuro(`pacchetto_${cartella.nome}`, 'zip'), cartella.nome);
+    } catch (e) {
+      setPdfInCorso(null);
+      mostraToast('errore', e instanceof Error ? e.message : 'Esportazione ZIP non riuscita.');
+    }
+  };
+
   const apriMenuCartella = (c: Cartella, e: React.MouseEvent) => {
     e.stopPropagation();
     setMenu({
       pos: { x: e.clientX, y: e.clientY },
       voci: [
-        { testo: '📄 Genera report', onClick: () => setReportCartella(c) },
+        { testo: '📄 Esporta (PDF / ZIP)', onClick: () => setReportCartella(c) },
         { testo: 'Rinomina', onClick: () => setRinomina(c) },
         { testo: 'Sposta…', onClick: () => setDaSpostare({ tipo: 'cartella', id: c.id }) },
         {
@@ -279,6 +292,11 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
             setReportCartella(null);
             void generaReport(c, opzioni);
           }}
+          onGeneraZip={(opzioni) => {
+            const c = reportCartella;
+            setReportCartella(null);
+            void generaZip(c, opzioni);
+          }}
         />
       )}
       {pdfInCorso && (
@@ -403,11 +421,13 @@ function FormCartella({
 function FormOpzioniCartella({
   cartella,
   onChiudi,
-  onGenera
+  onGenera,
+  onGeneraZip
 }: {
   cartella: Cartella;
   onChiudi: () => void;
   onGenera: (opzioni: OpzioniReport) => void;
+  onGeneraZip: (opzioni: OpzioniReport) => void;
 }) {
   const [fotoPerPagina, setFotoPerPagina] = useState<1 | 2>(1);
   const [includiIndice, setIncludiIndice] = useState(true);
@@ -450,6 +470,23 @@ function FormOpzioniCartella({
       <div className="riga-pulsanti">
         <button className="btn" onClick={onChiudi}>
           Annulla
+        </button>
+        <button
+          className="btn"
+          onClick={() =>
+            onGeneraZip({
+              fotoIds: null,
+              fotoPerPagina,
+              includiIndice,
+              includiRiepilogo,
+              includiNoteDato,
+              includiTabellaMisure,
+              includiDistinta
+            })
+          }
+          title="PDF + foto originali (JPG) nella struttura delle cartelle"
+        >
+          📦 ZIP
         </button>
         <button
           className="btn primario"

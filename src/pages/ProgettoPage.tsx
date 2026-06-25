@@ -158,6 +158,19 @@ export function ProgettoPage({ id }: { id: string }) {
     }
   };
 
+  const generaZip = async (opzioni: OpzioniReport) => {
+    try {
+      setPdfInCorso('Preparazione…');
+      const { esportaProgettoZip } = await import('../utils/zipExport');
+      const blob = await esportaProgettoZip(progetto, (msg) => setPdfInCorso(msg), opzioni);
+      setPdfInCorso(null);
+      await condividiOScarica(blob, nomeFileSicuro(`pacchetto_${progetto.nome}`, 'zip'), progetto.nome);
+    } catch (e) {
+      setPdfInCorso(null);
+      mostraToast('errore', e instanceof Error ? e.message : 'Esportazione ZIP non riuscita.');
+    }
+  };
+
   return (
     <div className="app">
       <header className="barra">
@@ -296,6 +309,10 @@ export function ProgettoPage({ id }: { id: string }) {
             setOpzioniPdfAperte(false);
             void generaPdf(opzioni);
           }}
+          onGeneraZip={(opzioni) => {
+            setOpzioniPdfAperte(false);
+            void generaZip(opzioni);
+          }}
         />
       )}
       {modificaDati && <FormDatiProgetto progetto={progetto} onChiudi={() => setModificaDati(false)} />}
@@ -430,11 +447,13 @@ export function useFotoProgetto(progettoId: string | undefined) {
 function FormOpzioniReport({
   foto,
   onChiudi,
-  onGenera
+  onGenera,
+  onGeneraZip
 }: {
   foto: Foto[];
   onChiudi: () => void;
   onGenera: (opzioni: OpzioniReport) => void;
+  onGeneraZip: (opzioni: OpzioniReport) => void;
 }) {
   const [selezione, setSelezione] = useState<Set<string>>(new Set(foto.map((f) => f.id)));
   const [fotoPerPagina, setFotoPerPagina] = useState<1 | 2>(1);
@@ -540,6 +559,24 @@ function FormOpzioniReport({
       <div className="riga-pulsanti">
         <button className="btn" onClick={onChiudi}>
           Annulla
+        </button>
+        <button
+          className="btn"
+          disabled={selezione.size === 0}
+          title="PDF + foto originali (JPG)"
+          onClick={() =>
+            onGeneraZip({
+              fotoIds: selezione.size === foto.length ? null : Array.from(selezione),
+              fotoPerPagina,
+              includiIndice,
+              includiRiepilogo,
+              includiNoteDato,
+              includiTabellaMisure,
+              includiDistinta
+            })
+          }
+        >
+          📦 ZIP
         </button>
         <button
           className="btn primario"
