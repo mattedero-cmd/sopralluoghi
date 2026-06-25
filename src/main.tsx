@@ -18,6 +18,22 @@ registerSW({
 
 void inizializzaStorage();
 
+/**
+ * Se un modulo caricato "su richiesta" (es. il motore PDF) non si trova,
+ * di solito è perché l'app è stata aggiornata e il service worker ha
+ * sostituito gli asset con nuovi hash: gli URL vecchi non esistono più.
+ * Invece di mostrare "Importing a module script failed", si ricarica una
+ * volta sola per prendere la versione nuova.
+ */
+window.addEventListener('vite:preloadError', (e) => {
+  e.preventDefault();
+  const ora = Date.now();
+  const ultimo = Number(sessionStorage.getItem('ricaricaChunk') || 0);
+  if (ora - ultimo < 15000) return; // già ricaricato di recente: evita il loop
+  sessionStorage.setItem('ricaricaChunk', String(ora));
+  window.location.reload();
+});
+
 // Nessun errore silenzioso: anche gli imprevisti non gestiti vengono mostrati
 window.addEventListener('unhandledrejection', (e) => {
   console.error(e.reason);
