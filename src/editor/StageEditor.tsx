@@ -197,6 +197,8 @@ export function StageEditor(p: Props) {
   const inizioTesto = useRef<Punto | null>(null);
   /** contatore per ridisegnare quando una foto-dettaglio finisce di caricarsi */
   const [, setVersioneDettagli] = useState(0);
+  /** true mentre due o più dita sono sullo schermo (zoom/pan): niente select/drag */
+  const gestoMulti = useRef(false);
 
   // I drafting multi-tocco (angolo, piano) si azzerano al cambio strumento
   useEffect(() => {
@@ -323,11 +325,25 @@ export function StageEditor(p: Props) {
     zoomVerso(pos, e.evt.deltaY < 0 ? 1.12 : 1 / 1.12);
   };
 
+  const suTouchStart = (e: Konva.KonvaEventObject<TouchEvent>) => {
+    // appena un secondo dito tocca lo schermo si entra in "gesto a due dita":
+    // da qui in poi nessuna annotazione va selezionata o spostata, solo zoom/pan
+    if (e.evt.touches.length >= 2) {
+      gestoMulti.current = true;
+      if (bozza) setBozza(null);
+      setPuntoPendente(null);
+      setPuntoLente(null);
+      setTracciaAuto(null);
+      disegnoAttivo.current = false;
+    }
+  };
+
   const suTouchMove = (e: Konva.KonvaEventObject<TouchEvent>) => {
     const t = e.evt.touches;
     if (t.length !== 2) return;
     e.evt.preventDefault();
     // due dita: pinch zoom + pan; qualunque bozza viene annullata
+    gestoMulti.current = true;
     if (bozza) setBozza(null);
     setPuntoPendente(null);
     setPuntoLente(null);
@@ -354,8 +370,11 @@ export function StageEditor(p: Props) {
     });
   };
 
-  const suTouchEnd = () => {
+  const suTouchEnd = (e: Konva.KonvaEventObject<TouchEvent>) => {
     pinch.current = null;
+    // si esce dal gesto solo quando TUTTE le dita sono state sollevate, così
+    // togliendo un dito alla volta non parte uno spostamento involontario
+    if (e.evt.touches.length === 0) gestoMulti.current = false;
   };
 
   // -------------------------------------------------------------------------
@@ -806,6 +825,7 @@ export function StageEditor(p: Props) {
           }
         }}
         onWheel={suRotella}
+        onTouchStart={suTouchStart}
         onTouchMove={suTouchMove}
         onTouchEnd={suTouchEnd}
         onPointerDown={suPointerDown}
@@ -833,6 +853,7 @@ export function StageEditor(p: Props) {
               selezionata={a.id === p.selezioneId}
               interattiva={p.strumento === 'seleziona'}
               hitWidth={Math.max(28 / vista.scala, 12)}
+              gestoMulti={() => gestoMulti.current}
               onSeleziona={() => p.onSeleziona(a.id)}
               onModifica={() => p.onModifica(a.id)}
               onTrascinata={(dx, dy) => {
@@ -1009,6 +1030,7 @@ export function StageEditor(p: Props) {
               onPuntoAttivo={setPuntoLente}
               applicaSnap={applicaSnap}
               vincolo={p.vincolo}
+              gestoMulti={() => gestoMulti.current}
             />
           )}
         </Layer>
@@ -1207,6 +1229,7 @@ function AnnotazioneShape({
   selezionata,
   interattiva,
   hitWidth,
+  gestoMulti,
   onSeleziona,
   onModifica,
   onTrascinata
@@ -1218,6 +1241,8 @@ function AnnotazioneShape({
   selezionata: boolean;
   interattiva: boolean;
   hitWidth: number;
+  /** true mentre è in corso un gesto a due dita (zoom): blocca select/drag */
+  gestoMulti?: () => boolean;
   onSeleziona: () => void;
   onModifica: () => void;
   onTrascinata: (dx: number, dy: number) => void;
@@ -1283,13 +1308,28 @@ function AnnotazioneShape({
         }
         c.restore();
       }}
-      onClick={() => (selezionata ? onModifica() : onSeleziona())}
-      onTap={() => (selezionata ? onModifica() : onSeleziona())}
-      onDragStart={onSeleziona}
+      onClick={() => {
+        if (gestoMulti?.()) return;
+        selezionata ? onModifica() : onSeleziona();
+      }}
+      onTap={() => {
+        if (gestoMulti?.()) return;
+        selezionata ? onModifica() : onSeleziona();
+      }}
+      onDragStart={(e) => {
+        // durante un gesto a due dita (zoom) non si seleziona né si trascina
+        if (gestoMulti?.()) {
+          e.target.stopDrag();
+          e.target.position({ x: 0, y: 0 });
+          return;
+        }
+        onSeleziona();
+      }}
       onDragEnd={(e) => {
         const dx = e.target.x();
         const dy = e.target.y();
         e.target.position({ x: 0, y: 0 });
+        if (gestoMulti?.()) return; // gesto multi-tocco: nessuno spostamento
         if (dx !== 0 || dy !== 0) onTrascinata(dx, dy);
       }}
     />
@@ -1371,7 +1411,8 @@ function ManiglieAnnotazione({
   onFine,
   onPuntoAttivo,
   applicaSnap,
-  vincolo
+  vincolo,
+  gestoMulti
 }: {
   ann: Annotazione;
   raggio: number;
@@ -1382,6 +1423,8 @@ function ManiglieAnnotazione({
   onPuntoAttivo: (p: Punto | null) => void;
   applicaSnap: (p: Punto, escludi?: Punto[]) => Punto;
   vincolo: ModalitaVincolo;
+  /** true durante un gesto a due dita (zoom): le maniglie non si muovono */
+  gestoMulti?: () => boolean;
 }) {
   const maniglia = (
     chiave: string,
@@ -1398,14 +1441,29 @@ function ManiglieAnnotazione({
       stroke="#58a6ff"
       strokeWidth={2.5 / scala}
       draggable
+      onDragStart={(e) => {
+        if (gestoMulti?.()) {
+          e.target.stopDrag();
+          e.target.position(pos);
+        }
+      }}
       onDragMove={(e) => {
+        if (gestoMulti?.()) {
+          e.target.position(pos); // gesto a due dita: la maniglia resta ferma
+          return;
+        }
         let nuovo: Punto = { x: e.target.x(), y: e.target.y() };
         if (opzioni?.snap) nuovo = applicaSnap(nuovo, opzioni.escludi);
         e.target.position(nuovo);
         onPuntoAttivo(nuovo);
         onLive(aggiorna(nuovo));
       }}
-      onDragEnd={() => {
+      onDragEnd={(e) => {
+        if (gestoMulti?.()) {
+          e.target.position(pos);
+          onPuntoAttivo(null);
+          return;
+        }
         onPuntoAttivo(null);
         onFine();
       }}
