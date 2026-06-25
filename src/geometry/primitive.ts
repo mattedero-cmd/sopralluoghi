@@ -12,7 +12,7 @@ import type {
   Rettangolo,
   TestoFoto
 } from '../db/types';
-import { COLORE_REALE, COLORE_STIMATA, quadrilateroQuotaRett } from '../db/types';
+import { COLORE_QUOTA, quadrilateroQuotaRett } from '../db/types';
 import { misureElemento, nomePoligono } from './calibrazione';
 import { formattaMisura, formattaNumero } from '../utils/format';
 import {
@@ -27,6 +27,13 @@ import {
 } from './punti';
 
 /**
+ * Alone scuro semitrasparente: dà a linee, frecce e testi delle quote un
+ * leggero contorno che li rende leggibili su qualunque sfondo (chiaro o
+ * scuro), come nei rilievi tecnici. Usato in modo uniforme da tutte le quote.
+ */
+const ALONE = 'rgba(0,0,0,0.55)';
+
+/**
  * Primitive di disegno: l'unica fonte di verità per l'aspetto delle
  * annotazioni. Sia l'editor interattivo (Konva) sia il renderer di
  * export (Canvas2D, usato anche dal PDF) disegnano queste primitive,
@@ -34,9 +41,9 @@ import {
  * Tutte le coordinate sono in pixel dell'immagine originale.
  */
 export type Primitiva =
-  | { kind: 'linea'; punti: number[]; colore: string; spessore: number; tratteggio?: number[] }
-  | { kind: 'poligono'; punti: number[]; colore: string }
-  | { kind: 'polilinea'; punti: number[]; colore: string; spessore: number }
+  | { kind: 'linea'; punti: number[]; colore: string; spessore: number; tratteggio?: number[]; alone?: string }
+  | { kind: 'poligono'; punti: number[]; colore: string; alone?: string }
+  | { kind: 'polilinea'; punti: number[]; colore: string; spessore: number; alone?: string }
   | {
       kind: 'testo';
       testo: string;
@@ -46,6 +53,8 @@ export type Primitiva =
       dimensione: number;
       colore: string;
       sfondo: string | null;
+      /** alone/contorno scuro per la leggibilità senza riquadro (stile quote) */
+      alone?: string;
     }
   | { kind: 'rettangolo'; rect: Rettangolo; colore: string; spessore: number; riempimento?: string }
   | {
@@ -55,6 +64,7 @@ export type Primitiva =
       colore: string;
       spessore: number;
       tratteggio?: number[];
+      alone?: string;
     }
   | {
       kind: 'arco';
@@ -66,6 +76,7 @@ export type Primitiva =
       antiorario: boolean;
       colore: string;
       spessore: number;
+      alone?: string;
     }
   | {
       kind: 'ritaglio';
@@ -120,12 +131,14 @@ function freccette(punta: Punto, direzione: Punto, dim: number, colore: string):
   const base = sottrai(punta, scala(direzione, dim));
   const a = somma(base, scala(n, dim * 0.35));
   const b = sottrai(base, scala(n, dim * 0.35));
-  return { kind: 'poligono', punti: [punta.x, punta.y, a.x, a.y, b.x, b.y], colore };
+  return { kind: 'poligono', punti: [punta.x, punta.y, a.x, a.y, b.x, b.y], colore, alone: ALONE };
 }
 
 export function coloreQuota(q: Pick<Quota, 'stato' | 'stile'>): string {
-  // La distinzione reale/stimata è sempre visibile: colore convenzionale
-  return q.stato === 'stimata' ? COLORE_STIMATA : (q.stile.colore || COLORE_REALE);
+  // Colore UNICO per tutte le quote (manuali o automatiche): l'aspetto non
+  // dipende dal modo di creazione né dallo stato reale/stimata. La
+  // distinzione reale/stimata resta nel testo (prefisso ≈), non nel colore.
+  return q.stile.colore || COLORE_QUOTA;
 }
 
 export function etichettaQuota(q: Pick<Quota, 'valore' | 'unita' | 'stato'>): string {
@@ -157,7 +170,8 @@ export function primitiveQuota(q: Quota): Primitiva[] {
         kind: 'linea',
         punti: [inizio.x, inizio.y, fine.x, fine.y],
         colore,
-        spessore: sp * 0.75
+        spessore: sp * 0.75,
+        alone: ALONE
       });
     }
   }
@@ -196,11 +210,11 @@ export function primitiveQuota(q: Quota): Primitiva[] {
     const v1 = somma(g.centro, scala(normalizza(sottrai(g.q1, g.centro)), mezzo));
     const v2 = somma(g.centro, scala(normalizza(sottrai(g.q2, g.centro)), mezzo));
     prim.push(
-      { kind: 'linea', punti: [g.q1.x, g.q1.y, v1.x, v1.y], colore, spessore: sp },
-      { kind: 'linea', punti: [v2.x, v2.y, g.q2.x, g.q2.y], colore, spessore: sp }
+      { kind: 'linea', punti: [g.q1.x, g.q1.y, v1.x, v1.y], colore, spessore: sp, alone: ALONE },
+      { kind: 'linea', punti: [v2.x, v2.y, g.q2.x, g.q2.y], colore, spessore: sp, alone: ALONE }
     );
   } else {
-    prim.push({ kind: 'linea', punti: [g.q1.x, g.q1.y, g.q2.x, g.q2.y], colore, spessore: sp });
+    prim.push({ kind: 'linea', punti: [g.q1.x, g.q1.y, g.q2.x, g.q2.y], colore, spessore: sp, alone: ALONE });
   }
 
   // Frecce alle estremità: all'interno se c'è spazio, all'esterno se la quota è corta
@@ -226,7 +240,8 @@ export function primitiveQuota(q: Quota): Primitiva[] {
     rotazioneDeg: angolo,
     dimensione: dimTesto,
     colore,
-    sfondo: q.posizioneTesto === 'centro' ? null : 'rgba(255,255,255,0.72)'
+    sfondo: null,
+    alone: ALONE
   });
 
   return prim;
@@ -262,8 +277,8 @@ export function primitiveQuotaAngolare(q: QuotaAngolare): Primitiva[] {
 
   // lati dell'angolo
   prim.push(
-    { kind: 'linea', punti: [q.vertice.x, q.vertice.y, q.a.x, q.a.y], colore, spessore: sp * 0.75 },
-    { kind: 'linea', punti: [q.vertice.x, q.vertice.y, q.b.x, q.b.y], colore, spessore: sp * 0.75 }
+    { kind: 'linea', punti: [q.vertice.x, q.vertice.y, q.a.x, q.a.y], colore, spessore: sp * 0.75, alone: ALONE },
+    { kind: 'linea', punti: [q.vertice.x, q.vertice.y, q.b.x, q.b.y], colore, spessore: sp * 0.75, alone: ALONE }
   );
 
   prim.push({
@@ -274,7 +289,8 @@ export function primitiveQuotaAngolare(q: QuotaAngolare): Primitiva[] {
     fine: a1 + delta,
     antiorario: delta < 0,
     colore,
-    spessore: sp
+    spessore: sp,
+    alone: ALONE
   });
 
   // frecce tangenti alle estremità dell'arco
@@ -305,7 +321,8 @@ export function primitiveQuotaAngolare(q: QuotaAngolare): Primitiva[] {
     rotazioneDeg: 0,
     dimensione: dimTesto,
     colore,
-    sfondo: 'rgba(255,255,255,0.72)'
+    sfondo: null,
+    alone: ALONE
   });
 
   return prim;
@@ -349,7 +366,8 @@ export function primitiveQuotaRettangolo(q: QuotaRettangolo): Primitiva[] {
         altoSx.x, altoSx.y
       ],
       colore: coloreQuota(q),
-      spessore: q.stile.spessore * 0.75
+      spessore: q.stile.spessore * 0.75,
+      alone: ALONE
     }
   ];
   const comune = {
@@ -440,7 +458,7 @@ export function primitiveQuotaPoligono(q: QuotaPoligono): Primitiva[] {
   for (const pt of punti) contorno.push(pt.x, pt.y);
   if (n > 0) contorno.push(punti[0].x, punti[0].y);
   const prim: Primitiva[] = [
-    { kind: 'polilinea', punti: contorno, colore, spessore: q.stile.spessore * 0.75 }
+    { kind: 'polilinea', punti: contorno, colore, spessore: q.stile.spessore * 0.75, alone: ALONE }
   ];
 
   const centro: Punto = {
@@ -520,7 +538,8 @@ export function primitiveQuotaRaggio(q: QuotaRaggio): Primitiva[] {
     raggio: r,
     colore,
     spessore: sp * 0.6,
-    tratteggio: [sp * 4, sp * 3]
+    tratteggio: [sp * 4, sp * 3],
+    alone: ALONE
   });
 
   const inizio = q.modo === 'diametro' ? sottrai(q.centro, scala(d, r)) : q.centro;
@@ -528,7 +547,8 @@ export function primitiveQuotaRaggio(q: QuotaRaggio): Primitiva[] {
     kind: 'linea',
     punti: [inizio.x, inizio.y, q.bordo.x, q.bordo.y],
     colore,
-    spessore: sp
+    spessore: sp,
+    alone: ALONE
   });
   prim.push(freccette(q.bordo, d, dimFreccia, colore));
   if (q.modo === 'diametro') {
@@ -537,8 +557,8 @@ export function primitiveQuotaRaggio(q: QuotaRaggio): Primitiva[] {
     // croce sul centro
     const c = sp * 3;
     prim.push(
-      { kind: 'linea', punti: [q.centro.x - c, q.centro.y, q.centro.x + c, q.centro.y], colore, spessore: sp * 0.75 },
-      { kind: 'linea', punti: [q.centro.x, q.centro.y - c, q.centro.x, q.centro.y + c], colore, spessore: sp * 0.75 }
+      { kind: 'linea', punti: [q.centro.x - c, q.centro.y, q.centro.x + c, q.centro.y], colore, spessore: sp * 0.75, alone: ALONE },
+      { kind: 'linea', punti: [q.centro.x, q.centro.y - c, q.centro.x, q.centro.y + c], colore, spessore: sp * 0.75, alone: ALONE }
     );
   }
 
@@ -552,7 +572,8 @@ export function primitiveQuotaRaggio(q: QuotaRaggio): Primitiva[] {
     rotazioneDeg: 0,
     dimensione: dimTesto,
     colore,
-    sfondo: 'rgba(255,255,255,0.72)'
+    sfondo: null,
+    alone: ALONE
   });
 
   return prim;
@@ -568,7 +589,7 @@ export function primitiveFreccia(f: Freccia): Primitiva[] {
   const d = normalizza(sottrai(f.p2, f.p1));
   const fine = sottrai(f.p2, scala(d, dimFreccia * 0.6));
   return [
-    { kind: 'linea', punti: [f.p1.x, f.p1.y, fine.x, fine.y], colore, spessore: f.stile.spessore },
+    { kind: 'linea', punti: [f.p1.x, f.p1.y, fine.x, fine.y], colore, spessore: f.stile.spessore, alone: ALONE },
     freccette(f.p2, d, dimFreccia, colore)
   ];
 }

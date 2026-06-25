@@ -42,51 +42,77 @@ export function disegnaPrimitiva(
   ctx.lineJoin = 'round';
   switch (p.kind) {
     case 'linea': {
-      ctx.strokeStyle = p.colore;
-      ctx.lineWidth = p.spessore;
       if (p.tratteggio) ctx.setLineDash(p.tratteggio);
       ctx.beginPath();
       ctx.moveTo(p.punti[0], p.punti[1]);
       ctx.lineTo(p.punti[2], p.punti[3]);
+      if (p.alone) {
+        ctx.strokeStyle = p.alone;
+        ctx.lineWidth = p.spessore + Math.max(2, p.spessore * 0.9);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = p.colore;
+      ctx.lineWidth = p.spessore;
       ctx.stroke();
       break;
     }
     case 'polilinea': {
-      ctx.strokeStyle = p.colore;
-      ctx.lineWidth = p.spessore;
       ctx.beginPath();
       ctx.moveTo(p.punti[0], p.punti[1]);
       for (let i = 2; i < p.punti.length; i += 2) {
         ctx.lineTo(p.punti[i], p.punti[i + 1]);
       }
+      if (p.alone) {
+        ctx.strokeStyle = p.alone;
+        ctx.lineWidth = p.spessore + Math.max(2, p.spessore * 0.9);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = p.colore;
+      ctx.lineWidth = p.spessore;
       ctx.stroke();
       break;
     }
     case 'poligono': {
-      ctx.fillStyle = p.colore;
       ctx.beginPath();
       ctx.moveTo(p.punti[0], p.punti[1]);
       for (let i = 2; i < p.punti.length; i += 2) {
         ctx.lineTo(p.punti[i], p.punti[i + 1]);
       }
       ctx.closePath();
+      // contorno scuro attorno alla freccia, poi riempimento colorato
+      if (p.alone) {
+        ctx.strokeStyle = p.alone;
+        ctx.lineWidth = Math.max(2, 3);
+        ctx.stroke();
+      }
+      ctx.fillStyle = p.colore;
       ctx.fill();
       break;
     }
     case 'cerchio': {
-      ctx.strokeStyle = p.colore;
-      ctx.lineWidth = p.spessore;
       if (p.tratteggio) ctx.setLineDash(p.tratteggio);
       ctx.beginPath();
       ctx.arc(p.centro.x, p.centro.y, p.raggio, 0, Math.PI * 2);
+      if (p.alone) {
+        ctx.strokeStyle = p.alone;
+        ctx.lineWidth = p.spessore + Math.max(2, p.spessore * 0.9);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = p.colore;
+      ctx.lineWidth = p.spessore;
       ctx.stroke();
       break;
     }
     case 'arco': {
-      ctx.strokeStyle = p.colore;
-      ctx.lineWidth = p.spessore;
       ctx.beginPath();
       ctx.arc(p.centro.x, p.centro.y, p.raggio, p.inizio, p.fine, p.antiorario);
+      if (p.alone) {
+        ctx.strokeStyle = p.alone;
+        ctx.lineWidth = p.spessore + Math.max(2, p.spessore * 0.9);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = p.colore;
+      ctx.lineWidth = p.spessore;
       ctx.stroke();
       break;
     }
@@ -143,6 +169,16 @@ export function disegnaPrimitiva(
           larghezza + pad * 2,
           (righe.length - 1) * altezzaRiga + p.dimensione + pad * 2
         );
+      }
+      // alone scuro per la leggibilità senza riquadro (stile quote)
+      if (p.alone) {
+        ctx.strokeStyle = p.alone;
+        ctx.lineWidth = Math.max(2, p.dimensione * 0.2);
+        ctx.lineJoin = 'round';
+        ctx.miterLimit = 2;
+        righe.forEach((riga, i) => {
+          ctx.strokeText(riga, 0, y0 + i * altezzaRiga);
+        });
       }
       ctx.fillStyle = p.colore;
       righe.forEach((riga, i) => {

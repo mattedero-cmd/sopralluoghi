@@ -406,3 +406,10 @@ export const IMPOSTAZIONI_DEFAULT: Impostazioni = {
 /** Colori convenzionali per la distinzione reale/stimata in tutta l'app */
 export const COLORE_REALE = '#ff3b30';
 export const COLORE_STIMATA = '#ff9500';
+
+/**
+ * Colore grafico UNICO delle quote (stile tecnico professionale, giallo
+ * ad alta visibilità). Tutte le quote — manuali o automatiche — usano
+ * questo stile: l'aspetto non dipende dal modo di creazione.
+ */
+export const COLORE_QUOTA = '#ffc400';

@@ -16,7 +16,7 @@ import type {
   Stile,
   TestoFoto
 } from '../db/types';
-import { quadrilateroQuotaRett } from '../db/types';
+import { COLORE_QUOTA, quadrilateroQuotaRett } from '../db/types';
 import { nuovoId } from '../utils/id';
 import {
   haCalibrazione,
@@ -49,6 +49,12 @@ export class FabbricaAnnotazioni {
     };
   }
 
+  /** Stile delle quote: come quello base ma con il colore UNICO delle quote,
+   *  così ogni quota (manuale o automatica) nasce con lo stesso aspetto. */
+  private stileQuota(): Stile {
+    return { ...this.stileBase(), colore: COLORE_QUOTA };
+  }
+
   private prossimoZ(esistenti: Annotazione[]): number {
     return esistenti.reduce((max, a) => Math.max(max, a.zIndex), 0) + 1;
   }
@@ -73,7 +79,7 @@ export class FabbricaAnnotazioni {
       // un valore derivato dalla calibrazione è una stima, non un rilievo
       stato: calibrata ? 'stimata' : 'reale',
       zIndex: this.prossimoZ(esistenti),
-      stile: this.stileBase()
+      stile: this.stileQuota()
     };
     if (calibrata) q.valore = valoreAutomatico(q, this.foto);
     return q;
@@ -93,7 +99,7 @@ export class FabbricaAnnotazioni {
       // l'angolo misurato sull'immagine è una stima (salvo piano calibrato)
       stato: 'stimata',
       zIndex: this.prossimoZ(esistenti),
-      stile: this.stileBase()
+      stile: this.stileQuota()
     };
     q.valore = valoreAutomatico(q, this.foto);
     return q;
@@ -119,7 +125,7 @@ export class FabbricaAnnotazioni {
       unita: this.impostazioni.unitaDefault,
       stato: calibrata ? 'stimata' : 'reale',
       zIndex: this.prossimoZ(esistenti),
-      stile: this.stileBase()
+      stile: this.stileQuota()
     };
     if (calibrata) {
       const m = misureRettangolo(punti, this.foto, q.unita);
@@ -151,7 +157,7 @@ export class FabbricaAnnotazioni {
       unita: this.impostazioni.unitaDefault,
       stato: calibrata ? 'stimata' : 'reale',
       zIndex: this.prossimoZ(esistenti),
-      stile: this.stileBase()
+      stile: this.stileQuota()
     };
     if (calibrata) {
       const lati = misurePoligono(punti, this.foto, q.unita);
@@ -174,7 +180,7 @@ export class FabbricaAnnotazioni {
       unita: this.impostazioni.unitaDefault,
       stato: calibrata ? 'stimata' : 'reale',
       zIndex: this.prossimoZ(esistenti),
-      stile: this.stileBase()
+      stile: this.stileQuota()
     };
     if (calibrata) q.valore = valoreAutomatico(q, this.foto);
     return q;

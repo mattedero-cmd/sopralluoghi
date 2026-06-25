@@ -17,7 +17,7 @@ import type {
   StatoMisura,
   Unita
 } from '../db/types';
-import { IMPOSTAZIONI_DEFAULT, quadrilateroQuotaRett } from '../db/types';
+import { COLORE_QUOTA, IMPOSTAZIONI_DEFAULT, quadrilateroQuotaRett } from '../db/types';
 import { aggiornaFoto, eliminaFoto, leggiImpostazioni, salvaAnnotazioniFoto } from '../db/repository';
 import { blobOrigine, caricaImmagine, fotoIllegibile } from '../utils/image';
 import { naviga } from '../router';
@@ -50,7 +50,7 @@ import { condividiOScarica, nomeFileSicuro } from '../utils/share';
 import { renderFotoAnnotata } from '../render/renderAnnotata';
 import { avviaDettatura, dettaturaDisponibile } from '../utils/dettatura';
 
-const COLORI = ['#ff3b30', '#ffcc00', '#34c759', '#007aff', '#ffffff', '#111111'];
+const COLORI = [COLORE_QUOTA, '#ff3b30', '#34c759', '#007aff', '#ffffff', '#111111'];
 
 type CategoriaLayer = 'quote' | 'note' | 'callout';
 
@@ -407,7 +407,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     // si ripristina il colore predefinito: il blu è solo per l'anteprima
     const definitiva = {
       ...proposta,
-      stile: { ...proposta.stile, colore: impostazioni.stileDefault.colore }
+      // colore UNICO delle quote: l'elemento automatico è identico a uno manuale
+      stile: { ...proposta.stile, colore: COLORE_QUOTA }
     };
     commit([...annotazioni, definitiva]);
     setProposta(null);

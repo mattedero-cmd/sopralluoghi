@@ -9,7 +9,7 @@ import {
   nomePoligono,
   perimetroPoligono
 } from '../calibrazione';
-import { primitiveQuota, primitiveQuotaPoligono, etichettaPoligono } from '../primitive';
+import { primitiveQuota, primitiveQuotaPoligono, etichettaPoligono, coloreQuota } from '../primitive';
 import type { Punto, Quota, QuotaPoligono, QuotaRettangolo } from '../../db/types';
 
 /**
@@ -358,6 +358,44 @@ describe('classificazione forma elemento', () => {
       { x: 10, y: 90 }
     ]);
     expect(classificaForma(q.punti)).toBe('quadrilatero');
+  });
+});
+
+describe('stile uniforme delle quote (manuale = automatica)', () => {
+  const stile = { colore: '#ffc400', spessore: 3, dimensioneTesto: 24 };
+  const quotaBase: Quota = {
+    id: 'q1',
+    fotoId: 'f1',
+    tipo: 'quota',
+    sottotipo: 'orizzontale',
+    p1: { x: 0, y: 0 },
+    p2: { x: 120, y: 0 },
+    offset: 0,
+    valore: 100,
+    unita: 'cm',
+    posizioneTesto: 'sopra',
+    stato: 'reale',
+    zIndex: 1,
+    stile
+  };
+
+  it('coloreQuota: stesso colore per reale e stimata (nessuna differenza)', () => {
+    const reale = coloreQuota({ stato: 'reale', stile });
+    const stimata = coloreQuota({ stato: 'stimata', stile });
+    expect(reale).toBe(stimata);
+    expect(reale).toBe('#ffc400');
+  });
+
+  it('le linee della quota portano l’alone scuro e il testo non ha riquadro bianco', () => {
+    const prim = primitiveQuota(quotaBase);
+    const linee = prim.filter((p) => p.kind === 'linea') as Array<{ alone?: string }>;
+    expect(linee.length).toBeGreaterThan(0);
+    expect(linee.every((l) => !!l.alone)).toBe(true);
+    const frecce = prim.filter((p) => p.kind === 'poligono') as Array<{ alone?: string }>;
+    expect(frecce.every((f) => !!f.alone)).toBe(true);
+    const testo = prim.find((p) => p.kind === 'testo') as { sfondo: string | null; alone?: string };
+    expect(testo.sfondo).toBeNull();
+    expect(testo.alone).toBeTruthy();
   });
 });
 
