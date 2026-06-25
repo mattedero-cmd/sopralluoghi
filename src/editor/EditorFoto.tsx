@@ -39,7 +39,7 @@ import { lunghezzaPxQuota } from '../geometry/punti';
 import { RicercaBordi } from '../geometry/bordi';
 import { rilevaQuad4, type EsitoQuad4 } from '../geometry/quad4';
 import { distanza } from '../geometry/punti';
-import { etichettaRettangolo, primitiveQuota } from '../geometry/primitive';
+import { etichettaRettangolo } from '../geometry/primitive';
 import {
   aInputDataOra,
   analizzaMisura,
@@ -47,7 +47,7 @@ import {
   formattaNumero
 } from '../utils/format';
 import { condividiOScarica, nomeFileSicuro } from '../utils/share';
-import { renderFotoAnnotata, disegnaPrimitiva } from '../render/renderAnnotata';
+import { renderFotoAnnotata } from '../render/renderAnnotata';
 import { avviaDettatura, dettaturaDisponibile } from '../utils/dettatura';
 
 const COLORI = [COLORE_QUOTA, '#ff3b30', '#34c759', '#007aff', '#ffffff', '#111111'];
@@ -1044,6 +1044,8 @@ function EditorQuota({
   const contRef = useRef<HTMLDivElement>(null);
 
   const valore = analizzaMisura(testoVal);
+  const testoMisura =
+    (stato === 'stimata' ? '≈ ' : '') + (valore === null ? '?' : formattaNumero(valore)) + ' ' + unita;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -1060,38 +1062,107 @@ function EditorQuota({
     ctx.save();
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, w, h);
-    // foto di sfondo (cover) in trasparenza
-    const ir = immagine.width / immagine.height;
-    let dw: number;
-    let dh: number;
-    if (ir > w / h) {
-      dh = h;
-      dw = h * ir;
-    } else {
-      dw = w;
-      dh = w / ir;
-    }
-    ctx.globalAlpha = 0.18;
-    ctx.drawImage(immagine, (w - dw) / 2, (h - dh) / 2, dw, dh);
-    ctx.globalAlpha = 1;
-    // quota raddrizzata orizzontale, con i valori in corso di modifica
-    const margine = Math.max(56, w * 0.16);
-    const q: Quota = {
-      ...quota,
-      sottotipo: 'allineata',
-      p1: { x: margine, y: h / 2 },
-      p2: { x: w - margine, y: h / 2 },
-      offset: 0,
-      valore,
-      unita,
-      posizioneTesto,
-      nota: nota.trim() || undefined,
-      stato,
-      stile: { colore, spessore: 4, dimensioneTesto: 26 }
-    };
-    for (const prim of primitiveQuota(q)) disegnaPrimitiva(ctx, prim, immagine);
+    ctx.fillStyle = '#05070a';
+    ctx.fillRect(0, 0, w, h);
+
+    const yc = h / 2;
+    const x1 = w * 0.12;
+    const x2 = w * 0.88;
+    const lungPreview = x2 - x1;
+
+    // sfondo: la STRISCIA reale della foto sotto la quota, raddrizzata, ben
+    // visibile, così si capisce dove la quota è più leggibile
+    const p1 = quota.p1;
+    const p2 = quota.p2;
+    const L = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1;
+    const theta = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+    const s = lungPreview / L;
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.translate(x1, yc);
+    ctx.rotate(-theta);
+    ctx.scale(s, s);
+    ctx.translate(-p1.x, -p1.y);
+    ctx.drawImage(immagine, 0, 0);
     ctx.restore();
-  }, [immagine, valore, unita, posizioneTesto, nota, colore, stato, quota]);
+    // velo scuro per far risaltare quota e rettangolini
+    ctx.fillStyle = 'rgba(5,7,10,0.25)';
+    ctx.fillRect(0, 0, w, h);
+
+    // linea di quota orizzontale, con alone scuro
+    ctx.lineCap = 'round';
+    for (const [col, lw] of [['rgba(0,0,0,0.6)', 9], [colore, 4]] as Array<[string, number]>) {
+      ctx.strokeStyle = col;
+      ctx.lineWidth = lw;
+      ctx.beginPath();
+      ctx.moveTo(x1, yc);
+      ctx.lineTo(x2, yc);
+      ctx.stroke();
+    }
+    const freccia = (x: number, dir: 1 | -1) => {
+      const len = 16;
+      const path = () => {
+        ctx.beginPath();
+        ctx.moveTo(x, yc);
+        ctx.lineTo(x - dir * len, yc - len * 0.42);
+        ctx.lineTo(x - dir * len, yc + len * 0.42);
+        ctx.closePath();
+      };
+      path();
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      ctx.fillStyle = colore;
+      ctx.fill();
+    };
+    freccia(x1, -1);
+    freccia(x2, 1);
+
+    // tre rettangolini (sopra / centro / sotto) con dentro la quota scritta
+    const boxW = Math.min(lungPreview * 0.72, w * 0.62);
+    const boxH = h * 0.2;
+    const cx = w / 2;
+    const centri: Array<[PosizioneTesto, number]> = [
+      ['sopra', yc - boxH * 1.05],
+      ['centro', yc],
+      ['sotto', yc + boxH * 1.05]
+    ];
+    const arrotonda = (x: number, y: number, ww: number, hh: number, r: number) => {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + ww, y, x + ww, y + hh, r);
+      ctx.arcTo(x + ww, y + hh, x, y + hh, r);
+      ctx.arcTo(x, y + hh, x, y, r);
+      ctx.arcTo(x, y, x + ww, y, r);
+      ctx.closePath();
+    };
+    const righe = nota.trim() ? [testoMisura, nota.trim()] : [testoMisura];
+    for (const [pos, cyB] of centri) {
+      const sel = posizioneTesto === pos;
+      arrotonda(cx - boxW / 2, cyB - boxH / 2, boxW, boxH, 10);
+      ctx.fillStyle = sel ? 'rgba(47,129,247,0.28)' : 'rgba(0,0,0,0.4)';
+      ctx.fill();
+      ctx.strokeStyle = sel ? '#2f81f7' : 'rgba(255,255,255,0.45)';
+      ctx.lineWidth = sel ? 3 : 1.5;
+      ctx.stroke();
+      const dim = Math.round(boxH * 0.3);
+      ctx.font = `bold ${dim}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const altRiga = dim * 1.2;
+      const y0 = cyB - ((righe.length - 1) * altRiga) / 2;
+      righe.forEach((r, i) => {
+        ctx.lineWidth = Math.max(2, dim * 0.22);
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = 'rgba(0,0,0,0.65)';
+        ctx.strokeText(r, cx, y0 + i * altRiga);
+        ctx.fillStyle = colore;
+        ctx.fillText(r, cx, y0 + i * altRiga);
+      });
+    }
+    ctx.restore();
+  }, [immagine, posizioneTesto, nota, colore, testoMisura, quota]);
 
   const salva = () => {
     const stile =
@@ -1129,6 +1200,25 @@ function EditorQuota({
       </header>
       <div ref={contRef} className="eq-anteprima">
         <canvas ref={canvasRef} />
+        {/* tocca uno dei tre rettangolini per scegliere la posizione del testo */}
+        <button
+          className="eq-zona"
+          style={{ top: '19%', height: '20%' }}
+          aria-label="Testo sopra la linea"
+          onClick={() => setPosizioneTesto('sopra')}
+        />
+        <button
+          className="eq-zona"
+          style={{ top: '40%', height: '20%' }}
+          aria-label="Testo al centro della linea"
+          onClick={() => setPosizioneTesto('centro')}
+        />
+        <button
+          className="eq-zona"
+          style={{ top: '61%', height: '20%' }}
+          aria-label="Testo sotto la linea"
+          onClick={() => setPosizioneTesto('sotto')}
+        />
       </div>
       <div className="eq-controlli">
         <div className="campo">
@@ -1147,22 +1237,6 @@ function EditorQuota({
               <option value="m">m</option>
             </select>
           </div>
-        </div>
-        <div className="campo">
-          <label>Posizione del testo</label>
-          <span className="segmenti" role="group">
-            {(
-              [
-                ['sopra', 'Sopra'],
-                ['centro', 'Centro'],
-                ['sotto', 'Sotto']
-              ] as Array<[PosizioneTesto, string]>
-            ).map(([v, t]) => (
-              <button key={v} className={posizioneTesto === v ? 'attivo' : ''} onClick={() => setPosizioneTesto(v)}>
-                {t}
-              </button>
-            ))}
-          </span>
         </div>
         <div className="campo">
           <label>Testo aggiuntivo (facoltativo)</label>

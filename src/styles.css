@@ -704,6 +704,17 @@ h2 {
   display: block;
 }
 
+/* zone trasparenti per scegliere la posizione del testo toccando l'anteprima */
+.eq-zona {
+  position: absolute;
+  left: 20%;
+  width: 60%;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
 .eq-controlli {
   display: flex;
   flex-direction: column;
