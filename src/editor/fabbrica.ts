@@ -85,6 +85,43 @@ export class FabbricaAnnotazioni {
     return q;
   }
 
+  /**
+   * Quote di un elemento a 4 lati trattato come RETTANGOLO: due quote
+   * lineari indipendenti — base (lato alto) e altezza (lato sinistro). Sono
+   * normali `Quota`, quindi selezionabili, modificabili (ambiente dedicato),
+   * spostabili ed eliminabili una per una. Nessuna quota extra automatica
+   * sugli altri due lati: se servono, le aggiunge l'utente.
+   */
+  quoteRettangolo(punti: [Punto, Punto, Punto, Punto], esistenti: Annotazione[]): Quota[] {
+    const [altoSx, altoDx, , bassoSx] = punti;
+    const out: Quota[] = [];
+    let acc = esistenti;
+    for (const [p1, p2] of [
+      [altoSx, altoDx],
+      [altoSx, bassoSx]
+    ] as Array<[Punto, Punto]>) {
+      const q = this.quota(p1, p2, 'allineata', acc);
+      out.push(q);
+      acc = [...acc, q];
+    }
+    return out;
+  }
+
+  /**
+   * Quote di un poligono (triangolo, pentagono…): una quota lineare
+   * indipendente per ciascun lato. Stesse proprietà delle quote manuali.
+   */
+  quotePoligono(punti: Punto[], esistenti: Annotazione[]): Quota[] {
+    const out: Quota[] = [];
+    let acc = esistenti;
+    for (let i = 0; i < punti.length; i++) {
+      const q = this.quota(punti[i], punti[(i + 1) % punti.length], 'allineata', acc);
+      out.push(q);
+      acc = [...acc, q];
+    }
+    return out;
+  }
+
   quotaAngolare(vertice: Punto, a: Punto, b: Punto, esistenti: Annotazione[]): QuotaAngolare {
     const q: QuotaAngolare = {
       id: nuovoId(),

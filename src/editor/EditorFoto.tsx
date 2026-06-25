@@ -39,7 +39,6 @@ import { lunghezzaPxQuota } from '../geometry/punti';
 import { RicercaBordi } from '../geometry/bordi';
 import { rilevaQuad4, type EsitoQuad4 } from '../geometry/quad4';
 import { distanza } from '../geometry/punti';
-import { etichettaRettangolo } from '../geometry/primitive';
 import {
   aInputDataOra,
   analizzaMisura,
@@ -158,8 +157,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [testoInModifica, setTestoInModifica] = useState<string | null>(null);
   const [schedaScala, setSchedaScala] = useState<{ px: number } | null>(null);
   const [schedaPiano, setSchedaPiano] = useState<{ punti: [Punto, Punto, Punto, Punto] } | null>(null);
-  /** elemento a 4 lati proposto dall'autoquotatura ibrida, da confermare */
-  const [proposta, setProposta] = useState<QuotaRettangolo | null>(null);
+  /** quote proposte dall'autoquotatura (base + altezza), da confermare */
+  const [proposta, setProposta] = useState<Quota[] | null>(null);
+  /** angoli del quadrilatero rilevato (per l'opzione cerchio) */
+  const [propostaQuad, setPropostaQuad] = useState<[Punto, Punto, Punto, Punto] | null>(null);
   /** confidenza del rilevamento corrente (0–1) */
   const [confidenza, setConfidenza] = useState(0);
   /** sorgente del rilevamento (tocco o evidenziatura): permette di
@@ -226,6 +227,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   useEffect(() => {
     if (strumento !== 'auto') {
       setProposta(null);
+      setPropostaQuad(null);
       setPropostaSorgente(null);
       setConfidenza(0);
     }
@@ -330,41 +332,36 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     setQuotaInModifica(q.id);
   };
 
+  /** crea più quote indipendenti e seleziona la prima */
+  const creaQuote = (quote: Quota[]) => {
+    if (!annotazioni || quote.length === 0) return;
+    commit([...annotazioni, ...quote]);
+    setSelezioneId(quote[0].id);
+    setStrumento('seleziona');
+  };
+
   const creaRettangolo = (rect: Rettangolo) => {
     if (!fabbrica || !annotazioni) return;
-    // lo strumento manuale parte ortogonale: gli angoli si adattano
-    // poi alla prospettiva trascinandoli singolarmente
+    // un rettangolo a 4 lati → due quote indipendenti: base e altezza
     const punti: [Punto, Punto, Punto, Punto] = [
       { x: rect.x, y: rect.y },
       { x: rect.x + rect.width, y: rect.y },
       { x: rect.x + rect.width, y: rect.y + rect.height },
       { x: rect.x, y: rect.y + rect.height }
     ];
-    const q = fabbrica.quotaRettangolo(punti, annotazioni);
-    commit([...annotazioni, q]);
-    setSelezioneId(q.id);
-    setStrumento('seleziona');
-    if (q.valoreBase === null) setTimeout(() => inputValore.current?.focus(), 60);
+    creaQuote(fabbrica.quoteRettangolo(punti, annotazioni));
   };
 
-  /** elemento da 4 angoli toccati: affidabile per prospettiva qualsiasi */
+  /** elemento da 4 angoli toccati → base e altezza (trattato come rettangolo) */
   const creaQuad = (punti: [Punto, Punto, Punto, Punto]) => {
     if (!fabbrica || !annotazioni) return;
-    const q = fabbrica.quotaRettangolo(punti, annotazioni);
-    commit([...annotazioni, q]);
-    setSelezioneId(q.id);
-    setStrumento('seleziona');
-    if (q.valoreBase === null) setTimeout(() => inputValore.current?.focus(), 60);
+    creaQuote(fabbrica.quoteRettangolo(punti, annotazioni));
   };
 
-  /** elemento poligonale (triangolo, pentagono…) da N angoli toccati */
+  /** poligono (triangolo, pentagono…) → una quota indipendente per lato */
   const creaPoligono = (punti: Punto[]) => {
     if (!fabbrica || !annotazioni) return;
-    const q = fabbrica.quotaPoligono(punti, annotazioni);
-    commit([...annotazioni, q]);
-    setSelezioneId(q.id);
-    setStrumento('seleziona');
-    if (q.lati.every((l) => l === null)) setTimeout(() => inputValore.current?.focus(), 60);
+    creaQuote(fabbrica.quotePoligono(punti, annotazioni));
   };
 
   const creaAngolo = (vertice: Punto, a: Punto, b: Punto) => {
@@ -417,6 +414,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     if (!fabbrica || !annotazioni) return;
     if (!esito) {
       setProposta(null);
+      setPropostaQuad(null);
       setConfidenza(0);
       mostraToast(
         'info',
@@ -425,15 +423,12 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       return;
     }
     setConfidenza(esito.confidenza);
-    // elemento (rettangolo/trapezio/quadrilatero) che segue i bordi, in blu
-    const q = fabbrica.quotaRettangolo(esito.punti, annotazioni);
-    setProposta((prec) => ({
-      ...q,
-      // si conserva l'id mentre si trascina il cursore: l'anteprima si
-      // aggiorna senza ricomparire da capo
-      id: prec?.id ?? q.id,
-      stile: { ...q.stile, colore: '#2f81f7' }
-    }));
+    setPropostaQuad(esito.punti);
+    // anteprima in blu: le due quote indipendenti (base + altezza)
+    const quote = fabbrica
+      .quoteRettangolo(esito.punti, annotazioni)
+      .map((q) => ({ ...q, stile: { ...q.stile, colore: '#2f81f7' } }));
+    setProposta(quote);
   };
 
   const autoTocco = (punto: Punto) => {
@@ -463,46 +458,45 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     // anteprima valida, senza toast ripetuti durante il trascinamento
     if (!esito) return;
     setConfidenza(esito.confidenza);
-    const q = fabbrica.quotaRettangolo(esito.punti, annotazioni);
-    setProposta((prec) => ({
-      ...q,
-      id: prec?.id ?? q.id,
-      stile: { ...q.stile, colore: '#2f81f7' }
-    }));
+    setPropostaQuad(esito.punti);
+    const quote = fabbrica
+      .quoteRettangolo(esito.punti, annotazioni)
+      .map((q) => ({ ...q, stile: { ...q.stile, colore: '#2f81f7' } }));
+    setProposta(quote);
+  };
+
+  const chiudiProposta = () => {
+    setProposta(null);
+    setPropostaQuad(null);
+    setPropostaSorgente(null);
+    setConfidenza(0);
   };
 
   const accettaProposta = () => {
-    if (!proposta || !annotazioni) return;
-    // si ripristina il colore predefinito: il blu è solo per l'anteprima
-    const definitiva = {
-      ...proposta,
-      // colore UNICO delle quote: l'elemento automatico è identico a uno manuale
-      stile: { ...proposta.stile, colore: COLORE_QUOTA }
-    };
-    commit([...annotazioni, definitiva]);
-    setProposta(null);
-    setPropostaSorgente(null);
-    setSelezioneId(definitiva.id);
-    // si passa a Seleziona: così appaiono le maniglie sui 4 angoli e la
-    // figura accettata è subito modificabile (trascinamento dei vertici)
+    if (!proposta || proposta.length === 0 || !annotazioni) return;
+    // le quote diventano definitive col colore unico (uguali a quelle manuali)
+    const definitive = proposta.map((q) => ({
+      ...q,
+      stile: { ...q.stile, colore: COLORE_QUOTA }
+    }));
+    commit([...annotazioni, ...definitive]);
+    chiudiProposta();
+    setSelezioneId(definitive[0].id);
     setStrumento('seleziona');
-    // senza calibrazione i valori vanno inseriti a mano: focus sul campo
-    if (definitiva.valoreBase === null) setTimeout(() => inputValore.current?.focus(), 60);
   };
 
   /**
    * Accetta la figura rilevata come CERCHIO: si inscrive una circonferenza
-   * nel riquadro dell'elemento (centro = centro del bounding box, diametro =
-   * media tra larghezza e altezza) e si crea una quota di diametro.
+   * nel riquadro del quadrilatero rilevato (centro = centro del bounding box,
+   * diametro = media tra larghezza e altezza) e si crea una quota di diametro.
    */
   const accettaCerchio = () => {
-    if (!proposta || !annotazioni || !fabbrica || !foto) return;
-    const pts = proposta.punti;
+    if (!propostaQuad || !annotazioni || !fabbrica || !foto) return;
     let minx = Infinity;
     let miny = Infinity;
     let maxx = -Infinity;
     let maxy = -Infinity;
-    for (const p of pts) {
+    for (const p of propostaQuad) {
       minx = Math.min(minx, p.x);
       miny = Math.min(miny, p.y);
       maxx = Math.max(maxx, p.x);
@@ -518,8 +512,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       q = { ...q, valore: v, valoreAuto: true };
     }
     commit([...annotazioni, q]);
-    setProposta(null);
-    setPropostaSorgente(null);
+    chiudiProposta();
     setSelezioneId(q.id);
     setStrumento('seleziona');
     if (q.valore === null) setTimeout(() => inputValore.current?.focus(), 60);
@@ -719,7 +712,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         sogliaSnap={impostazioni.sogliaSnap}
         ricercaBordi={ricercaBordi}
         filtroVisibile={(a) => layerVisibili[categoriaAnnotazione(a)]}
-        proposte={proposta ? [proposta] : []}
+        proposte={proposta ?? []}
         onAutoTocco={autoTocco}
         onAutoTraccia={autoTraccia}
         onSeleziona={setSelezioneId}
@@ -740,11 +733,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         onPiano={(punti) => setSchedaPiano({ punti })}
       />
 
-      {proposta ? (
+      {proposta && proposta.length > 0 ? (
         <div className="pannello-proprieta" role="group" aria-label="Quota proposta">
-          <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
-            ✨ {etichettaRettangolo(proposta)}
-          </span>
+          <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>✨ Elemento rilevato</span>
           <span
             style={{
               fontSize: 12,
@@ -757,19 +748,12 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             {confidenza >= 0.55 ? '● netto' : confidenza >= 0.4 ? '◐ incerto' : '○ debole'}
           </span>
           <button className="btn primario" onClick={accettaProposta}>
-            ✓ Elemento
+            ✓ Quote
           </button>
           <button className="btn" onClick={accettaCerchio} title="Inscrivi una circonferenza nell'elemento rilevato">
             ◯ Cerchio
           </button>
-          <button
-            className="btn pericolo"
-            onClick={() => {
-              setProposta(null);
-              setPropostaSorgente(null);
-              setConfidenza(0);
-            }}
-          >
+          <button className="btn pericolo" onClick={chiudiProposta}>
             ✕ Annulla
           </button>
         </div>
@@ -789,7 +773,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         )
       )}
 
-      {proposta && propostaSorgente && (
+      {proposta && proposta.length > 0 && propostaSorgente && (
         <div className="sensibilita-flottante" role="group" aria-label="Sensibilità ai bordi">
           <button
             className="passo"
