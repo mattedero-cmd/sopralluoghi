@@ -1,6 +1,7 @@
-import type { Annotazione, Foto } from '../db/types';
+import type { Annotazione, Callout, Foto } from '../db/types';
 import { primitiveAnnotazione, type Primitiva } from '../geometry/primitive';
 import { blobOrigine, canvasInBlob, caricaImmagine } from '../utils/image';
+import { caricaDettaglio } from './../utils/immaginiCallout';
 
 /**
  * Renderer di export: disegna l'originale + le primitive delle annotazioni
@@ -23,9 +24,22 @@ export async function renderFotoAnnotata(
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
+  // foto-dettaglio dei callout: precaricate, così l'export le disegna
+  const dettagli = new Map<string, HTMLImageElement>();
+  for (const a of annotazioni) {
+    if (a.tipo === 'callout' && a.fotoDettaglio) {
+      try {
+        dettagli.set(a.id, await caricaDettaglio(a.fotoDettaglio));
+      } catch {
+        // foto-dettaglio illeggibile: l'inserto resterà col segnaposto
+      }
+    }
+  }
+  const risolvi = (c: Callout) => dettagli.get(c.id) ?? null;
+
   const ordinate = [...annotazioni].sort((a, b) => a.zIndex - b.zIndex);
   for (const ann of ordinate) {
-    for (const p of primitiveAnnotazione(ann)) {
+    for (const p of primitiveAnnotazione(ann, risolvi)) {
       disegnaPrimitiva(ctx, p, img);
     }
   }
@@ -141,6 +155,24 @@ export function disegnaPrimitiva(
         p.sorgente.y,
         p.sorgente.width,
         p.sorgente.height,
+        p.destinazione.x,
+        p.destinazione.y,
+        p.destinazione.width,
+        p.destinazione.height
+      );
+      ctx.restore();
+      break;
+    }
+    case 'immagine': {
+      // foto-dettaglio: riempie l'inserto mantenendo il riempimento bianco sotto
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(p.destinazione.x, p.destinazione.y, p.destinazione.width, p.destinazione.height);
+      ctx.clip();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(p.destinazione.x, p.destinazione.y, p.destinazione.width, p.destinazione.height);
+      ctx.drawImage(
+        p.img,
         p.destinazione.x,
         p.destinazione.y,
         p.destinazione.width,

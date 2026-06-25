@@ -28,6 +28,7 @@ import {
 } from '../geometry/punti';
 import type { RicercaBordi } from '../geometry/bordi';
 import { traslaAnnotazione } from './fabbrica';
+import { immagineDettaglio } from '../utils/immaginiCallout';
 
 export type Strumento =
   | 'seleziona'
@@ -194,6 +195,8 @@ export function StageEditor(p: Props) {
   const disegnoAttivo = useRef(false);
   /** punto iniziale del testo: se si trascina diventa l'ancora della freccia */
   const inizioTesto = useRef<Punto | null>(null);
+  /** contatore per ridisegnare quando una foto-dettaglio finisce di caricarsi */
+  const [, setVersioneDettagli] = useState(0);
 
   // I drafting multi-tocco (angolo, piano) si azzerano al cambio strumento
   useEffect(() => {
@@ -822,6 +825,11 @@ export function StageEditor(p: Props) {
               key={a.id}
               ann={a}
               immagine={p.immagine}
+              immagineDettaglio={
+                a.tipo === 'callout' && a.fotoDettaglio
+                  ? immagineDettaglio(a.fotoDettaglio, () => setVersioneDettagli((v) => v + 1))
+                  : null
+              }
               selezionata={a.id === p.selezioneId}
               interattiva={p.strumento === 'seleziona'}
               hitWidth={Math.max(28 / vista.scala, 12)}
@@ -1195,6 +1203,7 @@ function rettangoloInPunti(r: Rettangolo): number[] {
 function AnnotazioneShape({
   ann,
   immagine,
+  immagineDettaglio,
   selezionata,
   interattiva,
   hitWidth,
@@ -1204,6 +1213,8 @@ function AnnotazioneShape({
 }: {
   ann: Annotazione;
   immagine: HTMLImageElement;
+  /** foto-dettaglio già caricata (solo per i callout con foto scattata) */
+  immagineDettaglio?: CanvasImageSource | null;
   selezionata: boolean;
   interattiva: boolean;
   hitWidth: number;
@@ -1211,7 +1222,10 @@ function AnnotazioneShape({
   onModifica: () => void;
   onTrascinata: (dx: number, dy: number) => void;
 }) {
-  const prims = useMemo(() => primitiveAnnotazione(ann), [ann]);
+  const prims = useMemo(
+    () => primitiveAnnotazione(ann, () => immagineDettaglio ?? null),
+    [ann, immagineDettaglio]
+  );
 
   return (
     <Shape
@@ -1246,6 +1260,14 @@ function AnnotazioneShape({
             c.stroke();
           } else if (prim.kind === 'rettangolo') {
             c.strokeRect(prim.rect.x, prim.rect.y, prim.rect.width, prim.rect.height);
+          } else if (prim.kind === 'ritaglio' || prim.kind === 'immagine') {
+            // l'inserto del callout è selezionabile/trascinabile in tutta l'area
+            c.fillRect(
+              prim.destinazione.x,
+              prim.destinazione.y,
+              prim.destinazione.width,
+              prim.destinazione.height
+            );
           } else if (prim.kind === 'cerchio') {
             c.beginPath();
             c.arc(prim.centro.x, prim.centro.y, prim.raggio, 0, Math.PI * 2);

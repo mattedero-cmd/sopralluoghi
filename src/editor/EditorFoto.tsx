@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import type {
   Annotazione,
+  Callout,
   Foto,
   Impostazioni,
   PosizioneTesto,
@@ -27,7 +28,8 @@ import {
   segmentoELato
 } from '../db/types';
 import { aggiornaFoto, eliminaFoto, leggiImpostazioni, salvaAnnotazioniFoto } from '../db/repository';
-import { blobOrigine, caricaImmagine, fotoIllegibile } from '../utils/image';
+import { blobOrigine, caricaImmagine, fotoIllegibile, importaFoto } from '../utils/image';
+import { caricaDettaglio } from '../utils/immaginiCallout';
 import { naviga } from '../router';
 import { ConfermaDialog, Modale, StatoApp, type RichiestaConferma } from '../components/comuni';
 import { mostraToast } from '../state/toast';
@@ -166,6 +168,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     | { tipo: 'quota'; id: string }
     | { tipo: 'poligono'; id: string }
     | { tipo: 'segmento'; id: string; indice: number }
+    | { tipo: 'callout'; id: string }
     | null
   >(null);
   const [testoInModifica, setTestoInModifica] = useState<string | null>(null);
@@ -559,6 +562,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     commit([...annotazioni, c]);
     setSelezioneId(c.id);
     setStrumento('seleziona');
+    setQuotaInModifica({ tipo: 'callout', id: c.id });
   };
 
   const aggiornaSelezionata = (modifiche: Partial<Annotazione>) => {
@@ -667,13 +671,15 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     a.tipo === 'quotaRaggio' ||
     a.tipo === 'quotaAngolo' ||
     a.tipo === 'quotaPoligono' ||
-    a.tipo === 'testo';
+    a.tipo === 'testo' ||
+    a.tipo === 'callout';
 
   /** un tocco "secco" sulla quota apre subito l'ambiente di modifica */
   const apriModifica = (id: string) => {
     const a = annotazioni.find((x) => x.id === id);
     if (!a) return;
     if (a.tipo === 'quotaPoligono') setQuotaInModifica({ tipo: 'poligono', id });
+    else if (a.tipo === 'callout') setQuotaInModifica({ tipo: 'callout', id });
     else if (a.tipo === 'testo') setTestoInModifica(id);
     else if (haAmbienteDedicato(a)) setQuotaInModifica({ tipo: 'quota', id });
   };
@@ -1153,6 +1159,30 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                   stile: nuova.stile
                 });
                 tornaAlPoligono();
+              }}
+            />
+          );
+        })()}
+      {quotaInModifica &&
+        quotaInModifica.tipo === 'callout' &&
+        (() => {
+          const c = annotazioni.find((a) => a.id === quotaInModifica.id && a.tipo === 'callout') as
+            | Callout
+            | undefined;
+          if (!c) return null;
+          return (
+            <EditorCallout
+              callout={c}
+              immagine={immagine}
+              onChiudi={() => setQuotaInModifica(null)}
+              onElimina={() => {
+                commit(annotazioni.filter((a) => a.id !== c.id));
+                setSelezioneId(null);
+                setQuotaInModifica(null);
+              }}
+              onSalva={(nuovo) => {
+                commit(annotazioni.map((a) => (a.id === nuovo.id ? nuovo : a)));
+                setQuotaInModifica(null);
               }}
             />
           );
@@ -3360,6 +3390,258 @@ function EditorTesto({
                 A−
               </button>
               <button aria-label="Aumenta" onClick={() => setScalaTesto((s) => Math.min(3, s * 1.25))}>
+                A＋
+              </button>
+            </span>
+          </div>
+        </div>
+      </div>
+      <div className="eq-azioni">
+        <button className="btn pericolo" onClick={onElimina}>
+          🗑 Elimina
+        </button>
+        <button className="btn primario" onClick={salva}>
+          ✓ Salva
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Ambiente di modifica DEDICATO al dettaglio (foto nella foto): l'inserto può
+// mostrare l'ingrandimento del ritaglio OPPURE una foto scattata a parte.
+// ---------------------------------------------------------------------------
+
+function EditorCallout({
+  callout,
+  immagine,
+  onSalva,
+  onElimina,
+  onChiudi
+}: {
+  callout: Callout;
+  immagine: HTMLImageElement;
+  onSalva: (c: Callout) => void;
+  onElimina: () => void;
+  onChiudi: () => void;
+}) {
+  const [etichetta, setEtichetta] = useState(callout.etichetta);
+  const [colore, setColore] = useState(callout.stile.colore);
+  const [scalaStile, setScalaStile] = useState(1);
+  const [fotoDettaglio, setFotoDettaglio] = useState<ArrayBuffer | undefined>(callout.fotoDettaglio);
+  const [inserto, setInserto] = useState<Rettangolo>(callout.inserto);
+  const [imgDett, setImgDett] = useState<HTMLImageElement | null>(null);
+  const [caricando, setCaricando] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const contRef = useRef<HTMLDivElement>(null);
+
+  // carica la foto-dettaglio corrente per l'anteprima
+  useEffect(() => {
+    let vivo = true;
+    if (fotoDettaglio) {
+      caricaDettaglio(fotoDettaglio)
+        .then((img) => {
+          if (vivo) setImgDett(img);
+        })
+        .catch(() => {
+          if (vivo) setImgDett(null);
+        });
+    } else {
+      setImgDett(null);
+    }
+    return () => {
+      vivo = false;
+    };
+  }, [fotoDettaglio]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const cont = contRef.current;
+    if (!canvas || !cont) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const w = cont.clientWidth;
+    const h = cont.clientHeight;
+    if (w === 0 || h === 0) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = '#05070a';
+    ctx.fillRect(0, 0, w, h);
+
+    // riquadro dell'inserto, con l'aspetto scelto
+    const ar = inserto.width / Math.max(1, inserto.height);
+    let bw = w * 0.74;
+    let bh = bw / ar;
+    if (bh > h * 0.66) {
+      bh = h * 0.66;
+      bw = bh * ar;
+    }
+    const bx = (w - bw) / 2;
+    const by = (h - bh) / 2;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(bx, by, bw, bh);
+    ctx.clip();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(bx, by, bw, bh);
+    if (fotoDettaglio && imgDett) {
+      ctx.drawImage(imgDett, bx, by, bw, bh);
+    } else if (!fotoDettaglio) {
+      const s = callout.sorgente;
+      ctx.drawImage(immagine, s.x, s.y, s.width, s.height, bx, by, bw, bh);
+    } else {
+      // foto in caricamento
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fillRect(bx, by, bw, bh);
+      ctx.fillStyle = '#fff';
+      ctx.font = `${Math.round(bh * 0.3)}px system-ui`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('📷', w / 2, h / 2);
+    }
+    ctx.restore();
+
+    ctx.strokeStyle = colore;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(bx, by, bw, bh);
+
+    // badge etichetta nell'angolo
+    if (etichetta) {
+      const dim = Math.round(Math.min(w, h) * 0.06);
+      ctx.fillStyle = colore;
+      ctx.fillRect(bx, by, dim * 1.5, dim * 1.4);
+      ctx.fillStyle = '#fff';
+      ctx.font = `bold ${dim}px system-ui`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(etichetta, bx + dim * 0.75, by + dim * 0.7);
+    }
+    ctx.restore();
+  }, [immagine, imgDett, fotoDettaglio, inserto, colore, etichetta, callout]);
+
+  const scegliFoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setCaricando(true);
+    try {
+      const imp = await importaFoto(file, 1280);
+      setFotoDettaglio(imp.origine);
+      // l'inserto prende l'aspetto della foto, mantenendo la larghezza
+      setInserto((ins) => ({
+        ...ins,
+        height: Math.max(30, Math.round((ins.width * imp.altezzaPx) / imp.larghezzaPx))
+      }));
+    } catch (err) {
+      mostraToast('errore', err instanceof Error ? err.message : 'Foto non importata.');
+    } finally {
+      setCaricando(false);
+    }
+  };
+
+  const rimuoviFoto = () => {
+    setFotoDettaglio(undefined);
+    const s = callout.sorgente;
+    setInserto((ins) => ({ ...ins, height: Math.max(30, Math.round((ins.width * s.height) / s.width)) }));
+  };
+
+  const zoom = (f: number) =>
+    setInserto((ins) => {
+      const nw = Math.max(40, ins.width * f);
+      const nh = Math.max(30, ins.height * f);
+      return { x: ins.x + (ins.width - nw) / 2, y: ins.y + (ins.height - nh) / 2, width: nw, height: nh };
+    });
+
+  const salva = () => {
+    const stile =
+      scalaStile === 1
+        ? { ...callout.stile, colore }
+        : {
+            ...callout.stile,
+            colore,
+            spessore: Math.min(40, Math.max(1, callout.stile.spessore * scalaStile)),
+            dimensioneTesto: Math.min(200, Math.max(8, Math.round(callout.stile.dimensioneTesto * scalaStile)))
+          };
+    onSalva({ ...callout, etichetta: etichetta || callout.etichetta, fotoDettaglio, inserto, stile });
+  };
+
+  return (
+    <div className="editor-quota">
+      <header className="barra">
+        <button className="btn icona" aria-label="Chiudi" onClick={onChiudi}>
+          ✕
+        </button>
+        <h1>Modifica dettaglio</h1>
+      </header>
+      <div ref={contRef} className="eq-anteprima">
+        <canvas ref={canvasRef} />
+      </div>
+      <div className="eq-controlli">
+        <div className="campo">
+          <label>Contenuto dell'inserto</label>
+          <span className="segmenti" role="group">
+            <button className={fotoDettaglio ? '' : 'attivo'} onClick={rimuoviFoto}>
+              🔍 Ingrandimento
+            </button>
+            <button
+              className={fotoDettaglio ? 'attivo' : ''}
+              onClick={() => fileRef.current?.click()}
+            >
+              📷 Foto scattata
+            </button>
+          </span>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={scegliFoto}
+            style={{ display: 'none' }}
+          />
+          <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 6 }}>
+            {caricando
+              ? 'Importazione foto…'
+              : fotoDettaglio
+                ? 'Mostra la foto scattata. Tocca “Foto scattata” per sostituirla.'
+                : 'Mostra la zona segnalata ingrandita. Tocca “Foto scattata” per scattare una foto.'}
+          </span>
+        </div>
+        <div className="campo">
+          <label>Etichetta e ingrandimento</label>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <input
+              value={etichetta}
+              maxLength={3}
+              onChange={(e) => setEtichetta(e.target.value.toUpperCase())}
+              placeholder="A"
+              style={{ width: 70 }}
+            />
+            <span className="segmenti" role="group" aria-label="Dimensione inserto">
+              <button aria-label="Inserto più piccolo" onClick={() => zoom(1 / 1.2)}>
+                −
+              </button>
+              <button aria-label="Inserto più grande" onClick={() => zoom(1.2)}>
+                ＋
+              </button>
+            </span>
+          </div>
+        </div>
+        <div className="campo">
+          <label>Colore e dimensione</label>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <BottoneColore colore={colore} onScegli={setColore} />
+            <span className="segmenti" role="group" aria-label="Dimensione">
+              <button aria-label="Riduci" onClick={() => setScalaStile((s) => Math.max(0.4, s / 1.25))}>
+                A−
+              </button>
+              <button aria-label="Aumenta" onClick={() => setScalaStile((s) => Math.min(3, s * 1.25))}>
                 A＋
               </button>
             </span>

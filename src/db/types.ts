@@ -430,6 +430,12 @@ export interface Callout extends AnnotazioneBase {
   inserto: Rettangolo;
   /** Etichetta (es. "A"); la numerazione è assegnata automaticamente */
   etichetta: string;
+  /**
+   * Foto scattata a parte da mostrare nell'inserto al posto dell'ingrandimento
+   * del ritaglio. Se assente, l'inserto mostra la regione `sorgente` ingrandita.
+   * Bytes JPEG (ArrayBuffer, come per le foto, per evitare il bug Blob di iOS).
+   */
+  fotoDettaglio?: ArrayBuffer;
 }
 
 export type Annotazione =

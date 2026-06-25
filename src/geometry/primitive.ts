@@ -89,6 +89,12 @@ export type Primitiva =
       sorgente: Rettangolo;
       /** dove disegnarla (riquadro dell'inserto) */
       destinazione: Rettangolo;
+    }
+  | {
+      kind: 'immagine';
+      /** immagine già caricata (foto-dettaglio del callout) */
+      img: CanvasImageSource;
+      destinazione: Rettangolo;
     };
 
 // ---------------------------------------------------------------------------
@@ -785,7 +791,7 @@ export function primitiveDisegno(d: DisegnoLibero): Primitiva[] {
   return [{ kind: 'polilinea', punti: d.punti, colore: d.stile.colore, spessore: d.stile.spessore }];
 }
 
-export function primitiveCallout(c: Callout): Primitiva[] {
+export function primitiveCallout(c: Callout, imgDettaglio?: CanvasImageSource | null): Primitiva[] {
   const colore = c.stile.colore;
   const sp = c.stile.spessore;
   const prim: Primitiva[] = [];
@@ -793,8 +799,26 @@ export function primitiveCallout(c: Callout): Primitiva[] {
   // contorno della regione sorgente
   prim.push({ kind: 'rettangolo', rect: c.sorgente, colore, spessore: sp * 0.75 });
 
-  // inserto: ritaglio ingrandito + cornice
-  prim.push({ kind: 'ritaglio', sorgente: c.sorgente, destinazione: c.inserto });
+  // inserto: foto scattata, oppure ingrandimento del ritaglio
+  if (c.fotoDettaglio) {
+    if (imgDettaglio) {
+      prim.push({ kind: 'immagine', img: imgDettaglio, destinazione: c.inserto });
+    } else {
+      // segnaposto mentre la foto si carica
+      prim.push({ kind: 'rettangolo', rect: c.inserto, colore, spessore: 0, riempimento: 'rgba(0,0,0,0.4)' });
+      prim.push({
+        kind: 'testo',
+        testo: '📷',
+        posizione: { x: c.inserto.x + c.inserto.width / 2, y: c.inserto.y + c.inserto.height / 2 },
+        rotazioneDeg: 0,
+        dimensione: Math.max(12, Math.min(c.inserto.width, c.inserto.height) * 0.4),
+        colore: '#ffffff',
+        sfondo: null
+      });
+    }
+  } else {
+    prim.push({ kind: 'ritaglio', sorgente: c.sorgente, destinazione: c.inserto });
+  }
   prim.push({ kind: 'rettangolo', rect: c.inserto, colore, spessore: sp });
 
   // leader: dal bordo dell'inserto al centro della regione sorgente
@@ -854,7 +878,11 @@ function puntoSuBordo(r: Rettangolo, target: Punto): Punto {
   return somma(c, scala(v, t));
 }
 
-export function primitiveAnnotazione(a: Annotazione): Primitiva[] {
+export function primitiveAnnotazione(
+  a: Annotazione,
+  /** risolve la foto-dettaglio di un callout (già caricata) */
+  risolviDettaglio?: (c: Callout) => CanvasImageSource | null
+): Primitiva[] {
   switch (a.tipo) {
     case 'quota':
       return primitiveQuota(a);
@@ -873,6 +901,6 @@ export function primitiveAnnotazione(a: Annotazione): Primitiva[] {
     case 'disegno':
       return primitiveDisegno(a);
     case 'callout':
-      return primitiveCallout(a);
+      return primitiveCallout(a, risolviDettaglio?.(a) ?? null);
   }
 }
