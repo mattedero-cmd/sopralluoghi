@@ -44,6 +44,18 @@ describe('nomenclatura poligono con diagonali', () => {
   });
 });
 
+describe('correzione manuale del simbolo (nomenclatura)', () => {
+  it('un override sul segmento prevale sul simbolo automatico', () => {
+    const q = rettangolo(102, 200, [
+      { da: 0, a: 1, valore: 102, simbolo: 'L1' }, // override manuale
+      { da: 1, a: 2, valore: 200 } // automatico → h
+    ]);
+    const s = simboliPoligono(q);
+    expect(s[0]).toBe('L1');
+    expect(s[1]).toBe('h');
+  });
+});
+
 describe('posizione del numero del poligono', () => {
   it('sta dentro la figura (vicino al baricentro) quando è abbastanza grande', () => {
     const q = { ...rettangolo(400, 400, [{ da: 0, a: 1, valore: 400 }]), etichetta: '1' };

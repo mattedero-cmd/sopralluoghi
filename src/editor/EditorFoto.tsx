@@ -38,6 +38,7 @@ import { FabbricaAnnotazioni } from './fabbrica';
 import { calcolaCatene, sommaCatenaInUnita } from '../geometry/catene';
 import {
   applicaValoriAuto,
+  areaReale,
   haCalibrazione,
   misuraSegmento,
   misureRettangolo,
@@ -60,6 +61,12 @@ import { renderFotoAnnotata } from '../render/renderAnnotata';
 import { avviaDettatura, dettaturaDisponibile } from '../utils/dettatura';
 
 const COLORI = [COLORE_QUOTA, '#ff3b30', '#34c759', '#007aff', '#ffffff', '#111111'];
+
+/** Superficie in m² con più decimali per le aree piccole */
+function formattaAreaM2(v: number): string {
+  const t = v >= 1 ? v.toFixed(2) : v >= 0.01 ? v.toFixed(3) : v.toFixed(4);
+  return `${t.replace('.', ',')} m²`;
+}
 
 /**
  * Strumenti raggruppati: la toolbar mostra pochi pulsanti grandi; toccando
@@ -1140,10 +1147,16 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                   : a
               )
             );
+          // simbolo automatico (senza override), da mostrare come segnaposto
+          const simboloAuto = simboliPoligono({
+            ...poli,
+            segmenti: segs.map((s) => ({ ...s, simbolo: undefined }))
+          })[rif.indice];
           return (
             <EditorQuota
               quota={quotaSeg}
               immagine={immagine}
+              nomenclatura={{ simbolo: seg.simbolo ?? '', auto: simboloAuto }}
               onChiudi={tornaAlPoligono}
               onElimina={() => {
                 const nuovi = segs.filter((_, i) => i !== rif.indice);
@@ -1156,7 +1169,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                   tornaAlPoligono();
                 }
               }}
-              onSalva={(nuova) => {
+              onSalva={(nuova, extra) => {
                 const nuovoSeg: typeof seg = {
                   ...seg,
                   valore: nuova.valore,
@@ -1164,7 +1177,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                   posizioneTesto: nuova.posizioneTesto,
                   nota: nuova.nota,
                   abbInizio: nuova.abbInizio,
-                  abbFine: nuova.abbFine
+                  abbFine: nuova.abbFine,
+                  simbolo: extra?.simbolo
                 };
                 const nuoviSegs = segs.map((s, i) => (i === rif.indice ? nuovoSeg : s));
                 // valore/offset/posizione/nota → segmento; unità/stato/colore → poligono
@@ -1217,16 +1231,22 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
 function EditorQuota({
   quota,
   immagine,
+  nomenclatura,
   onSalva,
   onElimina,
   onChiudi
 }: {
   quota: Quota;
   immagine: HTMLImageElement;
-  onSalva: (q: Quota) => void;
+  /** presente solo per i lati di un poligono: permette di correggere a mano
+   *  il simbolo (b, h, B, D…). `auto` è il simbolo dedotto, mostrato come
+   *  segnaposto; `simbolo` è l'eventuale override già impostato. */
+  nomenclatura?: { simbolo: string; auto: string };
+  onSalva: (q: Quota, extra?: { simbolo?: string }) => void;
   onElimina: () => void;
   onChiudi: () => void;
 }) {
+  const [simbolo, setSimbolo] = useState(nomenclatura?.simbolo ?? '');
   const [testoVal, setTestoVal] = useState(
     quota.valore === null ? '' : String(quota.valore).replace('.', ',')
   );
@@ -1384,19 +1404,22 @@ function EditorQuota({
               Math.max(8, Math.round(quota.stile.dimensioneTesto * scalaTesto))
             )
           };
-    onSalva({
-      ...quota,
-      valore,
-      unita,
-      posizioneTesto,
-      nota: nota.trim() || undefined,
-      abbInizio: abbA || undefined,
-      abbFine: abbB || undefined,
-      // un valore inserito a mano qui non viene più sovrascritto dalla calibrazione
-      valoreAuto: false,
-      stato,
-      stile
-    });
+    onSalva(
+      {
+        ...quota,
+        valore,
+        unita,
+        posizioneTesto,
+        nota: nota.trim() || undefined,
+        abbInizio: abbA || undefined,
+        abbFine: abbB || undefined,
+        // un valore inserito a mano qui non viene più sovrascritto dalla calibrazione
+        valoreAuto: false,
+        stato,
+        stile
+      },
+      nomenclatura ? { simbolo: simbolo.trim() || undefined } : undefined
+    );
   };
 
   return (
@@ -1447,6 +1470,21 @@ function EditorQuota({
             </select>
           </div>
         </div>
+        {nomenclatura && (
+          <div className="campo">
+            <label>Nome della quota (simbolo)</label>
+            <input
+              value={simbolo}
+              onChange={(e) => setSimbolo(e.target.value)}
+              placeholder={`auto: ${nomenclatura.auto}`}
+              maxLength={4}
+              style={{ width: 130 }}
+            />
+            <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
+              Lascia vuoto per il simbolo automatico ({nomenclatura.auto}).
+            </span>
+          </div>
+        )}
         <div className="campo">
           <label>Testo aggiuntivo (facoltativo)</label>
           <input value={nota} onChange={(e) => setNota(e.target.value)} placeholder="es. luce netta" maxLength={40} />
@@ -2035,6 +2073,7 @@ function EditorPoligono({
   const simboli = simboliPoligono(poli);
   const calibrata = haCalibrazione(foto);
   const colore = poli.stile.colore;
+  const area = areaReale(poli, foto);
 
   const scriviSegmenti = (segmenti: SegmentoQuota[], extra: Partial<QuotaPoligono> = {}) =>
     onModifica({ segmenti, lati: undefined, offsetLati: undefined, valoreAuto: false, ...extra });
@@ -2260,6 +2299,23 @@ function EditorPoligono({
             </span>
           </div>
         </div>
+        {area && (
+          <div className="campo">
+            <label>Superficie</label>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 800, fontSize: 18, color: 'var(--testo)' }}>
+                {formattaAreaM2(area.m2)}
+              </span>
+              {area.affidabile ? (
+                <span style={{ color: 'var(--ok)', fontSize: 12, fontWeight: 700 }}>● esatta</span>
+              ) : (
+                <span style={{ color: '#ff9500', fontSize: 12, fontWeight: 700 }}>
+                  ◐ stima — calibra un piano per l'area corretta in prospettiva
+                </span>
+              )}
+            </div>
+          </div>
+        )}
         <div className="campo">
           <label>Colore e dimensione</label>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>

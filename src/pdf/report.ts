@@ -57,6 +57,8 @@ export interface OpzioniReport {
   includiRiepilogo: boolean;
   includiNoteDato: boolean;
   includiTabellaMisure: boolean;
+  /** distinta di taglio: elenco dei pezzi da produrre con misure di taglio */
+  includiDistinta: boolean;
 }
 
 export const OPZIONI_REPORT_DEFAULT: OpzioniReport = {
@@ -65,7 +67,8 @@ export const OPZIONI_REPORT_DEFAULT: OpzioniReport = {
   includiIndice: true,
   includiRiepilogo: true,
   includiNoteDato: true,
-  includiTabellaMisure: true
+  includiTabellaMisure: true,
+  includiDistinta: true
 };
 
 export async function generaReportPdf(
@@ -146,6 +149,11 @@ export async function generaReportPdf(
     contenuto.push(...tabellaRiassuntiva(fotoList, annotazioniPerFoto));
   }
 
+  // --- Distinta di taglio (pezzi da produrre) ---------------------------------
+  if (opzioni.includiDistinta) {
+    contenuto.push(...distintaTaglio(fotoList, annotazioniPerFoto));
+  }
+
   const pieDiPagina = impostazioni.pdf.pieDiPagina.trim() || prof.azienda || prof.nome || '';
   const def: TDocumentDefinitions = {
     pageSize: 'A4',
@@ -206,6 +214,11 @@ interface RigaMisura {
   area?: string;
   /** true se l'area è un calcolo esatto; false se è una stima dai pixel */
   areaAffidabile?: boolean;
+  /** superficie numerica in m² (per i totali della distinta di taglio) */
+  areaM2?: number;
+  /** true se è un PEZZO da produrre (poligono, elemento, cerchio): entra
+   *  nella distinta di taglio. Le quote lineari e gli angoli no. */
+  pezzo?: boolean;
   stato: StatoMisura;
 }
 
@@ -274,10 +287,12 @@ function righeMisureFoto(annotazioni: Annotazione[], foto: Foto): RigaMisura[] {
         riga.abbondanze = `+${formattaNumero(margine)} tutt'intorno`;
       }
       // area del cerchio = π r² dalla misura reale
+      riga.pezzo = true;
       if (ragg !== null) {
         const m2 = areaLineareInM2(Math.PI * ragg * ragg, a.unita);
         riga.area = formattaArea({ m2, affidabile: true, metodo: 'rettangolo' });
         riga.areaAffidabile = true;
+        riga.areaM2 = m2;
       }
       righe.push(riga);
     } else if (a.tipo === 'quotaRett') {
@@ -290,11 +305,12 @@ function righeMisureFoto(annotazioni: Annotazione[], foto: Foto): RigaMisura[] {
       else if (m.forma === 'trapezio')
         reale = `B ${n(m.baseSup)} · b ${n(m.baseInf)} · h ${n(m.latoSx)} ${a.unita}`;
       else reale = `${n(m.baseSup)} · ${n(m.latoDx)} · ${n(m.baseInf)} · ${n(m.latoSx)} ${a.unita}`;
-      const rigaR: RigaMisura = { forma: a.etichetta ? `${nome} ${a.etichetta}` : nome, reale, stato: a.stato };
+      const rigaR: RigaMisura = { forma: a.etichetta ? `${nome} ${a.etichetta}` : nome, reale, stato: a.stato, pezzo: true };
       const areaR = areaElemento(a, foto);
       if (areaR) {
         rigaR.area = formattaArea(areaR);
         rigaR.areaAffidabile = areaR.affidabile;
+        rigaR.areaM2 = areaR.m2;
       }
       righe.push(rigaR);
     } else if (a.tipo === 'quotaPoligono') {
@@ -309,7 +325,7 @@ function righeMisureFoto(annotazioni: Annotazione[], foto: Foto): RigaMisura[] {
         .map((s, i) => ({ s, i }))
         .filter(({ s }) => segmentoELato(s, nVert));
       const abbTot = lati.reduce((acc, { s }) => acc + abbondanzaTotale(s), 0);
-      const riga: RigaMisura = { forma: a.etichetta ? `${nome} ${a.etichetta}` : nome, reale, stato: a.stato };
+      const riga: RigaMisura = { forma: a.etichetta ? `${nome} ${a.etichetta}` : nome, reale, stato: a.stato, pezzo: true };
       if (abbTot > 0) {
         riga.taglio = `${lati
           .map(({ s, i }) => `${simboli[i]} ${s.valore === null ? '?' : formattaNumero(s.valore + abbondanzaTotale(s))}`)
@@ -335,6 +351,7 @@ function righeMisureFoto(annotazioni: Annotazione[], foto: Foto): RigaMisura[] {
       if (area) {
         riga.area = formattaArea(area);
         riga.areaAffidabile = area.affidabile;
+        riga.areaM2 = area.m2;
       }
       righe.push(riga);
     }
@@ -550,6 +567,100 @@ function tabellaRiassuntiva(
             { text: 'Elemento', style: 'th' },
             { text: 'Misure', style: 'th' },
             { text: 'Stato', style: 'th' }
+          ],
+          ...righe
+        ]
+      },
+      layout: righeRiepilogo
+    }
+  ];
+}
+
+/**
+ * Distinta di taglio: elenco di TUTTI i pezzi da produrre (poligoni, elementi,
+ * cerchi) con la misura reale, la misura DI TAGLIO (reale + abbondanze) e la
+ * superficie. In coda i totali: numero pezzi e superficie complessiva.
+ */
+function distintaTaglio(
+  fotoList: Foto[],
+  annotazioniPerFoto: Map<string, Annotazione[]>
+): Content[] {
+  const righe: Content[][] = [];
+  let nPezzi = 0;
+  let areaTot = 0;
+  let areaCompleta = true; // false se a qualche pezzo manca l'area
+
+  fotoList.forEach((f, indice) => {
+    const misure = righeMisureFoto(annotazioniPerFoto.get(f.id) ?? [], f).filter((m) => m.pezzo);
+    misure.forEach((m, i) => {
+      nPezzi += 1;
+      if (m.areaM2 !== undefined) areaTot += m.areaM2;
+      else areaCompleta = false;
+      righe.push([
+        { text: `${indice + 1}.${i + 1}`, style: 'tdNum' },
+        { text: m.forma, style: 'tdForma' },
+        { text: m.reale, fontSize: 9.5, color: '#1a1a1a' },
+        {
+          // misura di taglio: con abbondanze se presenti, altrimenti = reale
+          text: m.taglio ?? m.reale,
+          bold: true,
+          fontSize: 10,
+          color: m.taglio ? VERDE_TAGLIO : '#1a1a1a'
+        },
+        { text: m.abbondanze ?? '—', fontSize: 8.5, color: GRIGIO },
+        {
+          text: m.area ? (m.areaAffidabile === false ? `${m.area} (stima)` : m.area) : '—',
+          fontSize: 9,
+          color: m.areaAffidabile === false ? ARANCIO_STIMATA : BLU_FORMA,
+          alignment: 'right'
+        }
+      ]);
+    });
+  });
+
+  if (righe.length === 0) return [];
+
+  // riga totali
+  righe.push([
+    { text: '', style: 'tdNum' },
+    { text: `${nPezzi} pezzi`, bold: true, fontSize: 10, color: BLU_FORMA },
+    { text: '', style: 'td' },
+    { text: '', style: 'td' },
+    { text: 'Superficie totale', fontSize: 9, color: GRIGIO, alignment: 'right' },
+    {
+      text: areaTot > 0 ? `${formattaArea({ m2: areaTot, affidabile: true, metodo: 'piano' })}${areaCompleta ? '' : ' +'}` : '—',
+      bold: true,
+      fontSize: 10.5,
+      color: BLU_FORMA,
+      alignment: 'right'
+    }
+  ]);
+
+  return [
+    {
+      text: 'Distinta di taglio',
+      style: 'h1',
+      tocItem: true,
+      pageBreak: 'before'
+    } as Content,
+    {
+      text: 'Pezzi da produrre con la misura di taglio (misura reale + abbondanze). Le superfici "stima" non correggono la prospettiva: calibra un piano per averle esatte.',
+      style: 'corpo',
+      color: GRIGIO
+    },
+    {
+      table: {
+        headerRows: 1,
+        dontBreakRows: true,
+        widths: [28, 'auto', '*', '*', 'auto', 'auto'],
+        body: [
+          [
+            { text: 'Rif.', style: 'th' },
+            { text: 'Pezzo', style: 'th' },
+            { text: 'Misura reale', style: 'th' },
+            { text: 'Misura di taglio', style: 'th' },
+            { text: 'Abbondanze', style: 'th' },
+            { text: 'Superficie', style: 'th' }
           ],
           ...righe
         ]

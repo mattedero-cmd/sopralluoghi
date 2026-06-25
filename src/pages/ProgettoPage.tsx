@@ -424,6 +424,7 @@ function FormOpzioniReport({
   const [includiRiepilogo, setIncludiRiepilogo] = useState(true);
   const [includiNoteDato, setIncludiNoteDato] = useState(true);
   const [includiTabellaMisure, setIncludiTabellaMisure] = useState(true);
+  const [includiDistinta, setIncludiDistinta] = useState(true);
 
   const commuta = (id: string) => {
     setSelezione((prev) => {
@@ -516,6 +517,7 @@ function FormOpzioniReport({
         <Interruttore attivo={includiNoteDato} onCommuta={() => setIncludiNoteDato(!includiNoteDato)} testo="Note dato delle foto" />
         <Interruttore attivo={includiTabellaMisure} onCommuta={() => setIncludiTabellaMisure(!includiTabellaMisure)} testo="Tabella misure per ogni foto" />
         <Interruttore attivo={includiRiepilogo} onCommuta={() => setIncludiRiepilogo(!includiRiepilogo)} testo="Riepilogo finale delle misure" />
+        <Interruttore attivo={includiDistinta} onCommuta={() => setIncludiDistinta(!includiDistinta)} testo="Distinta di taglio (pezzi da produrre)" />
       </div>
       <div className="riga-pulsanti">
         <button className="btn" onClick={onChiudi}>
@@ -531,7 +533,8 @@ function FormOpzioniReport({
               includiIndice,
               includiRiepilogo,
               includiNoteDato,
-              includiTabellaMisure
+              includiTabellaMisure,
+              includiDistinta
             })
           }
         >
