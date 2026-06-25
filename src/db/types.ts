@@ -400,8 +400,14 @@ export interface QuotaRaggio extends AnnotazioneBase {
 
 export interface TestoFoto extends AnnotazioneBase {
   tipo: 'testo';
+  /** posizione del riquadro di testo (centro) */
   posizione: Punto;
   testo: string;
+  /**
+   * Punto segnalato sulla foto: se presente, dal riquadro parte una freccia
+   * che punta qui (nota con richiamo / balloon). Assente = testo semplice.
+   */
+  ancora?: Punto;
 }
 
 export interface DisegnoLibero extends AnnotazioneBase {

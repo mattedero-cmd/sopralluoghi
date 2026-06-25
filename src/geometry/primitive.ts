@@ -750,17 +750,34 @@ export function primitiveFreccia(f: Freccia): Primitiva[] {
 }
 
 export function primitiveTesto(t: TestoFoto): Primitiva[] {
-  return [
-    {
-      kind: 'testo',
-      testo: t.testo || ' ',
-      posizione: t.posizione,
-      rotazioneDeg: 0,
-      dimensione: t.stile.dimensioneTesto,
-      colore: t.stile.colore,
-      sfondo: 'rgba(255,255,255,0.72)'
+  const prim: Primitiva[] = [];
+  const colore = t.stile.colore;
+  // nota con richiamo: freccia dal riquadro al punto segnalato
+  if (t.ancora) {
+    const v = sottrai(t.ancora, t.posizione);
+    if (Math.hypot(v.x, v.y) > 1e-3) {
+      const dir = normalizza(v);
+      const sp = Math.max(2, t.stile.spessore * 0.75);
+      prim.push({
+        kind: 'linea',
+        punti: [t.posizione.x, t.posizione.y, t.ancora.x, t.ancora.y],
+        colore,
+        spessore: sp,
+        alone: ALONE
+      });
+      prim.push(freccette(t.ancora, dir, t.stile.spessore * 4 + 6, colore));
     }
-  ];
+  }
+  prim.push({
+    kind: 'testo',
+    testo: t.testo || ' ',
+    posizione: t.posizione,
+    rotazioneDeg: 0,
+    dimensione: t.stile.dimensioneTesto,
+    colore: t.stile.colore,
+    sfondo: 'rgba(255,255,255,0.82)'
+  });
+  return prim;
 }
 
 export function primitiveDisegno(d: DisegnoLibero): Primitiva[] {

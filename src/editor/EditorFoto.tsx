@@ -16,6 +16,7 @@ import type {
   SegmentoQuota,
   SottotipoQuota,
   StatoMisura,
+  TestoFoto,
   Unita
 } from '../db/types';
 import {
@@ -528,9 +529,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     setQuotaInModifica({ tipo: 'quota', id: q.id });
   };
 
-  const creaTesto = (pos: Punto) => {
+  const creaTesto = (pos: Punto, ancora?: Punto) => {
     if (!fabbrica || !annotazioni) return;
-    const t = fabbrica.testo(pos, annotazioni);
+    const base = fabbrica.testo(pos, annotazioni);
+    const t = ancora ? { ...base, ancora } : base;
     commit([...annotazioni, t]);
     setSelezioneId(t.id);
     setStrumento('seleziona');
@@ -664,13 +666,15 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     a.tipo === 'quota' ||
     a.tipo === 'quotaRaggio' ||
     a.tipo === 'quotaAngolo' ||
-    a.tipo === 'quotaPoligono';
+    a.tipo === 'quotaPoligono' ||
+    a.tipo === 'testo';
 
   /** un tocco "secco" sulla quota apre subito l'ambiente di modifica */
   const apriModifica = (id: string) => {
     const a = annotazioni.find((x) => x.id === id);
     if (!a) return;
     if (a.tipo === 'quotaPoligono') setQuotaInModifica({ tipo: 'poligono', id });
+    else if (a.tipo === 'testo') setTestoInModifica(id);
     else if (haAmbienteDedicato(a)) setQuotaInModifica({ tipo: 'quota', id });
   };
 
@@ -984,17 +988,28 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         />
       )}
       {testoTarget && testoTarget.tipo === 'testo' && (
-        <SchedaTesto
-          iniziale={testoTarget.testo}
-          onChiudi={() => setTestoInModifica(null)}
-          onSalva={(testo) => {
-            if (testo.trim() === '') {
+        <EditorTesto
+          testo={testoTarget}
+          immagine={immagine}
+          onChiudi={() => {
+            // un testo vuoto appena creato non lascia residui
+            if (testoTarget.testo.trim() === '') {
               commit(annotazioni.filter((a) => a.id !== testoTarget.id));
               setSelezioneId(null);
+            }
+            setTestoInModifica(null);
+          }}
+          onElimina={() => {
+            commit(annotazioni.filter((a) => a.id !== testoTarget.id));
+            setSelezioneId(null);
+            setTestoInModifica(null);
+          }}
+          onSalva={(nuovo) => {
+            if (nuovo.testo.trim() === '') {
+              commit(annotazioni.filter((a) => a.id !== nuovo.id));
+              setSelezioneId(null);
             } else {
-              commit(
-                annotazioni.map((a) => (a.id === testoTarget.id ? { ...a, testo } : a))
-              );
+              commit(annotazioni.map((a) => (a.id === nuovo.id ? nuovo : a)));
             }
             setTestoInModifica(null);
           }}
@@ -3154,29 +3169,211 @@ function SchedaNoteFoto({
   );
 }
 
-function SchedaTesto({
-  iniziale,
-  onChiudi,
-  onSalva
+// ---------------------------------------------------------------------------
+// Ambiente di modifica DEDICATO al testo / nota con richiamo: foto in
+// trasparenza, anteprima del riquadro (ed eventuale freccia), testo su più
+// righe, colore, dimensione, freccia opzionale verso un punto della foto.
+// ---------------------------------------------------------------------------
+
+function EditorTesto({
+  testo,
+  immagine,
+  onSalva,
+  onElimina,
+  onChiudi
 }: {
-  iniziale: string;
+  testo: TestoFoto;
+  immagine: HTMLImageElement;
+  onSalva: (t: TestoFoto) => void;
+  onElimina: () => void;
   onChiudi: () => void;
-  onSalva: (testo: string) => void;
 }) {
-  const [testo, setTesto] = useState(iniziale);
+  const [val, setVal] = useState(testo.testo);
+  const [colore, setColore] = useState(testo.stile.colore);
+  const [scalaTesto, setScalaTesto] = useState(1);
+  const [ancora, setAncora] = useState<Punto | undefined>(testo.ancora);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const contRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const cont = contRef.current;
+    if (!canvas || !cont) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const w = cont.clientWidth;
+    const h = cont.clientHeight;
+    if (w === 0 || h === 0) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = '#05070a';
+    ctx.fillRect(0, 0, w, h);
+
+    // inquadra il riquadro (ed eventuale punto segnalato)
+    const punti = ancora ? [testo.posizione, ancora] : [testo.posizione];
+    const xs = punti.map((p) => p.x);
+    const ys = punti.map((p) => p.y);
+    const cx0 = (Math.min(...xs) + Math.max(...xs)) / 2;
+    const cy0 = (Math.min(...ys) + Math.max(...ys)) / 2;
+    const span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), 1);
+    const s = Math.min(w, h) * 0.55 / (span + testo.stile.dimensioneTesto * 6);
+    const toScreen = (p: Punto) => ({ x: w / 2 + (p.x - cx0) * s, y: h / 2 + (p.y - cy0) * s });
+
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    ctx.translate(w / 2, h / 2);
+    ctx.scale(s, s);
+    ctx.translate(-cx0, -cy0);
+    ctx.drawImage(immagine, 0, 0);
+    ctx.restore();
+    ctx.fillStyle = 'rgba(5,7,10,0.3)';
+    ctx.fillRect(0, 0, w, h);
+
+    const pPos = toScreen(testo.posizione);
+    // freccia verso il punto segnalato
+    if (ancora) {
+      const pAnc = toScreen(ancora);
+      ctx.lineCap = 'round';
+      for (const [col, lw] of [['rgba(0,0,0,0.6)', 7], [colore, 3]] as Array<[string, number]>) {
+        ctx.strokeStyle = col;
+        ctx.lineWidth = lw;
+        ctx.beginPath();
+        ctx.moveTo(pPos.x, pPos.y);
+        ctx.lineTo(pAnc.x, pAnc.y);
+        ctx.stroke();
+      }
+      const ang = Math.atan2(pAnc.y - pPos.y, pAnc.x - pPos.x);
+      const len = 14;
+      ctx.beginPath();
+      ctx.moveTo(pAnc.x, pAnc.y);
+      ctx.lineTo(pAnc.x - len * Math.cos(ang - 0.4), pAnc.y - len * Math.sin(ang - 0.4));
+      ctx.lineTo(pAnc.x - len * Math.cos(ang + 0.4), pAnc.y - len * Math.sin(ang + 0.4));
+      ctx.closePath();
+      ctx.fillStyle = colore;
+      ctx.fill();
+    }
+
+    // riquadro di testo (balloon) centrato su posizione
+    const righe = (val || ' ').split('\n');
+    const dim = Math.round(Math.min(w, h) * 0.06);
+    ctx.font = `bold ${dim}px system-ui, sans-serif`;
+    const larg = Math.max(...righe.map((r) => ctx.measureText(r).width));
+    const altRiga = dim * 1.3;
+    const padX = dim * 0.5;
+    const padY = dim * 0.4;
+    const boxW = larg + padX * 2;
+    const boxH = altRiga * righe.length + padY * 2;
+    const bx = pPos.x - boxW / 2;
+    const by = pPos.y - boxH / 2;
+    const r = 10;
+    ctx.beginPath();
+    ctx.moveTo(bx + r, by);
+    ctx.arcTo(bx + boxW, by, bx + boxW, by + boxH, r);
+    ctx.arcTo(bx + boxW, by + boxH, bx, by + boxH, r);
+    ctx.arcTo(bx, by + boxH, bx, by, r);
+    ctx.arcTo(bx, by, bx + boxW, by, r);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.fill();
+    ctx.strokeStyle = colore;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = colore;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    righe.forEach((rline, i) => {
+      ctx.fillText(rline, pPos.x, by + padY + altRiga * (i + 0.5));
+    });
+    ctx.restore();
+  }, [immagine, val, colore, ancora, testo]);
+
+  const salva = () => {
+    const stile =
+      scalaTesto === 1
+        ? { ...testo.stile, colore }
+        : {
+            ...testo.stile,
+            colore,
+            dimensioneTesto: Math.min(200, Math.max(8, Math.round(testo.stile.dimensioneTesto * scalaTesto)))
+          };
+    onSalva({ ...testo, testo: val, ancora, stile });
+  };
+
   return (
-    <Modale titolo="Testo sulla foto" onChiudi={onChiudi}>
-      <div className="campo">
-        <textarea autoFocus value={testo} onChange={(e) => setTesto(e.target.value)} rows={3} />
-      </div>
-      <div className="riga-pulsanti">
-        <button className="btn" onClick={onChiudi}>
-          Annulla
+    <div className="editor-quota">
+      <header className="barra">
+        <button className="btn icona" aria-label="Chiudi" onClick={onChiudi}>
+          ✕
         </button>
-        <button className="btn primario" onClick={() => onSalva(testo)}>
-          OK
+        <h1>{ancora ? 'Modifica nota' : 'Modifica testo'}</h1>
+      </header>
+      <div ref={contRef} className="eq-anteprima">
+        <canvas ref={canvasRef} />
+      </div>
+      <div className="eq-controlli">
+        <div className="campo">
+          <label>Testo</label>
+          <textarea
+            autoFocus
+            value={val}
+            onChange={(e) => setVal(e.target.value)}
+            rows={3}
+            placeholder="Scrivi qui…"
+          />
+        </div>
+        <div className="campo">
+          <label>Richiamo (freccia verso un punto)</label>
+          <span className="segmenti" role="group">
+            <button
+              className={ancora ? 'attivo' : ''}
+              onClick={() =>
+                setAncora(
+                  ancora ?? {
+                    x: testo.posizione.x,
+                    y: testo.posizione.y + testo.stile.dimensioneTesto * 4
+                  }
+                )
+              }
+            >
+              ➤ Con freccia
+            </button>
+            <button className={ancora ? '' : 'attivo'} onClick={() => setAncora(undefined)}>
+              Senza
+            </button>
+          </span>
+          {ancora && (
+            <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 6 }}>
+              Trascina la maniglia sulla foto per puntare il richiamo dove serve.
+            </span>
+          )}
+        </div>
+        <div className="campo">
+          <label>Colore e dimensione</label>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <BottoneColore colore={colore} onScegli={setColore} />
+            <span className="segmenti" role="group" aria-label="Dimensione">
+              <button aria-label="Riduci" onClick={() => setScalaTesto((s) => Math.max(0.4, s / 1.25))}>
+                A−
+              </button>
+              <button aria-label="Aumenta" onClick={() => setScalaTesto((s) => Math.min(3, s * 1.25))}>
+                A＋
+              </button>
+            </span>
+          </div>
+        </div>
+      </div>
+      <div className="eq-azioni">
+        <button className="btn pericolo" onClick={onElimina}>
+          🗑 Elimina
+        </button>
+        <button className="btn primario" onClick={salva}>
+          ✓ Salva
         </button>
       </div>
-    </Modale>
+    </div>
   );
 }

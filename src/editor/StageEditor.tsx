@@ -102,7 +102,8 @@ interface Props {
   onNuovoRaggio: (centro: Punto, bordo: Punto) => void;
   /** cerchio da 3 punti sull'arco: il centro è calcolato dal circumcentro */
   onNuovoCerchio3p: (centro: Punto, bordo: Punto) => void;
-  onNuovoTesto: (posizione: Punto) => void;
+  /** posizione del riquadro; se `ancora` è presente è una nota con freccia */
+  onNuovoTesto: (posizione: Punto, ancora?: Punto) => void;
   onNuovaFreccia: (p1: Punto, p2: Punto) => void;
   onNuovoDisegno: (punti: number[]) => void;
   onNuovoCallout: (sorgente: Rettangolo) => void;
@@ -191,6 +192,8 @@ export function StageEditor(p: Props) {
   const [tracciaAuto, setTracciaAuto] = useState<number[] | null>(null);
   const pinch = useRef<{ dist: number; centro: Punto } | null>(null);
   const disegnoAttivo = useRef(false);
+  /** punto iniziale del testo: se si trascina diventa l'ancora della freccia */
+  const inizioTesto = useRef<Punto | null>(null);
 
   // I drafting multi-tocco (angolo, piano) si azzerano al cambio strumento
   useEffect(() => {
@@ -406,6 +409,7 @@ export function StageEditor(p: Props) {
       }
       // strumenti a punto singolo: premi → aggiusta con la lente → rilascia
       case 'testo': {
+        inizioTesto.current = pos;
         setPuntoPendente(pos);
         setPuntoLente(pos);
         disegnoAttivo.current = true;
@@ -437,7 +441,15 @@ export function StageEditor(p: Props) {
   /** conferma del punto pendente al rilascio */
   const confermaPuntoPendente = (punto: Punto) => {
     if (p.strumento === 'testo') {
-      p.onNuovoTesto(punto);
+      const inizio = inizioTesto.current;
+      inizioTesto.current = null;
+      // trascinamento netto → nota con freccia: ancora = primo tocco,
+      // riquadro = punto di rilascio. Tocco singolo → testo semplice.
+      if (inizio && distanza(inizio, punto) > 18 / vista.scala) {
+        p.onNuovoTesto(punto, inizio);
+      } else {
+        p.onNuovoTesto(punto);
+      }
       return;
     }
     if (p.strumento === 'auto') {
@@ -952,6 +964,33 @@ export function StageEditor(p: Props) {
               listening={false}
             />
           )}
+          {/* anteprima della nota con freccia mentre si trascina il testo */}
+          {p.strumento === 'testo' &&
+            inizioTesto.current &&
+            puntoPendente &&
+            distanza(inizioTesto.current, puntoPendente) > 18 / vista.scala && (
+              <>
+                <Line
+                  points={[
+                    puntoPendente.x,
+                    puntoPendente.y,
+                    inizioTesto.current.x,
+                    inizioTesto.current.y
+                  ]}
+                  stroke="#2f81f7"
+                  strokeWidth={2.5 / vista.scala}
+                  dash={[8 / vista.scala, 6 / vista.scala]}
+                  listening={false}
+                />
+                <Circle
+                  x={inizioTesto.current.x}
+                  y={inizioTesto.current.y}
+                  radius={raggioManiglia * 0.5}
+                  fill="#2f81f7"
+                  listening={false}
+                />
+              </>
+            )}
           {selezionata && p.strumento === 'seleziona' && (
             <ManiglieAnnotazione
               ann={selezionata}
@@ -1279,6 +1318,7 @@ function boxAnnotazione(a: Annotazione): Rettangolo {
       break;
     case 'testo':
       punti.push(a.posizione);
+      if (a.ancora) punti.push(a.ancora);
       break;
     case 'disegno':
       for (let i = 0; i < a.punti.length; i += 2) punti.push({ x: a.punti[i], y: a.punti[i + 1] });
@@ -1555,6 +1595,11 @@ function ManiglieAnnotazione({
         </>
       );
     }
+    case 'testo':
+      // se è una nota con freccia, la maniglia ri-orienta il punto segnalato
+      return ann.ancora ? (
+        maniglia('ancora', ann.ancora, (n) => ({ ...ann, ancora: n }), { snap: true, escludi: [ann.ancora] })
+      ) : null;
     default:
       return null;
   }

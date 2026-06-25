@@ -286,7 +286,11 @@ export function traslaAnnotazione(a: Annotazione, dx: number, dy: number): Annot
     case 'quotaPoligono':
       return { ...a, punti: a.punti.map((p) => ({ x: p.x + dx, y: p.y + dy })) };
     case 'testo':
-      return { ...a, posizione: { x: a.posizione.x + dx, y: a.posizione.y + dy } };
+      return {
+        ...a,
+        posizione: { x: a.posizione.x + dx, y: a.posizione.y + dy },
+        ancora: a.ancora ? { x: a.ancora.x + dx, y: a.ancora.y + dy } : undefined
+      };
     case 'disegno': {
       const punti = a.punti.map((v, i) => (i % 2 === 0 ? v + dx : v + dy));
       return { ...a, punti };
