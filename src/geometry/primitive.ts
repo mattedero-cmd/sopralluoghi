@@ -199,23 +199,27 @@ export function primitiveQuota(q: Quota): Primitiva[] {
   // Vogliamo "sopra" = -su quando su.y>0.
   const sopraVett = su.y > 0 ? scala(su, -1) : su;
 
+  // ancora del testo: il centro della linea, eventualmente fatto scorrere
+  // LUNGO la linea (utile per le diagonali che si accavallano al centro)
+  const scorr = q.scorrTesto ?? 0;
+  const ancora = scorr ? somma(g.centro, scala(g.d, scorr)) : g.centro;
   const distTesto = dimTesto * 0.75;
   let posTesto: Punto;
   if (q.posizioneTesto === 'sopra') {
-    posTesto = somma(g.centro, scala(sopraVett, distTesto));
+    posTesto = somma(ancora, scala(sopraVett, distTesto));
   } else if (q.posizioneTesto === 'sotto') {
-    posTesto = sottrai(g.centro, scala(sopraVett, distTesto));
+    posTesto = sottrai(ancora, scala(sopraVett, distTesto));
   } else {
-    posTesto = g.centro;
+    posTesto = ancora;
   }
 
-  // Linea di quota: intera oppure interrotta al centro (testo "al centro")
+  // Linea di quota: intera oppure interrotta dove sta il testo (testo "al centro")
   const larghezzaTesto = misuraLarghezzaTesto(testo, dimTesto);
   const frecceFuori = g.lunghezzaPx < dimFreccia * 3;
   if (q.posizioneTesto === 'centro' && g.lunghezzaPx > larghezzaTesto + dimFreccia * 2) {
     const mezzo = larghezzaTesto / 2 + dimTesto * 0.3;
-    const v1 = somma(g.centro, scala(normalizza(sottrai(g.q1, g.centro)), mezzo));
-    const v2 = somma(g.centro, scala(normalizza(sottrai(g.q2, g.centro)), mezzo));
+    const v1 = somma(ancora, scala(normalizza(sottrai(g.q1, ancora)), mezzo));
+    const v2 = somma(ancora, scala(normalizza(sottrai(g.q2, ancora)), mezzo));
     prim.push(
       { kind: 'linea', punti: [g.q1.x, g.q1.y, v1.x, v1.y], colore, spessore: sp, alone: ALONE },
       { kind: 'linea', punti: [v2.x, v2.y, g.q2.x, g.q2.y], colore, spessore: sp, alone: ALONE }
@@ -515,10 +519,14 @@ export function simboliPoligono(q: QuotaPoligono): string[] {
       .sort((p, r) => taglia(r.i) - taglia(p.i))
       .forEach((x, k) => (out[x.i] = k === 0 ? 'ip' : k === 1 ? 'C' : 'c'));
   } else if (forma === 'Rombo') {
+    // i lati prendono la nomenclatura del rettangolo (b orizzontale, h
+    // verticale) quando sono al massimo due; le diagonali restano D/d
+    const lati = info.filter((x) => x.lato);
+    if (lati.length <= 2) lati.forEach((x) => (out[x.i] = x.orizz ? 'b' : 'h'));
+    else lati.forEach((x) => (out[x.i] = 'l'));
     [...info.filter((x) => !x.lato)]
       .sort((p, r) => taglia(r.i) - taglia(p.i))
       .forEach((x, k) => (out[x.i] = k === 0 ? 'D' : 'd'));
-    info.filter((x) => x.lato).forEach((x) => (out[x.i] = 'l'));
   } else if (forma === 'Trapezio' || forma === 'Quadrilatero') {
     const lati = info.filter((x) => x.lato);
     // coppia di lati più paralleli = le basi
@@ -550,6 +558,40 @@ export function simboliPoligono(q: QuotaPoligono): string[] {
   return out.map((s, i) => segs[i].simbolo || s || `L${i + 1}`);
 }
 
+/**
+ * Posizione del badge di nomenclatura del poligono: al baricentro (più lo
+ * spostamento scelto dall'utente, mantenuto dentro la figura). Se la figura è
+ * troppo piccola perché il numero ci stia leggibile, il numero esce
+ * automaticamente, appena sopra il vertice più alto.
+ */
+export function posizioneEtichettaPoligono(q: QuotaPoligono): Punto {
+  const punti = q.punti;
+  const n = punti.length || 1;
+  const centro: Punto = {
+    x: punti.reduce((s, p) => s + p.x, 0) / n,
+    y: punti.reduce((s, p) => s + p.y, 0) / n
+  };
+  const xs = punti.map((p) => p.x);
+  const ys = punti.map((p) => p.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const dim = q.stile.dimensioneTesto;
+  // serve almeno questo ingombro perché il badge stia dentro la figura
+  const serve = dim * 2.4;
+  if (Math.min(maxX - minX, maxY - minY) < serve) {
+    return { x: (minX + maxX) / 2, y: minY - dim * 1.3 };
+  }
+  const off = q.etichettaOffset ?? { x: 0, y: 0 };
+  // resta dentro il rettangolo che contiene la figura, con un margine
+  const m = dim;
+  return {
+    x: Math.min(maxX - m, Math.max(minX + m, centro.x + off.x)),
+    y: Math.min(maxY - m, Math.max(minY + m, centro.y + off.y))
+  };
+}
+
 export function etichettaPoligono(q: QuotaPoligono): string {
   const nome = nomeFormaPoligono(q);
   const valori = segmentiPoligono(q).map((s) => (s.valore === null ? '?' : formattaNumero(s.valore)));
@@ -573,10 +615,6 @@ export function primitiveQuotaPoligono(q: QuotaPoligono): Primitiva[] {
     { kind: 'polilinea', punti: contorno, colore, spessore: q.stile.spessore * 0.75, alone: ALONE }
   ];
 
-  const centro: Punto = {
-    x: punti.reduce((s, p) => s + p.x, 0) / n,
-    y: punti.reduce((s, p) => s + p.y, 0) / n
-  };
   const comune = {
     id: q.id,
     fotoId: q.fotoId,
@@ -600,20 +638,22 @@ export function primitiveQuotaPoligono(q: QuotaPoligono): Primitiva[] {
         p2: b,
         offset: seg.offset ?? 0,
         posizioneTesto: seg.posizioneTesto ?? 'sopra',
+        scorrTesto: seg.scorrTesto,
         nota: seg.nota,
         valore: seg.valore
       })
     );
   }
 
-  // nomenclatura: badge al centro della figura (come la quota rettangolo)
+  // nomenclatura: badge spostabile, che esce dalla figura se è troppo piccola
   if (q.etichetta) {
     const dim = q.stile.dimensioneTesto;
+    const pos = posizioneEtichettaPoligono(q);
     const mezzaL = Math.max(dim * 0.9, misuraLarghezzaTesto(q.etichetta, dim) / 2 + dim * 0.4);
     prim.push(
       {
         kind: 'rettangolo',
-        rect: { x: centro.x - mezzaL, y: centro.y - dim * 0.8, width: mezzaL * 2, height: dim * 1.6 },
+        rect: { x: pos.x - mezzaL, y: pos.y - dim * 0.8, width: mezzaL * 2, height: dim * 1.6 },
         colore,
         spessore: 0,
         riempimento: colore
@@ -621,7 +661,7 @@ export function primitiveQuotaPoligono(q: QuotaPoligono): Primitiva[] {
       {
         kind: 'testo',
         testo: q.etichetta,
-        posizione: centro,
+        posizione: pos,
         rotazioneDeg: 0,
         dimensione: dim,
         colore: '#ffffff',

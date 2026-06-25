@@ -2089,8 +2089,13 @@ function EditorPoligono({
     segs.forEach((seg, i) => {
       const a = toScreen(poli.punti[seg.da]);
       const b = toScreen(poli.punti[seg.a]);
-      const mx = (a.x + b.x) / 2;
-      const my = (a.y + b.y) / 2;
+      // scorrimento del testo lungo il lato (come sulla foto)
+      const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      const ux = (b.x - a.x) / len;
+      const uy = (b.y - a.y) / len;
+      const scorr = (seg.scorrTesto ?? 0) * s;
+      const mx = (a.x + b.x) / 2 + ux * scorr;
+      const my = (a.y + b.y) / 2 + uy * scorr;
       const t = `${simboli[i]} ${seg.valore === null ? '?' : formattaNumero(seg.valore)}`;
       ctx.lineWidth = Math.max(2, dim * 0.22);
       ctx.lineJoin = 'round';

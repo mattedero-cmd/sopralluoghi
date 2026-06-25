@@ -2,7 +2,7 @@ import { pdfMake } from './engine';
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { db } from '../db/db';
 import type { Annotazione, Foto, Progetto, Punto, Quota, StatoMisura } from '../db/types';
-import { abbondanzaTotale, segmentiPoligono } from '../db/types';
+import { abbondanzaTotale, segmentiPoligono, segmentoELato } from '../db/types';
 import { nomeFormaPoligono, simboliPoligono, versiSegmento } from '../geometry/primitive';
 import { leggiImpostazioni } from '../db/repository';
 import { renderFotoAnnotata } from '../render/renderAnnotata';
@@ -259,23 +259,26 @@ function righeMisureFoto(annotazioni: Annotazione[]): RigaMisura[] {
       const simboli = simboliPoligono(a);
       const segs = segmentiPoligono(a);
       const reale = `${segs.map((s, i) => `${simboli[i]} ${n(s.valore)}`).join(' · ')} ${a.unita}`;
-      const abbTot = segs.reduce((s, g) => s + abbondanzaTotale(g), 0);
+      // il taglio riguarda solo i LATI: le diagonali non si tagliano
+      const nVert = a.punti.length;
+      const lati = segs
+        .map((s, i) => ({ s, i }))
+        .filter(({ s }) => segmentoELato(s, nVert));
+      const abbTot = lati.reduce((acc, { s }) => acc + abbondanzaTotale(s), 0);
       const riga: RigaMisura = { forma: a.etichetta ? `${nome} ${a.etichetta}` : nome, reale, stato: a.stato };
       if (abbTot > 0) {
-        riga.taglio = `${segs
-          .map((s, i) => `${simboli[i]} ${s.valore === null ? '?' : formattaNumero(s.valore + abbondanzaTotale(s))}`)
+        riga.taglio = `${lati
+          .map(({ s, i }) => `${simboli[i]} ${s.valore === null ? '?' : formattaNumero(s.valore + abbondanzaTotale(s))}`)
           .join(' · ')} ${a.unita}`;
-        riga.abbondanze = segs
-          .map((s, i) => dettaglioAbb(simboli[i], s.abbInizio, s.abbFine, a.punti[s.da], a.punti[s.a]))
+        riga.abbondanze = lati
+          .map(({ s, i }) => dettaglioAbb(simboli[i], s.abbInizio, s.abbFine, a.punti[s.da], a.punti[s.a]))
           .filter(Boolean)
           .join('   ');
       }
+      // perimetro: solo quello reale
       const perimetro = perimetroReale(a);
       if (perimetro !== null) {
-        riga.perimetro =
-          abbTot > 0
-            ? `perim. ${formattaNumero(perimetro)} · taglio ${formattaNumero(perimetro + abbTot)} ${a.unita}`
-            : `perim. ${formattaNumero(perimetro)} ${a.unita}`;
+        riga.perimetro = `perim. ${formattaNumero(perimetro)} ${a.unita}`;
       }
       righe.push(riga);
     }

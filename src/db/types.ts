@@ -207,6 +207,11 @@ export interface Quota extends AnnotazioneBase {
   valoreAuto?: boolean;
   unita: Unita;
   posizioneTesto: PosizioneTesto;
+  /**
+   * Scorrimento del testo LUNGO la linea di quota, in px immagine con segno
+   * (0 = al centro). Si imposta trascinando la maniglia della quota.
+   */
+  scorrTesto?: number;
   /** Testo aggiuntivo opzionale, mostrato sotto la misura (es. "luce netta") */
   nota?: string;
   /**
@@ -309,6 +314,12 @@ export interface SegmentoQuota {
   offset?: number;
   /** posizione del testo rispetto alla linea */
   posizioneTesto?: PosizioneTesto;
+  /**
+   * Scorrimento del testo LUNGO la linea di quota, in px immagine con segno
+   * (0 = al centro). Utile per le diagonali, che altrimenti si accavallano
+   * tutte nel punto d'incrocio.
+   */
+  scorrTesto?: number;
   /** testo aggiuntivo opzionale */
   nota?: string;
   /** abbondanze ai due estremi (al vertice `da` e al vertice `a`) */
@@ -338,6 +349,8 @@ export interface QuotaPoligono extends AnnotazioneBase {
    * rettangolo: visibile sulla foto e nel report.
    */
   etichetta?: string;
+  /** spostamento della nomenclatura (badge) rispetto al baricentro, in px */
+  etichettaOffset?: Punto;
   /** LEGACY (≤0.16): valore per lato; usato solo se `segmenti` è assente */
   lati?: (number | null)[];
   /** LEGACY (≤0.16): proiezione per lato */

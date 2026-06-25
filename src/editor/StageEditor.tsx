@@ -11,7 +11,7 @@ import {
   type SottotipoQuota
 } from '../db/types';
 import { primitiveAnnotazione, latiQuotaRett } from '../geometry/primitive';
-import { geometriaQuota } from '../geometry/primitive';
+import { geometriaQuota, posizioneEtichettaPoligono } from '../geometry/primitive';
 import { disegnaPrimitiva } from '../render/renderAnnotata';
 import { puntiAggancio, snapPunto } from '../geometry/snap';
 import {
@@ -20,6 +20,8 @@ import {
   dot,
   normale,
   normalizza,
+  scala as scalaVett,
+  somma,
   sottrai,
   vincolaAngolo,
   vincolaOrto
@@ -1370,9 +1372,11 @@ function ManiglieAnnotazione({
             },
             { snap: true, escludi: [ann.p2] }
           )}
-          {maniglia('offset', g.centro, (n) => {
+          {maniglia('offset', somma(g.centro, scalaVett(g.d, ann.scorrTesto ?? 0)), (n) => {
             const offset = dot(sottrai(n, ann.p1), normale(g.d));
-            return { ...ann, offset };
+            const meta = g.lunghezzaPx / 2;
+            const scorr = Math.max(-meta, Math.min(meta, dot(sottrai(n, g.centro), g.d)));
+            return { ...ann, offset, scorrTesto: scorr };
           })}
         </>
       );
@@ -1469,19 +1473,33 @@ function ManiglieAnnotazione({
               { snap: true, escludi: [pos] }
             )
           )}
-          {/* maniglia centrale di ogni segmento: lo proietta (offset) */}
+          {/* maniglia del testo di ogni segmento: trascinala perpendicolare
+              per proiettare la quota, lungo la linea per spostare il numero
+              (utile per le diagonali che si accavallano al centro) */}
           {segs.map((seg, i) => {
             const a = punti[seg.da];
             const b = punti[seg.a];
             if (!a || !b) return null;
             const g = geometriaQuota({ sottotipo: 'allineata', p1: a, p2: b, offset: seg.offset ?? 0 });
-            return maniglia(`proj-${i}`, g.centro, (n) => {
-              const nrm = normale(normalizza(sottrai(b, a)));
-              const offset = dot(sottrai(n, a), nrm);
-              const nuovi = segs.map((s, j) => (j === i ? { ...s, offset } : s));
+            const ancora = somma(g.centro, scalaVett(g.d, seg.scorrTesto ?? 0));
+            return maniglia(`proj-${i}`, ancora, (n) => {
+              const offset = dot(sottrai(n, a), normale(g.d));
+              const meta = g.lunghezzaPx / 2;
+              const scorr = Math.max(-meta, Math.min(meta, dot(sottrai(n, g.centro), g.d)));
+              const nuovi = segs.map((s, j) => (j === i ? { ...s, offset, scorrTesto: scorr } : s));
               return { ...ann, lati: undefined, offsetLati: undefined, segmenti: nuovi };
             });
           })}
+          {/* maniglia del numero del poligono: spostalo dentro la figura */}
+          {ann.etichetta &&
+            (() => {
+              const cx = punti.reduce((s, p) => s + p.x, 0) / (punti.length || 1);
+              const cy = punti.reduce((s, p) => s + p.y, 0) / (punti.length || 1);
+              return maniglia('etichetta', posizioneEtichettaPoligono(ann), (n) => ({
+                ...ann,
+                etichettaOffset: { x: n.x - cx, y: n.y - cy }
+              }));
+            })()}
         </>
       );
     }
