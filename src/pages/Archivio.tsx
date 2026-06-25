@@ -14,6 +14,8 @@ import {
   spostaProgetto
 } from '../db/repository';
 import { naviga } from '../router';
+import { condividiOScarica, nomeFileSicuro } from '../utils/share';
+import type { OpzioniReport } from '../pdf/report';
 import {
   ConfermaDialog,
   MenuContesto,
@@ -35,6 +37,8 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
   >(null);
   const [conferma, setConferma] = useState<RichiestaConferma | null>(null);
   const [menu, setMenu] = useState<{ pos: { x: number; y: number }; voci: VoceMenu[] } | null>(null);
+  const [reportCartella, setReportCartella] = useState<Cartella | null>(null);
+  const [pdfInCorso, setPdfInCorso] = useState<string | null>(null);
 
   const corrente = useLiveQuery(
     async () => (cartellaId ? await db.cartelle.get(cartellaId) : undefined),
@@ -70,11 +74,25 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
     return lista;
   }, [cartellaId]);
 
+  const generaReport = async (cartella: Cartella, opzioni: OpzioniReport) => {
+    try {
+      setPdfInCorso('Preparazione…');
+      const { generaReportCartella } = await import('../pdf/report');
+      const blob = await generaReportCartella(cartella.id, (msg) => setPdfInCorso(msg), opzioni);
+      setPdfInCorso(null);
+      await condividiOScarica(blob, nomeFileSicuro(`report_${cartella.nome}`, 'pdf'), cartella.nome);
+    } catch (e) {
+      setPdfInCorso(null);
+      mostraToast('errore', e instanceof Error ? e.message : 'Generazione PDF non riuscita.');
+    }
+  };
+
   const apriMenuCartella = (c: Cartella, e: React.MouseEvent) => {
     e.stopPropagation();
     setMenu({
       pos: { x: e.clientX, y: e.clientY },
       voci: [
+        { testo: '📄 Genera report', onClick: () => setReportCartella(c) },
         { testo: 'Rinomina', onClick: () => setRinomina(c) },
         { testo: 'Sposta…', onClick: () => setDaSpostare({ tipo: 'cartella', id: c.id }) },
         {
@@ -252,6 +270,22 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
       {nuovoProgetto && (
         <FormProgetto cartellaId={cartellaId} onChiudi={() => setNuovoProgetto(false)} />
       )}
+      {reportCartella && (
+        <FormOpzioniCartella
+          cartella={reportCartella}
+          onChiudi={() => setReportCartella(null)}
+          onGenera={(opzioni) => {
+            const c = reportCartella;
+            setReportCartella(null);
+            void generaReport(c, opzioni);
+          }}
+        />
+      )}
+      {pdfInCorso && (
+        <Modale titolo="Generazione report" onChiudi={() => {}} centro>
+          <p style={{ color: 'var(--testo-2)' }}>{pdfInCorso}</p>
+        </Modale>
+      )}
       {daSpostare && (
         <SelettoreCartella
           escludiCartellaId={daSpostare.tipo === 'cartella' ? daSpostare.id : undefined}
@@ -360,6 +394,78 @@ function FormCartella({
           }}
         >
           Salva
+        </button>
+      </div>
+    </Modale>
+  );
+}
+
+function FormOpzioniCartella({
+  cartella,
+  onChiudi,
+  onGenera
+}: {
+  cartella: Cartella;
+  onChiudi: () => void;
+  onGenera: (opzioni: OpzioniReport) => void;
+}) {
+  const [fotoPerPagina, setFotoPerPagina] = useState<1 | 2>(1);
+  const [includiIndice, setIncludiIndice] = useState(true);
+  const [includiNoteDato, setIncludiNoteDato] = useState(true);
+  const [includiTabellaMisure, setIncludiTabellaMisure] = useState(true);
+  const [includiRiepilogo, setIncludiRiepilogo] = useState(true);
+  const [includiDistinta, setIncludiDistinta] = useState(true);
+
+  const Riga = ({ attivo, onCommuta, testo }: { attivo: boolean; onCommuta: () => void; testo: string }) => (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', cursor: 'pointer' }}>
+      <input type="checkbox" checked={attivo} onChange={onCommuta} />
+      <span>{testo}</span>
+    </label>
+  );
+
+  return (
+    <Modale titolo={`Report — ${cartella.nome}`} onChiudi={onChiudi}>
+      <p style={{ color: 'var(--testo-2)', fontSize: 14 }}>
+        Il PDF segue la struttura delle cartelle: ogni sottocartella è un capitolo, con nome, note e
+        foto della sezione.
+      </p>
+      <div className="campo">
+        <label>Impaginazione foto</label>
+        <span className="segmenti" role="group">
+          <button className={fotoPerPagina === 1 ? 'attivo' : ''} onClick={() => setFotoPerPagina(1)}>
+            1 per pagina
+          </button>
+          <button className={fotoPerPagina === 2 ? 'attivo' : ''} onClick={() => setFotoPerPagina(2)}>
+            2 per pagina
+          </button>
+        </span>
+      </div>
+      <div style={{ marginTop: 8 }}>
+        <Riga attivo={includiIndice} onCommuta={() => setIncludiIndice(!includiIndice)} testo="Indice con numeri di pagina" />
+        <Riga attivo={includiNoteDato} onCommuta={() => setIncludiNoteDato(!includiNoteDato)} testo="Note dato delle foto" />
+        <Riga attivo={includiTabellaMisure} onCommuta={() => setIncludiTabellaMisure(!includiTabellaMisure)} testo="Tabella misure per ogni foto" />
+        <Riga attivo={includiRiepilogo} onCommuta={() => setIncludiRiepilogo(!includiRiepilogo)} testo="Riepilogo finale delle misure" />
+        <Riga attivo={includiDistinta} onCommuta={() => setIncludiDistinta(!includiDistinta)} testo="Distinta di taglio (pezzi da produrre)" />
+      </div>
+      <div className="riga-pulsanti">
+        <button className="btn" onClick={onChiudi}>
+          Annulla
+        </button>
+        <button
+          className="btn primario"
+          onClick={() =>
+            onGenera({
+              fotoIds: null,
+              fotoPerPagina,
+              includiIndice,
+              includiRiepilogo,
+              includiNoteDato,
+              includiTabellaMisure,
+              includiDistinta
+            })
+          }
+        >
+          Genera PDF
         </button>
       </div>
     </Modale>

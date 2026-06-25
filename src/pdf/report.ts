@@ -1,7 +1,7 @@
 import { pdfMake } from './engine';
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { db } from '../db/db';
-import type { Annotazione, Foto, Progetto, Punto, Quota, StatoMisura } from '../db/types';
+import type { Annotazione, Cartella, Foto, Progetto, Punto, Quota, StatoMisura } from '../db/types';
 import { abbondanzaTotale, segmentiPoligono, segmentoELato } from '../db/types';
 import { nomeFormaPoligono, simboliPoligono, versiSegmento } from '../geometry/primitive';
 import {
@@ -154,30 +154,56 @@ export async function generaReportPdf(
     contenuto.push(...sezioneFoto(f, indice, annotazioni, opzioni, impostazioni.pdf, lettera, percorso));
   });
 
+  // tutte le foto del progetto condividono lo stesso percorso di cartelle
+  const info: InfoFoto = (f) => ({ lettera: letteraFoto(f, fotoList), percorso });
+
   // --- Tabella riassuntiva delle misure ---------------------------------------
   if (opzioni.includiRiepilogo) {
-    contenuto.push(...tabellaRiassuntiva(fotoList, annotazioniPerFoto, percorso));
+    contenuto.push(...tabellaRiassuntiva(fotoList, annotazioniPerFoto, info));
   }
 
   // --- Distinta di taglio (pezzi da produrre) ---------------------------------
   if (opzioni.includiDistinta) {
-    contenuto.push(...distintaTaglio(fotoList, annotazioniPerFoto, percorso));
+    contenuto.push(...distintaTaglio(fotoList, annotazioniPerFoto, info));
   }
 
   const pieDiPagina = impostazioni.pdf.pieDiPagina.trim() || prof.azienda || prof.nome || '';
-  const def: TDocumentDefinitions = {
+  const def = documentoReport({
+    BLU,
+    titoloInfo: `Report — ${progetto.nome}`,
+    autore: prof.nome || 'Sopralluoghi',
+    pieDiPagina,
+    contenuto,
+    immagini
+  });
+
+  avanzamento?.('Generazione PDF…');
+  return creaBlobPdf(def);
+}
+
+/** Stili e impalcatura comuni a tutti i report (singolo progetto o cartella) */
+function documentoReport(args: {
+  BLU: string;
+  titoloInfo: string;
+  autore: string;
+  pieDiPagina: string;
+  contenuto: Content[];
+  immagini: Record<string, string>;
+}): TDocumentDefinitions {
+  const { BLU } = args;
+  return {
     pageSize: 'A4',
     pageMargins: [40, 50, 40, 50],
-    info: { title: `Report — ${progetto.nome}`, author: prof.nome || 'Sopralluoghi' },
+    info: { title: args.titoloInfo, author: args.autore },
     footer: (pagina, totale) => ({
       columns: [
-        { text: pieDiPagina, style: 'pie' },
+        { text: args.pieDiPagina, style: 'pie' },
         { text: `Pagina ${pagina} di ${totale}`, style: 'pie', alignment: 'right' }
       ],
       margin: [40, 16, 40, 0]
     }),
-    content: contenuto,
-    images: immagini,
+    content: args.contenuto,
+    images: args.immagini,
     styles: {
       copertinaTipo: { fontSize: 13, color: GRIGIO, alignment: 'center', characterSpacing: 2 },
       copertinaTitolo: { fontSize: 30, bold: true, alignment: 'center', color: BLU },
@@ -186,6 +212,7 @@ export async function generaReportPdf(
       copertinaProf: { fontSize: 10, color: GRIGIO },
       h1: { fontSize: 20, bold: true, color: BLU, margin: [0, 0, 0, 12] },
       h2: { fontSize: 15, bold: true, color: BLU, margin: [0, 0, 0, 6] },
+      h3: { fontSize: 12.5, bold: true, color: '#33424f', margin: [0, 0, 0, 4] },
       didascalia: { fontSize: 10, color: GRIGIO, italics: true, margin: [0, 4, 0, 10] },
       corpo: { fontSize: 11, lineHeight: 1.25, margin: [0, 4, 0, 10] },
       th: { fontSize: 9, bold: true, color: '#ffffff', fillColor: BLU },
@@ -196,8 +223,9 @@ export async function generaReportPdf(
     },
     defaultStyle: { fontSize: 11 }
   };
+}
 
-  avanzamento?.('Generazione PDF…');
+function creaBlobPdf(def: TDocumentDefinitions): Promise<Blob> {
   return new Promise<Blob>((resolve, reject) => {
     try {
       pdfMake.createPdf(def).getBlob((blob) => resolve(blob));
@@ -205,6 +233,159 @@ export async function generaReportPdf(
       reject(e instanceof Error ? e : new Error('Errore nella generazione del PDF.'));
     }
   });
+}
+
+/**
+ * Report di una CARTELLA: struttura a capitoli che rispecchia l'albero delle
+ * cartelle. La cartella scelta è il documento; le sue sottocartelle sono i
+ * capitoli (1, 2…), le loro sottocartelle i sottocapitoli (1.1, 1.2…). Per
+ * ogni cartella: nome = titolo, note = descrizione, foto dei progetti =
+ * contenuto, misure = distinta inline. In coda riepilogo e distinta globali.
+ */
+export async function generaReportCartella(
+  cartellaId: string,
+  avanzamento?: (msg: string) => void,
+  opzioni: OpzioniReport = OPZIONI_REPORT_DEFAULT
+): Promise<Blob> {
+  avanzamento?.('Lettura dati…');
+  const impostazioni = await leggiImpostazioni();
+  const BLU = impostazioni.pdf.colore || '#1a4f8b';
+  const prof = impostazioni.professionista;
+
+  const tutteCartelle = await db.cartelle.toArray();
+  const tuttiProgetti = await db.progetti.toArray();
+  const radice = tutteCartelle.find((c) => c.id === cartellaId);
+  if (!radice) throw new Error('Cartella non trovata.');
+
+  const figlie = (id: string) =>
+    tutteCartelle.filter((c) => c.parentId === id).sort((a, b) => a.nome.localeCompare(b.nome));
+  const progettiIn = (id: string) =>
+    tuttiProgetti.filter((p) => p.cartellaId === id).sort((a, b) => a.nome.localeCompare(b.nome));
+
+  const fotoPerProgetto = new Map<string, Foto[]>();
+  const annotPerFoto = new Map<string, Annotazione[]>();
+  const infoFoto = new Map<string, { lettera: string; percorso: string[] }>();
+  const tutteFoto: Foto[] = [];
+
+  const caricaProgetto = async (p: Progetto) => {
+    const lista = (await db.foto.where('progettoId').equals(p.id).toArray())
+      .filter((f) => !fotoIllegibile(f))
+      .sort((a, b) => a.ordine - b.ordine);
+    fotoPerProgetto.set(p.id, lista);
+    const percorso = percorsoEtichette(p, tutteCartelle);
+    for (const f of lista) {
+      annotPerFoto.set(f.id, await db.annotazioni.where('fotoId').equals(f.id).toArray());
+      infoFoto.set(f.id, { lettera: letteraFoto(f, lista), percorso });
+      tutteFoto.push(f);
+    }
+  };
+  const raccogli = async (id: string) => {
+    for (const p of progettiIn(id)) await caricaProgetto(p);
+    for (const c of figlie(id)) await raccogli(c.id);
+  };
+  await raccogli(radice.id);
+
+  if (tutteFoto.length === 0) {
+    throw new Error('La cartella non contiene foto da inserire nel report.');
+  }
+
+  const immagini: Record<string, string> = {};
+  for (let i = 0; i < tutteFoto.length; i++) {
+    avanzamento?.(`Preparazione immagine ${i + 1} di ${tutteFoto.length}…`);
+    const f = tutteFoto[i];
+    const blob = await renderFotoAnnotata(f, annotPerFoto.get(f.id) ?? []);
+    immagini[`foto_${f.id}`] = await blobInDataUrlRidotto(blob, LATO_MAX_PDF);
+  }
+
+  avanzamento?.('Composizione del documento…');
+  let indiceFoto = 0;
+
+  // foto di tutti i progetti DIRETTI di una cartella (contenuto della sezione)
+  const fotoDiretteDi = (folder: Cartella): Content[] => {
+    const out: Content[] = [];
+    for (const p of progettiIn(folder.id)) {
+      const lista = fotoPerProgetto.get(p.id) ?? [];
+      if (lista.length === 0) continue;
+      out.push({ text: p.nome, style: 'h3', margin: [0, 8, 0, 4] });
+      if (p.note.trim()) out.push({ text: p.note.trim(), style: 'corpo', italics: true });
+      for (const f of lista) {
+        const inf = infoFoto.get(f.id)!;
+        out.push(
+          ...sezioneFoto(f, indiceFoto++, annotPerFoto.get(f.id) ?? [], opzioni, impostazioni.pdf, inf.lettera, inf.percorso, {
+            style: 'h3',
+            toc: false,
+            etichetta: ''
+          })
+        );
+      }
+    }
+    return out;
+  };
+
+  // capitolo ricorsivo: depth 0 = capitolo (h1), 1 = sottocapitolo (h2), ≥2 = h3
+  const sezioneCartella = (folder: Cartella, numero: string, depth: number): Content[] => {
+    const stile = depth === 0 ? 'h1' : depth === 1 ? 'h2' : 'h3';
+    const prefisso = depth === 0 ? `Capitolo ${numero} — ` : `${numero} — `;
+    const out: Content[] = [
+      {
+        text: `${prefisso}${folder.nome}`,
+        style: stile,
+        tocItem: depth <= 1,
+        ...(depth === 0 ? { pageBreak: 'before' } : { margin: [0, 14, 0, 4] })
+      } as Content
+    ];
+    if (folder.note?.trim()) out.push({ text: folder.note.trim(), style: 'corpo', italics: true });
+    out.push(...fotoDiretteDi(folder));
+    figlie(folder.id).forEach((c, i) => out.push(...sezioneCartella(c, `${numero}.${i + 1}`, depth + 1)));
+    return out;
+  };
+
+  const contenuto: Content[] = [];
+  const righeProf = [prof.nome, prof.azienda, prof.indirizzo, prof.telefono, prof.email].filter(Boolean);
+  contenuto.push(
+    { text: 'RELAZIONE DI SOPRALLUOGO', style: 'copertinaTipo', margin: [0, 120, 0, 8] },
+    { text: radice.nome, style: 'copertinaTitolo' },
+    { text: `Data: ${formattaData(Date.now())}`, style: 'copertinaDati', margin: [0, 18, 0, 0] },
+    radice.note?.trim()
+      ? { text: radice.note.trim(), style: 'copertinaNote', margin: [0, 24, 0, 0] }
+      : { text: '' },
+    righeProf.length > 0
+      ? { text: righeProf.join('\n'), style: 'copertinaProf', absolutePosition: { x: 40, y: 700 } }
+      : { text: '' }
+  );
+  if (opzioni.includiIndice) {
+    contenuto.push({ toc: { title: { text: 'Indice', style: 'h1' } }, pageBreak: 'before' } as Content);
+  }
+
+  // i progetti direttamente nella cartella radice fanno da introduzione;
+  // le sottocartelle diventano i capitoli numerati
+  const introRadice = fotoDiretteDi(radice);
+  if (introRadice.length > 0) {
+    contenuto.push({ text: radice.nome, style: 'h1', tocItem: true, pageBreak: 'before' } as Content);
+    if (radice.note?.trim()) contenuto.push({ text: radice.note.trim(), style: 'corpo', italics: true });
+    contenuto.push(...introRadice);
+  }
+  figlie(radice.id).forEach((c, i) => contenuto.push(...sezioneCartella(c, String(i + 1), 0)));
+
+  const info: InfoFoto = (f) => infoFoto.get(f.id) ?? { lettera: 'A', percorso: [] };
+  if (opzioni.includiRiepilogo) {
+    contenuto.push(...tabellaRiassuntiva(tutteFoto, annotPerFoto, info));
+  }
+  if (opzioni.includiDistinta) {
+    contenuto.push(...distintaTaglio(tutteFoto, annotPerFoto, info));
+  }
+
+  const pieDiPagina = impostazioni.pdf.pieDiPagina.trim() || prof.azienda || prof.nome || '';
+  const def = documentoReport({
+    BLU,
+    titoloInfo: `Report — ${radice.nome}`,
+    autore: prof.nome || 'Sopralluoghi',
+    pieDiPagina,
+    contenuto,
+    immagini
+  });
+  avanzamento?.('Generazione PDF…');
+  return creaBlobPdf(def);
 }
 
 interface RigaMisura {
@@ -444,9 +625,16 @@ function sezioneFoto(
   opzioni: OpzioniReport,
   pdfImp: { mostraGeotag: boolean; mostraDataScatto: boolean },
   lettera: string,
-  percorso: string[]
+  percorso: string[],
+  /** stile del titolo della foto e voce indice: nel report di cartella le foto
+   *  sono "contenuto" dei capitoli, quindi titolo più piccolo e fuori indice */
+  titoloFoto: { style: string; toc: boolean; etichetta: string } = {
+    style: 'h2',
+    toc: true,
+    etichetta: `${indice + 1}. `
+  }
 ): Content[] {
-  const titolo = `${indice + 1}. ${f.didascalia || `Foto ${indice + 1}`}`;
+  const titolo = `${titoloFoto.etichetta}${f.didascalia || `Foto ${indice + 1}`}`;
   const misure = righeMisureFoto(annotazioni, f, lettera, percorso);
   const callouts = annotazioni.filter((a) => a.tipo === 'callout');
   const catene = calcolaCatene(annotazioni);
@@ -466,8 +654,8 @@ function sezioneFoto(
   const out: Content[] = [
     {
       text: titolo,
-      style: 'h2',
-      tocItem: true,
+      style: titoloFoto.style,
+      tocItem: titoloFoto.toc,
       ...(interrompi ? { pageBreak: 'before' } : { margin: [0, 18, 0, 6] })
     } as Content
   ];
@@ -535,14 +723,17 @@ function sezioneFoto(
   return out;
 }
 
+/** per ogni foto: la sua lettera (nel progetto) e il percorso di etichette */
+type InfoFoto = (f: Foto) => { lettera: string; percorso: string[] };
+
 function tabellaRiassuntiva(
   fotoList: Foto[],
   annotazioniPerFoto: Map<string, Annotazione[]>,
-  percorso: string[]
+  info: InfoFoto
 ): Content[] {
   const righe: Content[][] = [];
   fotoList.forEach((f, indice) => {
-    const lettera = letteraFoto(f, fotoList);
+    const { lettera, percorso } = info(f);
     const misure = righeMisureFoto(annotazioniPerFoto.get(f.id) ?? [], f, lettera, percorso);
     misure.forEach((m, i) => {
       righe.push([
@@ -608,7 +799,7 @@ function tabellaRiassuntiva(
 function distintaTaglio(
   fotoList: Foto[],
   annotazioniPerFoto: Map<string, Annotazione[]>,
-  percorso: string[]
+  info: InfoFoto
 ): Content[] {
   const righe: Content[][] = [];
   let nPezzi = 0;
@@ -616,7 +807,7 @@ function distintaTaglio(
   let areaCompleta = true; // false se a qualche pezzo manca l'area
 
   fotoList.forEach((f) => {
-    const lettera = letteraFoto(f, fotoList);
+    const { lettera, percorso } = info(f);
     const misure = righeMisureFoto(annotazioniPerFoto.get(f.id) ?? [], f, lettera, percorso).filter(
       (m) => m.pezzo
     );
