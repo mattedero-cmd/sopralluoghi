@@ -61,7 +61,7 @@ const COLORI = [COLORE_QUOTA, '#ff3b30', '#34c759', '#007aff', '#ffffff', '#1111
 /**
  * Strumenti raggruppati: la toolbar mostra pochi pulsanti grandi; toccando
  * un gruppo si apre un pannello temporaneo con le varianti (es. "Forma" →
- * rettangolo / 4 angoli / triangolo / pentagono). Meno pulsanti a schermo,
+ * rettangolo / 4 angoli / triangolo / polilinea). Meno pulsanti a schermo,
  * più spazio alla foto.
  */
 const GRUPPI_STRUMENTI: Array<{
@@ -88,7 +88,7 @@ const GRUPPI_STRUMENTI: Array<{
       { s: 'rettangolo', icona: '▭', testo: 'Rettangolo' },
       { s: 'quad', icona: '◇', testo: '4 angoli' },
       { s: 'tri', icona: '△', testo: 'Triangolo' },
-      { s: 'penta', icona: '⬠', testo: 'Pentagono' }
+      { s: 'polilinea', icona: '⬡', testo: 'Polilinea' }
     ]
   },
   {

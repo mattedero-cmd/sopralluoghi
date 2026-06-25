@@ -338,6 +338,169 @@ export function perimetroReale(q: QuotaPoligono): number | null {
   return arrotondaMisura(tot);
 }
 
+// ---------------------------------------------------------------------------
+// Angoli del triangolo e aree reali (con gestione della prospettiva)
+// ---------------------------------------------------------------------------
+
+/** lunghezza reale del lato del poligono che collega i vertici i e j (o null) */
+function latoPoligono(q: QuotaPoligono, i: number, j: number): number | null {
+  const s = segmentiPoligono(q).find(
+    (g) => (g.da === i && g.a === j) || (g.da === j && g.a === i)
+  );
+  return s && s.valore !== null ? s.valore : null;
+}
+
+/**
+ * Angoli ai tre vertici di un triangolo, ricavati SOLO dai 3 lati reali
+ * (teorema del coseno). Tre lati determinano completamente il triangolo
+ * (caso SSS): non servono altri dati. null se non è un triangolo, se mancano
+ * lati o se i lati non rispettano la disuguaglianza triangolare.
+ * L'ordine è [vertice 0, vertice 1, vertice 2], in gradi.
+ */
+export function angoliTriangolo(q: QuotaPoligono): [number, number, number] | null {
+  if (q.punti.length !== 3) return null;
+  const L01 = latoPoligono(q, 0, 1);
+  const L12 = latoPoligono(q, 1, 2);
+  const L20 = latoPoligono(q, 2, 0);
+  if (L01 === null || L12 === null || L20 === null) return null;
+  // angolo al vertice fra i due lati adiacenti x e y, opposto al lato `opp`
+  const ang = (opp: number, x: number, y: number): number | null => {
+    if (x <= 0 || y <= 0) return null;
+    const c = (x * x + y * y - opp * opp) / (2 * x * y);
+    if (c <= -1 || c >= 1) return null; // disuguaglianza triangolare non rispettata
+    return (Math.acos(c) * 180) / Math.PI;
+  };
+  const a0 = ang(L12, L01, L20); // vertice 0: lati 0-1 e 2-0, opposto 1-2
+  const a1 = ang(L20, L12, L01); // vertice 1: lati 1-2 e 0-1, opposto 2-0
+  const a2 = ang(L01, L20, L12); // vertice 2: lati 2-0 e 1-2, opposto 0-1
+  if (a0 === null || a1 === null || a2 === null) return null;
+  const r = (g: number) => Math.round(g * 10) / 10;
+  return [r(a0), r(a1), r(a2)];
+}
+
+/** Area con segno (shoelace) di un poligono di punti */
+function areaShoelace(punti: Punto[]): number {
+  let s = 0;
+  for (let i = 0; i < punti.length; i++) {
+    const a = punti[i];
+    const b = punti[(i + 1) % punti.length];
+    s += a.x * b.y - b.x * a.y;
+  }
+  return s / 2;
+}
+
+/** Converte un'area da (unità lineari)² a metri quadri */
+function areaInMetriQuadri(area: number, unita: Unita): number {
+  const mmPerUnita = inMillimetri(1, unita);
+  return (area * mmPerUnita * mmPerUnita) / 1_000_000;
+}
+
+/** Area di un triangolo dai 3 lati reali (formula di Erone), in (q.unita)² */
+function areaTriangoloDaLati(q: QuotaPoligono): number | null {
+  if (q.punti.length !== 3) return null;
+  const a = latoPoligono(q, 0, 1);
+  const b = latoPoligono(q, 1, 2);
+  const c = latoPoligono(q, 2, 0);
+  if (a === null || b === null || c === null) return null;
+  const s = (a + b + c) / 2;
+  const area2 = s * (s - a) * (s - b) * (s - c);
+  return area2 <= 0 ? null : Math.sqrt(area2);
+}
+
+/** Area di un rettangolo da base×altezza (2 lati quotati non paralleli) */
+function areaRettangoloDaLati(q: QuotaPoligono): number | null {
+  const n = q.punti.length;
+  if (n !== 4) return null;
+  const lati = segmentiPoligono(q).filter((s) => segmentoELato(s, n) && s.valore !== null);
+  if (lati.length !== 2) return null;
+  const dir = (s: { da: number; a: number }) => {
+    const p = q.punti[s.da];
+    const r = q.punti[s.a];
+    const ang = Math.atan2(r.y - p.y, r.x - p.x);
+    return ((ang % Math.PI) + Math.PI) % Math.PI;
+  };
+  let d = Math.abs(dir(lati[0]) - dir(lati[1]));
+  d = Math.min(d, Math.PI - d);
+  if (d < Math.PI / 6) return null; // quasi paralleli: non sono base e altezza
+  return (lati[0].valore as number) * (lati[1].valore as number);
+}
+
+export interface AreaReale {
+  /** area in metri quadri */
+  m2: number;
+  /**
+   * true = calcolo esatto: dal piano prospettico (omografia) oppure da una
+   * forma rigida (triangolo da 3 lati, rettangolo da base×altezza).
+   * false = stima dai pixel: valida solo se l'oggetto è ripreso frontalmente,
+   * perché una scala lineare non corregge la prospettiva.
+   */
+  affidabile: boolean;
+  metodo: 'piano' | 'triangolo' | 'rettangolo' | 'stima';
+}
+
+/**
+ * Area reale di un poligono in m², scegliendo il metodo più affidabile:
+ *  1) PIANO prospettico calibrato → vertici rettificati con l'omografia e
+ *     shoelace: ESATTO anche in forte prospettiva (è il metodo consigliato).
+ *  2) TRIANGOLO con 3 lati → formula di Erone: esatto e indipendente dalla
+ *     prospettiva (un triangolo è rigido).
+ *  3) RETTANGOLO con base×altezza → prodotto delle misure reali.
+ *  4) altrimenti STIMA dai pixel scalati (assume ripresa frontale): segnalata
+ *     come non affidabile, perché la prospettiva la falsa.
+ */
+export function areaReale(q: QuotaPoligono, foto: CalibrazioneFoto): AreaReale | null {
+  const H = omografiaDiFoto(foto);
+  if (H && foto.piano) {
+    const reali = q.punti.map((p) => applicaOmografia(H, p));
+    return {
+      m2: areaInMetriQuadri(Math.abs(areaShoelace(reali)), foto.piano.unita),
+      affidabile: true,
+      metodo: 'piano'
+    };
+  }
+  const tri = areaTriangoloDaLati(q);
+  if (tri !== null) {
+    return { m2: areaInMetriQuadri(tri, q.unita), affidabile: true, metodo: 'triangolo' };
+  }
+  const rett = areaRettangoloDaLati(q);
+  if (rett !== null) {
+    return { m2: areaInMetriQuadri(rett, q.unita), affidabile: true, metodo: 'rettangolo' };
+  }
+  if (foto.scala && foto.scala.px > 0) {
+    const fattore = foto.scala.reale / foto.scala.px; // unità reali per pixel
+    const apx = Math.abs(areaShoelace(q.punti));
+    return {
+      m2: areaInMetriQuadri(apx * fattore * fattore, foto.scala.unita),
+      affidabile: false,
+      metodo: 'stima'
+    };
+  }
+  return null;
+}
+
+/** Area reale (m²) dell'elemento rettangolo legacy, stessa logica del poligono */
+export function areaElemento(q: QuotaRettangolo, foto: CalibrazioneFoto): AreaReale | null {
+  const H = omografiaDiFoto(foto);
+  const punti = quadrilateroQuotaRett(q);
+  if (H && foto.piano) {
+    const reali = punti.map((p) => applicaOmografia(H, p));
+    return {
+      m2: areaInMetriQuadri(Math.abs(areaShoelace(reali)), foto.piano.unita),
+      affidabile: true,
+      metodo: 'piano'
+    };
+  }
+  const m = misureElemento(q);
+  if (m.baseSup !== null && m.latoSx !== null) {
+    return {
+      m2: areaInMetriQuadri(m.baseSup * m.latoSx, q.unita),
+      affidabile: true,
+      metodo: 'rettangolo'
+    };
+  }
+  return null;
+}
+
 /** Perimetro reale del poligono (somma dei LATI quotati noti); null se nessuno */
 export function perimetroPoligono(q: QuotaPoligono): number | null {
   const n = q.punti.length;

@@ -8,8 +8,21 @@ import { leggiImpostazioni } from '../db/repository';
 import { renderFotoAnnotata } from '../render/renderAnnotata';
 import { caricaImmagine, fotoIllegibile } from '../utils/image';
 import { calcolaCatene, sommaCatenaInUnita } from '../geometry/catene';
-import { misureElemento, perimetroReale } from '../geometry/calibrazione';
-import { formattaData, formattaDataOra, formattaMisura, formattaNumero } from '../utils/format';
+import {
+  angoliTriangolo,
+  areaElemento,
+  areaReale,
+  misureElemento,
+  perimetroReale,
+  type AreaReale
+} from '../geometry/calibrazione';
+import {
+  formattaData,
+  formattaDataOra,
+  formattaMisura,
+  formattaNumero,
+  inMillimetri
+} from '../utils/format';
 
 const GRIGIO = '#555555';
 const GRIGIO_CHIARO = '#888888';
@@ -187,7 +200,26 @@ interface RigaMisura {
   abbondanze?: string;
   /** perimetro reale (ed eventualmente abbondato) */
   perimetro?: string;
+  /** angoli ai vertici (solo triangolo): es. "α 60° · β 60° · γ 60°" */
+  angoli?: string;
+  /** superficie in m² */
+  area?: string;
+  /** true se l'area è un calcolo esatto; false se è una stima dai pixel */
+  areaAffidabile?: boolean;
   stato: StatoMisura;
+}
+
+/** Converte un'area da (unità lineari)² a m² */
+function areaLineareInM2(area: number, unita: Quota['unita']): number {
+  const mmPerUnita = inMillimetri(1, unita);
+  return (area * mmPerUnita * mmPerUnita) / 1_000_000;
+}
+
+/** Testo della superficie in m² (più decimali per le aree piccole) */
+function formattaArea(a: AreaReale): string {
+  const v = a.m2;
+  const txt = v >= 1 ? v.toFixed(2) : v >= 0.01 ? v.toFixed(3) : v.toFixed(4);
+  return `${txt.replace('.', ',')} m²`;
 }
 
 /** descrizione "dove e quanto" delle abbondanze ai due estremi di un segmento */
@@ -207,7 +239,7 @@ function dettaglioAbb(
 }
 
 /** Tutte le misure di una foto in forma STRUTTURATA per il riepilogo */
-function righeMisureFoto(annotazioni: Annotazione[]): RigaMisura[] {
+function righeMisureFoto(annotazioni: Annotazione[], foto: Foto): RigaMisura[] {
   const righe: RigaMisura[] = [];
   for (const a of [...annotazioni].sort((x, y) => x.zIndex - y.zIndex)) {
     if (a.tipo === 'quota') {
@@ -241,6 +273,12 @@ function righeMisureFoto(annotazioni: Annotazione[]): RigaMisura[] {
         riga.taglio = `D ${formattaNumero(diam + 2 * margine)} ${a.unita}`;
         riga.abbondanze = `+${formattaNumero(margine)} tutt'intorno`;
       }
+      // area del cerchio = π r² dalla misura reale
+      if (ragg !== null) {
+        const m2 = areaLineareInM2(Math.PI * ragg * ragg, a.unita);
+        riga.area = formattaArea({ m2, affidabile: true, metodo: 'rettangolo' });
+        riga.areaAffidabile = true;
+      }
       righe.push(riga);
     } else if (a.tipo === 'quotaRett') {
       const m = misureElemento(a);
@@ -252,7 +290,13 @@ function righeMisureFoto(annotazioni: Annotazione[]): RigaMisura[] {
       else if (m.forma === 'trapezio')
         reale = `B ${n(m.baseSup)} · b ${n(m.baseInf)} · h ${n(m.latoSx)} ${a.unita}`;
       else reale = `${n(m.baseSup)} · ${n(m.latoDx)} · ${n(m.baseInf)} · ${n(m.latoSx)} ${a.unita}`;
-      righe.push({ forma: a.etichetta ? `${nome} ${a.etichetta}` : nome, reale, stato: a.stato });
+      const rigaR: RigaMisura = { forma: a.etichetta ? `${nome} ${a.etichetta}` : nome, reale, stato: a.stato };
+      const areaR = areaElemento(a, foto);
+      if (areaR) {
+        rigaR.area = formattaArea(areaR);
+        rigaR.areaAffidabile = areaR.affidabile;
+      }
+      righe.push(rigaR);
     } else if (a.tipo === 'quotaPoligono') {
       const nome = nomeFormaPoligono(a);
       const n = (v: number | null) => (v === null ? '?' : formattaNumero(v));
@@ -280,6 +324,18 @@ function righeMisureFoto(annotazioni: Annotazione[]): RigaMisura[] {
       if (perimetro !== null) {
         riga.perimetro = `perim. ${formattaNumero(perimetro)} ${a.unita}`;
       }
+      // triangolo: angoli ai vertici, ricavati dai 3 lati (caso SSS)
+      const angoli = angoliTriangolo(a);
+      if (angoli) {
+        const lett = ['α', 'β', 'γ'];
+        riga.angoli = angoli.map((g, i) => `${lett[i]} ${formattaNumero(g)}°`).join(' · ');
+      }
+      // superficie in m² (metodo più affidabile disponibile)
+      const area = areaReale(a, foto);
+      if (area) {
+        riga.area = formattaArea(area);
+        riga.areaAffidabile = area.affidabile;
+      }
       righe.push(riga);
     }
   }
@@ -306,8 +362,29 @@ function cellaDettaglio(m: RigaMisura): Content {
       ]
     });
   }
+  if (m.angoli) {
+    linee.push({
+      text: [
+        { text: 'Angoli  ', color: GRIGIO_CHIARO, fontSize: 8 },
+        { text: m.angoli, color: GRIGIO, fontSize: 8.5 }
+      ]
+    });
+  }
   if (m.perimetro) {
     linee.push({ text: m.perimetro, color: GRIGIO, fontSize: 8.5, italics: true });
+  }
+  if (m.area) {
+    // area in evidenza; se è una stima (prospettiva non corretta) lo si dice
+    linee.push({
+      text: [
+        { text: 'Area  ', color: GRIGIO_CHIARO, fontSize: 8 },
+        { text: m.area, color: BLU_FORMA, bold: true, fontSize: 9.5 },
+        ...(m.areaAffidabile === false
+          ? [{ text: '  (stima — calibra un piano)', color: ARANCIO_STIMATA, fontSize: 7.5, italics: true }]
+          : [])
+      ],
+      margin: [0, 1, 0, 0]
+    });
   }
   return { stack: linee };
 }
@@ -331,7 +408,7 @@ function sezioneFoto(
   pdfImp: { mostraGeotag: boolean; mostraDataScatto: boolean }
 ): Content[] {
   const titolo = `${indice + 1}. ${f.didascalia || `Foto ${indice + 1}`}`;
-  const misure = righeMisureFoto(annotazioni);
+  const misure = righeMisureFoto(annotazioni, f);
   const callouts = annotazioni.filter((a) => a.tipo === 'callout');
   const catene = calcolaCatene(annotazioni);
   // layout compatto: due foto per pagina, immagine più bassa
@@ -425,7 +502,7 @@ function tabellaRiassuntiva(
 ): Content[] {
   const righe: Content[][] = [];
   fotoList.forEach((f, indice) => {
-    const misure = righeMisureFoto(annotazioniPerFoto.get(f.id) ?? []);
+    const misure = righeMisureFoto(annotazioniPerFoto.get(f.id) ?? [], f);
     misure.forEach((m, i) => {
       righe.push([
         { text: `${indice + 1}.${i + 1}`, style: 'tdNum' },

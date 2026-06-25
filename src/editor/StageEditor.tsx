@@ -38,7 +38,7 @@ export type Strumento =
   | 'rettangolo'
   | 'quad'
   | 'tri'
-  | 'penta'
+  | 'polilinea'
   | 'angolo'
   | 'raggio'
   | 'cerchio3p'
@@ -422,7 +422,7 @@ export function StageEditor(p: Props) {
       case 'angolo':
       case 'quad':
       case 'tri':
-      case 'penta':
+      case 'polilinea':
       case 'cerchio3p':
       case 'piano': {
         const punto = applicaSnap(pos);
@@ -545,15 +545,28 @@ export function StageEditor(p: Props) {
       }
       return;
     }
-    if (p.strumento === 'tri' || p.strumento === 'penta') {
-      const lati = p.strumento === 'tri' ? 3 : 5;
+    if (p.strumento === 'tri') {
       const punti = bozza?.tipo === 'poli' ? [...bozza.punti, punto] : [punto];
-      if (punti.length === lati) {
+      if (punti.length === 3) {
         setBozza(null);
         p.onNuovoPoligono(punti);
       } else {
-        setBozza({ tipo: 'poli', punti, lati });
+        setBozza({ tipo: 'poli', punti, lati: 3 });
       }
+      return;
+    }
+    if (p.strumento === 'polilinea') {
+      const correnti = bozza?.tipo === 'poli' ? bozza.punti : [];
+      // chiusura: tocco vicino al PRIMO vertice (servono almeno 3 punti)
+      if (correnti.length >= 3) {
+        const sogliaChiusura = Math.max(p.sogliaSnap, 18 / vista.scala);
+        if (distanza(punto, correnti[0]) <= sogliaChiusura) {
+          setBozza(null);
+          p.onNuovoPoligono(correnti);
+          return;
+        }
+      }
+      setBozza({ tipo: 'poli', punti: [...correnti, punto], lati: 0 });
       return;
     }
     if (p.strumento === 'cerchio3p') {
@@ -854,16 +867,24 @@ export function StageEditor(p: Props) {
             bozza?.tipo === 'poli' ||
             bozza?.tipo === 'cerchio3p') && (
             <>
-              {bozza.punti.map((pt, i) => (
-                <Circle
-                  key={i}
-                  x={pt.x}
-                  y={pt.y}
-                  radius={raggioManiglia * 0.6}
-                  fill="#2f81f7"
-                  listening={false}
-                />
-              ))}
+              {bozza.punti.map((pt, i) => {
+                // nella polilinea il PRIMO vertice è il bersaglio di chiusura:
+                // più grande e cerchiato quando si può già chiudere (≥3 punti)
+                const chiusura =
+                  p.strumento === 'polilinea' && i === 0 && bozza.punti.length >= 3;
+                return (
+                  <Circle
+                    key={i}
+                    x={pt.x}
+                    y={pt.y}
+                    radius={raggioManiglia * (chiusura ? 1.1 : 0.6)}
+                    fill={chiusura ? 'rgba(52,199,89,0.35)' : '#2f81f7'}
+                    stroke={chiusura ? '#34c759' : undefined}
+                    strokeWidth={chiusura ? 3 / vista.scala : 0}
+                    listening={false}
+                  />
+                );
+              })}
               {bozza.punti.length > 1 && (
                 <Line
                   points={bozza.punti.flatMap((pt) => [pt.x, pt.y])}
@@ -956,20 +977,8 @@ export function StageEditor(p: Props) {
           contenitore={dimensioni}
         />
       )}
-      {/* zoom sempre a portata di pollice, senza occupare la toolbar */}
+      {/* zoom con le dita (pinch); resta solo "adatta alla vista" */}
       <div className="zoom-flottante">
-        <button
-          aria-label="Ingrandisci"
-          onClick={() => zoomVerso({ x: dimensioni.w / 2, y: dimensioni.h / 2 }, 1.3)}
-        >
-          ＋
-        </button>
-        <button
-          aria-label="Riduci"
-          onClick={() => zoomVerso({ x: dimensioni.w / 2, y: dimensioni.h / 2 }, 1 / 1.3)}
-        >
-          －
-        </button>
         <button aria-label="Adatta alla vista" onClick={() => adatta(dimensioni.w, dimensioni.h)}>
           ⤢
         </button>
@@ -1095,11 +1104,15 @@ function testoSuggerimento(strumento: Strumento, bozza: Bozza): string | null {
     const n = bozza?.tipo === 'quad' ? bozza.punti.length : 0;
     return `Elemento a 4 angoli (${n}/4): tocca alto-sx, alto-dx, basso-dx, basso-sx`;
   }
-  if (strumento === 'tri' || strumento === 'penta') {
-    const lati = strumento === 'tri' ? 3 : 5;
-    const nome = strumento === 'tri' ? 'Triangolo' : 'Pentagono';
+  if (strumento === 'tri') {
     const n = bozza?.tipo === 'poli' ? bozza.punti.length : 0;
-    return `${nome} a ${lati} lati (${n}/${lati}): tocca i vertici in ordine`;
+    return `Triangolo a 3 lati (${n}/3): tocca i vertici in ordine`;
+  }
+  if (strumento === 'polilinea') {
+    const n = bozza?.tipo === 'poli' ? bozza.punti.length : 0;
+    if (n === 0) return 'Polilinea: tocca il primo vertice';
+    if (n < 3) return `Polilinea (${n} vertici): continua a toccare i vertici`;
+    return `Polilinea (${n} vertici): tocca ancora, o tocca il PRIMO vertice per chiudere`;
   }
   if (strumento === 'cerchio3p') {
     const n = bozza?.tipo === 'cerchio3p' ? bozza.punti.length : 0;
@@ -1209,14 +1222,8 @@ function AnnotazioneShape({
         }
         c.restore();
       }}
-      onClick={() => {
-        onSeleziona();
-        onModifica();
-      }}
-      onTap={() => {
-        onSeleziona();
-        onModifica();
-      }}
+      onClick={() => (selezionata ? onModifica() : onSeleziona())}
+      onTap={() => (selezionata ? onModifica() : onSeleziona())}
       onDragStart={onSeleziona}
       onDragEnd={(e) => {
         const dx = e.target.x();
