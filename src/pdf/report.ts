@@ -365,6 +365,7 @@ function sezioneFoto(
     out.push({
       table: {
         headerRows: 1,
+        dontBreakRows: true,
         widths: [22, 'auto', '*', 'auto'],
         body: [
           [
@@ -454,6 +455,7 @@ function tabellaRiassuntiva(
     {
       table: {
         headerRows: 1,
+        dontBreakRows: true,
         widths: [28, 'auto', 'auto', '*', 'auto'],
         body: [
           [
