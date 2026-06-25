@@ -40,7 +40,7 @@ import {
   misureRettangolo,
   valoreAutomatico
 } from '../geometry/calibrazione';
-import { nomeFormaPoligono } from '../geometry/primitive';
+import { nomeFormaPoligono, simboliPoligono } from '../geometry/primitive';
 import { omografiaPiano } from '../geometry/omografia';
 import { lunghezzaPxQuota } from '../geometry/punti';
 import { RicercaBordi } from '../geometry/bordi';
@@ -1820,10 +1820,9 @@ function ProprietaPoligono({
   }
   const diagonaliPresenti = segs.some((s) => !segmentoELato(s, n));
 
+  const simboli = simboliPoligono(poli);
   const valSeg = (s: SegmentoQuota) =>
     s.valore === null ? '?' : `${formattaNumero(s.valore)} ${poli.unita}`;
-  const nomeSeg = (s: SegmentoQuota, i: number) =>
-    segmentoELato(s, n) ? `Lato ${i + 1}` : 'Diag';
 
   const aggiungiSegmento = (da: number, a: number) => {
     const valore = calibrata ? misuraSegmento(poli.punti[da], poli.punti[a], foto, poli.unita) : null;
@@ -1851,7 +1850,7 @@ function ProprietaPoligono({
           onClick={() => onModificaSegmento(i)}
           title="Modifica questa quota"
         >
-          {nomeSeg(s, i)}: {valSeg(s)} ✎
+          {simboli[i]} {valSeg(s)} ✎
         </button>
       ))}
       {latiMancanti.length > 0 && (

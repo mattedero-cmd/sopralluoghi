@@ -290,6 +290,12 @@ export interface SegmentoQuota {
   a: number;
   /** valore reale della misura; null = ancora da definire (mostra "?") */
   valore: number | null;
+  /**
+   * Nome geometrico della quota (es. "B" base maggiore, "b" base minore,
+   * "H"/"h" altezza, "C"/"c" cateto, "ip" ipotenusa, "D" diagonale…). Se
+   * assente viene dedotto automaticamente dalla forma.
+   */
+  simbolo?: string;
   /** proiezione (offset) della linea di quota; 0 = sul segmento */
   offset?: number;
   /** posizione del testo rispetto alla linea */

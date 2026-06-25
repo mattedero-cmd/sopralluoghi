@@ -3,12 +3,12 @@ import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { db } from '../db/db';
 import type { Annotazione, Foto, Progetto, Quota, StatoMisura } from '../db/types';
 import { segmentiPoligono } from '../db/types';
-import { nomeFormaPoligono } from '../geometry/primitive';
+import { nomeFormaPoligono, simboliPoligono } from '../geometry/primitive';
 import { leggiImpostazioni } from '../db/repository';
 import { renderFotoAnnotata } from '../render/renderAnnotata';
 import { caricaImmagine, fotoIllegibile } from '../utils/image';
 import { calcolaCatene, sommaCatenaInUnita } from '../geometry/catene';
-import { misureElemento, perimetroPoligono } from '../geometry/calibrazione';
+import { misureElemento, perimetroReale } from '../geometry/calibrazione';
 import { formattaData, formattaDataOra, formattaMisura, formattaNumero } from '../utils/format';
 
 const GRIGIO = '#555555';
@@ -181,12 +181,16 @@ function righeMisureFoto(annotazioni: Annotazione[]): RigaMisura[] {
         stato: a.stato
       });
     } else if (a.tipo === 'quotaRaggio') {
-      const prefisso = a.modo === 'diametro' ? '⌀ ' : 'R ';
-      righe.push({
-        tipo: a.modo === 'diametro' ? 'Diametro' : 'Raggio',
-        misura: a.valore === null ? '—' : `${prefisso}${formattaMisura(a.valore, a.unita)}`,
-        stato: a.stato
-      });
+      // cerchio: D (diametro) o r (raggio) + circonferenza calcolata
+      const diam = a.modo === 'diametro' ? a.valore : a.valore === null ? null : a.valore * 2;
+      const ragg = a.modo === 'diametro' ? (a.valore === null ? null : a.valore / 2) : a.valore;
+      const f = (v: number | null) => (v === null ? '?' : formattaNumero(v));
+      const circ = diam === null ? null : Math.round(Math.PI * diam * 10) / 10;
+      const misura =
+        circ === null
+          ? `D ${f(diam)} / r ${f(ragg)} ${a.unita}`
+          : `D ${f(diam)} / r ${f(ragg)}, circonf. ${formattaNumero(circ)} ${a.unita}`;
+      righe.push({ tipo: 'Cerchio', misura, stato: a.stato });
     } else if (a.tipo === 'quotaRett') {
       // un elemento unico, classificato per forma (rettangolo/trapezio/
       // quadrilatero) e nomenclaturato: una sola voce, mai misure scollegate
@@ -210,16 +214,16 @@ function righeMisureFoto(annotazioni: Annotazione[]): RigaMisura[] {
       }
       righe.push({ tipo: prefisso, misura, stato: a.stato });
     } else if (a.tipo === 'quotaPoligono') {
-      // elemento poligonale (rettangolo/trapezio/rombo/triangolo/pentagono…):
-      // una sola voce, classificata in base ai segmenti quotati
+      // elemento poligonale, con nomenclatura geometrica (B/b/H/h, ip/C/c, …)
       const nome = nomeFormaPoligono(a);
       const prefisso = a.etichetta ? `${nome} ${a.etichetta}` : nome;
       const n = (v: number | null) => (v === null ? '?' : formattaNumero(v));
-      const valori = segmentiPoligono(a).map((s) => n(s.valore));
-      const lati = `${valori.join(' / ')} ${a.unita}`;
-      const perimetro = perimetroPoligono(a);
+      const simboli = simboliPoligono(a);
+      const parti = segmentiPoligono(a).map((s, i) => `${simboli[i]} ${n(s.valore)}`);
+      const quote = `${parti.join(', ')} ${a.unita}`;
+      const perimetro = perimetroReale(a);
       const misura =
-        perimetro !== null ? `${lati} (perim. ${formattaNumero(perimetro)} ${a.unita})` : lati;
+        perimetro !== null ? `${quote} — perim. ${formattaNumero(perimetro)} ${a.unita}` : quote;
       righe.push({ tipo: prefisso, misura, stato: a.stato });
     }
   }

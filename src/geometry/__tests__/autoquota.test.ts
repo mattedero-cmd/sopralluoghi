@@ -7,9 +7,11 @@ import {
   misureElemento,
   misurePoligono,
   nomePoligono,
-  perimetroPoligono
+  perimetroPoligono,
+  perimetroReale
 } from '../calibrazione';
 import {
+  simboliPoligono,
   primitiveQuota,
   primitiveQuotaPoligono,
   primitiveQuotaRettangolo,
@@ -612,6 +614,45 @@ describe('poligono unico: classificazione per segmenti quotati', () => {
     const linee = prim.filter((p) => p.kind === 'linea').length;
     // contorno (polilinea) + 2 quote sui lati a offset 0 → 2 linee di quota
     expect(linee).toBe(2);
+  });
+
+  it('nomenclatura: rettangolo → b/h', () => {
+    expect(simboliPoligono(poli([{ da: 0, a: 1, valore: 200 }, { da: 0, a: 3, valore: 100 }]))).toEqual([
+      'b',
+      'h'
+    ]);
+  });
+
+  it('perimetro REALE di un rettangolo = 2·(b+h), non b+h', () => {
+    const r = poli([{ da: 0, a: 1, valore: 200 }, { da: 0, a: 3, valore: 100 }]);
+    expect(perimetroReale(r)).toBeCloseTo(600); // 2·(200+100)
+    // il vecchio perimetroPoligono sommava solo i lati quotati (errato)
+    expect(perimetroPoligono(r)).toBeCloseTo(300);
+  });
+
+  it('nomenclatura triangolo: il lato più lungo è l’ipotenusa', () => {
+    const tri: QuotaPoligono = {
+      id: 't1',
+      fotoId: 'f1',
+      tipo: 'quotaPoligono',
+      punti: [
+        { x: 0, y: 0 },
+        { x: 300, y: 0 },
+        { x: 0, y: 400 }
+      ],
+      segmenti: [
+        { da: 0, a: 1, valore: 150 },
+        { da: 1, a: 2, valore: 250 },
+        { da: 2, a: 0, valore: 200 }
+      ],
+      unita: 'cm',
+      stato: 'reale',
+      zIndex: 1,
+      stile
+    };
+    const simb = simboliPoligono(tri);
+    // lato 1→2 è il più lungo (250) → ipotenusa
+    expect(simb[1]).toBe('ip');
   });
 });
 

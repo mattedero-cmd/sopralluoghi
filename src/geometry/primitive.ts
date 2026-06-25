@@ -472,6 +472,74 @@ export function nomeFormaPoligono(q: QuotaPoligono): string {
   return nomePoligono(n);
 }
 
+/**
+ * Nome geometrico di ciascun segmento quotato, adatto al report:
+ * rettangolo → b/h; trapezio → B (base maggiore)/b (minore)/H/h; triangolo →
+ * ip (ipotenusa)/C/c; rombo → D/d (diagonali) + l (lati). Un `simbolo`
+ * impostato a mano sul segmento prevale sempre.
+ */
+export function simboliPoligono(q: QuotaPoligono): string[] {
+  const segs = segmentiPoligono(q);
+  const n = q.punti.length;
+  const forma = nomeFormaPoligono(q);
+  const info = segs.map((s, i) => {
+    const a = q.punti[s.da];
+    const b = q.punti[s.a];
+    const dx = b ? b.x - a.x : 0;
+    const dy = b ? b.y - a.y : 0;
+    return {
+      i,
+      px: Math.hypot(dx, dy),
+      ang: ((Math.atan2(dy, dx) % Math.PI) + Math.PI) % Math.PI,
+      orizz: Math.abs(dx) >= Math.abs(dy),
+      lato: segmentoELato(s, n)
+    };
+  });
+  const taglia = (i: number) => segs[i].valore ?? info[i].px;
+  const out: string[] = segs.map(() => '');
+
+  if (forma === 'Rettangolo') {
+    info.forEach((x) => (out[x.i] = x.orizz ? 'b' : 'h'));
+  } else if (forma === 'Triangolo') {
+    [...info]
+      .sort((p, r) => taglia(r.i) - taglia(p.i))
+      .forEach((x, k) => (out[x.i] = k === 0 ? 'ip' : k === 1 ? 'C' : 'c'));
+  } else if (forma === 'Rombo') {
+    [...info.filter((x) => !x.lato)]
+      .sort((p, r) => taglia(r.i) - taglia(p.i))
+      .forEach((x, k) => (out[x.i] = k === 0 ? 'D' : 'd'));
+    info.filter((x) => x.lato).forEach((x) => (out[x.i] = 'l'));
+  } else if (forma === 'Trapezio' || forma === 'Quadrilatero') {
+    const lati = info.filter((x) => x.lato);
+    // coppia di lati più paralleli = le basi
+    let coppia: [number, number] | null = null;
+    let diff = Infinity;
+    for (let i = 0; i < lati.length; i++) {
+      for (let j = i + 1; j < lati.length; j++) {
+        let d = Math.abs(lati[i].ang - lati[j].ang);
+        d = Math.min(d, Math.PI - d);
+        if (d < diff) {
+          diff = d;
+          coppia = [lati[i].i, lati[j].i];
+        }
+      }
+    }
+    if (coppia && diff < 0.3) {
+      const [g, p] = taglia(coppia[0]) >= taglia(coppia[1]) ? coppia : [coppia[1], coppia[0]];
+      out[g] = 'B';
+      out[p] = 'b';
+    }
+    const altre = ['H', 'h', 'H₂', 'h₂'];
+    let k = 0;
+    for (const x of lati) if (!out[x.i]) out[x.i] = altre[k++] ?? `l${k}`;
+    let d = 0;
+    for (const x of info) if (!x.lato && !out[x.i]) out[x.i] = d++ === 0 ? 'D' : 'd';
+  } else {
+    info.forEach((x, k) => (out[x.i] = `L${k + 1}`));
+  }
+  return out.map((s, i) => segs[i].simbolo || s || `L${i + 1}`);
+}
+
 export function etichettaPoligono(q: QuotaPoligono): string {
   const nome = nomeFormaPoligono(q);
   const valori = segmentiPoligono(q).map((s) => (s.valore === null ? '?' : formattaNumero(s.valore)));

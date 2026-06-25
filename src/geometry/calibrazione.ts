@@ -286,6 +286,58 @@ export function misurePoligono(
   });
 }
 
+/**
+ * Perimetro REALE del poligono: somma di TUTTI i lati della forma, non solo
+ * quelli quotati. I lati senza quota vengono ricavati dalla geometria
+ * (rapporto in pixel dal lato quotato più parallelo), così un rettangolo con
+ * sole base e altezza dà 2·(b+h) e non b+h. Le diagonali non contano.
+ */
+export function perimetroReale(q: QuotaPoligono): number | null {
+  const n = q.punti.length;
+  if (n < 3) return null;
+  const segs = segmentiPoligono(q);
+  type Lato = { px: number; ang: number; val: number | null };
+  const lati: Lato[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = q.punti[i];
+    const b = q.punti[(i + 1) % n];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const s = segs.find(
+      (g) =>
+        segmentoELato(g, n) &&
+        ((g.da === i && g.a === (i + 1) % n) || (g.da === (i + 1) % n && g.a === i))
+    );
+    lati.push({
+      px: Math.hypot(dx, dy),
+      ang: ((Math.atan2(dy, dx) % Math.PI) + Math.PI) % Math.PI,
+      val: s ? s.valore : null
+    });
+  }
+  const quotati = lati.filter((l) => l.val !== null);
+  if (quotati.length === 0) return null;
+  let tot = 0;
+  for (const l of lati) {
+    if (l.val !== null) {
+      tot += l.val;
+      continue;
+    }
+    // lato non quotato: lo si ricava dal lato quotato più parallelo
+    let ref = quotati[0];
+    let best = Infinity;
+    for (const r of quotati) {
+      let d = Math.abs(l.ang - r.ang);
+      d = Math.min(d, Math.PI - d);
+      if (d < best) {
+        best = d;
+        ref = r;
+      }
+    }
+    tot += ref.px > 0 ? (ref.val as number) * (l.px / ref.px) : (ref.val as number);
+  }
+  return arrotondaMisura(tot);
+}
+
 /** Perimetro reale del poligono (somma dei LATI quotati noti); null se nessuno */
 export function perimetroPoligono(q: QuotaPoligono): number | null {
   const n = q.punti.length;
