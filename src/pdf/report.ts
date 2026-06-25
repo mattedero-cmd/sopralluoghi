@@ -1,7 +1,7 @@
 import { pdfMake } from './engine';
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { db } from '../db/db';
-import type { Annotazione, Foto, Progetto, Quota, StatoMisura } from '../db/types';
+import type { Annotazione, Foto, Progetto, Punto, Quota, StatoMisura } from '../db/types';
 import { abbondanzaTotale, segmentiPoligono } from '../db/types';
 import { nomeFormaPoligono, simboliPoligono, versiSegmento } from '../geometry/primitive';
 import { leggiImpostazioni } from '../db/repository';
@@ -12,11 +12,27 @@ import { misureElemento, perimetroReale } from '../geometry/calibrazione';
 import { formattaData, formattaDataOra, formattaMisura, formattaNumero } from '../utils/format';
 
 const GRIGIO = '#555555';
+const GRIGIO_CHIARO = '#888888';
 const ROSSO_REALE = '#c0392b';
 const ARANCIO_STIMATA = '#b9770e';
+const VERDE_TAGLIO = '#1e7d4f';
+const BLU_FORMA = '#1a4f8b';
 
 /** Lato massimo delle immagini incorporate nel PDF (peso file contenuto) */
 const LATO_MAX_PDF = 1600;
+
+/** Layout tabella riepilogo: righe spaziate, zebra leggera, niente bordi verticali */
+const righeRiepilogo = {
+  hLineWidth: (i: number, node: { table: { body: unknown[] } }) =>
+    i === 0 || i === 1 || i === node.table.body.length ? 0.8 : 0.4,
+  vLineWidth: () => 0,
+  hLineColor: (i: number) => (i <= 1 ? '#c9d4e3' : '#e6e6e6'),
+  paddingTop: () => 7,
+  paddingBottom: () => 7,
+  paddingLeft: () => 8,
+  paddingRight: () => 8,
+  fillColor: (rowIndex: number) => (rowIndex === 0 ? null : rowIndex % 2 === 0 ? '#f6f8fb' : null)
+};
 
 /** Opzioni di esportazione, scelte al momento della generazione */
 export interface OpzioniReport {
@@ -143,6 +159,8 @@ export async function generaReportPdf(
       corpo: { fontSize: 11, lineHeight: 1.25, margin: [0, 4, 0, 10] },
       th: { fontSize: 9, bold: true, color: '#ffffff', fillColor: BLU },
       td: { fontSize: 10 },
+      tdNum: { fontSize: 11, bold: true, color: GRIGIO_CHIARO, alignment: 'center' },
+      tdForma: { fontSize: 11, bold: true, color: BLU_FORMA },
       pie: { fontSize: 9, color: GRIGIO }
     },
     defaultStyle: { fontSize: 11 }
@@ -159,94 +177,141 @@ export async function generaReportPdf(
 }
 
 interface RigaMisura {
-  tipo: string;
-  misura: string;
+  /** nome della forma/quota (es. "Rettangolo 1", "Cerchio", "Lineare orizz.") */
+  forma: string;
+  /** misure reali rilevate (es. "b 200 · h 100 cm") */
+  reale: string;
+  /** misure per il taglio (con abbondanze), se presenti */
+  taglio?: string;
+  /** dettaglio abbondanze: dove e quanto (es. "h: +2 sopra, +1 sotto") */
+  abbondanze?: string;
+  /** perimetro reale (ed eventualmente abbondato) */
+  perimetro?: string;
   stato: StatoMisura;
 }
 
-/** Tutte le misure di una foto (lineari, angolari, raggi) per le tabelle */
+/** descrizione "dove e quanto" delle abbondanze ai due estremi di un segmento */
+function dettaglioAbb(
+  simbolo: string,
+  abbInizio: number | undefined,
+  abbFine: number | undefined,
+  p1: Punto,
+  p2: Punto
+): string {
+  const [vA, vB] = versiSegmento(p1, p2);
+  const parti = [
+    abbInizio ? `+${formattaNumero(abbInizio)} ${vA}` : '',
+    abbFine ? `+${formattaNumero(abbFine)} ${vB}` : ''
+  ].filter(Boolean);
+  return parti.length ? `${simbolo}: ${parti.join(', ')}` : '';
+}
+
+/** Tutte le misure di una foto in forma STRUTTURATA per il riepilogo */
 function righeMisureFoto(annotazioni: Annotazione[]): RigaMisura[] {
   const righe: RigaMisura[] = [];
   for (const a of [...annotazioni].sort((x, y) => x.zIndex - y.zIndex)) {
     if (a.tipo === 'quota') {
-      righe.push({
-        tipo: descrizioneSottotipo(a.sottotipo),
-        misura: formattaMisura(a.valore, a.unita),
-        stato: a.stato
-      });
+      const abb = abbondanzaTotale(a);
+      const reale = formattaMisura(a.valore, a.unita);
+      const riga: RigaMisura = { forma: descrizioneSottotipo(a.sottotipo), reale, stato: a.stato };
+      if (abb > 0 && a.valore !== null) {
+        riga.taglio = formattaMisura(a.valore + abb, a.unita);
+        riga.abbondanze = dettaglioAbb('misura', a.abbInizio, a.abbFine, a.p1, a.p2);
+      }
+      righe.push(riga);
     } else if (a.tipo === 'quotaAngolo') {
       righe.push({
-        tipo: 'Angolare',
-        misura: a.valore === null ? '—' : `${formattaNumero(a.valore)}°`,
+        forma: 'Angolo',
+        reale: a.valore === null ? '—' : `${formattaNumero(a.valore)}°`,
         stato: a.stato
       });
     } else if (a.tipo === 'quotaRaggio') {
-      // cerchio: D (diametro) o r (raggio) + circonferenza calcolata
       const diam = a.modo === 'diametro' ? a.valore : a.valore === null ? null : a.valore * 2;
       const ragg = a.modo === 'diametro' ? (a.valore === null ? null : a.valore / 2) : a.valore;
       const f = (v: number | null) => (v === null ? '?' : formattaNumero(v));
       const circ = diam === null ? null : Math.round(Math.PI * diam * 10) / 10;
-      const misura =
-        circ === null
-          ? `D ${f(diam)} / r ${f(ragg)} ${a.unita}`
-          : `D ${f(diam)} / r ${f(ragg)}, circonf. ${formattaNumero(circ)} ${a.unita}`;
-      righe.push({ tipo: 'Cerchio', misura, stato: a.stato });
+      righe.push({
+        forma: 'Cerchio',
+        reale: `D ${f(diam)} · r ${f(ragg)} ${a.unita}`,
+        perimetro: circ === null ? undefined : `circonf. ${formattaNumero(circ)} ${a.unita}`,
+        stato: a.stato
+      });
     } else if (a.tipo === 'quotaRett') {
-      // un elemento unico, classificato per forma (rettangolo/trapezio/
-      // quadrilatero) e nomenclaturato: una sola voce, mai misure scollegate
       const m = misureElemento(a);
       const n = (v: number | null) => (v === null ? '?' : formattaNumero(v));
       const nome =
         m.forma === 'rettangolo' ? 'Rettangolo' : m.forma === 'trapezio' ? 'Trapezio' : 'Quadrilatero';
-      const prefisso = a.etichetta ? `${nome} ${a.etichetta}` : nome;
-      let misura: string;
-      if (m.forma === 'rettangolo') {
-        misura = `${n(m.baseSup)} × ${n(m.latoSx)} ${a.unita}`;
-      } else if (m.forma === 'trapezio') {
-        // riporta le due basi (lati paralleli) e l'altezza del lato che differisce
-        const basiOrizz = n(m.baseSup) !== n(m.baseInf);
-        misura = basiOrizz
-          ? `basi ${n(m.baseSup)} / ${n(m.baseInf)}, h ${n(m.latoSx)} ${a.unita}`
-          : `base ${n(m.baseSup)}, lati ${n(m.latoSx)} / ${n(m.latoDx)} ${a.unita}`;
-      } else {
-        // quadrilatero generico: tutti e quattro i lati (sup, dx, inf, sx)
-        misura = `lati ${n(m.baseSup)} / ${n(m.latoDx)} / ${n(m.baseInf)} / ${n(m.latoSx)} ${a.unita}`;
-      }
-      righe.push({ tipo: prefisso, misura, stato: a.stato });
+      let reale: string;
+      if (m.forma === 'rettangolo') reale = `b ${n(m.baseSup)} · h ${n(m.latoSx)} ${a.unita}`;
+      else if (m.forma === 'trapezio')
+        reale = `B ${n(m.baseSup)} · b ${n(m.baseInf)} · h ${n(m.latoSx)} ${a.unita}`;
+      else reale = `${n(m.baseSup)} · ${n(m.latoDx)} · ${n(m.baseInf)} · ${n(m.latoSx)} ${a.unita}`;
+      righe.push({ forma: a.etichetta ? `${nome} ${a.etichetta}` : nome, reale, stato: a.stato });
     } else if (a.tipo === 'quotaPoligono') {
-      // elemento poligonale, con nomenclatura geometrica (B/b/H/h, ip/C/c, …)
       const nome = nomeFormaPoligono(a);
-      const prefisso = a.etichetta ? `${nome} ${a.etichetta}` : nome;
       const n = (v: number | null) => (v === null ? '?' : formattaNumero(v));
       const simboli = simboliPoligono(a);
       const segs = segmentiPoligono(a);
-      // misure reali, con eventuale misura abbondata (per il taglio)
-      const parti = segs.map((s, i) => {
-        const abb = abbondanzaTotale(s);
-        if (abb > 0 && s.valore !== null) {
-          const [vA, vB] = versiSegmento(a.punti[s.da], a.punti[s.a]);
-          const dove = [
-            s.abbInizio ? `+${formattaNumero(s.abbInizio)} ${vA}` : '',
-            s.abbFine ? `+${formattaNumero(s.abbFine)} ${vB}` : ''
-          ]
-            .filter(Boolean)
-            .join(', ');
-          return `${simboli[i]} ${n(s.valore)} → taglio ${formattaNumero(s.valore + abb)} (${dove})`;
-        }
-        return `${simboli[i]} ${n(s.valore)}`;
-      });
-      const quote = `${parti.join('; ')} ${a.unita}`;
-      const perimetro = perimetroReale(a);
+      const reale = `${segs.map((s, i) => `${simboli[i]} ${n(s.valore)}`).join(' · ')} ${a.unita}`;
       const abbTot = segs.reduce((s, g) => s + abbondanzaTotale(g), 0);
-      let coda = '';
-      if (perimetro !== null) {
-        coda = ` — perim. reale ${formattaNumero(perimetro)} ${a.unita}`;
-        if (abbTot > 0) coda += `, abbondato ${formattaNumero(perimetro + abbTot)} ${a.unita}`;
+      const riga: RigaMisura = { forma: a.etichetta ? `${nome} ${a.etichetta}` : nome, reale, stato: a.stato };
+      if (abbTot > 0) {
+        riga.taglio = `${segs
+          .map((s, i) => `${simboli[i]} ${s.valore === null ? '?' : formattaNumero(s.valore + abbondanzaTotale(s))}`)
+          .join(' · ')} ${a.unita}`;
+        riga.abbondanze = segs
+          .map((s, i) => dettaglioAbb(simboli[i], s.abbInizio, s.abbFine, a.punti[s.da], a.punti[s.a]))
+          .filter(Boolean)
+          .join('   ');
       }
-      righe.push({ tipo: prefisso, misura: quote + coda, stato: a.stato });
+      const perimetro = perimetroReale(a);
+      if (perimetro !== null) {
+        riga.perimetro =
+          abbTot > 0
+            ? `perim. ${formattaNumero(perimetro)} · taglio ${formattaNumero(perimetro + abbTot)} ${a.unita}`
+            : `perim. ${formattaNumero(perimetro)} ${a.unita}`;
+      }
+      righe.push(riga);
     }
   }
   return righe;
+}
+
+/** Cella "dettaglio" del riepilogo: misure su righe separate, con gerarchia */
+function cellaDettaglio(m: RigaMisura): Content {
+  const linee: Content[] = [{ text: m.reale, bold: true, fontSize: 10.5, color: '#1a1a1a' }];
+  if (m.taglio) {
+    linee.push({
+      text: [
+        { text: 'Taglio  ', color: GRIGIO_CHIARO, fontSize: 8 },
+        { text: m.taglio, color: VERDE_TAGLIO, bold: true, fontSize: 9.5 }
+      ],
+      margin: [0, 1, 0, 0]
+    });
+  }
+  if (m.abbondanze) {
+    linee.push({
+      text: [
+        { text: 'Abbondanze  ', color: GRIGIO_CHIARO, fontSize: 8 },
+        { text: m.abbondanze, color: GRIGIO, fontSize: 8.5 }
+      ]
+    });
+  }
+  if (m.perimetro) {
+    linee.push({ text: m.perimetro, color: GRIGIO, fontSize: 8.5, italics: true });
+  }
+  return { stack: linee };
+}
+
+/** Cella "stato" del riepilogo: pallino colorato + etichetta */
+function cellaStato(stato: StatoMisura): Content {
+  const reale = stato === 'reale';
+  return {
+    text: reale ? '● Reale' : '◐ Stimata',
+    color: reale ? ROSSO_REALE : ARANCIO_STIMATA,
+    bold: true,
+    fontSize: 9
+  };
 }
 
 function sezioneFoto(
@@ -292,31 +357,26 @@ function sezioneFoto(
 
   if (opzioni.includiTabellaMisure && misure.length > 0) {
     const corpoTabella = misure.map((m, i) => [
-      { text: String(i + 1), style: 'td' },
-      { text: m.tipo, style: 'td' },
-      { text: m.misura, style: 'td', bold: true },
-      {
-        text: m.stato === 'reale' ? 'Reale' : 'Stimata',
-        style: 'td',
-        color: m.stato === 'reale' ? ROSSO_REALE : ARANCIO_STIMATA,
-        bold: true
-      }
+      { text: String(i + 1), style: 'tdNum' },
+      { text: m.forma, style: 'tdForma' },
+      cellaDettaglio(m),
+      cellaStato(m.stato)
     ]);
     out.push({
       table: {
         headerRows: 1,
-        widths: ['auto', '*', 'auto', 'auto'],
+        widths: [22, 'auto', '*', 'auto'],
         body: [
           [
             { text: 'N.', style: 'th' },
-            { text: 'Tipo di quota', style: 'th' },
-            { text: 'Misura', style: 'th' },
+            { text: 'Elemento', style: 'th' },
+            { text: 'Misure', style: 'th' },
             { text: 'Stato', style: 'th' }
           ],
           ...corpoTabella
         ]
       },
-      layout: 'lightHorizontalLines',
+      layout: righeRiepilogo,
       margin: [0, 10, 0, 4]
     });
   }
@@ -353,32 +413,31 @@ function tabellaRiassuntiva(
   fotoList: Foto[],
   annotazioniPerFoto: Map<string, Annotazione[]>
 ): Content[] {
-  const righe: unknown[][] = [];
+  const righe: Content[][] = [];
   fotoList.forEach((f, indice) => {
     const misure = righeMisureFoto(annotazioniPerFoto.get(f.id) ?? []);
     misure.forEach((m, i) => {
       righe.push([
-        { text: `${indice + 1}.${i + 1}`, style: 'td' },
-        { text: f.didascalia || `Foto ${indice + 1}`, style: 'td' },
-        { text: m.tipo, style: 'td' },
-        { text: m.misura, style: 'td', bold: true },
-        {
-          text: m.stato === 'reale' ? 'Reale' : 'Stimata',
-          style: 'td',
-          color: m.stato === 'reale' ? ROSSO_REALE : ARANCIO_STIMATA,
-          bold: true
-        }
+        { text: `${indice + 1}.${i + 1}`, style: 'tdNum' },
+        { text: f.didascalia || `Foto ${indice + 1}`, fontSize: 8.5, color: GRIGIO_CHIARO },
+        { text: m.forma, style: 'tdForma' },
+        cellaDettaglio(m),
+        cellaStato(m.stato)
       ]);
     });
     for (const c of calcolaCatene(annotazioniPerFoto.get(f.id) ?? [])) {
       const sommaU = sommaCatenaInUnita(c);
       if (sommaU !== null) {
         righe.push([
-          { text: '', style: 'td' },
-          { text: f.didascalia || `Foto ${indice + 1}`, style: 'td' },
-          { text: `Totale catena (${c.quote.length} quote)`, style: 'td', italics: true },
-          { text: `${formattaNumero(sommaU)} ${c.unita}`, style: 'td', bold: true },
-          { text: c.completa ? '' : 'parziale', style: 'td' }
+          { text: '', style: 'tdNum' },
+          { text: f.didascalia || `Foto ${indice + 1}`, fontSize: 8.5, color: GRIGIO_CHIARO },
+          { text: `Catena (${c.quote.length})`, style: 'tdForma', italics: true },
+          {
+            text: `${formattaNumero(sommaU)} ${c.unita}${c.completa ? '' : ' (parziale)'}`,
+            bold: true,
+            fontSize: 10.5
+          },
+          { text: '', style: 'td' }
         ]);
       }
     }
@@ -395,19 +454,19 @@ function tabellaRiassuntiva(
     {
       table: {
         headerRows: 1,
-        widths: ['auto', '*', 'auto', 'auto', 'auto'],
+        widths: [28, 'auto', 'auto', '*', 'auto'],
         body: [
           [
             { text: 'Rif.', style: 'th' },
             { text: 'Foto', style: 'th' },
-            { text: 'Tipo', style: 'th' },
-            { text: 'Misura', style: 'th' },
+            { text: 'Elemento', style: 'th' },
+            { text: 'Misure', style: 'th' },
             { text: 'Stato', style: 'th' }
           ],
-          ...(righe as never[])
+          ...righe
         ]
       },
-      layout: 'lightHorizontalLines'
+      layout: righeRiepilogo
     }
   ];
 }
