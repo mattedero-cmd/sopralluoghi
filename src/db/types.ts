@@ -207,6 +207,8 @@ export interface Quota extends AnnotazioneBase {
   valoreAuto?: boolean;
   unita: Unita;
   posizioneTesto: PosizioneTesto;
+  /** Testo aggiuntivo opzionale, mostrato sotto la misura (es. "luce netta") */
+  nota?: string;
   stato: StatoMisura;
 }
 

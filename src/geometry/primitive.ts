@@ -141,9 +141,11 @@ export function coloreQuota(q: Pick<Quota, 'stato' | 'stile'>): string {
   return q.stile.colore || COLORE_QUOTA;
 }
 
-export function etichettaQuota(q: Pick<Quota, 'valore' | 'unita' | 'stato'>): string {
-  const base = q.valore === null ? '?' : formattaMisura(q.valore, q.unita);
-  return q.stato === 'stimata' ? `≈ ${base}` : base;
+export function etichettaQuota(q: Pick<Quota, 'valore' | 'unita' | 'stato' | 'nota'>): string {
+  const misura = q.valore === null ? '?' : formattaMisura(q.valore, q.unita);
+  const base = q.stato === 'stimata' ? `≈ ${misura}` : misura;
+  // il testo aggiuntivo va su una seconda riga sotto la misura
+  return q.nota && q.nota.trim() ? `${base}\n${q.nota.trim()}` : base;
 }
 
 export function primitiveQuota(q: Quota): Primitiva[] {

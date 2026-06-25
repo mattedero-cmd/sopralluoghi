@@ -14,6 +14,7 @@ import {
   primitiveQuotaPoligono,
   primitiveQuotaRettangolo,
   etichettaPoligono,
+  etichettaQuota,
   coloreQuota
 } from '../primitive';
 import type { Punto, Quota, QuotaPoligono, QuotaRettangolo } from '../../db/types';
@@ -422,6 +423,14 @@ describe('stile uniforme delle quote (manuale = automatica)', () => {
     zIndex: 1,
     stile
   };
+
+  it('etichettaQuota: il testo aggiuntivo va su una seconda riga', () => {
+    const conNota = etichettaQuota({ valore: 100, unita: 'cm', stato: 'reale', nota: 'luce netta' });
+    expect(conNota).toContain('\n');
+    expect(conNota.endsWith('luce netta')).toBe(true);
+    const senza = etichettaQuota({ valore: 100, unita: 'cm', stato: 'reale' });
+    expect(senza).not.toContain('\n');
+  });
 
   it('coloreQuota: stesso colore per reale e stimata (nessuna differenza)', () => {
     const reale = coloreQuota({ stato: 'reale', stile });

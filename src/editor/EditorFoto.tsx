@@ -39,7 +39,7 @@ import { lunghezzaPxQuota } from '../geometry/punti';
 import { RicercaBordi } from '../geometry/bordi';
 import { rilevaQuad4, type EsitoQuad4 } from '../geometry/quad4';
 import { distanza } from '../geometry/punti';
-import { etichettaRettangolo } from '../geometry/primitive';
+import { etichettaRettangolo, primitiveQuota } from '../geometry/primitive';
 import {
   aInputDataOra,
   analizzaMisura,
@@ -47,7 +47,7 @@ import {
   formattaNumero
 } from '../utils/format';
 import { condividiOScarica, nomeFileSicuro } from '../utils/share';
-import { renderFotoAnnotata } from '../render/renderAnnotata';
+import { renderFotoAnnotata, disegnaPrimitiva } from '../render/renderAnnotata';
 import { avviaDettatura, dettaturaDisponibile } from '../utils/dettatura';
 
 const COLORI = [COLORE_QUOTA, '#ff3b30', '#34c759', '#007aff', '#ffffff', '#111111'];
@@ -153,6 +153,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [schedaOpzioni, setSchedaOpzioni] = useState(false);
   /** gruppo strumenti con il pannello aperto (null = chiuso) */
   const [menuAperto, setMenuAperto] = useState<string | null>(null);
+  /** id della quota lineare aperta nell'ambiente di modifica dedicato */
+  const [quotaInModifica, setQuotaInModifica] = useState<string | null>(null);
   const [testoInModifica, setTestoInModifica] = useState<string | null>(null);
   const [schedaScala, setSchedaScala] = useState<{ px: number } | null>(null);
   const [schedaPiano, setSchedaPiano] = useState<{ punti: [Punto, Punto, Punto, Punto] } | null>(null);
@@ -324,8 +326,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     commit([...annotazioni, q]);
     setSelezioneId(q.id);
     setStrumento('seleziona');
-    // focus sul campo misura: l'inserimento del valore è il passo successivo
-    if (q.valore === null) setTimeout(() => inputValore.current?.focus(), 60);
+    // si apre subito l'ambiente di modifica dedicato alla quota
+    setQuotaInModifica(q.id);
   };
 
   const creaRettangolo = (rect: Rettangolo) => {
@@ -781,6 +783,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             onModifica={aggiornaSelezionata}
             onElimina={eliminaSelezionata}
             onModificaTesto={() => setTestoInModifica(selezionata.id)}
+            onModificaQuota={() => setQuotaInModifica(selezionata.id)}
             onCalibraDaQuota={(q) => void calibraDaQuota(q)}
           />
         )
@@ -981,6 +984,223 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           }}
         />
       )}
+      {quotaInModifica &&
+        (() => {
+          const q = annotazioni.find((a) => a.id === quotaInModifica && a.tipo === 'quota') as
+            | Quota
+            | undefined;
+          if (!q) return null;
+          return (
+            <EditorQuota
+              quota={q}
+              immagine={immagine}
+              onChiudi={() => setQuotaInModifica(null)}
+              onElimina={() => {
+                commit(annotazioni.filter((a) => a.id !== q.id));
+                setSelezioneId(null);
+                setQuotaInModifica(null);
+              }}
+              onSalva={(nuova) => {
+                commit(annotazioni.map((a) => (a.id === nuova.id ? nuova : a)));
+                setQuotaInModifica(null);
+              }}
+            />
+          );
+        })()}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Ambiente di modifica DEDICATO alla singola quota lineare: la foto resta
+// sullo sfondo in trasparenza, la linea viene raddrizzata orizzontale e tutte
+// le opzioni avanzate stanno qui, lontano dal menu principale.
+// ---------------------------------------------------------------------------
+
+function EditorQuota({
+  quota,
+  immagine,
+  onSalva,
+  onElimina,
+  onChiudi
+}: {
+  quota: Quota;
+  immagine: HTMLImageElement;
+  onSalva: (q: Quota) => void;
+  onElimina: () => void;
+  onChiudi: () => void;
+}) {
+  const [testoVal, setTestoVal] = useState(
+    quota.valore === null ? '' : String(quota.valore).replace('.', ',')
+  );
+  const [unita, setUnita] = useState<Unita>(quota.unita);
+  const [posizioneTesto, setPosizioneTesto] = useState<PosizioneTesto>(quota.posizioneTesto);
+  const [nota, setNota] = useState(quota.nota ?? '');
+  const [colore, setColore] = useState(quota.stile.colore);
+  const [stato, setStato] = useState<StatoMisura>(quota.stato);
+  /** moltiplicatore di dimensione applicato al salvataggio (spessore + testo) */
+  const [scalaTesto, setScalaTesto] = useState(1);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const contRef = useRef<HTMLDivElement>(null);
+
+  const valore = analizzaMisura(testoVal);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const cont = contRef.current;
+    if (!canvas || !cont) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const w = cont.clientWidth;
+    const h = cont.clientHeight;
+    if (w === 0 || h === 0) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, w, h);
+    // foto di sfondo (cover) in trasparenza
+    const ir = immagine.width / immagine.height;
+    let dw: number;
+    let dh: number;
+    if (ir > w / h) {
+      dh = h;
+      dw = h * ir;
+    } else {
+      dw = w;
+      dh = w / ir;
+    }
+    ctx.globalAlpha = 0.18;
+    ctx.drawImage(immagine, (w - dw) / 2, (h - dh) / 2, dw, dh);
+    ctx.globalAlpha = 1;
+    // quota raddrizzata orizzontale, con i valori in corso di modifica
+    const margine = Math.max(56, w * 0.16);
+    const q: Quota = {
+      ...quota,
+      sottotipo: 'allineata',
+      p1: { x: margine, y: h / 2 },
+      p2: { x: w - margine, y: h / 2 },
+      offset: 0,
+      valore,
+      unita,
+      posizioneTesto,
+      nota: nota.trim() || undefined,
+      stato,
+      stile: { colore, spessore: 4, dimensioneTesto: 26 }
+    };
+    for (const prim of primitiveQuota(q)) disegnaPrimitiva(ctx, prim, immagine);
+    ctx.restore();
+  }, [immagine, valore, unita, posizioneTesto, nota, colore, stato, quota]);
+
+  const salva = () => {
+    const stile =
+      scalaTesto === 1
+        ? { ...quota.stile, colore }
+        : {
+            ...quota.stile,
+            colore,
+            spessore: Math.min(40, Math.max(1, quota.stile.spessore * scalaTesto)),
+            dimensioneTesto: Math.min(
+              200,
+              Math.max(8, Math.round(quota.stile.dimensioneTesto * scalaTesto))
+            )
+          };
+    onSalva({
+      ...quota,
+      valore,
+      unita,
+      posizioneTesto,
+      nota: nota.trim() || undefined,
+      // un valore inserito a mano qui non viene più sovrascritto dalla calibrazione
+      valoreAuto: false,
+      stato,
+      stile
+    });
+  };
+
+  return (
+    <div className="editor-quota">
+      <header className="barra">
+        <button className="btn icona" aria-label="Chiudi senza salvare" onClick={onChiudi}>
+          ✕
+        </button>
+        <h1>Modifica quota</h1>
+      </header>
+      <div ref={contRef} className="eq-anteprima">
+        <canvas ref={canvasRef} />
+      </div>
+      <div className="eq-controlli">
+        <div className="campo">
+          <label>Misura</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              autoFocus
+              inputMode="decimal"
+              value={testoVal}
+              onChange={(e) => setTestoVal(e.target.value)}
+              placeholder="es. 100"
+            />
+            <select value={unita} onChange={(e) => setUnita(e.target.value as Unita)} style={{ width: 90 }}>
+              <option value="mm">mm</option>
+              <option value="cm">cm</option>
+              <option value="m">m</option>
+            </select>
+          </div>
+        </div>
+        <div className="campo">
+          <label>Posizione del testo</label>
+          <span className="segmenti" role="group">
+            {(
+              [
+                ['sopra', 'Sopra'],
+                ['centro', 'Centro'],
+                ['sotto', 'Sotto']
+              ] as Array<[PosizioneTesto, string]>
+            ).map(([v, t]) => (
+              <button key={v} className={posizioneTesto === v ? 'attivo' : ''} onClick={() => setPosizioneTesto(v)}>
+                {t}
+              </button>
+            ))}
+          </span>
+        </div>
+        <div className="campo">
+          <label>Testo aggiuntivo (facoltativo)</label>
+          <input value={nota} onChange={(e) => setNota(e.target.value)} placeholder="es. luce netta" maxLength={40} />
+        </div>
+        <div className="campo">
+          <label>Stato della misura</label>
+          <span className="segmenti" role="group">
+            {(['reale', 'stimata'] as StatoMisura[]).map((s) => (
+              <button key={s} className={stato === s ? 'attivo' : ''} onClick={() => setStato(s)}>
+                {s === 'reale' ? 'Reale' : '≈ Stimata'}
+              </button>
+            ))}
+          </span>
+        </div>
+        <div className="campo">
+          <label>Colore e dimensione</label>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <BottoneColore colore={colore} onScegli={setColore} />
+            <span className="segmenti" role="group" aria-label="Dimensione">
+              <button aria-label="Riduci" onClick={() => setScalaTesto((s) => Math.max(0.4, s / 1.25))}>
+                A−
+              </button>
+              <button aria-label="Aumenta" onClick={() => setScalaTesto((s) => Math.min(3, s * 1.25))}>
+                A＋
+              </button>
+            </span>
+          </div>
+        </div>
+      </div>
+      <div className="eq-azioni">
+        <button className="btn pericolo" onClick={onElimina}>
+          🗑 Elimina
+        </button>
+        <button className="btn primario" onClick={salva}>
+          ✓ Salva quota
+        </button>
+      </div>
     </div>
   );
 }
@@ -1117,6 +1337,7 @@ function PannelloProprieta({
   onModifica,
   onElimina,
   onModificaTesto,
+  onModificaQuota,
   onCalibraDaQuota
 }: {
   ann: Annotazione;
@@ -1126,6 +1347,7 @@ function PannelloProprieta({
   onModifica: (m: Partial<Annotazione>) => void;
   onElimina: () => void;
   onModificaTesto: () => void;
+  onModificaQuota: () => void;
   onCalibraDaQuota: (q: Quota) => void;
 }) {
   // dimensione personalizzabile: scala spessore linee e testo insieme
@@ -1143,14 +1365,19 @@ function PannelloProprieta({
     <div className="pannello-proprieta">
       <div className="prop-specifici">
         {ann.tipo === 'quota' && (
-          <ProprietaQuota
-            quota={ann}
-            annotazioni={annotazioni}
-            foto={foto}
-            inputValore={inputValore}
-            onModifica={onModifica}
-            onCalibraDaQuota={onCalibraDaQuota}
-          />
+          <>
+            <button className="btn primario" onClick={onModificaQuota}>
+              ✎ Modifica
+            </button>
+            <ProprietaQuota
+              quota={ann}
+              annotazioni={annotazioni}
+              foto={foto}
+              inputValore={inputValore}
+              onModifica={onModifica}
+              onCalibraDaQuota={onCalibraDaQuota}
+            />
+          </>
         )}
         {ann.tipo === 'quotaRett' && (
           <ProprietaRettangolo rett={ann} foto={foto} inputValore={inputValore} onModifica={onModifica} />
