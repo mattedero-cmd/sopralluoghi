@@ -1076,7 +1076,7 @@ function Lente({
 
 function testoSuggerimento(strumento: Strumento, bozza: Bozza): string | null {
   if (strumento === 'auto') {
-    return "Tocca una figura netta, oppure evidenziala con un tratto per quotare l'oggetto completo";
+    return 'Tocca una figura netta; evidenzia una zona di disturbo (riflessi, intarsi) per escluderla e quotare il contorno esterno';
   }
   if (strumentoDuePunti(strumento)) {
     return puntoFisso(bozza)

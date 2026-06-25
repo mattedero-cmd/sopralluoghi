@@ -326,11 +326,14 @@ function intersecaThetaRho(t1: number, r1: number, t2: number, r2: number): Punt
   return { x: (r1 * s2 - r2 * s1) / det, y: (c1 * r2 - c2 * r1) / det };
 }
 
-function generaHough(c: Campi, roi: Roi, seme: Punto, magSoglia: number): Quad | null {
+function generaHough(c: Campi, roi: Roi, seme: Punto, magSoglia: number, escludi?: Roi): Quad | null {
   const punti: Array<{ x: number; y: number; theta: number; mag: number }> = [];
   const passo = Math.max(1, Math.floor(Math.min(roi.x2 - roi.x1, roi.y2 - roi.y1) / 220));
   for (let y = roi.y1; y <= roi.y2; y += passo) {
     for (let x = roi.x1; x <= roi.x2; x += passo) {
+      // i bordi dentro l'area esclusa (riflessi, intarsi) non votano
+      if (escludi && x >= escludi.x1 && x <= escludi.x2 && y >= escludi.y1 && y <= escludi.y2)
+        continue;
       const g = gradiente(c, x, y);
       if (g.mag < magSoglia) continue;
       let theta = Math.atan2(g.gy, g.gx);
@@ -501,15 +504,39 @@ export function rilevaQuad4(
   const floodTol = Math.round(lerp(16, 110, sens / 100));
   const sogliaScala = lerp(1.6, 0.5, sens / 100);
 
-  // --- semi candidati e riquadro indicato dall'evidenziatore ---
-  // Per il TOCCO: un solo seme. Per l'EVIDENZIATORE: il punto mediano del
-  // tratto + il centro del suo riquadro (robusto se il mediano cade sullo
-  // sfondo). NIENTE clip soffocante: il flood cresce libero e si ferma sui
-  // bordi reali — un tratto sottile non deve intrappolarlo in una striscia.
-  let semi: Punto[];
-  let bboxTraccia: { x1: number; y1: number; x2: number; y2: number } | null = null;
+  // Modalità:
+  //  - TOCCO → inclusione: si parte dal punto e si rileva la figura che lo
+  //    contiene (flood + line-tracking + Hough).
+  //  - EVIDENZIATORE → ESCLUSIONE: il tratto marca una zona di disturbo
+  //    (riflessi, intarsi) da IGNORARE; si rileva il contorno ESTERNO che la
+  //    contiene. Niente flood (prenderebbe un dettaglio interno); i bordi
+  //    dentro la zona non vengono considerati.
+  let semeImg: Punto;
+  let escludi: Roi | undefined;
+  let reg: RegioneRiempita | null = null;
+  let roi: Roi;
+
   if (sorgente.tipo === 'tocco') {
-    semi = [sorgente.punto];
+    semeImg = sorgente.punto;
+    reg = regioneRiempita(ricerca, semeImg, floodTol);
+    if (reg) {
+      const dx = (reg.maxx - reg.minx) * 0.2;
+      const dy = (reg.maxy - reg.miny) * 0.2;
+      roi = {
+        x1: Math.max(1, Math.floor(reg.minx - dx)),
+        y1: Math.max(1, Math.floor(reg.miny - dy)),
+        x2: Math.min(w - 2, Math.ceil(reg.maxx + dx)),
+        y2: Math.min(h - 2, Math.ceil(reg.maxy + dy))
+      };
+    } else {
+      const r = Math.round(Math.min(w, h) * 0.4);
+      roi = {
+        x1: Math.max(1, Math.round(semeImg.x * fattore - r)),
+        y1: Math.max(1, Math.round(semeImg.y * fattore - r)),
+        x2: Math.min(w - 2, Math.round(semeImg.x * fattore + r)),
+        y2: Math.min(h - 2, Math.round(semeImg.y * fattore + r))
+      };
+    }
   } else {
     const pts = sorgente.punti;
     let x1 = Infinity;
@@ -522,90 +549,68 @@ export function rilevaQuad4(
       x2 = Math.max(x2, p.x);
       y2 = Math.max(y2, p.y);
     }
-    bboxTraccia = { x1, y1, x2, y2 };
-    semi = [pts[Math.floor(pts.length / 2)], { x: (x1 + x2) / 2, y: (y1 + y2) / 2 }];
+    semeImg = { x: (x1 + x2) / 2, y: (y1 + y2) / 2 };
+    // si dilata la zona segnata, così copre anche i bordi del disturbo che
+    // sfiorano il tratto (l'utente non traccia mai con precisione al pixel)
+    const dil = Math.max((x2 - x1) * fattore, (y2 - y1) * fattore) * 0.15 + 4;
+    escludi = {
+      x1: Math.max(1, x1 * fattore - dil),
+      y1: Math.max(1, y1 * fattore - dil),
+      x2: Math.min(w - 2, x2 * fattore + dil),
+      y2: Math.min(h - 2, y2 * fattore + dil)
+    };
+    // ROI ampia: l'oggetto esterno è più grande della zona di disturbo
+    const m = Math.max(escludi.x2 - escludi.x1, escludi.y2 - escludi.y1) * 1.5 + 20;
+    roi = {
+      x1: Math.max(1, Math.floor(escludi.x1 - m)),
+      y1: Math.max(1, Math.floor(escludi.y1 - m)),
+      x2: Math.min(w - 2, Math.ceil(escludi.x2 + m)),
+      y2: Math.min(h - 2, Math.ceil(escludi.y2 + m))
+    };
   }
 
-  // flood dal seme che produce la regione valida più ampia
-  let semeImg = semi[0];
-  let reg: RegioneRiempita | null = null;
-  for (const s of semi) {
-    const sx = s.x * fattore;
-    const sy = s.y * fattore;
-    if (sx < 1 || sy < 1 || sx > w - 2 || sy > h - 2) continue;
-    const r = regioneRiempita(ricerca, s, floodTol);
-    if (r) {
-      const area = (r.maxx - r.minx) * (r.maxy - r.miny);
-      const areaBest = reg ? (reg.maxx - reg.minx) * (reg.maxy - reg.miny) : -1;
-      if (area > areaBest) {
-        reg = r;
-        semeImg = s;
-      }
-    }
-  }
   const seme: Punto = { x: semeImg.x * fattore, y: semeImg.y * fattore };
   if (seme.x < 1 || seme.y < 1 || seme.x > w - 2 || seme.y > h - 2) return null;
 
   // --- generazione candidati (coordinate ridotte) ---
   const candidati: Quad[] = [];
 
-  const lt = rilevaFigura(ricerca, semeImg, sogliaScala);
+  const lt = rilevaFigura(ricerca, semeImg, sogliaScala, escludi);
   if (lt) candidati.push(ordinaQuad(lt.punti.map((p) => ({ x: p.x * fattore, y: p.y * fattore }))));
 
-  if (reg && reg.contorno.length >= 4) {
+  // il flood serve solo in inclusione (in esclusione prenderebbe un dettaglio)
+  if (!escludi && reg && reg.contorno.length >= 4) {
     const rar = rettangoloAreaMinima(reg.contorno);
     if (rar) candidati.push(ordinaQuad(rar));
     const ext = quattroEstremi(reg.contorno);
     if (ext) candidati.push(ext);
   }
 
-  // ROI per Hough: unione del riquadro della regione e del tratto
-  // evidenziato (così Hough vede l'intero oggetto indicato), allargata;
-  // in mancanza, una finestra attorno al seme
-  let roi: Roi;
-  const boxes: Array<[number, number, number, number]> = [];
-  if (reg) boxes.push([reg.minx, reg.miny, reg.maxx, reg.maxy]);
-  if (bboxTraccia) {
-    boxes.push([
-      bboxTraccia.x1 * fattore,
-      bboxTraccia.y1 * fattore,
-      bboxTraccia.x2 * fattore,
-      bboxTraccia.y2 * fattore
-    ]);
-  }
-  if (boxes.length) {
-    const minx = Math.min(...boxes.map((b) => b[0]));
-    const miny = Math.min(...boxes.map((b) => b[1]));
-    const maxx = Math.max(...boxes.map((b) => b[2]));
-    const maxy = Math.max(...boxes.map((b) => b[3]));
-    const dx = (maxx - minx) * 0.25;
-    const dy = (maxy - miny) * 0.25;
-    roi = {
-      x1: Math.max(1, Math.floor(minx - dx)),
-      y1: Math.max(1, Math.floor(miny - dy)),
-      x2: Math.min(w - 2, Math.ceil(maxx + dx)),
-      y2: Math.min(h - 2, Math.ceil(maxy + dy))
-    };
-  } else {
-    const r = Math.round(Math.min(w, h) * 0.4);
-    roi = {
-      x1: Math.max(1, Math.round(seme.x - r)),
-      y1: Math.max(1, Math.round(seme.y - r)),
-      x2: Math.min(w - 2, Math.round(seme.x + r)),
-      y2: Math.min(h - 2, Math.round(seme.y + r))
-    };
-  }
   const magSoglia = Math.max(8, magnitudoBase(c, roi) * sogliaScala);
 
-  const hq = generaHough(c, roi, seme, magSoglia);
+  const hq = generaHough(c, roi, seme, magSoglia, escludi);
   if (hq) candidati.push(hq);
 
   if (candidati.length === 0) return null;
 
+  // in esclusione si tengono solo i candidati che CONTENGONO la zona segnata
+  // (il contorno esterno), scartando quelli che cadono su un dettaglio interno
+  let validi = candidati;
+  if (escludi) {
+    const angoli: Punto[] = [
+      { x: escludi.x1, y: escludi.y1 },
+      { x: escludi.x2, y: escludi.y1 },
+      { x: escludi.x2, y: escludi.y2 },
+      { x: escludi.x1, y: escludi.y2 }
+    ];
+    const contiene = candidati.filter((q) => angoli.every((p) => puntoInPoligono(q, p)));
+    if (contiene.length > 0) validi = contiene;
+  }
+
   // --- il giudice sceglie il migliore ---
   let migliore: Quad | null = null;
   let miglioreScore = 0;
-  for (const q of candidati) {
+  for (const q of validi) {
     const s = punteggioQuad(c, q, seme, magSoglia);
     if (s > miglioreScore) {
       miglioreScore = s;
@@ -617,7 +622,7 @@ export function rilevaQuad4(
   // --- consenso: media con i candidati molto simili e altrettanto buoni ---
   const latoRif = Math.sqrt(areaQuad(migliore));
   const vicini: Quad[] = [migliore];
-  for (const q of candidati) {
+  for (const q of validi) {
     if (q === migliore) continue;
     if (punteggioQuad(c, q, seme, magSoglia) < miglioreScore * 0.9) continue;
     let max = 0;

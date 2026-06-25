@@ -200,13 +200,17 @@ function primoFronte(
   verso: 1 | -1,
   limite: number,
   soglia: number,
-  minDist = 3
+  minDist = 3,
+  /** se ritorna true per la posizione t, il fronte è dentro la zona esclusa
+   *  e va ignorato (si continua a scandire verso l'esterno) */
+  salta?: (t: number) => boolean
 ): number | null {
   let migliore: number | null = null;
   let miglioreGrad = 0;
   for (let dist = minDist; ; dist++) {
     const t = da + verso * dist;
     if (t < 1 || t > limite - 2) break;
+    if (salta && salta(t)) continue; // dentro l'area evidenziata da escludere
     const grad = Math.abs(profilo(t + 1) - profilo(t - 1)) / 2;
     const tSucc = t + verso;
     const gradSucc =
@@ -413,7 +417,10 @@ function costruisciQuadrilatero(
 export function rilevaFigura(
   ricerca: RicercaBordi,
   p: Punto,
-  fattoreSoglia = 1
+  fattoreSoglia = 1,
+  /** zona (coordinate RIDOTTE) da ESCLUDERE: i fronti al suo interno vengono
+   *  ignorati, così si trova il contorno esterno (es. ignorando gli intarsi) */
+  escludi?: { x1: number; y1: number; x2: number; y2: number }
 ): FiguraRilevata | null {
   const c = estraiCampi(ricerca);
   const cx = Math.round(p.x * c.fattore);
@@ -426,10 +433,19 @@ export function rilevaFigura(
   const soglia = sogliaAdattiva(c, cx - r, cx + r, cy - r, cy + r) * fattoreSoglia;
   const lungoX = profiloX(c, cy);
   const lungoY = profiloY(c, cx);
-  const xL = primoFronte(lungoX, cx, -1, c.w, soglia);
-  const xR = primoFronte(lungoX, cx, 1, c.w, soglia);
-  const yT = primoFronte(lungoY, cy, -1, c.h, soglia);
-  const yB = primoFronte(lungoY, cy, 1, c.h, soglia);
+  // predicati di esclusione per la riga (cy) e la colonna (cx) correnti
+  const saltaX =
+    escludi && cy >= escludi.y1 && cy <= escludi.y2
+      ? (t: number) => t >= escludi.x1 && t <= escludi.x2
+      : undefined;
+  const saltaY =
+    escludi && cx >= escludi.x1 && cx <= escludi.x2
+      ? (t: number) => t >= escludi.y1 && t <= escludi.y2
+      : undefined;
+  const xL = primoFronte(lungoX, cx, -1, c.w, soglia, 3, saltaX);
+  const xR = primoFronte(lungoX, cx, 1, c.w, soglia, 3, saltaX);
+  const yT = primoFronte(lungoY, cy, -1, c.h, soglia, 3, saltaY);
+  const yB = primoFronte(lungoY, cy, 1, c.h, soglia, 3, saltaY);
   if (xL === null || xR === null || yT === null || yB === null) return null;
 
   return costruisciQuadrilatero(c, xL, xR, yT, yB, fattoreSoglia);

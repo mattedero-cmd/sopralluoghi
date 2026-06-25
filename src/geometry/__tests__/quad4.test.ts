@@ -88,6 +88,32 @@ describe('motore ibrido quad4: rilevamento a 4 lati', () => {
     vicino(br, 160, 130, 10);
   });
 
+  it('evidenziatore = esclusione: ignora l’intarsio interno, rileva il contorno esterno', () => {
+    // "porta" chiara (210) su sfondo scuro (40), da (30,20) a (170,150),
+    // con un "intarsio" interno più scuro (110) da (70,55) a (130,115)
+    const w = 200;
+    const h = 180;
+    const lum = new Float32Array(w * h).fill(40);
+    for (let y = 20; y <= 150; y++) for (let x = 30; x <= 170; x++) lum[y * w + x] = 210;
+    for (let y = 55; y <= 115; y++) for (let x = 70; x <= 130; x++) lum[y * w + x] = 110;
+    const img = RicercaBordi.daDati(lum, w, h, 1);
+
+    // un tocco sull'intarsio aggancia il riquadro interno
+    const tocco = rilevaQuad4(img, { tipo: 'tocco', punto: { x: 100, y: 85 } });
+    expect(tocco).not.toBeNull();
+    // evidenziando l'intarsio lo si ESCLUDE → si rileva il contorno della porta
+    const traccia: Punto[] = [
+      { x: 71, y: 57 },
+      { x: 100, y: 85 },
+      { x: 129, y: 113 }
+    ];
+    const esito = rilevaQuad4(img, { tipo: 'traccia', punti: traccia });
+    expect(esito).not.toBeNull();
+    const [tl, , br] = esito!.punti;
+    vicino(tl, 30, 20, 12);
+    vicino(br, 170, 150, 12);
+  });
+
   it('zona uniforme: nessun rilevamento', () => {
     const w = 160;
     const h = 160;
