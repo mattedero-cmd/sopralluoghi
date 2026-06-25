@@ -1,5 +1,7 @@
 import {
   quadrilateroQuotaRett,
+  segmentiPoligono,
+  segmentoELato,
   type Annotazione,
   type Foto,
   type Punto,
@@ -141,12 +143,20 @@ export function applicaValoriAuto(annotazioni: Annotazione[], foto: Calibrazione
       return { ...a, valoreBase: m.base, valoreAltezza: m.altezza, valoreAuto: true };
     }
     if (a.tipo === 'quotaPoligono') {
-      const auto = a.valoreAuto ?? a.lati.every((l) => l === null);
+      const segs = segmentiPoligono(a);
+      const auto = a.valoreAuto ?? segs.every((s) => s.valore === null);
       if (!auto) return a;
-      const lati = misurePoligono(a.punti, foto, a.unita);
-      if (!lati) return a;
-      if (a.valoreAuto === true && lati.every((l, i) => l === a.lati[i])) return a;
-      return { ...a, lati, valoreAuto: true };
+      if (!haCalibrazione(foto)) return a;
+      const nuovi = segs.map((s) => {
+        const da = a.punti[s.da];
+        const ad = a.punti[s.a];
+        if (!da || !ad) return s;
+        const m = distanzaReale(foto, da, ad);
+        if (!m) return s;
+        return { ...s, valore: arrotondaMisura(daMillimetri(inMillimetri(m.valore, m.unita), a.unita)) };
+      });
+      if (a.valoreAuto === true && nuovi.every((s, i) => s.valore === segs[i].valore)) return a;
+      return { ...a, segmenti: nuovi, valoreAuto: true };
     }
     if (a.tipo !== 'quota' && a.tipo !== 'quotaAngolo' && a.tipo !== 'quotaRaggio') return a;
     const auto = a.valoreAuto ?? a.valore === null;
@@ -250,6 +260,18 @@ export function nomePoligono(nLati: number): string {
  * lati[i] è il segmento da punti[i] a punti[i+1] (l'ultimo chiude su
  * punti[0]). null se la foto non è calibrata.
  */
+/** Misura reale di un singolo segmento (due punti immagine); null se non calibrata */
+export function misuraSegmento(
+  p1: Punto,
+  p2: Punto,
+  foto: CalibrazioneFoto,
+  unita: Unita
+): number | null {
+  const m = distanzaReale(foto, p1, p2);
+  if (!m) return null;
+  return arrotondaMisura(daMillimetri(inMillimetri(m.valore, m.unita), unita));
+}
+
 export function misurePoligono(
   punti: Punto[],
   foto: CalibrazioneFoto,
@@ -264,9 +286,12 @@ export function misurePoligono(
   });
 }
 
-/** Perimetro reale del poligono (somma dei lati noti); null se nessun lato noto */
+/** Perimetro reale del poligono (somma dei LATI quotati noti); null se nessuno */
 export function perimetroPoligono(q: QuotaPoligono): number | null {
-  const noti = q.lati.filter((l): l is number => l !== null);
+  const n = q.punti.length;
+  const noti = segmentiPoligono(q)
+    .filter((s) => segmentoELato(s, n) && s.valore !== null)
+    .map((s) => s.valore as number);
   if (noti.length === 0) return null;
   return arrotondaMisura(noti.reduce((s, l) => s + l, 0));
 }

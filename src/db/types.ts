@@ -279,25 +279,68 @@ export function quadrilateroQuotaRett(
  * con un numero qualsiasi di vertici; ogni lato porta la propria
  * misura. Nel report compare come voce unica con il nome della forma.
  */
+/**
+ * Un segmento quotato di un poligono: un LATO (vertici adiacenti) oppure una
+ * DIAGONALE (vertici non adiacenti, per i rombi). Ogni segmento è
+ * modificabile singolarmente, pur restando parte dello stesso poligono.
+ */
+export interface SegmentoQuota {
+  /** indici dei due vertici del poligono che il segmento collega */
+  da: number;
+  a: number;
+  /** valore reale della misura; null = ancora da definire (mostra "?") */
+  valore: number | null;
+  /** proiezione (offset) della linea di quota; 0 = sul segmento */
+  offset?: number;
+  /** posizione del testo rispetto alla linea */
+  posizioneTesto?: PosizioneTesto;
+  /** testo aggiuntivo opzionale */
+  nota?: string;
+}
+
+/**
+ * Quota elemento poligonale: una figura a N vertici, OGGETTO UNICO. I lati
+ * (ed eventuali diagonali) quotati sono `segmenti`, ciascuno modificabile da
+ * solo. Quanti segmenti sono quotati determina la forma nel report:
+ * 4 vertici con 2 quote = rettangolo, con 3 = trapezio, con diagonali = rombo.
+ */
 export interface QuotaPoligono extends AnnotazioneBase {
   tipo: 'quotaPoligono';
   /** vertici in ordine (almeno 3) */
   punti: Punto[];
+  /** segmenti quotati (lati e/o diagonali) */
+  segmenti?: SegmentoQuota[];
   /**
    * Nomenclatura dell'elemento (es. "1", "2", "A"…), come per la quota
    * rettangolo: visibile sulla foto e nel report.
    */
   etichetta?: string;
-  /**
-   * Lunghezza reale di ciascun lato: lati[i] è il lato da punti[i] a
-   * punti[i+1] (l'ultimo chiude su punti[0]). null = non determinata.
-   */
-  lati: (number | null)[];
-  /** Proiezione (offset) della quota di ciascun lato; 0 = sul bordo */
+  /** LEGACY (≤0.16): valore per lato; usato solo se `segmenti` è assente */
+  lati?: (number | null)[];
+  /** LEGACY (≤0.16): proiezione per lato */
   offsetLati?: number[];
   valoreAuto?: boolean;
   unita: Unita;
   stato: StatoMisura;
+}
+
+/** Segmenti quotati del poligono, con conversione dei record legacy (lati[]) */
+export function segmentiPoligono(q: QuotaPoligono): SegmentoQuota[] {
+  if (q.segmenti) return q.segmenti;
+  const n = q.punti.length;
+  // legacy: un segmento per ciascun lato
+  return q.punti.map((_, i) => ({
+    da: i,
+    a: (i + 1) % n,
+    valore: q.lati?.[i] ?? null,
+    offset: q.offsetLati?.[i] ?? 0
+  }));
+}
+
+/** true se il segmento è un lato (vertici adiacenti), false se diagonale */
+export function segmentoELato(seg: SegmentoQuota, nVertici: number): boolean {
+  const d = Math.abs(seg.da - seg.a);
+  return d === 1 || d === nVertici - 1;
 }
 
 /** Quota radiale o di diametro: centro + punto sul bordo */

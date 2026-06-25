@@ -3,6 +3,7 @@ import { Stage, Layer, Image as KonvaImage, Shape, Circle, Rect, Line } from 're
 import type Konva from 'konva';
 import {
   quadrilateroQuotaRett,
+  segmentiPoligono,
   type Annotazione,
   type Foto,
   type Punto,
@@ -1438,30 +1439,34 @@ function ManiglieAnnotazione({
     }
     case 'quotaPoligono': {
       const punti = ann.punti;
+      const segs = segmentiPoligono(ann);
       return (
         <>
           {punti.map((pos, i) =>
             maniglia(
               `vertice-${i}`,
               pos,
-              (n) => ({ ...ann, punti: punti.map((q, j) => (j === i ? n : q)) }),
+              (n) => ({
+                ...ann,
+                lati: undefined,
+                offsetLati: undefined,
+                segmenti: segs,
+                punti: punti.map((q, j) => (j === i ? n : q))
+              }),
               { snap: true, escludi: [pos] }
             )
           )}
-          {punti.map((a, i) => {
-            const b = punti[(i + 1) % punti.length];
-            const g = geometriaQuota({
-              sottotipo: 'allineata',
-              p1: a,
-              p2: b,
-              offset: ann.offsetLati?.[i] ?? 0
-            });
+          {/* maniglia centrale di ogni segmento: lo proietta (offset) */}
+          {segs.map((seg, i) => {
+            const a = punti[seg.da];
+            const b = punti[seg.a];
+            if (!a || !b) return null;
+            const g = geometriaQuota({ sottotipo: 'allineata', p1: a, p2: b, offset: seg.offset ?? 0 });
             return maniglia(`proj-${i}`, g.centro, (n) => {
               const nrm = normale(normalizza(sottrai(b, a)));
               const offset = dot(sottrai(n, a), nrm);
-              const off = [...(ann.offsetLati ?? punti.map(() => 0))];
-              off[i] = offset;
-              return { ...ann, offsetLati: off };
+              const nuovi = segs.map((s, j) => (j === i ? { ...s, offset } : s));
+              return { ...ann, lati: undefined, offsetLati: undefined, segmenti: nuovi };
             });
           })}
         </>

@@ -12,7 +12,12 @@ import type {
   Rettangolo,
   TestoFoto
 } from '../db/types';
-import { COLORE_QUOTA, quadrilateroQuotaRett } from '../db/types';
+import {
+  COLORE_QUOTA,
+  quadrilateroQuotaRett,
+  segmentiPoligono,
+  segmentoELato
+} from '../db/types';
 import { misureElemento, nomePoligono } from './calibrazione';
 import { formattaMisura, formattaNumero } from '../utils/format';
 import {
@@ -449,9 +454,27 @@ export function primitiveQuotaRettangolo(q: QuotaRettangolo): Primitiva[] {
   return prim;
 }
 
+/**
+ * Nome della forma in base ai segmenti quotati: 4 vertici con 2 quote =
+ * rettangolo, con 3 = trapezio, con diagonali = rombo, ecc.
+ */
+export function nomeFormaPoligono(q: QuotaPoligono): string {
+  const segs = segmentiPoligono(q);
+  const n = q.punti.length;
+  const lati = segs.filter((s) => segmentoELato(s, n)).length;
+  const diagonali = segs.length - lati;
+  if (n === 4) {
+    if (diagonali > 0) return 'Rombo';
+    if (lati <= 2) return 'Rettangolo';
+    if (lati === 3) return 'Trapezio';
+    return 'Quadrilatero';
+  }
+  return nomePoligono(n);
+}
+
 export function etichettaPoligono(q: QuotaPoligono): string {
-  const nome = nomePoligono(q.punti.length);
-  const valori = q.lati.map((l) => (l === null ? '?' : formattaNumero(l)));
+  const nome = nomeFormaPoligono(q);
+  const valori = segmentiPoligono(q).map((s) => (s.valore === null ? '?' : formattaNumero(s.valore)));
   const testo = `${nome} ${valori.join('/')} ${q.unita}`;
   return q.stato === 'stimata' ? `≈ ${testo}` : testo;
 }
@@ -483,22 +506,24 @@ export function primitiveQuotaPoligono(q: QuotaPoligono): Primitiva[] {
     sottotipo: 'allineata' as const,
     zIndex: q.zIndex,
     stile: q.stile,
-    posizioneTesto: 'sopra' as const,
     stato: q.stato,
     unita: q.unita
   };
-  // ogni lato è quotato SUL bordo (offset 0); trascinando la maniglia del
-  // lato lo si proietta all'esterno (offsetLati[i]) con linee guida
-  for (let i = 0; i < n; i++) {
-    const a = punti[i];
-    const b = punti[(i + 1) % n];
+  // ogni segmento quotato (lato o diagonale) è una quota allineata; di
+  // default sul segmento (offset 0), proiettabile con la sua maniglia
+  for (const seg of segmentiPoligono(q)) {
+    const a = punti[seg.da];
+    const b = punti[seg.a];
+    if (!a || !b) continue;
     prim.push(
       ...primitiveQuota({
         ...comune,
         p1: a,
         p2: b,
-        offset: q.offsetLati?.[i] ?? 0,
-        valore: q.lati[i] ?? null
+        offset: seg.offset ?? 0,
+        posizioneTesto: seg.posizioneTesto ?? 'sopra',
+        nota: seg.nota,
+        valore: seg.valore
       })
     );
   }

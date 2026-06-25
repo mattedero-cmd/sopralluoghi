@@ -15,9 +15,11 @@ import {
   primitiveQuotaRettangolo,
   etichettaPoligono,
   etichettaQuota,
+  nomeFormaPoligono,
   coloreQuota
 } from '../primitive';
 import type { Punto, Quota, QuotaPoligono, QuotaRettangolo } from '../../db/types';
+import { segmentiPoligono } from '../../db/types';
 
 /**
  * Immagine sintetica: sfondo scuro (40) con un rettangolo chiaro (210)
@@ -506,15 +508,20 @@ describe('elemento poligonale (3 / 5 lati)', () => {
     const esito = applicaValoriAuto([auto, manuale], fotoScala);
     const eAuto = esito.find((a) => a.id === 'p1') as QuotaPoligono;
     const eMan = esito.find((a) => a.id === 'p2') as QuotaPoligono;
-    expect(eAuto.lati[0]).toBeCloseTo(150);
-    expect(eAuto.lati[1]).toBeCloseTo(250);
+    expect(segmentiPoligono(eAuto)[0].valore).toBeCloseTo(150);
+    expect(segmentiPoligono(eAuto)[1].valore).toBeCloseTo(250);
     expect(eAuto.valoreAuto).toBe(true);
-    expect(eMan.lati).toEqual([10, 20, 30]);
+    expect(segmentiPoligono(eMan).map((s) => s.valore)).toEqual([10, 20, 30]);
   });
 
-  it('perimetroPoligono: somma dei lati noti', () => {
-    expect(perimetroPoligono(poligono([{ x: 0, y: 0 }], { lati: [10, 20, 30] }))).toBeCloseTo(60);
-    expect(perimetroPoligono(poligono([{ x: 0, y: 0 }], { lati: [null, null] }))).toBeNull();
+  it('perimetroPoligono: somma dei LATI quotati noti', () => {
+    const tri: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 300, y: 0 },
+      { x: 0, y: 400 }
+    ];
+    expect(perimetroPoligono(poligono(tri, { lati: [10, 20, 30] }))).toBeCloseTo(60);
+    expect(perimetroPoligono(poligono(tri, { lati: [null, null, null] }))).toBeNull();
   });
 
   it('etichettaPoligono: nome forma + lati, prefisso ≈ se stimata', () => {
@@ -545,6 +552,66 @@ describe('elemento poligonale (3 / 5 lati)', () => {
     expect(contorni.length).toBe(1);
     // contorno chiuso: 5 vertici + ritorno al primo = 6 punti (12 coordinate)
     expect((contorni[0] as { punti: number[] }).punti.length).toBe(12);
+  });
+});
+
+describe('poligono unico: classificazione per segmenti quotati', () => {
+  const stile = { colore: '#ffc400', spessore: 3, dimensioneTesto: 24 };
+  const quad: Punto[] = [
+    { x: 0, y: 0 },
+    { x: 200, y: 0 },
+    { x: 200, y: 100 },
+    { x: 0, y: 100 }
+  ];
+  const poli = (segmenti: Array<{ da: number; a: number; valore: number | null }>): QuotaPoligono => ({
+    id: 'p1',
+    fotoId: 'f1',
+    tipo: 'quotaPoligono',
+    punti: quad,
+    segmenti,
+    unita: 'cm',
+    stato: 'reale',
+    zIndex: 1,
+    stile
+  });
+
+  it('4 vertici, 2 quote (base+altezza) = Rettangolo', () => {
+    expect(nomeFormaPoligono(poli([{ da: 0, a: 1, valore: 200 }, { da: 0, a: 3, valore: 100 }]))).toBe(
+      'Rettangolo'
+    );
+  });
+
+  it('4 vertici, 3 quote = Trapezio', () => {
+    expect(
+      nomeFormaPoligono(
+        poli([
+          { da: 0, a: 1, valore: 200 },
+          { da: 0, a: 3, valore: 100 },
+          { da: 2, a: 3, valore: 200 }
+        ])
+      )
+    ).toBe('Trapezio');
+  });
+
+  it('4 vertici con diagonali = Rombo', () => {
+    expect(
+      nomeFormaPoligono(
+        poli([
+          { da: 0, a: 1, valore: 200 },
+          { da: 0, a: 3, valore: 100 },
+          { da: 0, a: 2, valore: 220 }
+        ])
+      )
+    ).toBe('Rombo');
+  });
+
+  it('una quota per ogni segmento è disegnata (2 quote = 2 linee, offset 0)', () => {
+    const prim = primitiveQuotaPoligono(
+      poli([{ da: 0, a: 1, valore: 200 }, { da: 0, a: 3, valore: 100 }])
+    );
+    const linee = prim.filter((p) => p.kind === 'linea').length;
+    // contorno (polilinea) + 2 quote sui lati a offset 0 → 2 linee di quota
+    expect(linee).toBe(2);
   });
 });
 

@@ -10,20 +10,15 @@ import type {
   QuotaAngolare,
   QuotaPoligono,
   QuotaRaggio,
-  QuotaRettangolo,
   Rettangolo,
+  SegmentoQuota,
   SottotipoQuota,
   Stile,
   TestoFoto
 } from '../db/types';
 import { COLORE_QUOTA, quadrilateroQuotaRett } from '../db/types';
 import { nuovoId } from '../utils/id';
-import {
-  haCalibrazione,
-  misurePoligono,
-  misureRettangolo,
-  valoreAutomatico
-} from '../geometry/calibrazione';
+import { haCalibrazione, misuraSegmento, valoreAutomatico } from '../geometry/calibrazione';
 
 /**
  * Creazione delle annotazioni con valori predefiniti proporzionati
@@ -86,40 +81,51 @@ export class FabbricaAnnotazioni {
   }
 
   /**
-   * Quote di un elemento a 4 lati trattato come RETTANGOLO: due quote
-   * lineari indipendenti — base (lato alto) e altezza (lato sinistro). Sono
-   * normali `Quota`, quindi selezionabili, modificabili (ambiente dedicato),
-   * spostabili ed eliminabili una per una. Nessuna quota extra automatica
-   * sugli altri due lati: se servono, le aggiunge l'utente.
+   * Poligono come OGGETTO UNICO: `coppie` sono gli indici dei vertici dei
+   * segmenti quotati (lati e/o diagonali). Ogni segmento resta modificabile
+   * da solo, ma fa parte dello stesso poligono. Numerato automaticamente.
    */
-  quoteRettangolo(punti: [Punto, Punto, Punto, Punto], esistenti: Annotazione[]): Quota[] {
-    const [altoSx, altoDx, , bassoSx] = punti;
-    const out: Quota[] = [];
-    let acc = esistenti;
-    for (const [p1, p2] of [
-      [altoSx, altoDx],
-      [altoSx, bassoSx]
-    ] as Array<[Punto, Punto]>) {
-      const q = this.quota(p1, p2, 'allineata', acc);
-      out.push(q);
-      acc = [...acc, q];
-    }
-    return out;
+  poligono(punti: Punto[], coppie: Array<[number, number]>, esistenti: Annotazione[]): QuotaPoligono {
+    const calibrata = haCalibrazione(this.foto);
+    const numero =
+      esistenti.filter((a) => a.tipo === 'quotaRett' || a.tipo === 'quotaPoligono').length + 1;
+    const unita = this.impostazioni.unitaDefault;
+    const segmenti: SegmentoQuota[] = coppie.map(([da, a]) => ({
+      da,
+      a,
+      valore: calibrata ? misuraSegmento(punti[da], punti[a], this.foto, unita) : null
+    }));
+    return {
+      id: nuovoId(),
+      fotoId: this.foto.id,
+      tipo: 'quotaPoligono',
+      punti,
+      segmenti,
+      etichetta: String(numero),
+      valoreAuto: calibrata,
+      unita,
+      stato: calibrata ? 'stimata' : 'reale',
+      zIndex: this.prossimoZ(esistenti),
+      stile: this.stileQuota()
+    };
   }
 
-  /**
-   * Quote di un poligono (triangolo, pentagono…): una quota lineare
-   * indipendente per ciascun lato. Stesse proprietà delle quote manuali.
-   */
-  quotePoligono(punti: Punto[], esistenti: Annotazione[]): Quota[] {
-    const out: Quota[] = [];
-    let acc = esistenti;
-    for (let i = 0; i < punti.length; i++) {
-      const q = this.quota(punti[i], punti[(i + 1) % punti.length], 'allineata', acc);
-      out.push(q);
-      acc = [...acc, q];
-    }
-    return out;
+  /** elemento a 4 lati: poligono unico quotato con base (0→1) e altezza (0→3) */
+  quadrilatero(punti: [Punto, Punto, Punto, Punto], esistenti: Annotazione[]): QuotaPoligono {
+    return this.poligono(
+      punti,
+      [
+        [0, 1],
+        [0, 3]
+      ],
+      esistenti
+    );
+  }
+
+  /** poligono (triangolo, pentagono…): tutti i lati quotati */
+  poligonoLati(punti: Punto[], esistenti: Annotazione[]): QuotaPoligono {
+    const coppie = punti.map((_, i) => [i, (i + 1) % punti.length] as [number, number]);
+    return this.poligono(punti, coppie, esistenti);
   }
 
   quotaAngolare(vertice: Punto, a: Punto, b: Punto, esistenti: Annotazione[]): QuotaAngolare {
@@ -139,67 +145,6 @@ export class FabbricaAnnotazioni {
       stile: this.stileQuota()
     };
     q.valore = valoreAutomatico(q, this.foto);
-    return q;
-  }
-
-  /**
-   * Quota elemento (quadrilatero): un solo oggetto per base × altezza.
-   * Riceve i 4 angoli (alto-sx, alto-dx, basso-dx, basso-sx) e viene
-   * nomenclaturata automaticamente (1, 2, 3…) per distinguere le forme.
-   */
-  quotaRettangolo(punti: [Punto, Punto, Punto, Punto], esistenti: Annotazione[]): QuotaRettangolo {
-    const calibrata = haCalibrazione(this.foto);
-    const numero = esistenti.filter((a) => a.tipo === 'quotaRett').length + 1;
-    const q: QuotaRettangolo = {
-      id: nuovoId(),
-      fotoId: this.foto.id,
-      tipo: 'quotaRett',
-      punti,
-      etichetta: String(numero),
-      valoreBase: null,
-      valoreAltezza: null,
-      valoreAuto: calibrata,
-      unita: this.impostazioni.unitaDefault,
-      stato: calibrata ? 'stimata' : 'reale',
-      zIndex: this.prossimoZ(esistenti),
-      stile: this.stileQuota()
-    };
-    if (calibrata) {
-      const m = misureRettangolo(punti, this.foto, q.unita);
-      if (m) {
-        q.valoreBase = m.base;
-        q.valoreAltezza = m.altezza;
-      }
-    }
-    return q;
-  }
-
-  /**
-   * Quota elemento poligonale (3, 5… lati): un solo oggetto che misura
-   * ogni lato. Riceve i vertici in ordine ed è numerato automaticamente
-   * (1, 2, 3…) come la quota rettangolo.
-   */
-  quotaPoligono(punti: Punto[], esistenti: Annotazione[]): QuotaPoligono {
-    const calibrata = haCalibrazione(this.foto);
-    const numero =
-      esistenti.filter((a) => a.tipo === 'quotaRett' || a.tipo === 'quotaPoligono').length + 1;
-    const q: QuotaPoligono = {
-      id: nuovoId(),
-      fotoId: this.foto.id,
-      tipo: 'quotaPoligono',
-      punti,
-      etichetta: String(numero),
-      lati: punti.map(() => null),
-      valoreAuto: calibrata,
-      unita: this.impostazioni.unitaDefault,
-      stato: calibrata ? 'stimata' : 'reale',
-      zIndex: this.prossimoZ(esistenti),
-      stile: this.stileQuota()
-    };
-    if (calibrata) {
-      const lati = misurePoligono(punti, this.foto, q.unita);
-      if (lati) q.lati = lati;
-    }
     return q;
   }
 

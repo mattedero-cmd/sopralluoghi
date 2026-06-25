@@ -13,11 +13,18 @@ import type {
   QuotaRaggio,
   QuotaRettangolo,
   Rettangolo,
+  SegmentoQuota,
   SottotipoQuota,
   StatoMisura,
   Unita
 } from '../db/types';
-import { COLORE_QUOTA, IMPOSTAZIONI_DEFAULT, quadrilateroQuotaRett } from '../db/types';
+import {
+  COLORE_QUOTA,
+  IMPOSTAZIONI_DEFAULT,
+  quadrilateroQuotaRett,
+  segmentiPoligono,
+  segmentoELato
+} from '../db/types';
 import { aggiornaFoto, eliminaFoto, leggiImpostazioni, salvaAnnotazioniFoto } from '../db/repository';
 import { blobOrigine, caricaImmagine, fotoIllegibile } from '../utils/image';
 import { naviga } from '../router';
@@ -29,11 +36,11 @@ import { calcolaCatene, sommaCatenaInUnita } from '../geometry/catene';
 import {
   applicaValoriAuto,
   haCalibrazione,
-  misurePoligono,
+  misuraSegmento,
   misureRettangolo,
-  nomePoligono,
   valoreAutomatico
 } from '../geometry/calibrazione';
+import { nomeFormaPoligono } from '../geometry/primitive';
 import { omografiaPiano } from '../geometry/omografia';
 import { lunghezzaPxQuota } from '../geometry/punti';
 import { RicercaBordi } from '../geometry/bordi';
@@ -152,13 +159,16 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [schedaOpzioni, setSchedaOpzioni] = useState(false);
   /** gruppo strumenti con il pannello aperto (null = chiuso) */
   const [menuAperto, setMenuAperto] = useState<string | null>(null);
-  /** id della quota lineare aperta nell'ambiente di modifica dedicato */
-  const [quotaInModifica, setQuotaInModifica] = useState<string | null>(null);
+  /** quota aperta nell'ambiente dedicato: una quota lineare, oppure un
+   *  singolo segmento (lato/diagonale) di un poligono */
+  const [quotaInModifica, setQuotaInModifica] = useState<
+    { tipo: 'quota'; id: string } | { tipo: 'segmento'; id: string; indice: number } | null
+  >(null);
   const [testoInModifica, setTestoInModifica] = useState<string | null>(null);
   const [schedaScala, setSchedaScala] = useState<{ px: number } | null>(null);
   const [schedaPiano, setSchedaPiano] = useState<{ punti: [Punto, Punto, Punto, Punto] } | null>(null);
-  /** quote proposte dall'autoquotatura (base + altezza), da confermare */
-  const [proposta, setProposta] = useState<Quota[] | null>(null);
+  /** poligono proposto dall'autoquotatura (base + altezza), da confermare */
+  const [proposta, setProposta] = useState<QuotaPoligono | null>(null);
   /** angoli del quadrilatero rilevato (per l'opzione cerchio) */
   const [propostaQuad, setPropostaQuad] = useState<[Punto, Punto, Punto, Punto] | null>(null);
   /** confidenza del rilevamento corrente (0–1) */
@@ -329,39 +339,39 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     setSelezioneId(q.id);
     setStrumento('seleziona');
     // si apre subito l'ambiente di modifica dedicato alla quota
-    setQuotaInModifica(q.id);
+    setQuotaInModifica({ tipo: 'quota', id: q.id });
   };
 
-  /** crea più quote indipendenti e seleziona la prima */
-  const creaQuote = (quote: Quota[]) => {
-    if (!annotazioni || quote.length === 0) return;
-    commit([...annotazioni, ...quote]);
-    setSelezioneId(quote[0].id);
+  /** crea un'annotazione e la seleziona */
+  const creaEseleziona = (a: Annotazione) => {
+    if (!annotazioni) return;
+    commit([...annotazioni, a]);
+    setSelezioneId(a.id);
     setStrumento('seleziona');
   };
 
   const creaRettangolo = (rect: Rettangolo) => {
     if (!fabbrica || !annotazioni) return;
-    // un rettangolo a 4 lati → due quote indipendenti: base e altezza
+    // un poligono unico a 4 vertici, quotato con base e altezza (rettangolo)
     const punti: [Punto, Punto, Punto, Punto] = [
       { x: rect.x, y: rect.y },
       { x: rect.x + rect.width, y: rect.y },
       { x: rect.x + rect.width, y: rect.y + rect.height },
       { x: rect.x, y: rect.y + rect.height }
     ];
-    creaQuote(fabbrica.quoteRettangolo(punti, annotazioni));
+    creaEseleziona(fabbrica.quadrilatero(punti, annotazioni));
   };
 
-  /** elemento da 4 angoli toccati → base e altezza (trattato come rettangolo) */
+  /** elemento da 4 angoli toccati → poligono unico con base e altezza */
   const creaQuad = (punti: [Punto, Punto, Punto, Punto]) => {
     if (!fabbrica || !annotazioni) return;
-    creaQuote(fabbrica.quoteRettangolo(punti, annotazioni));
+    creaEseleziona(fabbrica.quadrilatero(punti, annotazioni));
   };
 
-  /** poligono (triangolo, pentagono…) → una quota indipendente per lato */
+  /** poligono (triangolo, pentagono…) → oggetto unico con tutti i lati quotati */
   const creaPoligono = (punti: Punto[]) => {
     if (!fabbrica || !annotazioni) return;
-    creaQuote(fabbrica.quotePoligono(punti, annotazioni));
+    creaEseleziona(fabbrica.poligonoLati(punti, annotazioni));
   };
 
   const creaAngolo = (vertice: Punto, a: Punto, b: Punto) => {
@@ -424,11 +434,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     }
     setConfidenza(esito.confidenza);
     setPropostaQuad(esito.punti);
-    // anteprima in blu: le due quote indipendenti (base + altezza)
-    const quote = fabbrica
-      .quoteRettangolo(esito.punti, annotazioni)
-      .map((q) => ({ ...q, stile: { ...q.stile, colore: '#2f81f7' } }));
-    setProposta(quote);
+    // anteprima in blu: poligono unico quotato con base e altezza
+    const q = fabbrica.quadrilatero(esito.punti, annotazioni);
+    setProposta({ ...q, stile: { ...q.stile, colore: '#2f81f7' } });
   };
 
   const autoTocco = (punto: Punto) => {
@@ -459,10 +467,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     if (!esito) return;
     setConfidenza(esito.confidenza);
     setPropostaQuad(esito.punti);
-    const quote = fabbrica
-      .quoteRettangolo(esito.punti, annotazioni)
-      .map((q) => ({ ...q, stile: { ...q.stile, colore: '#2f81f7' } }));
-    setProposta(quote);
+    const q = fabbrica.quadrilatero(esito.punti, annotazioni);
+    setProposta({ ...q, stile: { ...q.stile, colore: '#2f81f7' } });
   };
 
   const chiudiProposta = () => {
@@ -473,15 +479,12 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   };
 
   const accettaProposta = () => {
-    if (!proposta || proposta.length === 0 || !annotazioni) return;
-    // le quote diventano definitive col colore unico (uguali a quelle manuali)
-    const definitive = proposta.map((q) => ({
-      ...q,
-      stile: { ...q.stile, colore: COLORE_QUOTA }
-    }));
-    commit([...annotazioni, ...definitive]);
+    if (!proposta || !annotazioni) return;
+    // il poligono diventa definitivo col colore unico (uguale a quelli manuali)
+    const definitiva: QuotaPoligono = { ...proposta, stile: { ...proposta.stile, colore: COLORE_QUOTA } };
+    commit([...annotazioni, definitiva]);
     chiudiProposta();
-    setSelezioneId(definitive[0].id);
+    setSelezioneId(definitiva.id);
     setStrumento('seleziona');
   };
 
@@ -712,7 +715,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         sogliaSnap={impostazioni.sogliaSnap}
         ricercaBordi={ricercaBordi}
         filtroVisibile={(a) => layerVisibili[categoriaAnnotazione(a)]}
-        proposte={proposta ?? []}
+        proposte={proposta ? [proposta] : []}
         onAutoTocco={autoTocco}
         onAutoTraccia={autoTraccia}
         onSeleziona={setSelezioneId}
@@ -733,7 +736,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         onPiano={(punti) => setSchedaPiano({ punti })}
       />
 
-      {proposta && proposta.length > 0 ? (
+      {proposta ? (
         <div className="pannello-proprieta" role="group" aria-label="Quota proposta">
           <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>✨ Elemento rilevato</span>
           <span
@@ -767,13 +770,16 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             onModifica={aggiornaSelezionata}
             onElimina={eliminaSelezionata}
             onModificaTesto={() => setTestoInModifica(selezionata.id)}
-            onModificaQuota={() => setQuotaInModifica(selezionata.id)}
+            onModificaQuota={() => setQuotaInModifica({ tipo: 'quota', id: selezionata.id })}
+            onModificaSegmento={(indice) =>
+              setQuotaInModifica({ tipo: 'segmento', id: selezionata.id, indice })
+            }
             onCalibraDaQuota={(q) => void calibraDaQuota(q)}
           />
         )
       )}
 
-      {proposta && proposta.length > 0 && propostaSorgente && (
+      {proposta && propostaSorgente && (
         <div className="sensibilita-flottante" role="group" aria-label="Sensibilità ai bordi">
           <button
             className="passo"
@@ -969,8 +975,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         />
       )}
       {quotaInModifica &&
+        quotaInModifica.tipo === 'quota' &&
         (() => {
-          const q = annotazioni.find((a) => a.id === quotaInModifica && a.tipo === 'quota') as
+          const q = annotazioni.find((a) => a.id === quotaInModifica.id && a.tipo === 'quota') as
             | Quota
             | undefined;
           if (!q) return null;
@@ -986,6 +993,82 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               }}
               onSalva={(nuova) => {
                 commit(annotazioni.map((a) => (a.id === nuova.id ? nuova : a)));
+                setQuotaInModifica(null);
+              }}
+            />
+          );
+        })()}
+      {quotaInModifica &&
+        quotaInModifica.tipo === 'segmento' &&
+        (() => {
+          const rif = quotaInModifica;
+          const poli = annotazioni.find((a) => a.id === rif.id && a.tipo === 'quotaPoligono') as
+            | QuotaPoligono
+            | undefined;
+          if (!poli) return null;
+          const segs = segmentiPoligono(poli);
+          const seg = segs[rif.indice];
+          if (!seg) return null;
+          const p1 = poli.punti[seg.da];
+          const p2 = poli.punti[seg.a];
+          if (!p1 || !p2) return null;
+          // quota "virtuale" che rappresenta il segmento dentro l'ambiente dedicato
+          const quotaSeg: Quota = {
+            id: `${poli.id}:${rif.indice}`,
+            fotoId: poli.fotoId,
+            tipo: 'quota',
+            sottotipo: 'allineata',
+            p1,
+            p2,
+            offset: seg.offset ?? 0,
+            valore: seg.valore,
+            unita: poli.unita,
+            posizioneTesto: seg.posizioneTesto ?? 'sopra',
+            nota: seg.nota,
+            stato: poli.stato,
+            zIndex: poli.zIndex,
+            stile: poli.stile
+          };
+          const scriviPoligono = (mod: Partial<QuotaPoligono>) =>
+            commit(
+              annotazioni.map((a) =>
+                a.id === poli.id
+                  ? ({ ...poli, lati: undefined, offsetLati: undefined, ...mod } as QuotaPoligono)
+                  : a
+              )
+            );
+          return (
+            <EditorQuota
+              quota={quotaSeg}
+              immagine={immagine}
+              onChiudi={() => setQuotaInModifica(null)}
+              onElimina={() => {
+                const nuovi = segs.filter((_, i) => i !== rif.indice);
+                if (nuovi.length === 0) {
+                  commit(annotazioni.filter((a) => a.id !== poli.id));
+                  setSelezioneId(null);
+                } else {
+                  scriviPoligono({ segmenti: nuovi });
+                }
+                setQuotaInModifica(null);
+              }}
+              onSalva={(nuova) => {
+                const nuovoSeg: typeof seg = {
+                  ...seg,
+                  valore: nuova.valore,
+                  offset: nuova.offset,
+                  posizioneTesto: nuova.posizioneTesto,
+                  nota: nuova.nota
+                };
+                const nuoviSegs = segs.map((s, i) => (i === rif.indice ? nuovoSeg : s));
+                // valore/offset/posizione/nota → segmento; unità/stato/colore → poligono
+                scriviPoligono({
+                  segmenti: nuoviSegs,
+                  unita: nuova.unita,
+                  stato: nuova.stato,
+                  valoreAuto: false,
+                  stile: nuova.stile
+                });
                 setQuotaInModifica(null);
               }}
             />
@@ -1396,6 +1479,7 @@ function PannelloProprieta({
   onElimina,
   onModificaTesto,
   onModificaQuota,
+  onModificaSegmento,
   onCalibraDaQuota
 }: {
   ann: Annotazione;
@@ -1406,6 +1490,7 @@ function PannelloProprieta({
   onElimina: () => void;
   onModificaTesto: () => void;
   onModificaQuota: () => void;
+  onModificaSegmento: (indice: number) => void;
   onCalibraDaQuota: (q: Quota) => void;
 }) {
   // dimensione personalizzabile: scala spessore linee e testo insieme
@@ -1441,7 +1526,7 @@ function PannelloProprieta({
           <ProprietaRettangolo rett={ann} foto={foto} inputValore={inputValore} onModifica={onModifica} />
         )}
         {ann.tipo === 'quotaPoligono' && (
-          <ProprietaPoligono poli={ann} foto={foto} inputValore={inputValore} onModifica={onModifica} />
+          <ProprietaPoligono poli={ann} foto={foto} onModifica={onModifica} onModificaSegmento={onModificaSegmento} />
         )}
         {ann.tipo === 'quotaAngolo' && (
           <ProprietaAngolo angolo={ann} foto={foto} onModifica={onModifica} />
@@ -1708,112 +1793,107 @@ function ProprietaRettangolo({
   );
 }
 
-/** Campo misura di un singolo lato del poligono, con sincronizzazione esterna */
-function CampoLato({
-  valore,
-  inputRef,
-  onValore
-}: {
-  valore: number | null;
-  inputRef?: React.RefObject<HTMLInputElement>;
-  onValore: (v: number | null) => void;
-}) {
-  const [testo, setTesto] = useState(valore === null ? '' : String(valore).replace('.', ','));
-  const valoreRef = useRef(valore);
-  useEffect(() => {
-    if (valore !== valoreRef.current) {
-      valoreRef.current = valore;
-      setTesto(valore === null ? '' : String(valore).replace('.', ','));
-    }
-  }, [valore]);
-  return (
-    <input
-      ref={inputRef}
-      className="input-misura"
-      style={{ width: 64 }}
-      type="text"
-      inputMode="decimal"
-      placeholder="lato"
-      value={testo}
-      onChange={(e) => {
-        const t = e.target.value;
-        setTesto(t);
-        const v = analizzaMisura(t);
-        if (t.trim() !== '' && v === null) return;
-        valoreRef.current = v;
-        onValore(v);
-      }}
-    />
-  );
-}
-
 function ProprietaPoligono({
   poli,
   foto,
-  inputValore,
-  onModifica
+  onModifica,
+  onModificaSegmento
 }: {
   poli: QuotaPoligono;
   foto: Foto;
-  inputValore: React.RefObject<HTMLInputElement>;
   onModifica: (m: Partial<QuotaPoligono>) => void;
+  onModificaSegmento: (indice: number) => void;
 }) {
+  const n = poli.punti.length;
+  const segs = segmentiPoligono(poli);
   const calibrata = haCalibrazione(foto);
-  const aggiornaLato = (i: number, v: number | null) => {
-    const lati = poli.lati.map((l, j) => (j === i ? v : l));
-    onModifica({ lati, valoreAuto: false });
+  const scriviSegmenti = (segmenti: SegmentoQuota[], extra: Partial<QuotaPoligono> = {}) =>
+    onModifica({ segmenti, lati: undefined, offsetLati: undefined, valoreAuto: false, ...extra });
+
+  // lati non ancora quotati (per "+ lato")
+  const haSegmento = (da: number, a: number) =>
+    segs.some((s) => (s.da === da && s.a === a) || (s.da === a && s.a === da));
+  const latiMancanti: Array<[number, number]> = [];
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    if (!haSegmento(i, j)) latiMancanti.push([i, j]);
+  }
+  const diagonaliPresenti = segs.some((s) => !segmentoELato(s, n));
+
+  const valSeg = (s: SegmentoQuota) =>
+    s.valore === null ? '?' : `${formattaNumero(s.valore)} ${poli.unita}`;
+  const nomeSeg = (s: SegmentoQuota, i: number) =>
+    segmentoELato(s, n) ? `Lato ${i + 1}` : 'Diag';
+
+  const aggiungiSegmento = (da: number, a: number) => {
+    const valore = calibrata ? misuraSegmento(poli.punti[da], poli.punti[a], foto, poli.unita) : null;
+    scriviSegmenti([...segs, { da, a, valore }]);
   };
+
   return (
     <>
-      <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{nomePoligono(poli.punti.length)}</span>
+      <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{nomeFormaPoligono(poli)}</span>
       <input
         className="input-misura"
-        style={{ width: 56 }}
+        style={{ width: 50 }}
         value={poli.etichetta ?? ''}
         maxLength={4}
         aria-label="Nomenclatura dell'elemento"
         placeholder="n°"
         onChange={(e) => onModifica({ etichetta: e.target.value })}
       />
-      {poli.lati.map((l, i) => (
-        <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <label style={{ color: 'var(--testo-2)', fontSize: 13 }}>L{i + 1}</label>
-          <CampoLato
-            valore={l}
-            inputRef={i === 0 ? inputValore : undefined}
-            onValore={(v) => aggiornaLato(i, v)}
-          />
-        </span>
+      {/* un pulsante per segmento: tocca → ambiente di modifica dedicato */}
+      {segs.map((s, i) => (
+        <button
+          key={i}
+          className="btn"
+          style={{ minHeight: 44, padding: '0 10px', whiteSpace: 'nowrap' }}
+          onClick={() => onModificaSegmento(i)}
+          title="Modifica questa quota"
+        >
+          {nomeSeg(s, i)}: {valSeg(s)} ✎
+        </button>
       ))}
-      {calibrata &&
-        (poli.valoreAuto ? (
-          <span style={{ color: 'var(--ok)', fontSize: 13, fontWeight: 700 }} title="Calcolato dalla calibrazione">
-            auto
-          </span>
-        ) : (
-          <button
-            className="btn"
-            style={{ minHeight: 44, padding: '0 10px' }}
-            title="Ricalcola i lati dalla calibrazione"
-            onClick={() => {
-              const lati = misurePoligono(poli.punti, foto, poli.unita);
-              if (lati) onModifica({ lati, valoreAuto: true });
-            }}
-          >
-            ↻ auto
-          </button>
-        ))}
+      {latiMancanti.length > 0 && (
+        <button
+          className="btn"
+          style={{ minHeight: 44, padding: '0 10px' }}
+          title="Aggiungi la quota di un altro lato"
+          onClick={() => aggiungiSegmento(latiMancanti[0][0], latiMancanti[0][1])}
+        >
+          ＋ lato
+        </button>
+      )}
+      {n === 4 && (
+        <button
+          className={`btn${diagonaliPresenti ? ' attivo' : ''}`}
+          style={{ minHeight: 44, padding: '0 10px' }}
+          title="Quota le diagonali (rombo)"
+          onClick={() => {
+            if (diagonaliPresenti) {
+              scriviSegmenti(segs.filter((s) => segmentoELato(s, n)));
+            } else {
+              const d: SegmentoQuota[] = [
+                [0, 2],
+                [1, 3]
+              ].map(([da, a]) => ({
+                da,
+                a,
+                valore: calibrata ? misuraSegmento(poli.punti[da], poli.punti[a], foto, poli.unita) : null
+              }));
+              scriviSegmenti([...segs, ...d]);
+            }
+          }}
+        >
+          ◇ Diagonali
+        </button>
+      )}
       <select
         aria-label="Unità"
         value={poli.unita}
         onChange={(e) => {
           const unita = e.target.value as Unita;
-          if (poli.valoreAuto) {
-            const lati = misurePoligono(poli.punti, foto, unita);
-            onModifica({ unita, lati: lati ?? poli.lati });
-          } else {
-            onModifica({ unita });
-          }
+          onModifica({ unita });
         }}
         style={{ minHeight: 44, borderRadius: 10, background: 'var(--sfondo)', border: '1px solid var(--bordo)', padding: '0 8px' }}
       >
