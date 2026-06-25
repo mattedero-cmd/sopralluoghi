@@ -9,7 +9,13 @@ import {
   nomePoligono,
   perimetroPoligono
 } from '../calibrazione';
-import { primitiveQuota, primitiveQuotaPoligono, etichettaPoligono, coloreQuota } from '../primitive';
+import {
+  primitiveQuota,
+  primitiveQuotaPoligono,
+  primitiveQuotaRettangolo,
+  etichettaPoligono,
+  coloreQuota
+} from '../primitive';
 import type { Punto, Quota, QuotaPoligono, QuotaRettangolo } from '../../db/types';
 
 /**
@@ -358,6 +364,44 @@ describe('classificazione forma elemento', () => {
       { x: 10, y: 90 }
     ]);
     expect(classificaForma(q.punti)).toBe('quadrilatero');
+  });
+});
+
+describe('quote elemento: sui bordi di default, proiettabili dopo', () => {
+  const stile = { colore: '#ffc400', spessore: 3, dimensioneTesto: 24 };
+  const rett = (extra: Partial<QuotaRettangolo> = {}): QuotaRettangolo => ({
+    id: 'r1',
+    fotoId: 'f1',
+    tipo: 'quotaRett',
+    punti: [
+      { x: 0, y: 0 },
+      { x: 200, y: 0 },
+      { x: 200, y: 100 },
+      { x: 0, y: 100 }
+    ],
+    valoreBase: 100,
+    valoreAltezza: 50,
+    unita: 'cm',
+    stato: 'reale',
+    zIndex: 1,
+    stile,
+    ...extra
+  });
+
+  it('default: le quote giacciono sui lati, nessuna linea di proiezione', () => {
+    const prim = primitiveQuotaRettangolo(rett());
+    // rettangolo = 2 lati quotati; a offset 0 ogni lato dà 1 sola linea di
+    // quota (nessuna linea di estensione)
+    const linee = prim.filter((p) => p.kind === 'linea').length;
+    expect(linee).toBe(2);
+  });
+
+  it('proiettando un lato (offsetLati) compaiono le linee di estensione', () => {
+    const linee = primitiveQuotaRettangolo(rett({ offsetLati: [60, 0, 0, 0] })).filter(
+      (p) => p.kind === 'linea'
+    ).length;
+    // il lato proiettato aggiunge 2 linee di estensione
+    expect(linee).toBeGreaterThan(2);
   });
 });
 

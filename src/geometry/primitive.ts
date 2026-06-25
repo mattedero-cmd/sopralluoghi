@@ -348,13 +348,41 @@ export function etichettaRettangolo(q: QuotaRettangolo): string {
 }
 
 /**
+ * Lati quotati di un elemento quadrilatero, con la proiezione (offset) di
+ * ciascuno. Unica fonte di verità condivisa dal disegno e dalle maniglie:
+ * 0 = la quota giace sul bordo (frecce sui punti di misura). Per un
+ * rettangolo si quotano base e altezza; per trapezi/quadrilateri anche i
+ * lati che differiscono, così la forma è descritta per intero.
+ */
+export function latiQuotaRett(
+  q: QuotaRettangolo
+): Array<{ idx: number; p1: Punto; p2: Punto; valore: number | null; offset: number }> {
+  const [aSx, aDx, bDx, bSx] = quadrilateroQuotaRett(q);
+  const m = misureElemento(q);
+  const off = (i: number) => q.offsetLati?.[i] ?? 0;
+  const lati = [
+    { idx: 0, p1: aSx, p2: aDx, valore: m.baseSup, offset: off(0) },
+    { idx: 1, p1: aSx, p2: bSx, valore: m.latoSx, offset: off(1) }
+  ];
+  if (m.forma !== 'rettangolo') {
+    if (m.baseInf !== null && m.baseSup !== m.baseInf) {
+      lati.push({ idx: 2, p1: bSx, p2: bDx, valore: m.baseInf, offset: off(2) });
+    }
+    if (m.latoDx !== null && m.latoSx !== m.latoDx) {
+      lati.push({ idx: 3, p1: aDx, p2: bDx, valore: m.latoDx, offset: off(3) });
+    }
+  }
+  return lati;
+}
+
+/**
  * Quota elemento (quadrilatero): contorno che segue i bordi reali della
- * figura + quota della base e dell'altezza ALLINEATE ai lati (anche
- * inclinati dalla prospettiva), riusando la geometria delle quote lineari.
+ * figura + quota di ciascun lato. Di default le quote giacciono SUI bordi
+ * (offset 0, frecce sui punti, nessuna linea di proiezione); trascinando la
+ * maniglia di un lato la si proietta all'esterno e compaiono le linee guida.
  */
 export function primitiveQuotaRettangolo(q: QuotaRettangolo): Primitiva[] {
   const [altoSx, altoDx, bassoDx, bassoSx] = quadrilateroQuotaRett(q);
-  const offset = Math.max(24, q.stile.dimensioneTesto * 1.1);
   const prim: Primitiva[] = [
     {
       kind: 'polilinea',
@@ -381,28 +409,10 @@ export function primitiveQuotaRettangolo(q: QuotaRettangolo): Primitiva[] {
     stato: q.stato,
     unita: q.unita
   };
-  // base: lungo il lato alto, linea di quota all'esterno (sopra)
-  // altezza: lungo il lato sinistro, linea di quota all'esterno (a sinistra)
-  const m = misureElemento(q);
-  prim.push(
-    ...primitiveQuota({ ...comune, p1: altoSx, p2: altoDx, offset: -offset, valore: m.baseSup }),
-    ...primitiveQuota({ ...comune, p1: altoSx, p2: bassoSx, offset, valore: m.latoSx })
-  );
-  // per trapezi e quadrilateri si quotano anche i lati che differiscono,
-  // così la forma è descritta per intero sulla foto (non solo b × h)
-  if (m.forma !== 'rettangolo') {
-    if (m.baseInf !== null && m.baseSup !== m.baseInf) {
-      // base inferiore: linea di quota all'esterno, sotto
-      prim.push(
-        ...primitiveQuota({ ...comune, p1: bassoSx, p2: bassoDx, offset, valore: m.baseInf })
-      );
-    }
-    if (m.latoDx !== null && m.latoSx !== m.latoDx) {
-      // lato destro: linea di quota all'esterno, a destra
-      prim.push(
-        ...primitiveQuota({ ...comune, p1: altoDx, p2: bassoDx, offset: -offset, valore: m.latoDx })
-      );
-    }
+  for (const lato of latiQuotaRett(q)) {
+    prim.push(
+      ...primitiveQuota({ ...comune, p1: lato.p1, p2: lato.p2, offset: lato.offset, valore: lato.valore })
+    );
   }
 
   // nomenclatura dell'elemento: badge al centro della figura, per
@@ -453,7 +463,6 @@ export function primitiveQuotaPoligono(q: QuotaPoligono): Primitiva[] {
   const punti = q.punti;
   const n = punti.length;
   const colore = coloreQuota(q);
-  const offset = Math.max(24, q.stile.dimensioneTesto * 1.1);
   const contorno: number[] = [];
   for (const pt of punti) contorno.push(pt.x, pt.y);
   if (n > 0) contorno.push(punti[0].x, punti[0].y);
@@ -476,18 +485,19 @@ export function primitiveQuotaPoligono(q: QuotaPoligono): Primitiva[] {
     stato: q.stato,
     unita: q.unita
   };
-  // ogni lato è quotato all'esterno: l'offset viene spinto nel verso
-  // che allontana la linea di quota dal centro della figura
+  // ogni lato è quotato SUL bordo (offset 0); trascinando la maniglia del
+  // lato lo si proietta all'esterno (offsetLati[i]) con linee guida
   for (let i = 0; i < n; i++) {
     const a = punti[i];
     const b = punti[(i + 1) % n];
-    const d = normalizza(sottrai(b, a));
-    const nrm = normale(d);
-    const medio = scala(somma(a, b), 0.5);
-    const verso = sottrai(medio, centro);
-    const segno = dot(nrm, verso) >= 0 ? 1 : -1;
     prim.push(
-      ...primitiveQuota({ ...comune, p1: a, p2: b, offset: offset * segno, valore: q.lati[i] ?? null })
+      ...primitiveQuota({
+        ...comune,
+        p1: a,
+        p2: b,
+        offset: q.offsetLati?.[i] ?? 0,
+        valore: q.lati[i] ?? null
+      })
     );
   }
 

@@ -246,6 +246,13 @@ export interface QuotaRettangolo extends AnnotazioneBase {
   valoreBase: number | null;
   valoreAltezza: number | null;
   valoreAuto?: boolean;
+  /**
+   * Proiezione (offset con segno) della linea di quota di ciascun lato
+   * rispetto al lato reale: 0 = la quota giace sul bordo (frecce sui punti
+   * di misura, nessuna linea di estensione). Indici: 0=base, 1=lato sx,
+   * 2=base inf, 3=lato dx. Si imposta trascinando la maniglia del lato.
+   */
+  offsetLati?: number[];
   unita: Unita;
   stato: StatoMisura;
 }
@@ -284,6 +291,8 @@ export interface QuotaPoligono extends AnnotazioneBase {
    * punti[i+1] (l'ultimo chiude su punti[0]). null = non determinata.
    */
   lati: (number | null)[];
+  /** Proiezione (offset) della quota di ciascun lato; 0 = sul bordo */
+  offsetLati?: number[];
   valoreAuto?: boolean;
   unita: Unita;
   stato: StatoMisura;

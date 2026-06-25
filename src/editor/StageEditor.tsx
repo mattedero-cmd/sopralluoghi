@@ -9,11 +9,20 @@ import {
   type Rettangolo,
   type SottotipoQuota
 } from '../db/types';
-import { primitiveAnnotazione } from '../geometry/primitive';
+import { primitiveAnnotazione, latiQuotaRett } from '../geometry/primitive';
 import { geometriaQuota } from '../geometry/primitive';
 import { disegnaPrimitiva } from '../render/renderAnnotata';
 import { puntiAggancio, snapPunto } from '../geometry/snap';
-import { circumcentro, distanza, dot, normale, sottrai, vincolaAngolo, vincolaOrto } from '../geometry/punti';
+import {
+  circumcentro,
+  distanza,
+  dot,
+  normale,
+  normalizza,
+  sottrai,
+  vincolaAngolo,
+  vincolaOrto
+} from '../geometry/punti';
 import type { RicercaBordi } from '../geometry/bordi';
 import { traslaAnnotazione } from './fabbrica';
 
@@ -1390,8 +1399,10 @@ function ManiglieAnnotazione({
         </>
       );
     case 'quotaRett': {
-      // ogni angolo è libero: il quadrilatero può seguire la prospettiva
+      // ogni angolo è libero: il quadrilatero può seguire la prospettiva.
+      // Le maniglie centrali dei lati proiettano la singola quota (offset).
       const punti = quadrilateroQuotaRett(ann);
+      const lati = latiQuotaRett(ann);
       return (
         <>
           {punti.map((pos, i) =>
@@ -1406,6 +1417,22 @@ function ManiglieAnnotazione({
               { snap: true, escludi: [pos] }
             )
           )}
+          {lati.map((lato) => {
+            const g = geometriaQuota({
+              sottotipo: 'allineata',
+              p1: lato.p1,
+              p2: lato.p2,
+              offset: lato.offset
+            });
+            return maniglia(`proj-${lato.idx}`, g.centro, (n) => {
+              const nrm = normale(normalizza(sottrai(lato.p2, lato.p1)));
+              const offset = dot(sottrai(n, lato.p1), nrm);
+              const off = [...(ann.offsetLati ?? [0, 0, 0, 0])];
+              off[lato.idx] = offset;
+              const { rect: _r, ...resto } = ann;
+              return { ...resto, offsetLati: off };
+            });
+          })}
         </>
       );
     }
@@ -1421,6 +1448,22 @@ function ManiglieAnnotazione({
               { snap: true, escludi: [pos] }
             )
           )}
+          {punti.map((a, i) => {
+            const b = punti[(i + 1) % punti.length];
+            const g = geometriaQuota({
+              sottotipo: 'allineata',
+              p1: a,
+              p2: b,
+              offset: ann.offsetLati?.[i] ?? 0
+            });
+            return maniglia(`proj-${i}`, g.centro, (n) => {
+              const nrm = normale(normalizza(sottrai(b, a)));
+              const offset = dot(sottrai(n, a), nrm);
+              const off = [...(ann.offsetLati ?? punti.map(() => 0))];
+              off[i] = offset;
+              return { ...ann, offsetLati: off };
+            });
+          })}
         </>
       );
     }
