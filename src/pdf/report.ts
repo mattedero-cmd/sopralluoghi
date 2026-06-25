@@ -221,7 +221,7 @@ function righeMisureFoto(annotazioni: Annotazione[]): RigaMisura[] {
       righe.push(riga);
     } else if (a.tipo === 'quotaAngolo') {
       righe.push({
-        forma: 'Angolo',
+        forma: a.nota ? `Angolo (${a.nota})` : 'Angolo',
         reale: a.valore === null ? '—' : `${formattaNumero(a.valore)}°`,
         stato: a.stato
       });
@@ -230,12 +230,18 @@ function righeMisureFoto(annotazioni: Annotazione[]): RigaMisura[] {
       const ragg = a.modo === 'diametro' ? (a.valore === null ? null : a.valore / 2) : a.valore;
       const f = (v: number | null) => (v === null ? '?' : formattaNumero(v));
       const circ = diam === null ? null : Math.round(Math.PI * diam * 10) / 10;
-      righe.push({
-        forma: 'Cerchio',
+      const margine = a.margine ?? 0;
+      const riga: RigaMisura = {
+        forma: a.nota ? `Cerchio (${a.nota})` : 'Cerchio',
         reale: `D ${f(diam)} · r ${f(ragg)} ${a.unita}`,
         perimetro: circ === null ? undefined : `circonf. ${formattaNumero(circ)} ${a.unita}`,
         stato: a.stato
-      });
+      };
+      if (margine > 0 && diam !== null) {
+        riga.taglio = `D ${formattaNumero(diam + 2 * margine)} ${a.unita}`;
+        riga.abbondanze = `+${formattaNumero(margine)} tutt'intorno`;
+      }
+      righe.push(riga);
     } else if (a.tipo === 'quotaRett') {
       const m = misureElemento(a);
       const n = (v: number | null) => (v === null ? '?' : formattaNumero(v));

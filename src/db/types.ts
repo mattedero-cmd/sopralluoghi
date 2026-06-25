@@ -230,6 +230,8 @@ export interface QuotaAngolare extends AnnotazioneBase {
   /** gradi; calcolato dalla geometria, correggibile a mano */
   valore: number | null;
   valoreAuto?: boolean;
+  /** Testo aggiuntivo opzionale, mostrato accanto alla misura */
+  nota?: string;
   stato: StatoMisura;
 }
 
@@ -373,6 +375,13 @@ export interface QuotaRaggio extends AnnotazioneBase {
   valore: number | null;
   valoreAuto?: boolean;
   unita: Unita;
+  /** Testo aggiuntivo opzionale, mostrato sotto la misura */
+  nota?: string;
+  /**
+   * Abbondanza (extra per il taglio) applicata tutt'intorno: si somma al
+   * raggio, quindi il diametro da tagliare = diametro + 2·margine.
+   */
+  margine?: number;
   stato: StatoMisura;
 }
 

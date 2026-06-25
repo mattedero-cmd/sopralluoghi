@@ -977,26 +977,31 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       {quotaInModifica &&
         quotaInModifica.tipo === 'quota' &&
         (() => {
-          const q = annotazioni.find((a) => a.id === quotaInModifica.id && a.tipo === 'quota') as
-            | Quota
-            | undefined;
-          if (!q) return null;
-          return (
-            <EditorQuota
-              quota={q}
-              immagine={immagine}
-              onChiudi={() => setQuotaInModifica(null)}
-              onElimina={() => {
-                commit(annotazioni.filter((a) => a.id !== q.id));
-                setSelezioneId(null);
-                setQuotaInModifica(null);
-              }}
-              onSalva={(nuova) => {
-                commit(annotazioni.map((a) => (a.id === nuova.id ? nuova : a)));
-                setQuotaInModifica(null);
-              }}
-            />
-          );
+          const a0 = annotazioni.find((a) => a.id === quotaInModifica.id);
+          if (!a0) return null;
+          const chiudi = () => setQuotaInModifica(null);
+          const elimina = () => {
+            commit(annotazioni.filter((a) => a.id !== a0.id));
+            setSelezioneId(null);
+            setQuotaInModifica(null);
+          };
+          const salva = (nuova: Annotazione) => {
+            commit(annotazioni.map((a) => (a.id === nuova.id ? nuova : a)));
+            setQuotaInModifica(null);
+          };
+          if (a0.tipo === 'quota')
+            return (
+              <EditorQuota quota={a0} immagine={immagine} onChiudi={chiudi} onElimina={elimina} onSalva={salva} />
+            );
+          if (a0.tipo === 'quotaRaggio')
+            return (
+              <EditorCerchio raggio={a0} foto={foto} immagine={immagine} onChiudi={chiudi} onElimina={elimina} onSalva={salva} />
+            );
+          if (a0.tipo === 'quotaAngolo')
+            return (
+              <EditorAngolo angolo={a0} foto={foto} immagine={immagine} onChiudi={chiudi} onElimina={elimina} onSalva={salva} />
+            );
+          return null;
         })()}
       {quotaInModifica &&
         quotaInModifica.tipo === 'segmento' &&
@@ -1390,6 +1395,492 @@ function EditorQuota({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Ambiente di modifica DEDICATO al cerchio: stessa logica della quota lineare
+// (foto in trasparenza, misura raddrizzata, opzioni avanzate), adattata al
+// raggio/diametro con circonferenza calcolata e abbondanza di taglio.
+// ---------------------------------------------------------------------------
+
+function EditorCerchio({
+  raggio,
+  foto,
+  immagine,
+  onSalva,
+  onElimina,
+  onChiudi
+}: {
+  raggio: QuotaRaggio;
+  foto: Foto;
+  immagine: HTMLImageElement;
+  onSalva: (q: QuotaRaggio) => void;
+  onElimina: () => void;
+  onChiudi: () => void;
+}) {
+  const [testoVal, setTestoVal] = useState(
+    raggio.valore === null ? '' : String(raggio.valore).replace('.', ',')
+  );
+  const [unita, setUnita] = useState<Unita>(raggio.unita);
+  const [modo, setModo] = useState<QuotaRaggio['modo']>(raggio.modo);
+  const [nota, setNota] = useState(raggio.nota ?? '');
+  const [margine, setMargine] = useState(
+    raggio.margine === undefined ? '' : String(raggio.margine).replace('.', ',')
+  );
+  const [colore, setColore] = useState(raggio.stile.colore);
+  const [stato, setStato] = useState<StatoMisura>(raggio.stato);
+  const [scalaTesto, setScalaTesto] = useState(1);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const contRef = useRef<HTMLDivElement>(null);
+
+  const valore = analizzaMisura(testoVal);
+  const margineN = analizzaMisura(margine) ?? 0;
+  // diametro e raggio nelle unità correnti, a partire dal valore inserito
+  const diametro = valore === null ? null : modo === 'diametro' ? valore : valore * 2;
+  const circonf = diametro === null ? null : Math.round(Math.PI * diametro * 10) / 10;
+  const diametroTaglio = diametro === null ? null : diametro + 2 * margineN;
+  const simbolo = modo === 'diametro' ? '⌀' : 'R';
+  const testoMisura =
+    (stato === 'stimata' ? '≈ ' : '') + simbolo + ' ' + (valore === null ? '?' : formattaNumero(valore)) + ' ' + unita;
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const cont = contRef.current;
+    if (!canvas || !cont) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const w = cont.clientWidth;
+    const h = cont.clientHeight;
+    if (w === 0 || h === 0) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = '#05070a';
+    ctx.fillRect(0, 0, w, h);
+
+    const cx = w / 2;
+    const cy = h / 2;
+    const rPx = Math.hypot(raggio.bordo.x - raggio.centro.x, raggio.bordo.y - raggio.centro.y) || 1;
+    const rPreview = Math.min(w, h) * 0.3;
+    const s = rPreview / rPx;
+
+    // sfondo: la zona reale della foto attorno al cerchio, centrata
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.translate(cx, cy);
+    ctx.scale(s, s);
+    ctx.translate(-raggio.centro.x, -raggio.centro.y);
+    ctx.drawImage(immagine, 0, 0);
+    ctx.restore();
+    ctx.fillStyle = 'rgba(5,7,10,0.25)';
+    ctx.fillRect(0, 0, w, h);
+
+    // eventuale abbondanza: cerchio tratteggiato esterno
+    if (margineN > 0 && diametro && diametroTaglio) {
+      const rTaglio = rPreview * (diametroTaglio / diametro);
+      ctx.setLineDash([6, 6]);
+      ctx.strokeStyle = 'rgba(52,199,89,0.9)';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(cx, cy, rTaglio, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // cerchio di quota, con alone scuro
+    for (const [col, lw] of [['rgba(0,0,0,0.6)', 9], [colore, 4]] as Array<[string, number]>) {
+      ctx.strokeStyle = col;
+      ctx.lineWidth = lw;
+      ctx.beginPath();
+      ctx.arc(cx, cy, rPreview, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    // diametro (o raggio) come linea con freccia
+    ctx.lineCap = 'round';
+    for (const [col, lw] of [['rgba(0,0,0,0.6)', 7], [colore, 3]] as Array<[string, number]>) {
+      ctx.strokeStyle = col;
+      ctx.lineWidth = lw;
+      ctx.beginPath();
+      if (modo === 'diametro') {
+        ctx.moveTo(cx - rPreview, cy);
+        ctx.lineTo(cx + rPreview, cy);
+      } else {
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + rPreview, cy);
+      }
+      ctx.stroke();
+    }
+
+    // etichetta centrale con misura (+ circonferenza, + nota)
+    const righe = [testoMisura];
+    if (circonf !== null) righe.push('C ' + formattaNumero(circonf) + ' ' + unita);
+    if (nota.trim()) righe.push(nota.trim());
+    const dim = Math.round(Math.min(w, h) * 0.05);
+    ctx.font = `bold ${dim}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const altRiga = dim * 1.25;
+    const y0 = cy - rPreview - altRiga * righe.length - 6;
+    righe.forEach((r, i) => {
+      ctx.lineWidth = Math.max(2, dim * 0.22);
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+      ctx.strokeText(r, cx, y0 + i * altRiga);
+      ctx.fillStyle = i === 1 ? '#9fb4cc' : colore;
+      ctx.fillText(r, cx, y0 + i * altRiga);
+    });
+    ctx.restore();
+  }, [immagine, modo, nota, colore, testoMisura, circonf, unita, margineN, diametro, diametroTaglio, raggio]);
+
+  const salva = () => {
+    const stile =
+      scalaTesto === 1
+        ? { ...raggio.stile, colore }
+        : {
+            ...raggio.stile,
+            colore,
+            spessore: Math.min(40, Math.max(1, raggio.stile.spessore * scalaTesto)),
+            dimensioneTesto: Math.min(200, Math.max(8, Math.round(raggio.stile.dimensioneTesto * scalaTesto)))
+          };
+    onSalva({
+      ...raggio,
+      valore,
+      modo,
+      unita,
+      nota: nota.trim() || undefined,
+      margine: margineN || undefined,
+      valoreAuto: false,
+      stato,
+      stile
+    });
+  };
+
+  return (
+    <div className="editor-quota">
+      <header className="barra">
+        <button className="btn icona" aria-label="Chiudi senza salvare" onClick={onChiudi}>
+          ✕
+        </button>
+        <h1>Modifica cerchio</h1>
+      </header>
+      <div ref={contRef} className="eq-anteprima">
+        <canvas ref={canvasRef} />
+      </div>
+      <div className="eq-controlli">
+        <div className="campo">
+          <label>Misura</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <span className="segmenti" role="group" aria-label="Raggio o diametro">
+              {(
+                [
+                  ['raggio', 'R'],
+                  ['diametro', '⌀']
+                ] as Array<[QuotaRaggio['modo'], string]>
+              ).map(([m, t]) => (
+                <button key={m} className={modo === m ? 'attivo' : ''} onClick={() => setModo(m)}>
+                  {t}
+                </button>
+              ))}
+            </span>
+            <input
+              autoFocus
+              inputMode="decimal"
+              value={testoVal}
+              onChange={(e) => setTestoVal(e.target.value)}
+              placeholder="es. 50"
+              style={{ flex: 1 }}
+            />
+            <select value={unita} onChange={(e) => setUnita(e.target.value as Unita)} style={{ width: 80 }}>
+              <option value="mm">mm</option>
+              <option value="cm">cm</option>
+              <option value="m">m</option>
+            </select>
+            <button
+              className="btn"
+              onClick={() => {
+                const v = valoreAutomatico({ ...raggio, modo, unita }, foto);
+                if (v !== null) setTestoVal(String(v).replace('.', ','));
+              }}
+              title="Ricalcola dalla calibrazione"
+            >
+              ↻
+            </button>
+          </div>
+          {circonf !== null && (
+            <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 6 }}>
+              Circonferenza: {formattaNumero(circonf)} {unita}
+            </span>
+          )}
+        </div>
+        <div className="campo">
+          <label>Testo aggiuntivo (facoltativo)</label>
+          <input value={nota} onChange={(e) => setNota(e.target.value)} placeholder="es. foro passante" maxLength={40} />
+        </div>
+        <div className="campo">
+          <label>Abbondanza per il taglio (tutt'intorno)</label>
+          <input inputMode="decimal" value={margine} onChange={(e) => setMargine(e.target.value)} placeholder="0" />
+          {diametroTaglio !== null && margineN > 0 && (
+            <span style={{ color: 'var(--ok)', fontSize: 13, fontWeight: 700, marginTop: 6 }}>
+              Diametro da tagliare: {formattaNumero(diametroTaglio)} {unita}
+            </span>
+          )}
+        </div>
+        <div className="campo">
+          <label>Stato della misura</label>
+          <span className="segmenti" role="group">
+            {(['reale', 'stimata'] as StatoMisura[]).map((s) => (
+              <button key={s} className={stato === s ? 'attivo' : ''} onClick={() => setStato(s)}>
+                {s === 'reale' ? 'Reale' : '≈ Stimata'}
+              </button>
+            ))}
+          </span>
+        </div>
+        <div className="campo">
+          <label>Colore e dimensione</label>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <BottoneColore colore={colore} onScegli={setColore} />
+            <span className="segmenti" role="group" aria-label="Dimensione">
+              <button aria-label="Riduci" onClick={() => setScalaTesto((s) => Math.max(0.4, s / 1.25))}>
+                A−
+              </button>
+              <button aria-label="Aumenta" onClick={() => setScalaTesto((s) => Math.min(3, s * 1.25))}>
+                A＋
+              </button>
+            </span>
+          </div>
+        </div>
+      </div>
+      <div className="eq-azioni">
+        <button className="btn pericolo" onClick={onElimina}>
+          🗑 Elimina
+        </button>
+        <button className="btn primario" onClick={salva}>
+          ✓ Salva cerchio
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Ambiente di modifica DEDICATO all'angolo: foto in trasparenza, i due lati e
+// l'arco di quota disegnati grandi, valore in gradi correggibile.
+// ---------------------------------------------------------------------------
+
+function EditorAngolo({
+  angolo,
+  foto,
+  immagine,
+  onSalva,
+  onElimina,
+  onChiudi
+}: {
+  angolo: QuotaAngolare;
+  foto: Foto;
+  immagine: HTMLImageElement;
+  onSalva: (q: QuotaAngolare) => void;
+  onElimina: () => void;
+  onChiudi: () => void;
+}) {
+  const [testoVal, setTestoVal] = useState(
+    angolo.valore === null ? '' : String(angolo.valore).replace('.', ',')
+  );
+  const [nota, setNota] = useState(angolo.nota ?? '');
+  const [colore, setColore] = useState(angolo.stile.colore);
+  const [stato, setStato] = useState<StatoMisura>(angolo.stato);
+  const [scalaTesto, setScalaTesto] = useState(1);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const contRef = useRef<HTMLDivElement>(null);
+
+  const valore = analizzaMisura(testoVal);
+  const testoMisura = (stato === 'stimata' ? '≈ ' : '') + (valore === null ? '?' : formattaNumero(valore)) + '°';
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const cont = contRef.current;
+    if (!canvas || !cont) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const w = cont.clientWidth;
+    const h = cont.clientHeight;
+    if (w === 0 || h === 0) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = '#05070a';
+    ctx.fillRect(0, 0, w, h);
+
+    const cx = w / 2;
+    const cy = h / 2;
+    const va = { x: angolo.a.x - angolo.vertice.x, y: angolo.a.y - angolo.vertice.y };
+    const vb = { x: angolo.b.x - angolo.vertice.x, y: angolo.b.y - angolo.vertice.y };
+    const maxLen = Math.max(Math.hypot(va.x, va.y), Math.hypot(vb.x, vb.y)) || 1;
+    const lung = Math.min(w, h) * 0.38;
+    const s = lung / maxLen;
+
+    // sfondo: zona reale della foto attorno al vertice
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    ctx.translate(cx, cy);
+    ctx.scale(s, s);
+    ctx.translate(-angolo.vertice.x, -angolo.vertice.y);
+    ctx.drawImage(immagine, 0, 0);
+    ctx.restore();
+    ctx.fillStyle = 'rgba(5,7,10,0.3)';
+    ctx.fillRect(0, 0, w, h);
+
+    const aA = Math.atan2(va.y, va.x);
+    const aB = Math.atan2(vb.y, vb.x);
+    const pA = { x: cx + Math.cos(aA) * lung, y: cy + Math.sin(aA) * lung };
+    const pB = { x: cx + Math.cos(aB) * lung, y: cy + Math.sin(aB) * lung };
+
+    // i due lati, con alone scuro
+    ctx.lineCap = 'round';
+    for (const [col, lw] of [['rgba(0,0,0,0.6)', 9], [colore, 4]] as Array<[string, number]>) {
+      ctx.strokeStyle = col;
+      ctx.lineWidth = lw;
+      ctx.beginPath();
+      ctx.moveTo(pA.x, pA.y);
+      ctx.lineTo(cx, cy);
+      ctx.lineTo(pB.x, pB.y);
+      ctx.stroke();
+    }
+    // arco di quota (verso più breve)
+    let diff = aB - aA;
+    while (diff <= -Math.PI) diff += Math.PI * 2;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    const rArco = lung * 0.42;
+    for (const [col, lw] of [['rgba(0,0,0,0.6)', 7], [colore, 3]] as Array<[string, number]>) {
+      ctx.strokeStyle = col;
+      ctx.lineWidth = lw;
+      ctx.beginPath();
+      ctx.arc(cx, cy, rArco, aA, aA + diff, diff < 0);
+      ctx.stroke();
+    }
+
+    // etichetta col valore lungo la bisettrice
+    const bis = aA + diff / 2;
+    const lx = cx + Math.cos(bis) * (rArco + lung * 0.22);
+    const ly = cy + Math.sin(bis) * (rArco + lung * 0.22);
+    const righe = nota.trim() ? [testoMisura, nota.trim()] : [testoMisura];
+    const dim = Math.round(Math.min(w, h) * 0.06);
+    ctx.font = `bold ${dim}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const altRiga = dim * 1.2;
+    const y0 = ly - ((righe.length - 1) * altRiga) / 2;
+    righe.forEach((r, i) => {
+      ctx.lineWidth = Math.max(2, dim * 0.22);
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+      ctx.strokeText(r, lx, y0 + i * altRiga);
+      ctx.fillStyle = colore;
+      ctx.fillText(r, lx, y0 + i * altRiga);
+    });
+    ctx.restore();
+  }, [immagine, nota, colore, testoMisura, angolo]);
+
+  const salva = () => {
+    const stile =
+      scalaTesto === 1
+        ? { ...angolo.stile, colore }
+        : {
+            ...angolo.stile,
+            colore,
+            spessore: Math.min(40, Math.max(1, angolo.stile.spessore * scalaTesto)),
+            dimensioneTesto: Math.min(200, Math.max(8, Math.round(angolo.stile.dimensioneTesto * scalaTesto)))
+          };
+    onSalva({
+      ...angolo,
+      valore,
+      nota: nota.trim() || undefined,
+      valoreAuto: false,
+      stato,
+      stile
+    });
+  };
+
+  return (
+    <div className="editor-quota">
+      <header className="barra">
+        <button className="btn icona" aria-label="Chiudi senza salvare" onClick={onChiudi}>
+          ✕
+        </button>
+        <h1>Modifica angolo</h1>
+      </header>
+      <div ref={contRef} className="eq-anteprima">
+        <canvas ref={canvasRef} />
+      </div>
+      <div className="eq-controlli">
+        <div className="campo">
+          <label>Ampiezza</label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              autoFocus
+              inputMode="decimal"
+              value={testoVal}
+              onChange={(e) => setTestoVal(e.target.value)}
+              placeholder="es. 90"
+              style={{ flex: 1 }}
+            />
+            <span style={{ fontWeight: 700, fontSize: 18 }}>°</span>
+            <button
+              className="btn"
+              onClick={() => {
+                const v = valoreAutomatico(angolo, foto);
+                if (v !== null) setTestoVal(String(v).replace('.', ','));
+              }}
+              title="Ricalcola dalla geometria"
+            >
+              ↻ auto
+            </button>
+          </div>
+        </div>
+        <div className="campo">
+          <label>Testo aggiuntivo (facoltativo)</label>
+          <input value={nota} onChange={(e) => setNota(e.target.value)} placeholder="es. apertura anta" maxLength={40} />
+        </div>
+        <div className="campo">
+          <label>Stato della misura</label>
+          <span className="segmenti" role="group">
+            {(['reale', 'stimata'] as StatoMisura[]).map((s) => (
+              <button key={s} className={stato === s ? 'attivo' : ''} onClick={() => setStato(s)}>
+                {s === 'reale' ? 'Reale' : '≈ Stimata'}
+              </button>
+            ))}
+          </span>
+        </div>
+        <div className="campo">
+          <label>Colore e dimensione</label>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <BottoneColore colore={colore} onScegli={setColore} />
+            <span className="segmenti" role="group" aria-label="Dimensione">
+              <button aria-label="Riduci" onClick={() => setScalaTesto((s) => Math.max(0.4, s / 1.25))}>
+                A−
+              </button>
+              <button aria-label="Aumenta" onClick={() => setScalaTesto((s) => Math.min(3, s * 1.25))}>
+                A＋
+              </button>
+            </span>
+          </div>
+        </div>
+      </div>
+      <div className="eq-azioni">
+        <button className="btn pericolo" onClick={onElimina}>
+          🗑 Elimina
+        </button>
+        <button className="btn primario" onClick={salva}>
+          ✓ Salva angolo
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SchermataFotoDanneggiata({ foto }: { foto: Foto }) {
   const [conferma, setConferma] = useState<RichiestaConferma | null>(null);
   return (
@@ -1573,10 +2064,20 @@ function PannelloProprieta({
           <ProprietaPoligono poli={ann} foto={foto} onModifica={onModifica} onModificaSegmento={onModificaSegmento} />
         )}
         {ann.tipo === 'quotaAngolo' && (
-          <ProprietaAngolo angolo={ann} foto={foto} onModifica={onModifica} />
+          <>
+            <button className="btn primario" onClick={onModificaQuota}>
+              ✎ Modifica
+            </button>
+            <ProprietaAngolo angolo={ann} foto={foto} onModifica={onModifica} />
+          </>
         )}
         {ann.tipo === 'quotaRaggio' && (
-          <ProprietaRaggio raggio={ann} foto={foto} inputValore={inputValore} onModifica={onModifica} />
+          <>
+            <button className="btn primario" onClick={onModificaQuota}>
+              ✎ Modifica
+            </button>
+            <ProprietaRaggio raggio={ann} foto={foto} inputValore={inputValore} onModifica={onModifica} />
+          </>
         )}
         {ann.tipo === 'testo' && (
           <button className="btn" onClick={onModificaTesto}>
