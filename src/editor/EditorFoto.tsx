@@ -52,6 +52,71 @@ import { avviaDettatura, dettaturaDisponibile } from '../utils/dettatura';
 
 const COLORI = [COLORE_QUOTA, '#ff3b30', '#34c759', '#007aff', '#ffffff', '#111111'];
 
+/**
+ * Strumenti raggruppati: la toolbar mostra pochi pulsanti grandi; toccando
+ * un gruppo si apre un pannello temporaneo con le varianti (es. "Forma" →
+ * rettangolo / 4 angoli / triangolo / pentagono). Meno pulsanti a schermo,
+ * più spazio alla foto.
+ */
+const GRUPPI_STRUMENTI: Array<{
+  id: string;
+  icona: string;
+  testo: string;
+  voci: Array<{ s: Strumento; icona: string; testo: string }>;
+}> = [
+  {
+    id: 'quote',
+    icona: '↔',
+    testo: 'Quota',
+    voci: [
+      { s: 'quotaO', icona: '↔', testo: 'Orizzontale' },
+      { s: 'quotaV', icona: '↕', testo: 'Verticale' },
+      { s: 'quotaA', icona: '⤡', testo: 'Allineata' }
+    ]
+  },
+  {
+    id: 'forme',
+    icona: '▭',
+    testo: 'Forma',
+    voci: [
+      { s: 'rettangolo', icona: '▭', testo: 'Rettangolo' },
+      { s: 'quad', icona: '◇', testo: '4 angoli' },
+      { s: 'tri', icona: '△', testo: 'Triangolo' },
+      { s: 'penta', icona: '⬠', testo: 'Pentagono' }
+    ]
+  },
+  {
+    id: 'curve',
+    icona: '◔',
+    testo: 'Cerchi',
+    voci: [
+      { s: 'raggio', icona: '◔', testo: 'Raggio' },
+      { s: 'cerchio3p', icona: '○', testo: 'Cerchio 3 punti' },
+      { s: 'angolo', icona: '∠', testo: 'Angolo' }
+    ]
+  },
+  {
+    id: 'note',
+    icona: '✎',
+    testo: 'Note',
+    voci: [
+      { s: 'testo', icona: 'T', testo: 'Testo' },
+      { s: 'freccia', icona: '➚', testo: 'Freccia' },
+      { s: 'disegno', icona: '✏️', testo: 'Disegno' },
+      { s: 'callout', icona: '🔍', testo: 'Dettaglio' }
+    ]
+  },
+  {
+    id: 'calibra',
+    icona: '📐',
+    testo: 'Scala',
+    voci: [
+      { s: 'calibra', icona: '📐', testo: 'Scala (segmento)' },
+      { s: 'piano', icona: '▱', testo: 'Piano prospettico' }
+    ]
+  }
+];
+
 type CategoriaLayer = 'quote' | 'note' | 'callout';
 
 function categoriaAnnotazione(a: Annotazione): CategoriaLayer {
@@ -86,6 +151,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   });
   const [schedaNote, setSchedaNote] = useState(false);
   const [schedaOpzioni, setSchedaOpzioni] = useState(false);
+  /** gruppo strumenti con il pannello aperto (null = chiuso) */
+  const [menuAperto, setMenuAperto] = useState<string | null>(null);
   const [testoInModifica, setTestoInModifica] = useState<string | null>(null);
   const [schedaScala, setSchedaScala] = useState<{ px: number } | null>(null);
   const [schedaPiano, setSchedaPiano] = useState<{ punti: [Punto, Punto, Punto, Punto] } | null>(null);
@@ -624,6 +691,16 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         <button className="btn icona" aria-label="Note della foto" onClick={() => setSchedaNote(true)}>
           🗒️
         </button>
+        <button
+          className={`btn icona${snapAttivo || vincolo !== 'off' || bordiAttivo ? ' attivo' : ''}`}
+          aria-label="Opzioni di disegno"
+          onClick={() => {
+            setSchedaOpzioni(true);
+            setMenuAperto(null);
+          }}
+        >
+          ⚙
+        </button>
         <button className="btn icona" aria-label="Esporta immagine" onClick={() => void esporta()}>
           ⬆️
         </button>
@@ -739,42 +816,66 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         </div>
       )}
 
-      <nav className="editor-toolbar" aria-label="Strumenti">
-        <span className="gruppo-strumenti">
-          <BtnStrumento attivo={strumento === 'seleziona'} onClick={() => setStrumento('seleziona')} icona="☝️" testo="Seleziona" />
-          <BtnStrumento attivo={strumento === 'auto'} onClick={() => setStrumento('auto')} icona="✨" testo="Auto" />
-        </span>
-        <span className="gruppo-strumenti">
-          <BtnStrumento attivo={strumento === 'quotaO'} onClick={() => setStrumento('quotaO')} icona="↔" testo="Quota O" />
-          <BtnStrumento attivo={strumento === 'quotaV'} onClick={() => setStrumento('quotaV')} icona="↕" testo="Quota V" />
-          <BtnStrumento attivo={strumento === 'quotaA'} onClick={() => setStrumento('quotaA')} icona="⤡" testo="Allineata" />
-          <BtnStrumento attivo={strumento === 'rettangolo'} onClick={() => setStrumento('rettangolo')} icona="▭" testo="Rett." />
-          <BtnStrumento attivo={strumento === 'quad'} onClick={() => setStrumento('quad')} icona="◇" testo="4 angoli" />
-          <BtnStrumento attivo={strumento === 'tri'} onClick={() => setStrumento('tri')} icona="△" testo="3 lati" />
-          <BtnStrumento attivo={strumento === 'penta'} onClick={() => setStrumento('penta')} icona="⬠" testo="5 lati" />
-          <BtnStrumento attivo={strumento === 'angolo'} onClick={() => setStrumento('angolo')} icona="∠" testo="Angolo" />
-          <BtnStrumento attivo={strumento === 'raggio'} onClick={() => setStrumento('raggio')} icona="◔" testo="Raggio" />
-          <BtnStrumento attivo={strumento === 'cerchio3p'} onClick={() => setStrumento('cerchio3p')} icona="○" testo="Cerchio 3p" />
-        </span>
-        <span className="gruppo-strumenti">
-          <BtnStrumento attivo={strumento === 'callout'} onClick={() => setStrumento('callout')} icona="🔍" testo="Dettaglio" />
-          <BtnStrumento attivo={strumento === 'testo'} onClick={() => setStrumento('testo')} icona="T" testo="Testo" />
-          <BtnStrumento attivo={strumento === 'freccia'} onClick={() => setStrumento('freccia')} icona="➚" testo="Freccia" />
-          <BtnStrumento attivo={strumento === 'disegno'} onClick={() => setStrumento('disegno')} icona="✏️" testo="Disegno" />
-        </span>
-        <span className="gruppo-strumenti">
-          <BtnStrumento attivo={strumento === 'calibra'} onClick={() => setStrumento('calibra')} icona="📐" testo="Scala" />
-          <BtnStrumento attivo={strumento === 'piano'} onClick={() => setStrumento('piano')} icona="▱" testo="Piano" />
-        </span>
-        <span className="gruppo-strumenti">
+      <div className="barra-strumenti">
+        {menuAperto && (
+          <div className="backdrop-strumenti" onClick={() => setMenuAperto(null)} />
+        )}
+        {menuAperto &&
+          (() => {
+            const g = GRUPPI_STRUMENTI.find((x) => x.id === menuAperto);
+            if (!g) return null;
+            return (
+              <div className="pannello-strumenti" role="menu" aria-label={g.testo}>
+                {g.voci.map((v) => (
+                  <button
+                    key={v.s}
+                    className={`btn-strumento-grande${strumento === v.s ? ' attivo' : ''}`}
+                    onClick={() => {
+                      setStrumento(v.s);
+                      setMenuAperto(null);
+                    }}
+                  >
+                    <span className="ico">{v.icona}</span>
+                    <span>{v.testo}</span>
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
+        <nav className="editor-toolbar" aria-label="Strumenti">
           <BtnStrumento
-            attivo={snapAttivo || vincolo !== 'off' || bordiAttivo}
-            onClick={() => setSchedaOpzioni(true)}
-            icona="⚙"
-            testo="Opzioni"
+            attivo={strumento === 'seleziona'}
+            onClick={() => {
+              setStrumento('seleziona');
+              setMenuAperto(null);
+            }}
+            icona="☝️"
+            testo="Seleziona"
           />
-        </span>
-      </nav>
+          <BtnStrumento
+            attivo={strumento === 'auto'}
+            onClick={() => {
+              setStrumento('auto');
+              setMenuAperto(null);
+            }}
+            icona="✨"
+            testo="Auto"
+          />
+          {GRUPPI_STRUMENTI.map((g) => {
+            const voceAtt = g.voci.find((v) => v.s === strumento);
+            return (
+              <BtnStrumento
+                key={g.id}
+                attivo={!!voceAtt}
+                gruppo
+                onClick={() => setMenuAperto((m) => (m === g.id ? null : g.id))}
+                icona={voceAtt?.icona ?? g.icona}
+                testo={g.testo}
+              />
+            );
+          })}
+        </nav>
+      </div>
 
       {schedaOpzioni && (
         <Modale titolo="Opzioni di disegno" onChiudi={() => setSchedaOpzioni(false)}>
@@ -936,18 +1037,71 @@ function BtnStrumento({
   attivo,
   onClick,
   icona,
-  testo
+  testo,
+  gruppo
 }: {
   attivo: boolean;
   onClick: () => void;
   icona: string;
   testo: string;
+  /** pulsante-gruppo: mostra la freccetta che indica le opzioni nascoste */
+  gruppo?: boolean;
 }) {
   return (
     <button className={`btn${attivo ? ' attivo' : ''}`} onClick={onClick}>
       <span className="ico">{icona}</span>
-      {testo}
+      <span className="testo-strumento">
+        {testo}
+        {gruppo && <span className="caret">▾</span>}
+      </span>
     </button>
+  );
+}
+
+/**
+ * Pulsante colore unico: un pallino che mostra il colore attivo; toccandolo
+ * si apre il menu con le tinte e la scelta personalizzata. Stessa logica per
+ * tutti gli strumenti che usano un colore.
+ */
+function BottoneColore({ colore, onScegli }: { colore: string; onScegli: (c: string) => void }) {
+  const [aperto, setAperto] = useState(false);
+  return (
+    <span className="colore-wrap">
+      <button
+        className="btn-colore"
+        style={{ background: colore }}
+        aria-label="Colore"
+        title="Colore"
+        onClick={() => setAperto((a) => !a)}
+      />
+      {aperto && (
+        <>
+          <div className="backdrop-strumenti" onClick={() => setAperto(false)} />
+          <div className="popover-colore" role="menu" aria-label="Scegli colore">
+            {COLORI.map((c) => (
+              <button
+                key={c}
+                className={`swatch${colore.toLowerCase() === c.toLowerCase() ? ' attivo' : ''}`}
+                style={{ background: c }}
+                aria-label={`Colore ${c}`}
+                onClick={() => {
+                  onScegli(c);
+                  setAperto(false);
+                }}
+              />
+            ))}
+            <label className="swatch-custom" title="Colore personalizzato">
+              🎨
+              <input
+                type="color"
+                value={/^#[0-9a-fA-F]{6}$/.test(colore) ? colore : '#ffc400'}
+                onChange={(e) => onScegli(e.target.value)}
+              />
+            </label>
+          </div>
+        </>
+      )}
+    </span>
   );
 }
 
@@ -987,72 +1141,62 @@ function PannelloProprieta({
 
   return (
     <div className="pannello-proprieta">
-      {ann.tipo === 'quota' && (
-        <ProprietaQuota
-          quota={ann}
-          annotazioni={annotazioni}
-          foto={foto}
-          inputValore={inputValore}
-          onModifica={onModifica}
-          onCalibraDaQuota={onCalibraDaQuota}
-        />
-      )}
-      {ann.tipo === 'quotaRett' && (
-        <ProprietaRettangolo rett={ann} foto={foto} inputValore={inputValore} onModifica={onModifica} />
-      )}
-      {ann.tipo === 'quotaPoligono' && (
-        <ProprietaPoligono poli={ann} foto={foto} inputValore={inputValore} onModifica={onModifica} />
-      )}
-      {ann.tipo === 'quotaAngolo' && (
-        <ProprietaAngolo angolo={ann} foto={foto} onModifica={onModifica} />
-      )}
-      {ann.tipo === 'quotaRaggio' && (
-        <ProprietaRaggio raggio={ann} foto={foto} inputValore={inputValore} onModifica={onModifica} />
-      )}
-      <span className="segmenti" role="group" aria-label="Dimensione annotazione">
-        <button aria-label="Riduci dimensione" onClick={() => scalaStile(1 / 1.25)}>
-          A−
-        </button>
-        <button aria-label="Aumenta dimensione" onClick={() => scalaStile(1.25)}>
-          A＋
-        </button>
-      </span>
-      {(ann.tipo === 'quota' ||
-        ann.tipo === 'quotaAngolo' ||
-        ann.tipo === 'quotaRaggio' ||
-        ann.tipo === 'quotaRett' ||
-        ann.tipo === 'quotaPoligono') && (
-        <PaletteColori
-          colore={ann.stile.colore}
-          onScegli={(c) => onModifica({ stile: { ...ann.stile, colore: c } })}
-        />
-      )}
-      {ann.tipo === 'testo' && (
-        <>
+      <div className="prop-specifici">
+        {ann.tipo === 'quota' && (
+          <ProprietaQuota
+            quota={ann}
+            annotazioni={annotazioni}
+            foto={foto}
+            inputValore={inputValore}
+            onModifica={onModifica}
+            onCalibraDaQuota={onCalibraDaQuota}
+          />
+        )}
+        {ann.tipo === 'quotaRett' && (
+          <ProprietaRettangolo rett={ann} foto={foto} inputValore={inputValore} onModifica={onModifica} />
+        )}
+        {ann.tipo === 'quotaPoligono' && (
+          <ProprietaPoligono poli={ann} foto={foto} inputValore={inputValore} onModifica={onModifica} />
+        )}
+        {ann.tipo === 'quotaAngolo' && (
+          <ProprietaAngolo angolo={ann} foto={foto} onModifica={onModifica} />
+        )}
+        {ann.tipo === 'quotaRaggio' && (
+          <ProprietaRaggio raggio={ann} foto={foto} inputValore={inputValore} onModifica={onModifica} />
+        )}
+        {ann.tipo === 'testo' && (
           <button className="btn" onClick={onModificaTesto}>
             ✏️ Modifica testo
           </button>
-          <PaletteColori colore={ann.stile.colore} onScegli={(c) => onModifica({ stile: { ...ann.stile, colore: c } })} />
-        </>
-      )}
-      {ann.tipo === 'callout' && (
-        <>
-          <label style={{ color: 'var(--testo-2)', fontSize: 14 }}>Etichetta</label>
-          <input
-            className="input-misura"
-            style={{ width: 70 }}
-            value={ann.etichetta}
-            maxLength={3}
-            onChange={(e) => onModifica({ etichetta: e.target.value.toUpperCase() })}
-          />
-          <PaletteColori colore={ann.stile.colore} onScegli={(c) => onModifica({ stile: { ...ann.stile, colore: c } })} />
-        </>
-      )}
-      {(ann.tipo === 'freccia' || ann.tipo === 'disegno') && (
-        <PaletteColori colore={ann.stile.colore} onScegli={(c) => onModifica({ stile: { ...ann.stile, colore: c } })} />
-      )}
-      <button className="btn pericolo" onClick={onElimina}>
-        🗑 Elimina
+        )}
+        {ann.tipo === 'callout' && (
+          <>
+            <label style={{ color: 'var(--testo-2)', fontSize: 14 }}>Etichetta</label>
+            <input
+              className="input-misura"
+              style={{ width: 70 }}
+              value={ann.etichetta}
+              maxLength={3}
+              onChange={(e) => onModifica({ etichetta: e.target.value.toUpperCase() })}
+            />
+          </>
+        )}
+        <span className="segmenti" role="group" aria-label="Dimensione annotazione">
+          <button aria-label="Riduci dimensione" onClick={() => scalaStile(1 / 1.25)}>
+            A−
+          </button>
+          <button aria-label="Aumenta dimensione" onClick={() => scalaStile(1.25)}>
+            A＋
+          </button>
+        </span>
+      </div>
+      {/* colore ed elimina sempre visibili (non scorrono) */}
+      <BottoneColore
+        colore={ann.stile.colore}
+        onScegli={(c) => onModifica({ stile: { ...ann.stile, colore: c } })}
+      />
+      <button className="btn pericolo prop-elimina" onClick={onElimina} aria-label="Elimina" title="Elimina">
+        🗑
       </button>
     </div>
   );
@@ -1512,22 +1656,6 @@ function ProprietaRaggio({
         ))}
       </span>
     </>
-  );
-}
-
-function PaletteColori({ colore, onScegli }: { colore: string; onScegli: (c: string) => void }) {
-  return (
-    <span className="palette" role="group" aria-label="Colore">
-      {COLORI.map((c) => (
-        <button
-          key={c}
-          className={colore === c ? 'attivo' : ''}
-          style={{ background: c }}
-          aria-label={`Colore ${c}`}
-          onClick={() => onScegli(c)}
-        />
-      ))}
-    </span>
   );
 }
 
