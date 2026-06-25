@@ -815,6 +815,23 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         )
       )}
 
+      {/* oggetti con ambiente dedicato: al primo tap solo un discreto elimina;
+          il secondo tap apre l'ambiente di modifica completo */}
+      {!proposta &&
+        selezionata &&
+        haAmbienteDedicato(selezionata) &&
+        quotaInModifica === null &&
+        testoInModifica === null && (
+          <button
+            className="elimina-flottante"
+            aria-label="Elimina"
+            title="Elimina"
+            onClick={eliminaSelezionata}
+          >
+            🗑
+          </button>
+        )}
+
       {proposta && propostaSorgente && (
         <div className="sensibilita-flottante" role="group" aria-label="Sensibilità ai bordi">
           <button

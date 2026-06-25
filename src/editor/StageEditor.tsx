@@ -863,6 +863,7 @@ export function StageEditor(p: Props) {
               selezionata={a.id === p.selezioneId}
               interattiva={p.strumento === 'seleziona'}
               hitWidth={Math.max(28 / vista.scala, 12)}
+              scala={vista.scala}
               gestoMulti={() => gestoMulti.current}
               onSeleziona={() => p.onSeleziona(a.id)}
               onModifica={() => p.onModifica(a.id)}
@@ -880,6 +881,7 @@ export function StageEditor(p: Props) {
               selezionata={false}
               interattiva={false}
               hitWidth={1}
+              scala={vista.scala}
               onSeleziona={() => {}}
               onModifica={() => {}}
               onTrascinata={() => {}}
@@ -893,6 +895,7 @@ export function StageEditor(p: Props) {
               selezionata={false}
               interattiva={false}
               hitWidth={1}
+              scala={vista.scala}
               onSeleziona={() => {}}
               onModifica={() => {}}
               onTrascinata={() => {}}
@@ -1239,6 +1242,7 @@ function AnnotazioneShape({
   selezionata,
   interattiva,
   hitWidth,
+  scala,
   gestoMulti,
   onSeleziona,
   onModifica,
@@ -1251,6 +1255,8 @@ function AnnotazioneShape({
   selezionata: boolean;
   interattiva: boolean;
   hitWidth: number;
+  /** scala della vista: per distinguere un tocco da un trascinamento reale */
+  scala: number;
   /** true mentre è in corso un gesto a due dita (zoom): blocca select/drag */
   gestoMulti?: () => boolean;
   onSeleziona: () => void;
@@ -1261,6 +1267,9 @@ function AnnotazioneShape({
     () => primitiveAnnotazione(ann, () => immagineDettaglio ?? null),
     [ann, immagineDettaglio]
   );
+  // ricorda se l'oggetto era già selezionato all'inizio del tocco: un tocco
+  // "secco" su un oggetto già selezionato apre la modifica (secondo tap)
+  const eraSelezionata = useRef(false);
 
   return (
     <Shape
@@ -1319,6 +1328,8 @@ function AnnotazioneShape({
         c.restore();
       }}
       onClick={() => {
+        // tocco "pulito" (mouse o tap senza jitter): primo tap seleziona,
+        // secondo tap (oggetto già selezionato) apre la modifica
         if (gestoMulti?.()) return;
         selezionata ? onModifica() : onSeleziona();
       }}
@@ -1333,14 +1344,22 @@ function AnnotazioneShape({
           e.target.position({ x: 0, y: 0 });
           return;
         }
-        onSeleziona();
+        eraSelezionata.current = selezionata;
+        if (!selezionata) onSeleziona();
       }}
       onDragEnd={(e) => {
         const dx = e.target.x();
         const dy = e.target.y();
         e.target.position({ x: 0, y: 0 });
         if (gestoMulti?.()) return; // gesto multi-tocco: nessuno spostamento
-        if (dx !== 0 || dy !== 0) onTrascinata(dx, dy);
+        // il dito trema sempre un po': sotto i ~6px sullo schermo è un TOCCO,
+        // non un trascinamento. Un tocco su oggetto già selezionato → modifica
+        const spostamentoSchermo = Math.hypot(dx, dy) * scala;
+        if (spostamentoSchermo > 6) {
+          onTrascinata(dx, dy);
+        } else if (eraSelezionata.current) {
+          onModifica();
+        }
       }}
     />
   );
