@@ -45,6 +45,7 @@ import {
   valoreAutomatico
 } from '../geometry/calibrazione';
 import { nomeFormaPoligono, simboliPoligono, versiSegmento } from '../geometry/primitive';
+import { letteraFoto as calcolaLetteraFoto } from '../geometry/nomenclatura';
 import { omografiaPiano } from '../geometry/omografia';
 import { lunghezzaPxQuota } from '../geometry/punti';
 import { RicercaBordi } from '../geometry/bordi';
@@ -152,6 +153,11 @@ function categoriaAnnotazione(a: Annotazione): CategoriaLayer {
 
 export function EditorFoto({ fotoId }: { fotoId: string }) {
   const foto = useLiveQuery(() => db.foto.get(fotoId), [fotoId]);
+  // foto del progetto: servono per la lettera identificativa di questa foto
+  const fotoProgetto = useLiveQuery(
+    () => (foto ? db.foto.where('progettoId').equals(foto.progettoId).toArray() : []),
+    [foto?.progettoId]
+  );
   const [immagine, setImmagine] = useState<HTMLImageElement | null>(null);
   const [impostazioni, setImpostazioni] = useState<Impostazioni>(IMPOSTAZIONI_DEFAULT);
   const [annotazioni, setAnnotazioni] = useState<Annotazione[] | null>(null);
@@ -749,6 +755,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         foto={foto}
         immagine={immagine}
         annotazioni={annotazioni}
+        letteraFoto={calcolaLetteraFoto(foto, fotoProgetto ?? [foto])}
         selezioneId={selezioneId}
         strumento={strumento}
         snapAttivo={snapAttivo}

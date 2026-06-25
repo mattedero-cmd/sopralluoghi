@@ -59,6 +59,18 @@ export async function rinominaCartella(id: ID, nome: string): Promise<void> {
   );
 }
 
+/** Aggiorna nome, etichetta e note della cartella in un colpo solo */
+export async function aggiornaCartella(
+  id: ID,
+  dati: { nome?: string; etichetta?: string; note?: string }
+): Promise<void> {
+  const patch: Partial<Cartella> = { modificataIl: ora() };
+  if (dati.nome !== undefined) patch.nome = dati.nome.trim();
+  if (dati.etichetta !== undefined) patch.etichetta = dati.etichetta.trim() || undefined;
+  if (dati.note !== undefined) patch.note = dati.note;
+  await scrivi('aggiornare la cartella', () => db.cartelle.update(id, patch));
+}
+
 export async function spostaCartella(id: ID, nuovoParentId: ID | null): Promise<void> {
   // Impedisce cicli: una cartella non può finire dentro sé stessa o un suo discendente
   let cursore = nuovoParentId;

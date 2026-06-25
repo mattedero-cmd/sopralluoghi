@@ -333,6 +333,7 @@ function FormDatiProgetto({ progetto, onChiudi }: { progetto: Progetto; onChiudi
   const [clienteId, setClienteId] = useState<string | null>(progetto.clienteId ?? null);
   const [luogo, setLuogo] = useState(progetto.luogo);
   const [note, setNote] = useState(progetto.note);
+  const [etichetta, setEtichetta] = useState(progetto.etichetta ?? '');
   const [scegliCliente, setScegliCliente] = useState(false);
 
   // Autosave alla chiusura: nessun dato perso anche senza "Salva" esplicito
@@ -341,7 +342,14 @@ function FormDatiProgetto({ progetto, onChiudi }: { progetto: Progetto; onChiudi
       mostraToast('errore', 'Il nome del progetto non può essere vuoto.');
       return;
     }
-    await aggiornaProgetto(progetto.id, { nome: nome.trim(), cliente, clienteId, luogo, note });
+    await aggiornaProgetto(progetto.id, {
+      nome: nome.trim(),
+      cliente,
+      clienteId,
+      luogo,
+      note,
+      etichetta: etichetta.trim() || undefined
+    });
     onChiudi();
   };
 
@@ -372,6 +380,16 @@ function FormDatiProgetto({ progetto, onChiudi }: { progetto: Progetto; onChiudi
       <div className="campo">
         <label>Luogo / indirizzo</label>
         <input value={luogo} onChange={(e) => setLuogo(e.target.value)} />
+      </div>
+      <div className="campo">
+        <label>Etichetta (codice nelle forme, es. P1)</label>
+        <input
+          value={etichetta}
+          maxLength={6}
+          placeholder="facoltativa"
+          onChange={(e) => setEtichetta(e.target.value)}
+          style={{ width: 140 }}
+        />
       </div>
       <div className="campo">
         <label>Note generali (compaiono nel PDF)</label>

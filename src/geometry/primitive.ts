@@ -398,7 +398,8 @@ export function latiQuotaRett(
  * (offset 0, frecce sui punti, nessuna linea di proiezione); trascinando la
  * maniglia di un lato la si proietta all'esterno e compaiono le linee guida.
  */
-export function primitiveQuotaRettangolo(q: QuotaRettangolo): Primitiva[] {
+export function primitiveQuotaRettangolo(q: QuotaRettangolo, etichetta?: string): Primitiva[] {
+  const badge = etichetta ?? q.etichetta;
   const [altoSx, altoDx, bassoDx, bassoSx] = quadrilateroQuotaRett(q);
   const prim: Primitiva[] = [
     {
@@ -434,14 +435,14 @@ export function primitiveQuotaRettangolo(q: QuotaRettangolo): Primitiva[] {
 
   // nomenclatura dell'elemento: badge al centro della figura, per
   // distinguere le forme quotate l'una dall'altra (foto e report)
-  if (q.etichetta) {
+  if (badge) {
     const dim = q.stile.dimensioneTesto;
     const centro: Punto = {
       x: (altoSx.x + altoDx.x + bassoDx.x + bassoSx.x) / 4,
       y: (altoSx.y + altoDx.y + bassoDx.y + bassoSx.y) / 4
     };
     const colore = coloreQuota(q);
-    const mezzaL = Math.max(dim * 0.9, misuraLarghezzaTesto(q.etichetta, dim) / 2 + dim * 0.4);
+    const mezzaL = Math.max(dim * 0.9, misuraLarghezzaTesto(badge, dim) / 2 + dim * 0.4);
     prim.push(
       {
         kind: 'rettangolo',
@@ -452,7 +453,7 @@ export function primitiveQuotaRettangolo(q: QuotaRettangolo): Primitiva[] {
       },
       {
         kind: 'testo',
-        testo: q.etichetta,
+        testo: badge,
         posizione: centro,
         rotazioneDeg: 0,
         dimensione: dim,
@@ -610,10 +611,11 @@ export function etichettaPoligono(q: QuotaPoligono): string {
  * vertici + quota di ciascun lato, allineata e spinta all'esterno della
  * figura. Riusa la geometria delle quote lineari, come la quota rettangolo.
  */
-export function primitiveQuotaPoligono(q: QuotaPoligono): Primitiva[] {
+export function primitiveQuotaPoligono(q: QuotaPoligono, etichetta?: string): Primitiva[] {
   const punti = q.punti;
   const n = punti.length;
   const colore = coloreQuota(q);
+  const badge = etichetta ?? q.etichetta;
   const contorno: number[] = [];
   for (const pt of punti) contorno.push(pt.x, pt.y);
   if (n > 0) contorno.push(punti[0].x, punti[0].y);
@@ -652,10 +654,10 @@ export function primitiveQuotaPoligono(q: QuotaPoligono): Primitiva[] {
   }
 
   // nomenclatura: badge spostabile, che esce dalla figura se è troppo piccola
-  if (q.etichetta) {
+  if (badge) {
     const dim = q.stile.dimensioneTesto;
     const pos = posizioneEtichettaPoligono(q);
-    const mezzaL = Math.max(dim * 0.9, misuraLarghezzaTesto(q.etichetta, dim) / 2 + dim * 0.4);
+    const mezzaL = Math.max(dim * 0.9, misuraLarghezzaTesto(badge, dim) / 2 + dim * 0.4);
     prim.push(
       {
         kind: 'rettangolo',
@@ -666,7 +668,7 @@ export function primitiveQuotaPoligono(q: QuotaPoligono): Primitiva[] {
       },
       {
         kind: 'testo',
-        testo: q.etichetta,
+        testo: badge,
         posizione: pos,
         rotazioneDeg: 0,
         dimensione: dim,
@@ -791,7 +793,11 @@ export function primitiveDisegno(d: DisegnoLibero): Primitiva[] {
   return [{ kind: 'polilinea', punti: d.punti, colore: d.stile.colore, spessore: d.stile.spessore }];
 }
 
-export function primitiveCallout(c: Callout, imgDettaglio?: CanvasImageSource | null): Primitiva[] {
+export function primitiveCallout(
+  c: Callout,
+  imgDettaglio?: CanvasImageSource | null,
+  etichetta?: string
+): Primitiva[] {
   const colore = c.stile.colore;
   const sp = c.stile.spessore;
   const prim: Primitiva[] = [];
@@ -844,19 +850,21 @@ export function primitiveCallout(c: Callout, imgDettaglio?: CanvasImageSource | 
   prim.push(freccette(centroSorgente, d, dimFreccia, colore));
 
   // etichetta nell'angolo dell'inserto
-  if (c.etichetta) {
+  const badge = etichetta ?? c.etichetta;
+  if (badge) {
     const dim = c.stile.dimensioneTesto;
+    const larg = Math.max(dim * 1.6, misuraLarghezzaTesto(badge, dim) + dim * 0.6);
     prim.push({
       kind: 'rettangolo',
-      rect: { x: c.inserto.x, y: c.inserto.y, width: dim * 1.6, height: dim * 1.4 },
+      rect: { x: c.inserto.x, y: c.inserto.y, width: larg, height: dim * 1.4 },
       colore,
       spessore: 0,
       riempimento: colore
     });
     prim.push({
       kind: 'testo',
-      testo: c.etichetta,
-      posizione: { x: c.inserto.x + dim * 0.8, y: c.inserto.y + dim * 0.7 },
+      testo: badge,
+      posizione: { x: c.inserto.x + larg / 2, y: c.inserto.y + dim * 0.7 },
       rotazioneDeg: 0,
       dimensione: dim,
       colore: '#ffffff',
@@ -881,7 +889,9 @@ function puntoSuBordo(r: Rettangolo, target: Punto): Punto {
 export function primitiveAnnotazione(
   a: Annotazione,
   /** risolve la foto-dettaglio di un callout (già caricata) */
-  risolviDettaglio?: (c: Callout) => CanvasImageSource | null
+  risolviDettaglio?: (c: Callout) => CanvasImageSource | null,
+  /** codice/etichetta calcolato della forma (nomenclatura strutturata) */
+  etichettaForma?: (a: Annotazione) => string | undefined
 ): Primitiva[] {
   switch (a.tipo) {
     case 'quota':
@@ -891,9 +901,9 @@ export function primitiveAnnotazione(
     case 'quotaRaggio':
       return primitiveQuotaRaggio(a);
     case 'quotaRett':
-      return primitiveQuotaRettangolo(a);
+      return primitiveQuotaRettangolo(a, etichettaForma?.(a));
     case 'quotaPoligono':
-      return primitiveQuotaPoligono(a);
+      return primitiveQuotaPoligono(a, etichettaForma?.(a));
     case 'freccia':
       return primitiveFreccia(a);
     case 'testo':
@@ -901,6 +911,6 @@ export function primitiveAnnotazione(
     case 'disegno':
       return primitiveDisegno(a);
     case 'callout':
-      return primitiveCallout(a, risolviDettaglio?.(a) ?? null);
+      return primitiveCallout(a, risolviDettaglio?.(a) ?? null, etichettaForma?.(a));
   }
 }

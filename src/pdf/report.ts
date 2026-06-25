@@ -4,6 +4,12 @@ import { db } from '../db/db';
 import type { Annotazione, Foto, Progetto, Punto, Quota, StatoMisura } from '../db/types';
 import { abbondanzaTotale, segmentiPoligono, segmentoELato } from '../db/types';
 import { nomeFormaPoligono, simboliPoligono, versiSegmento } from '../geometry/primitive';
+import {
+  codiceCompletoForma,
+  codiceLocaleForma,
+  letteraFoto,
+  percorsoEtichette
+} from '../geometry/nomenclatura';
 import { leggiImpostazioni } from '../db/repository';
 import { renderFotoAnnotata } from '../render/renderAnnotata';
 import { caricaImmagine, fotoIllegibile } from '../utils/image';
@@ -89,6 +95,9 @@ export async function generaReportPdf(
   for (const f of fotoList) {
     annotazioniPerFoto.set(f.id, await db.annotazioni.where('fotoId').equals(f.id).toArray());
   }
+  // percorso di etichette (cartelle annidate + progetto) per i codici delle forme
+  const cartelle = await db.cartelle.toArray();
+  const percorso = percorsoEtichette(progetto, cartelle);
 
   const immagini: Record<string, string> = {};
   for (let i = 0; i < fotoList.length; i++) {
@@ -141,17 +150,18 @@ export async function generaReportPdf(
   // --- Una sezione per foto ---------------------------------------------------
   fotoList.forEach((f, indice) => {
     const annotazioni = annotazioniPerFoto.get(f.id) ?? [];
-    contenuto.push(...sezioneFoto(f, indice, annotazioni, opzioni, impostazioni.pdf));
+    const lettera = letteraFoto(f, fotoList);
+    contenuto.push(...sezioneFoto(f, indice, annotazioni, opzioni, impostazioni.pdf, lettera, percorso));
   });
 
   // --- Tabella riassuntiva delle misure ---------------------------------------
   if (opzioni.includiRiepilogo) {
-    contenuto.push(...tabellaRiassuntiva(fotoList, annotazioniPerFoto));
+    contenuto.push(...tabellaRiassuntiva(fotoList, annotazioniPerFoto, percorso));
   }
 
   // --- Distinta di taglio (pezzi da produrre) ---------------------------------
   if (opzioni.includiDistinta) {
-    contenuto.push(...distintaTaglio(fotoList, annotazioniPerFoto));
+    contenuto.push(...distintaTaglio(fotoList, annotazioniPerFoto, percorso));
   }
 
   const pieDiPagina = impostazioni.pdf.pieDiPagina.trim() || prof.azienda || prof.nome || '';
@@ -198,6 +208,8 @@ export async function generaReportPdf(
 }
 
 interface RigaMisura {
+  /** codice strutturato della forma (es. "P1.A1"); assente per le quote lineari */
+  codice?: string;
   /** nome della forma/quota (es. "Rettangolo 1", "Cerchio", "Lineare orizz.") */
   forma: string;
   /** misure reali rilevate (es. "b 200 · h 100 cm") */
@@ -252,7 +264,15 @@ function dettaglioAbb(
 }
 
 /** Tutte le misure di una foto in forma STRUTTURATA per il riepilogo */
-function righeMisureFoto(annotazioni: Annotazione[], foto: Foto): RigaMisura[] {
+function righeMisureFoto(
+  annotazioni: Annotazione[],
+  foto: Foto,
+  lettera = 'A',
+  percorso: string[] = []
+): RigaMisura[] {
+  // codice strutturato completo di una forma (percorso cartelle + lettera+numero)
+  const codiceForma = (a: Annotazione): string =>
+    codiceCompletoForma(percorso, codiceLocaleForma(a, lettera, annotazioni));
   const righe: RigaMisura[] = [];
   for (const a of [...annotazioni].sort((x, y) => x.zIndex - y.zIndex)) {
     if (a.tipo === 'quota') {
@@ -305,7 +325,7 @@ function righeMisureFoto(annotazioni: Annotazione[], foto: Foto): RigaMisura[] {
       else if (m.forma === 'trapezio')
         reale = `B ${n(m.baseSup)} · b ${n(m.baseInf)} · h ${n(m.latoSx)} ${a.unita}`;
       else reale = `${n(m.baseSup)} · ${n(m.latoDx)} · ${n(m.baseInf)} · ${n(m.latoSx)} ${a.unita}`;
-      const rigaR: RigaMisura = { forma: a.etichetta ? `${nome} ${a.etichetta}` : nome, reale, stato: a.stato, pezzo: true };
+      const rigaR: RigaMisura = { codice: codiceForma(a), forma: nome, reale, stato: a.stato, pezzo: true };
       const areaR = areaElemento(a, foto);
       if (areaR) {
         rigaR.area = formattaArea(areaR);
@@ -325,7 +345,7 @@ function righeMisureFoto(annotazioni: Annotazione[], foto: Foto): RigaMisura[] {
         .map((s, i) => ({ s, i }))
         .filter(({ s }) => segmentoELato(s, nVert));
       const abbTot = lati.reduce((acc, { s }) => acc + abbondanzaTotale(s), 0);
-      const riga: RigaMisura = { forma: a.etichetta ? `${nome} ${a.etichetta}` : nome, reale, stato: a.stato, pezzo: true };
+      const riga: RigaMisura = { codice: codiceForma(a), forma: nome, reale, stato: a.stato, pezzo: true };
       if (abbTot > 0) {
         riga.taglio = `${lati
           .map(({ s, i }) => `${simboli[i]} ${s.valore === null ? '?' : formattaNumero(s.valore + abbondanzaTotale(s))}`)
@@ -422,10 +442,12 @@ function sezioneFoto(
   indice: number,
   annotazioni: Annotazione[],
   opzioni: OpzioniReport,
-  pdfImp: { mostraGeotag: boolean; mostraDataScatto: boolean }
+  pdfImp: { mostraGeotag: boolean; mostraDataScatto: boolean },
+  lettera: string,
+  percorso: string[]
 ): Content[] {
   const titolo = `${indice + 1}. ${f.didascalia || `Foto ${indice + 1}`}`;
-  const misure = righeMisureFoto(annotazioni, f);
+  const misure = righeMisureFoto(annotazioni, f, lettera, percorso);
   const callouts = annotazioni.filter((a) => a.tipo === 'callout');
   const catene = calcolaCatene(annotazioni);
   // layout compatto: due foto per pagina, immagine più bassa
@@ -460,7 +482,7 @@ function sezioneFoto(
 
   if (opzioni.includiTabellaMisure && misure.length > 0) {
     const corpoTabella = misure.map((m, i) => [
-      { text: String(i + 1), style: 'tdNum' },
+      { text: m.codice ?? String(i + 1), style: m.codice ? 'tdForma' : 'tdNum' },
       { text: m.forma, style: 'tdForma' },
       cellaDettaglio(m),
       cellaStato(m.stato)
@@ -469,10 +491,10 @@ function sezioneFoto(
       table: {
         headerRows: 1,
         dontBreakRows: true,
-        widths: [22, 'auto', '*', 'auto'],
+        widths: [40, 'auto', '*', 'auto'],
         body: [
           [
-            { text: 'N.', style: 'th' },
+            { text: 'Cod.', style: 'th' },
             { text: 'Elemento', style: 'th' },
             { text: 'Misure', style: 'th' },
             { text: 'Stato', style: 'th' }
@@ -515,14 +537,16 @@ function sezioneFoto(
 
 function tabellaRiassuntiva(
   fotoList: Foto[],
-  annotazioniPerFoto: Map<string, Annotazione[]>
+  annotazioniPerFoto: Map<string, Annotazione[]>,
+  percorso: string[]
 ): Content[] {
   const righe: Content[][] = [];
   fotoList.forEach((f, indice) => {
-    const misure = righeMisureFoto(annotazioniPerFoto.get(f.id) ?? [], f);
+    const lettera = letteraFoto(f, fotoList);
+    const misure = righeMisureFoto(annotazioniPerFoto.get(f.id) ?? [], f, lettera, percorso);
     misure.forEach((m, i) => {
       righe.push([
-        { text: `${indice + 1}.${i + 1}`, style: 'tdNum' },
+        { text: m.codice ?? `${indice + 1}.${i + 1}`, style: m.codice ? 'tdForma' : 'tdNum' },
         { text: f.didascalia || `Foto ${indice + 1}`, fontSize: 8.5, color: GRIGIO_CHIARO },
         { text: m.forma, style: 'tdForma' },
         cellaDettaglio(m),
@@ -559,10 +583,10 @@ function tabellaRiassuntiva(
       table: {
         headerRows: 1,
         dontBreakRows: true,
-        widths: [28, 'auto', 'auto', '*', 'auto'],
+        widths: [42, 'auto', 'auto', '*', 'auto'],
         body: [
           [
-            { text: 'Rif.', style: 'th' },
+            { text: 'Cod.', style: 'th' },
             { text: 'Foto', style: 'th' },
             { text: 'Elemento', style: 'th' },
             { text: 'Misure', style: 'th' },
@@ -583,21 +607,25 @@ function tabellaRiassuntiva(
  */
 function distintaTaglio(
   fotoList: Foto[],
-  annotazioniPerFoto: Map<string, Annotazione[]>
+  annotazioniPerFoto: Map<string, Annotazione[]>,
+  percorso: string[]
 ): Content[] {
   const righe: Content[][] = [];
   let nPezzi = 0;
   let areaTot = 0;
   let areaCompleta = true; // false se a qualche pezzo manca l'area
 
-  fotoList.forEach((f, indice) => {
-    const misure = righeMisureFoto(annotazioniPerFoto.get(f.id) ?? [], f).filter((m) => m.pezzo);
-    misure.forEach((m, i) => {
+  fotoList.forEach((f) => {
+    const lettera = letteraFoto(f, fotoList);
+    const misure = righeMisureFoto(annotazioniPerFoto.get(f.id) ?? [], f, lettera, percorso).filter(
+      (m) => m.pezzo
+    );
+    misure.forEach((m) => {
       nPezzi += 1;
       if (m.areaM2 !== undefined) areaTot += m.areaM2;
       else areaCompleta = false;
       righe.push([
-        { text: `${indice + 1}.${i + 1}`, style: 'tdNum' },
+        { text: m.codice ?? '', style: 'tdForma' },
         { text: m.forma, style: 'tdForma' },
         { text: m.reale, fontSize: 9.5, color: '#1a1a1a' },
         {
@@ -652,10 +680,10 @@ function distintaTaglio(
       table: {
         headerRows: 1,
         dontBreakRows: true,
-        widths: [28, 'auto', '*', '*', 'auto', 'auto'],
+        widths: [44, 'auto', '*', '*', 'auto', 'auto'],
         body: [
           [
-            { text: 'Rif.', style: 'th' },
+            { text: 'Codice', style: 'th' },
             { text: 'Pezzo', style: 'th' },
             { text: 'Misura reale', style: 'th' },
             { text: 'Misura di taglio', style: 'th' },

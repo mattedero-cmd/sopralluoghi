@@ -29,6 +29,7 @@ import {
 import type { RicercaBordi } from '../geometry/bordi';
 import { traslaAnnotazione } from './fabbrica';
 import { immagineDettaglio } from '../utils/immaginiCallout';
+import { codiceLocaleForma, eFormaEtichettabile } from '../geometry/nomenclatura';
 
 export type Strumento =
   | 'seleziona'
@@ -74,6 +75,8 @@ interface Props {
   foto: Foto;
   immagine: HTMLImageElement;
   annotazioni: Annotazione[];
+  /** lettera della foto nel progetto (A, B, C…) per la nomenclatura delle forme */
+  letteraFoto: string;
   selezioneId: string | null;
   strumento: Strumento;
   snapAttivo: boolean;
@@ -860,6 +863,11 @@ export function StageEditor(p: Props) {
                   ? immagineDettaglio(a.fotoDettaglio, () => setVersioneDettagli((v) => v + 1))
                   : null
               }
+              etichetta={
+                eFormaEtichettabile(a)
+                  ? codiceLocaleForma(a, p.letteraFoto, p.annotazioni)
+                  : undefined
+              }
               selezionata={a.id === p.selezioneId}
               interattiva={p.strumento === 'seleziona'}
               hitWidth={Math.max(28 / vista.scala, 12)}
@@ -1239,6 +1247,7 @@ function AnnotazioneShape({
   ann,
   immagine,
   immagineDettaglio,
+  etichetta,
   selezionata,
   interattiva,
   hitWidth,
@@ -1252,6 +1261,8 @@ function AnnotazioneShape({
   immagine: HTMLImageElement;
   /** foto-dettaglio già caricata (solo per i callout con foto scattata) */
   immagineDettaglio?: CanvasImageSource | null;
+  /** codice/etichetta calcolato della forma (nomenclatura strutturata) */
+  etichetta?: string;
   selezionata: boolean;
   interattiva: boolean;
   hitWidth: number;
@@ -1264,8 +1275,8 @@ function AnnotazioneShape({
   onTrascinata: (dx: number, dy: number) => void;
 }) {
   const prims = useMemo(
-    () => primitiveAnnotazione(ann, () => immagineDettaglio ?? null),
-    [ann, immagineDettaglio]
+    () => primitiveAnnotazione(ann, () => immagineDettaglio ?? null, () => etichetta),
+    [ann, immagineDettaglio, etichetta]
   );
   // ricorda se l'oggetto era già selezionato all'inizio del tocco: un tocco
   // "secco" su un oggetto già selezionato apre la modifica (secondo tap)

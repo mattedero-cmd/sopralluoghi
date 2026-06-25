@@ -15,6 +15,13 @@ export interface Cartella {
   nome: string;
   /** null = radice; le cartelle sono annidabili */
   parentId: ID | null;
+  /**
+   * Etichetta breve per la nomenclatura strutturata delle forme (es. "E1",
+   * "P1", "S1"). Concatenata col percorso nel codice di ogni forma del PDF.
+   */
+  etichetta?: string;
+  /** Note/descrizione della cartella: nel PDF diventano il sottotitolo del capitolo */
+  note?: string;
   creataIl: number;
   modificataIl: number;
 }
@@ -23,6 +30,8 @@ export interface Progetto {
   id: ID;
   /** null = radice dell'archivio */
   cartellaId: ID | null;
+  /** Etichetta breve per la nomenclatura strutturata (come per le cartelle) */
+  etichetta?: string;
   nome: string;
   /** nome cliente denormalizzato (mostrato ovunque, anche senza anagrafica) */
   cliente: string;

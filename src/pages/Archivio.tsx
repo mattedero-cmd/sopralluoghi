@@ -3,13 +3,13 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import type { Cartella, Progetto } from '../db/types';
 import {
+  aggiornaCartella,
   contenutoCartella,
   creaCartella,
   creaProgetto,
   duplicaProgetto,
   eliminaCartella,
   eliminaProgetto,
-  rinominaCartella,
   spostaCartella,
   spostaProgetto
 } from '../db/repository';
@@ -241,12 +241,11 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
         />
       )}
       {rinomina && (
-        <FormNome
-          titolo="Rinomina cartella"
-          iniziale={rinomina.nome}
+        <FormCartella
+          cartella={rinomina}
           onChiudi={() => setRinomina(null)}
-          onSalva={async (nome) => {
-            await rinominaCartella(rinomina.id, nome);
+          onSalva={async (nome, etichetta, note) => {
+            await aggiornaCartella(rinomina.id, { nome, etichetta, note });
           }}
         />
       )}
@@ -306,6 +305,57 @@ function FormNome({
           disabled={!nome.trim()}
           onClick={async () => {
             await onSalva(nome);
+            onChiudi();
+          }}
+        >
+          Salva
+        </button>
+      </div>
+    </Modale>
+  );
+}
+
+function FormCartella({
+  cartella,
+  onChiudi,
+  onSalva
+}: {
+  cartella: Cartella;
+  onChiudi: () => void;
+  onSalva: (nome: string, etichetta: string, note: string) => Promise<void>;
+}) {
+  const [nome, setNome] = useState(cartella.nome);
+  const [etichetta, setEtichetta] = useState(cartella.etichetta ?? '');
+  const [note, setNote] = useState(cartella.note ?? '');
+  return (
+    <Modale titolo="Cartella" onChiudi={onChiudi} centro>
+      <div className="campo">
+        <label>Nome (titolo del capitolo nel PDF)</label>
+        <input autoFocus value={nome} onChange={(e) => setNome(e.target.value)} />
+      </div>
+      <div className="campo">
+        <label>Etichetta (codice nelle forme, es. P1)</label>
+        <input
+          value={etichetta}
+          maxLength={6}
+          placeholder="facoltativa"
+          onChange={(e) => setEtichetta(e.target.value)}
+          style={{ width: 140 }}
+        />
+      </div>
+      <div className="campo">
+        <label>Note (descrizione del capitolo nel PDF)</label>
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} />
+      </div>
+      <div className="riga-pulsanti">
+        <button className="btn" onClick={onChiudi}>
+          Annulla
+        </button>
+        <button
+          className="btn primario"
+          disabled={!nome.trim()}
+          onClick={async () => {
+            await onSalva(nome, etichetta, note);
             onChiudi();
           }}
         >

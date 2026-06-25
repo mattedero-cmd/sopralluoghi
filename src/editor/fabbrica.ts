@@ -234,16 +234,15 @@ export class FabbricaAnnotazioni {
       }
     }
 
-    const nCallout = esistenti.filter((a) => a.tipo === 'callout').length;
-    const etichetta = String.fromCharCode(65 + (nCallout % 26));
-
     return {
       id: nuovoId(),
       fotoId: this.foto.id,
       tipo: 'callout',
       sorgente,
       inserto: { x: migliore.x, y: migliore.y, width: larghezzaInserto, height: altezzaInserto },
-      etichetta,
+      // vuota: il codice (A1, B2…) è assegnato automaticamente dalla
+      // nomenclatura; questo campo resta solo come override manuale
+      etichetta: '',
       zIndex: this.prossimoZ(esistenti),
       stile: this.stileBase()
     };
