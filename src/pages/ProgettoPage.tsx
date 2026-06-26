@@ -220,7 +220,7 @@ export function ProgettoPage({ id }: { id: string }) {
               setOpzioniPdfAperte(true);
             }}
           >
-            📄 Report PDF
+            📤 Esporta (PDF / ZIP)
           </button>
         </div>
         {importInCorso && <p style={{ color: 'var(--testo-2)' }}>Importazione foto in corso…</p>}
@@ -491,7 +491,7 @@ function FormOpzioniReport({
   );
 
   return (
-    <Modale titolo="Opzioni del report PDF" onChiudi={onChiudi}>
+    <Modale titolo="Esporta: PDF o pacchetto ZIP" onChiudi={onChiudi}>
       <div className="campo">
         <label>
           Foto da includere ({selezione.size} di {foto.length})
