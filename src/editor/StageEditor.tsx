@@ -29,7 +29,7 @@ import {
 import type { RicercaBordi } from '../geometry/bordi';
 import { traslaAnnotazione } from './fabbrica';
 import { immagineDettaglio } from '../utils/immaginiCallout';
-import { codiceLocaleForma, eFormaEtichettabile } from '../geometry/nomenclatura';
+import { eFormaEtichettabile } from '../geometry/nomenclatura';
 
 export type Strumento =
   | 'seleziona'
@@ -75,8 +75,8 @@ interface Props {
   foto: Foto;
   immagine: HTMLImageElement;
   annotazioni: Annotazione[];
-  /** lettera della foto nel progetto (A, B, C…) per la nomenclatura delle forme */
-  letteraFoto: string;
+  /** codice locale (es. A1) di una forma, calcolato con la numerazione del progetto */
+  codiceForma: (a: Annotazione) => string;
   selezioneId: string | null;
   strumento: Strumento;
   snapAttivo: boolean;
@@ -863,11 +863,7 @@ export function StageEditor(p: Props) {
                   ? immagineDettaglio(a.fotoDettaglio, () => setVersioneDettagli((v) => v + 1))
                   : null
               }
-              etichetta={
-                eFormaEtichettabile(a)
-                  ? codiceLocaleForma(a, p.letteraFoto, p.annotazioni)
-                  : undefined
-              }
+              etichetta={eFormaEtichettabile(a) ? p.codiceForma(a) : undefined}
               selezionata={a.id === p.selezioneId}
               interattiva={p.strumento === 'seleziona'}
               hitWidth={Math.max(28 / vista.scala, 12)}

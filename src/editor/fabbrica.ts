@@ -87,8 +87,6 @@ export class FabbricaAnnotazioni {
    */
   poligono(punti: Punto[], coppie: Array<[number, number]>, esistenti: Annotazione[]): QuotaPoligono {
     const calibrata = haCalibrazione(this.foto);
-    const numero =
-      esistenti.filter((a) => a.tipo === 'quotaRett' || a.tipo === 'quotaPoligono').length + 1;
     const unita = this.impostazioni.unitaDefault;
     const segmenti: SegmentoQuota[] = coppie.map(([da, a]) => ({
       da,
@@ -101,11 +99,14 @@ export class FabbricaAnnotazioni {
       tipo: 'quotaPoligono',
       punti,
       segmenti,
-      etichetta: String(numero),
+      // vuota: il codice (A1, A2…) è assegnato automaticamente dalla
+      // nomenclatura; questo campo resta solo come override manuale
+      etichetta: '',
       valoreAuto: calibrata,
       unita,
       stato: calibrata ? 'stimata' : 'reale',
       zIndex: this.prossimoZ(esistenti),
+      creatoIl: Date.now(),
       stile: this.stileQuota()
     };
   }
@@ -244,6 +245,7 @@ export class FabbricaAnnotazioni {
       // nomenclatura; questo campo resta solo come override manuale
       etichetta: '',
       zIndex: this.prossimoZ(esistenti),
+      creatoIl: Date.now(),
       stile: this.stileBase()
     };
   }

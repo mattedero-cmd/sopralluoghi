@@ -7,8 +7,9 @@ import { nomeFormaPoligono, simboliPoligono, versiSegmento } from '../geometry/p
 import {
   codiceCompletoForma,
   codiceLocaleForma,
-  letteraFoto,
-  percorsoEtichette
+  numeriProgetto,
+  percorsoEtichette,
+  type NumeroForma
 } from '../geometry/nomenclatura';
 import { leggiImpostazioni } from '../db/repository';
 import { renderFotoAnnotata } from '../render/renderAnnotata';
@@ -147,15 +148,18 @@ export async function generaReportPdf(
     } as Content);
   }
 
+  // numerazione condivisa di tutto il progetto (foto con stessa etichetta →
+  // stessa sequenza, nell'ordine di creazione delle forme)
+  const numeri = numeriProgetto(fotoList, (id) => annotazioniPerFoto.get(id) ?? []);
+
   // --- Una sezione per foto ---------------------------------------------------
   fotoList.forEach((f, indice) => {
     const annotazioni = annotazioniPerFoto.get(f.id) ?? [];
-    const lettera = letteraFoto(f, fotoList);
-    contenuto.push(...sezioneFoto(f, indice, annotazioni, opzioni, impostazioni.pdf, lettera, percorso));
+    contenuto.push(...sezioneFoto(f, indice, annotazioni, opzioni, impostazioni.pdf, numeri, percorso));
   });
 
-  // tutte le foto del progetto condividono lo stesso percorso di cartelle
-  const info: InfoFoto = (f) => ({ lettera: letteraFoto(f, fotoList), percorso });
+  // tutte le foto del progetto condividono numerazione e percorso
+  const info: InfoFoto = () => ({ numeri, percorso });
 
   // --- Tabella riassuntiva delle misure ---------------------------------------
   if (opzioni.includiRiepilogo) {
@@ -264,7 +268,7 @@ export async function generaReportCartella(
 
   const fotoPerProgetto = new Map<string, Foto[]>();
   const annotPerFoto = new Map<string, Annotazione[]>();
-  const infoFoto = new Map<string, { lettera: string; percorso: string[] }>();
+  const infoFoto = new Map<string, { numeri: Map<string, NumeroForma>; percorso: string[] }>();
   const tutteFoto: Foto[] = [];
 
   const caricaProgetto = async (p: Progetto) => {
@@ -275,9 +279,11 @@ export async function generaReportCartella(
     const percorso = percorsoEtichette(p, tutteCartelle);
     for (const f of lista) {
       annotPerFoto.set(f.id, await db.annotazioni.where('fotoId').equals(f.id).toArray());
-      infoFoto.set(f.id, { lettera: letteraFoto(f, lista), percorso });
       tutteFoto.push(f);
     }
+    // numerazione condivisa del progetto (foto con stessa etichetta)
+    const numeri = numeriProgetto(lista, (id) => annotPerFoto.get(id) ?? []);
+    for (const f of lista) infoFoto.set(f.id, { numeri, percorso });
   };
   const raccogli = async (id: string) => {
     for (const p of progettiIn(id)) await caricaProgetto(p);
@@ -311,7 +317,7 @@ export async function generaReportCartella(
       for (const f of lista) {
         const inf = infoFoto.get(f.id)!;
         out.push(
-          ...sezioneFoto(f, indiceFoto++, annotPerFoto.get(f.id) ?? [], opzioni, impostazioni.pdf, inf.lettera, inf.percorso, {
+          ...sezioneFoto(f, indiceFoto++, annotPerFoto.get(f.id) ?? [], opzioni, impostazioni.pdf, inf.numeri, inf.percorso, {
             style: 'h3',
             toc: false,
             etichetta: ''
@@ -367,7 +373,7 @@ export async function generaReportCartella(
   }
   figlie(radice.id).forEach((c, i) => contenuto.push(...sezioneCartella(c, String(i + 1), 0)));
 
-  const info: InfoFoto = (f) => infoFoto.get(f.id) ?? { lettera: 'A', percorso: [] };
+  const info: InfoFoto = (f) => infoFoto.get(f.id) ?? { numeri: new Map(), percorso: [] };
   if (opzioni.includiRiepilogo) {
     contenuto.push(...tabellaRiassuntiva(tutteFoto, annotPerFoto, info));
   }
@@ -448,12 +454,12 @@ function dettaglioAbb(
 function righeMisureFoto(
   annotazioni: Annotazione[],
   foto: Foto,
-  lettera = 'A',
+  numeri: Map<string, NumeroForma> = new Map(),
   percorso: string[] = []
 ): RigaMisura[] {
-  // codice strutturato completo di una forma (percorso cartelle + lettera+numero)
+  // codice strutturato completo di una forma (percorso cartelle + etich.+numero)
   const codiceForma = (a: Annotazione): string =>
-    codiceCompletoForma(percorso, codiceLocaleForma(a, lettera, annotazioni));
+    codiceCompletoForma(percorso, codiceLocaleForma(a, numeri));
   const righe: RigaMisura[] = [];
   for (const a of [...annotazioni].sort((x, y) => x.zIndex - y.zIndex)) {
     if (a.tipo === 'quota') {
@@ -624,7 +630,7 @@ function sezioneFoto(
   annotazioni: Annotazione[],
   opzioni: OpzioniReport,
   pdfImp: { mostraGeotag: boolean; mostraDataScatto: boolean },
-  lettera: string,
+  numeri: Map<string, NumeroForma>,
   percorso: string[],
   /** stile del titolo della foto e voce indice: nel report di cartella le foto
    *  sono "contenuto" dei capitoli, quindi titolo più piccolo e fuori indice */
@@ -635,7 +641,7 @@ function sezioneFoto(
   }
 ): Content[] {
   const titolo = `${titoloFoto.etichetta}${f.didascalia || `Foto ${indice + 1}`}`;
-  const misure = righeMisureFoto(annotazioni, f, lettera, percorso);
+  const misure = righeMisureFoto(annotazioni, f, numeri, percorso);
   const callouts = annotazioni.filter((a) => a.tipo === 'callout');
   const catene = calcolaCatene(annotazioni);
   // layout compatto: due foto per pagina, immagine più bassa
@@ -723,8 +729,8 @@ function sezioneFoto(
   return out;
 }
 
-/** per ogni foto: la sua lettera (nel progetto) e il percorso di etichette */
-type InfoFoto = (f: Foto) => { lettera: string; percorso: string[] };
+/** per ogni foto: la numerazione del suo progetto e il percorso di etichette */
+type InfoFoto = (f: Foto) => { numeri: Map<string, NumeroForma>; percorso: string[] };
 
 function tabellaRiassuntiva(
   fotoList: Foto[],
@@ -733,8 +739,8 @@ function tabellaRiassuntiva(
 ): Content[] {
   const righe: Content[][] = [];
   fotoList.forEach((f, indice) => {
-    const { lettera, percorso } = info(f);
-    const misure = righeMisureFoto(annotazioniPerFoto.get(f.id) ?? [], f, lettera, percorso);
+    const { numeri, percorso } = info(f);
+    const misure = righeMisureFoto(annotazioniPerFoto.get(f.id) ?? [], f, numeri, percorso);
     misure.forEach((m, i) => {
       righe.push([
         { text: m.codice ?? `${indice + 1}.${i + 1}`, style: m.codice ? 'tdForma' : 'tdNum' },
@@ -807,8 +813,8 @@ function distintaTaglio(
   let areaCompleta = true; // false se a qualche pezzo manca l'area
 
   fotoList.forEach((f) => {
-    const { lettera, percorso } = info(f);
-    const misure = righeMisureFoto(annotazioniPerFoto.get(f.id) ?? [], f, lettera, percorso).filter(
+    const { numeri, percorso } = info(f);
+    const misure = righeMisureFoto(annotazioniPerFoto.get(f.id) ?? [], f, numeri, percorso).filter(
       (m) => m.pezzo
     );
     misure.forEach((m) => {

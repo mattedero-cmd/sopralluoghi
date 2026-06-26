@@ -134,6 +134,12 @@ export interface Foto {
   piano?: PianoProspettiva | null;
   /** Ordine di presentazione nel progetto e nel PDF */
   ordine: number;
+  /**
+   * Etichetta della foto per la nomenclatura (es. "A"): se assente si usa la
+   * lettera automatica ricavata dall'ordine. Due foto con la stessa etichetta
+   * nello stesso progetto CONDIVIDONO la sequenza numerica delle forme.
+   */
+  etichetta?: string;
   creataIl: number;
   modificataIl: number;
 }
@@ -188,6 +194,17 @@ interface AnnotazioneBase {
   fotoId: ID;
   tipo: TipoAnnotazione;
   zIndex: number;
+  /**
+   * Istante di creazione (ms). Dà l'ordine REALE di creazione degli elementi,
+   * anche tra foto diverse: serve alla numerazione automatica delle forme.
+   */
+  creatoIl?: number;
+  /**
+   * Chiave d'ordine per la numerazione automatica, modificabile a mano:
+   * cambiando il numero di una forma la si sposta nella sequenza e le altre
+   * si rinumerano da sole. Se assente vale `creatoIl`.
+   */
+  ordine?: number;
   stile: Stile;
 }
 

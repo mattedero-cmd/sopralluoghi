@@ -45,7 +45,7 @@ import {
   valoreAutomatico
 } from '../geometry/calibrazione';
 import { nomeFormaPoligono, simboliPoligono, versiSegmento } from '../geometry/primitive';
-import { letteraFoto as calcolaLetteraFoto } from '../geometry/nomenclatura';
+import { codiceLocaleForma, numeriProgetto, ordinePerNumero } from '../geometry/nomenclatura';
 import { omografiaPiano } from '../geometry/omografia';
 import { lunghezzaPxQuota } from '../geometry/punti';
 import { RicercaBordi } from '../geometry/bordi';
@@ -153,10 +153,19 @@ function categoriaAnnotazione(a: Annotazione): CategoriaLayer {
 
 export function EditorFoto({ fotoId }: { fotoId: string }) {
   const foto = useLiveQuery(() => db.foto.get(fotoId), [fotoId]);
-  // foto del progetto: servono per la lettera identificativa di questa foto
+  // foto del progetto: servono per l'etichetta identificativa di questa foto
   const fotoProgetto = useLiveQuery(
     () => (foto ? db.foto.where('progettoId').equals(foto.progettoId).toArray() : []),
     [foto?.progettoId]
+  );
+  // annotazioni di TUTTE le foto del progetto: per la numerazione condivisa
+  // (foto con la stessa etichetta condividono la sequenza delle forme)
+  const annotazioniProgetto = useLiveQuery(
+    () =>
+      fotoProgetto && fotoProgetto.length
+        ? db.annotazioni.where('fotoId').anyOf(fotoProgetto.map((f) => f.id)).toArray()
+        : [],
+    [fotoProgetto]
   );
   const [immagine, setImmagine] = useState<HTMLImageElement | null>(null);
   const [impostazioni, setImpostazioni] = useState<Impostazioni>(IMPOSTAZIONI_DEFAULT);
@@ -503,8 +512,13 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
 
   const accettaProposta = () => {
     if (!proposta || !annotazioni) return;
-    // il poligono diventa definitivo col colore unico (uguale a quelli manuali)
-    const definitiva: QuotaPoligono = { ...proposta, stile: { ...proposta.stile, colore: COLORE_QUOTA } };
+    // il poligono diventa definitivo col colore unico (uguale a quelli manuali);
+    // si stampa l'istante di creazione per la numerazione automatica
+    const definitiva: QuotaPoligono = {
+      ...proposta,
+      creatoIl: proposta.creatoIl ?? Date.now(),
+      stile: { ...proposta.stile, colore: COLORE_QUOTA }
+    };
     commit([...annotazioni, definitiva]);
     chiudiProposta();
     setSelezioneId(definitiva.id);
@@ -677,6 +691,19 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
 
   const selezionata = annotazioni.find((a) => a.id === selezioneId) ?? null;
 
+  // numerazione condivisa delle forme nel progetto: per la foto corrente usa le
+  // annotazioni "vive" (con le modifiche non ancora salvate), per le altre il DB
+  const annotazioniDi = (fid: string): Annotazione[] =>
+    fid === fotoId ? annotazioni : (annotazioniProgetto ?? []).filter((a) => a.fotoId === fid);
+  const numeriForme = useMemo(
+    () =>
+      numeriProgetto(fotoProgetto && fotoProgetto.length ? fotoProgetto : [foto], (fid) =>
+        fid === fotoId ? annotazioni : (annotazioniProgetto ?? []).filter((a) => a.fotoId === fid)
+      ),
+    [fotoId, annotazioni, annotazioniProgetto, fotoProgetto, foto]
+  );
+  const codiceForma = (a: Annotazione) => codiceLocaleForma(a, numeriForme);
+
   /** annotazioni che si modificano nell'ambiente dedicato a tutto schermo:
    *  un tocco le apre direttamente, senza pannello in basso */
   const haAmbienteDedicato = (a: Annotazione) =>
@@ -755,7 +782,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         foto={foto}
         immagine={immagine}
         annotazioni={annotazioni}
-        letteraFoto={calcolaLetteraFoto(foto, fotoProgetto ?? [foto])}
+        codiceForma={codiceForma}
         selezioneId={selezioneId}
         strumento={strumento}
         snapAttivo={snapAttivo}
@@ -1094,6 +1121,14 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               poli={poli}
               foto={foto}
               immagine={immagine}
+              codice={codiceForma(poli)}
+              numero={numeriForme.get(poli.id)?.numero}
+              onNumero={(n) => {
+                const ord = ordinePerNumero(poli, n, fotoProgetto ?? [foto], annotazioniDi);
+                if (ord !== null) {
+                  commit(annotazioni.map((a) => (a.id === poli.id ? { ...a, ordine: ord } : a)));
+                }
+              }}
               onModifica={(mod) =>
                 commit(
                   annotazioni.map((a) =>
@@ -2060,6 +2095,9 @@ function EditorPoligono({
   poli,
   foto,
   immagine,
+  codice,
+  numero,
+  onNumero,
   onModifica,
   onModificaSegmento,
   onElimina,
@@ -2068,6 +2106,11 @@ function EditorPoligono({
   poli: QuotaPoligono;
   foto: Foto;
   immagine: HTMLImageElement;
+  /** codice automatico corrente (es. "P1.A1") */
+  codice: string;
+  /** numero della forma nella sequenza condivisa (per il riordino manuale) */
+  numero?: number;
+  onNumero: (n: number) => void;
   onModifica: (m: Partial<QuotaPoligono>) => void;
   onModificaSegmento: (indice: number) => void;
   onElimina: () => void;
@@ -2228,10 +2271,34 @@ function EditorPoligono({
       </div>
       <div className="eq-controlli">
         <div className="campo">
-          <label>Nomenclatura (facoltativa)</label>
+          <label>Codice e numero</label>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 800, fontSize: 18, color: 'var(--testo)' }}>{codice || '—'}</span>
+            {numero !== undefined && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--testo-2)' }}>
+                n°
+                <input
+                  type="number"
+                  min={1}
+                  value={numero}
+                  onChange={(e) => {
+                    const n = parseInt(e.target.value, 10);
+                    if (Number.isFinite(n) && n >= 1) onNumero(n);
+                  }}
+                  style={{ width: 64 }}
+                />
+              </label>
+            )}
+          </div>
+          <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
+            Cambiando il n° la forma si sposta nella sequenza; le altre si rinumerano.
+          </span>
+        </div>
+        <div className="campo">
+          <label>Nome manuale (override del codice, facoltativo)</label>
           <input
             value={poli.etichetta ?? ''}
-            maxLength={4}
+            maxLength={6}
             placeholder="es. F1"
             onChange={(e) => onModifica({ etichetta: e.target.value })}
             style={{ width: 120 }}
@@ -3144,6 +3211,7 @@ function SchedaNoteFoto({
   onChiudi: () => void;
 }) {
   const [didascalia, setDidascalia] = useState(foto.didascalia);
+  const [etichetta, setEtichetta] = useState(foto.etichetta ?? '');
   const [noteDato, setNoteDato] = useState(foto.noteDato);
   const [dataScatto, setDataScatto] = useState(aInputDataOra(foto.dataScatto));
   const [lat, setLat] = useState(foto.geotag ? String(foto.geotag.lat) : '');
@@ -3189,6 +3257,7 @@ function SchedaNoteFoto({
     stopDettatura.current?.();
     await aggiornaFoto(foto.id, {
       didascalia: didascalia.trim(),
+      etichetta: etichetta.trim() || undefined,
       noteDato,
       dataScatto: nuovaData ?? foto.dataScatto,
       geotag
@@ -3201,6 +3270,19 @@ function SchedaNoteFoto({
       <div className="campo">
         <label>Didascalia (titolo della sezione nel PDF)</label>
         <input value={didascalia} onChange={(e) => setDidascalia(e.target.value)} />
+      </div>
+      <div className="campo">
+        <label>Etichetta della foto (codice delle forme, es. A)</label>
+        <input
+          value={etichetta}
+          maxLength={6}
+          placeholder="auto (A, B, C…)"
+          onChange={(e) => setEtichetta(e.target.value)}
+          style={{ width: 160 }}
+        />
+        <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
+          Due foto con la stessa etichetta condividono la numerazione delle forme.
+        </span>
       </div>
       <div className="campo">
         <label>

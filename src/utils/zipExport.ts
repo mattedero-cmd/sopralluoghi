@@ -2,7 +2,7 @@ import JSZip from 'jszip';
 import { db } from '../db/db';
 import type { Cartella, Foto, Progetto } from '../db/types';
 import { fotoIllegibile } from './image';
-import { letteraFoto } from '../geometry/nomenclatura';
+import { etichettaFoto } from '../geometry/nomenclatura';
 import {
   generaReportCartella,
   generaReportPdf,
@@ -40,7 +40,7 @@ async function fotoDiProgetto(progettoId: string): Promise<Foto[]> {
 /** Aggiunge le foto pulite di un progetto in una directory dello ZIP */
 function aggiungiFotoProgetto(zip: JSZip, prefisso: string, foto: Foto[]): void {
   foto.forEach((f) => {
-    const lettera = letteraFoto(f, foto);
+    const lettera = etichettaFoto(f, foto);
     const nome = nomeFileSicuro(`${lettera} - ${f.didascalia || 'foto'}`, 'jpg');
     // origine = JPEG originale, senza quote/disegni/annotazioni
     zip.file(`${prefisso}${nome}`, f.origine);
