@@ -49,7 +49,8 @@ export type Strumento =
   | 'freccia'
   | 'callout'
   | 'calibra'
-  | 'piano';
+  | 'piano'
+  | 'riferimento';
 
 /**
  * Strumenti a due punti: ciascun punto viene fissato SOLO al rilascio
@@ -93,6 +94,9 @@ interface Props {
   onModifica: (id: string) => void;
   /** tocco con lo strumento autoquotatura */
   onAutoTocco: (p: Punto) => void;
+  /** tocco con lo strumento "riferimento": rileva il rettangolo di un oggetto
+   *  di dimensione nota per calibrare il piano automaticamente */
+  onRiferimento: (p: Punto) => void;
   /** evidenziatura con lo strumento autoquotatura (oggetto completo) */
   onAutoTraccia: (punti: Punto[]) => void;
   onCommit: (annotazioni: Annotazione[]) => void;
@@ -457,6 +461,13 @@ export function StageEditor(p: Props) {
         disegnoAttivo.current = true;
         break;
       }
+      // riferimento: tocco singolo sull'oggetto di dimensione nota
+      case 'riferimento': {
+        setPuntoPendente(pos);
+        setPuntoLente(pos);
+        disegnoAttivo.current = true;
+        break;
+      }
       case 'angolo':
       case 'quad':
       case 'tri':
@@ -513,6 +524,10 @@ export function StageEditor(p: Props) {
         }
       }
       p.onAutoTocco(punto);
+      return;
+    }
+    if (p.strumento === 'riferimento') {
+      p.onRiferimento(punto);
       return;
     }
     if (strumentoDuePunti(p.strumento)) {
@@ -654,7 +669,8 @@ export function StageEditor(p: Props) {
         // il secondo punto aggiorna l'anteprima in tempo reale
         if (bozza && puntoFisso(bozza)) setBozza(conSecondoPunto(bozza, punto));
       } else {
-        const senzaSnap = p.strumento === 'testo' || p.strumento === 'auto';
+        const senzaSnap =
+          p.strumento === 'testo' || p.strumento === 'auto' || p.strumento === 'riferimento';
         punto = senzaSnap ? pos : applicaSnap(pos);
         if (p.strumento === 'auto') {
           setTracciaAuto((t) => (t ? [...t, pos.x, pos.y] : t));
@@ -1180,6 +1196,9 @@ function Lente({
 function testoSuggerimento(strumento: Strumento, bozza: Bozza): string | null {
   if (strumento === 'auto') {
     return 'Tocca una figura netta; evidenzia una zona di disturbo (riflessi, intarsi) per escluderla e quotare il contorno esterno';
+  }
+  if (strumento === 'riferimento') {
+    return 'Tocca un oggetto rettangolare di misura nota (foglio A4, carta di credito…): l’app lo rileva e calibra il piano';
   }
   if (strumentoDuePunti(strumento)) {
     return puntoFisso(bozza)

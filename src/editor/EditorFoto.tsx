@@ -128,6 +128,7 @@ const GRUPPI_STRUMENTI: Array<{
     icona: '📐',
     testo: 'Scala',
     voci: [
+      { s: 'riferimento', icona: '🪪', testo: 'Riferimento auto' },
       { s: 'calibra', icona: '📐', testo: 'Scala (segmento)' },
       { s: 'piano', icona: '▱', testo: 'Piano prospettico' }
     ]
@@ -478,6 +479,24 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     proponiFigura(rilevaDaSorgente(sorgente, sensibilita));
   };
 
+  /**
+   * Riferimento automatico: tocco su un oggetto rettangolare di dimensione
+   * nota → il motore a 4 lati ne rileva gli angoli e si apre la scheda del
+   * piano (con i preset A4/A3/carta di credito…) per calibrare in prospettiva.
+   */
+  const riferimentoTocco = (punto: Punto) => {
+    const esito = rilevaDaSorgente({ tipo: 'tocco', punto }, sensibilita);
+    if (!esito) {
+      mostraToast(
+        'info',
+        'Nessun rettangolo riconosciuto: tocca al centro dell’oggetto, regola la sensibilità, oppure usa "Piano" e tocca i 4 angoli a mano.'
+      );
+      return;
+    }
+    setSchedaPiano({ punti: esito.punti });
+    setStrumento('seleziona');
+  };
+
   /** evidenziatore: il motore cerca l'oggetto nella zona tracciata */
   const autoTraccia = (punti: Punto[]) => {
     const sorgente = { tipo: 'traccia' as const, punti };
@@ -797,6 +816,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         filtroVisibile={(a) => layerVisibili[categoriaAnnotazione(a)]}
         proposte={proposta ? [proposta] : []}
         onAutoTocco={autoTocco}
+        onRiferimento={riferimentoTocco}
         onAutoTraccia={autoTraccia}
         onSeleziona={setSelezioneId}
         onModifica={apriModifica}
@@ -3181,13 +3201,46 @@ function SchedaPiano({
   const larghezza = analizzaMisura(testoL);
   const altezza = analizzaMisura(testoA);
   const valido = larghezza !== null && larghezza > 0 && altezza !== null && altezza > 0;
+  // riferimenti standard: ↔ = orizzontale (più largo che alto), ↕ = verticale
+  const PRESET: Array<{ nome: string; l: number; a: number }> = [
+    { nome: 'A4 ↔', l: 297, a: 210 },
+    { nome: 'A4 ↕', l: 210, a: 297 },
+    { nome: 'A3 ↔', l: 420, a: 297 },
+    { nome: 'A3 ↕', l: 297, a: 420 },
+    { nome: 'A5 ↔', l: 210, a: 148 },
+    { nome: 'A5 ↕', l: 148, a: 210 },
+    { nome: 'Bancomat ↔', l: 85.6, a: 54 },
+    { nome: 'Bancomat ↕', l: 54, a: 85.6 }
+  ];
+  const applicaPreset = (l: number, a: number) => {
+    setTestoL(String(l).replace('.', ','));
+    setTestoA(String(a).replace('.', ','));
+    setUnita('mm');
+  };
   return (
     <Modale titolo="Piano di riferimento (prospettiva)" onChiudi={onChiudi} centro>
       <p style={{ color: 'var(--testo-2)' }}>
-        Inserisci le dimensioni reali del rettangolo indicato (es. una porta, una piastrella, un
-        infisso). Tutte le misure prese su quel piano verranno calcolate correggendo la
-        prospettiva.
+        Inserisci le dimensioni reali del rettangolo indicato (una porta, una piastrella, un
+        infisso) oppure scegli un riferimento standard. Tutte le misure su quel piano vengono
+        calcolate correggendo la prospettiva.
       </p>
+      <div className="campo">
+        <label>Riferimenti rapidi (scegli l'orientamento come appare nella foto)</label>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {PRESET.map((p) => (
+            <button
+              key={p.nome}
+              className={
+                larghezza === p.l && altezza === p.a && unita === 'mm' ? 'btn attivo' : 'btn'
+              }
+              style={{ minHeight: 40, padding: '0 10px' }}
+              onClick={() => applicaPreset(p.l, p.a)}
+            >
+              {p.nome}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="campo">
         <label>Larghezza reale (lato alto) *</label>
         <input autoFocus inputMode="decimal" value={testoL} onChange={(e) => setTestoL(e.target.value)} placeholder="es. 90" />
