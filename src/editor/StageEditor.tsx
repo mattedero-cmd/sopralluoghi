@@ -102,8 +102,12 @@ interface Props {
   /** rettangolo di calibrazione in fase di correzione (4 angoli trascinabili) */
   calibQuad: [Punto, Punto, Punto, Punto] | null;
   onCalibQuad: (punti: [Punto, Punto, Punto, Punto]) => void;
+  /** piano provvisorio (calibQuad + formato) per la griglia live in calibrazione */
+  calibPiano: PianoProspettiva | null;
   /** mostra la griglia di verifica sul piano calibrato */
   mostraGriglia: boolean;
+  /** numero di celle della griglia (es. 3 → 3×3 attorno al riferimento) */
+  celleGriglia: number;
   /** evidenziatura con lo strumento autoquotatura (oggetto completo) */
   onAutoTraccia: (punti: Punto[]) => void;
   onCommit: (annotazioni: Annotazione[]) => void;
@@ -947,7 +951,7 @@ export function StageEditor(p: Props) {
             p.foto.piano &&
             (() => {
               try {
-                const { linee } = griglia(p.foto.piano, p.foto.larghezzaPx, p.foto.altezzaPx);
+                const linee = griglia(p.foto.piano, p.foto.larghezzaPx, p.foto.altezzaPx, p.celleGriglia);
                 return (
                   <>
                     {linee.map((pt, i) => (
@@ -968,6 +972,24 @@ export function StageEditor(p: Props) {
                     />
                   </>
                 );
+              } catch {
+                return null;
+              }
+            })()}
+          {/* Griglia LIVE durante la calibrazione: aiuta a rifinire la proporzione */}
+          {p.calibPiano &&
+            (() => {
+              try {
+                const linee = griglia(p.calibPiano, p.foto.larghezzaPx, p.foto.altezzaPx, p.celleGriglia);
+                return linee.map((pt, i) => (
+                  <Line
+                    key={i}
+                    points={pt}
+                    stroke="rgba(47,129,247,0.5)"
+                    strokeWidth={1.2 / vista.scala}
+                    listening={false}
+                  />
+                ));
               } catch {
                 return null;
               }
@@ -1466,26 +1488,17 @@ function AnnotazioneShape({
 }
 
 /** passo "tondo" (1, 2, 5 ×10^n) vicino al valore grezzo */
-function passoBello(v: number): number {
-  if (!(v > 0)) return 1;
-  const base = Math.pow(10, Math.floor(Math.log10(v)));
-  const m = v / base;
-  return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * base;
-}
-
 /**
- * Linee della griglia di verifica sul piano calibrato, in coordinate immagine.
- * Ancorata al rettangolo di riferimento ed estesa di alcune celle: bounded, con
- * scarto dei punti degeneri (vicino all'orizzonte). Restituisce anche il passo.
+ * Linee di una griglia `celle×celle` di celle grandi quanto il riferimento
+ * (L×A), centrata sul riferimento, in coordinate immagine. Serve a rifinire la
+ * proporzione/prospettiva: se i quadri combaciano con elementi reali (es. le
+ * piastrelle), la calibrazione è corretta. Scarta i punti degeneri (orizzonte).
  */
-function griglia(piano: PianoProspettiva, w: number, h: number): { linee: number[][]; passo: number } {
+function griglia(piano: PianoProspettiva, w: number, h: number, celle = 3): number[][] {
   const Hinv = omografiaPianoInversa(piano);
-  const passo = passoBello(Math.max(piano.larghezzaReale, piano.altezzaReale) / 4);
-  const N = 6; // celle oltre il riferimento per lato
-  const x0 = -N * passo;
-  const x1 = piano.larghezzaReale + N * passo;
-  const y0 = -N * passo;
-  const y1 = piano.altezzaReale + N * passo;
+  const L = piano.larghezzaReale;
+  const A = piano.altezzaReale;
+  const off = Math.floor((celle - 1) / 2); // il riferimento è la cella centrale
   const mappa = (x: number, y: number): Punto | null => {
     const wd = Hinv[6] * x + Hinv[7] * y + Hinv[8];
     if (Math.abs(wd) < 1e-9) return null;
@@ -1493,18 +1506,23 @@ function griglia(piano: PianoProspettiva, w: number, h: number): { linee: number
   };
   const dentro = (p: Punto) => p.x > -1.5 * w && p.x < 2.5 * w && p.y > -1.5 * h && p.y < 2.5 * h;
   const linee: number[][] = [];
-  const passoX = (val: number, a: number, b: number) => {
-    const pa = mappa(val, a);
-    const pb = mappa(val, b);
-    if (pa && pb && (dentro(pa) || dentro(pb))) linee.push([pa.x, pa.y, pb.x, pb.y]);
-  };
-  for (let x = x0; x <= x1 + 1e-6; x += passo) passoX(x, y0, y1);
-  for (let y = y0; y <= y1 + 1e-6; y += passo) {
-    const pa = mappa(x0, y);
-    const pb = mappa(x1, y);
-    if (pa && pb && (dentro(pa) || dentro(pb))) linee.push([pa.x, pa.y, pb.x, pb.y]);
+  const y0 = -off * A;
+  const y1 = (celle - off) * A;
+  const x0 = -off * L;
+  const x1 = (celle - off) * L;
+  for (let i = 0; i <= celle; i++) {
+    const x = (i - off) * L;
+    const a = mappa(x, y0);
+    const b = mappa(x, y1);
+    if (a && b && (dentro(a) || dentro(b))) linee.push([a.x, a.y, b.x, b.y]);
   }
-  return { linee, passo };
+  for (let j = 0; j <= celle; j++) {
+    const y = (j - off) * A;
+    const a = mappa(x0, y);
+    const b = mappa(x1, y);
+    if (a && b && (dentro(a) || dentro(b))) linee.push([a.x, a.y, b.x, b.y]);
+  }
+  return linee;
 }
 
 function boxAnnotazione(a: Annotazione): Rettangolo {

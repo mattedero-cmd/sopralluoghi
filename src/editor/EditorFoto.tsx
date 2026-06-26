@@ -63,6 +63,26 @@ import { avviaDettatura, dettaturaDisponibile } from '../utils/dettatura';
 
 const COLORI = [COLORE_QUOTA, '#ff3b30', '#34c759', '#007aff', '#ffffff', '#111111'];
 
+/** Formati standard di riferimento (mm). Niente varianti di orientamento: lato
+ *  lungo e corto vengono assegnati automaticamente in base a come appare. */
+const FORMATI: Array<{ id: string; nome: string; lungo: number; corto: number }> = [
+  { id: 'A4', nome: 'A4', lungo: 297, corto: 210 },
+  { id: 'A5', nome: 'A5', lungo: 210, corto: 148 },
+  { id: 'A3', nome: 'A3', lungo: 420, corto: 297 },
+  { id: 'bancomat', nome: 'Bancomat', lungo: 85.6, corto: 54 }
+];
+
+/** assegna lato lungo/corto a larghezza(L, lato alto)/altezza in base
+ *  all'orientamento apparente del rettangolo rilevato */
+function orientaFormato(
+  quad: [Punto, Punto, Punto, Punto],
+  f: { lungo: number; corto: number }
+): { L: number; A: number } {
+  const topPx = distanza(quad[0], quad[1]);
+  const leftPx = distanza(quad[0], quad[3]);
+  return topPx >= leftPx ? { L: f.lungo, A: f.corto } : { L: f.corto, A: f.lungo };
+}
+
 /** Superficie in m² con più decimali per le aree piccole */
 function formattaAreaM2(v: number): string {
   const t = v >= 1 ? v.toFixed(2) : v >= 0.01 ? v.toFixed(3) : v.toFixed(4);
@@ -129,8 +149,7 @@ const GRUPPI_STRUMENTI: Array<{
     testo: 'Scala',
     voci: [
       { s: 'riferimento', icona: '🪪', testo: 'Riferimento auto' },
-      { s: 'calibra', icona: '📐', testo: 'Scala (segmento)' },
-      { s: 'piano', icona: '▱', testo: 'Piano prospettico' }
+      { s: 'calibra', icona: '📐', testo: 'Scala (segmento)' }
     ]
   }
 ];
@@ -201,6 +220,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [calibQuad, setCalibQuad] = useState<[Punto, Punto, Punto, Punto] | null>(null);
   /** punto toccato per il riferimento: permette di ri-rilevare al variare della sensibilità */
   const [riferimentoPunto, setRiferimentoPunto] = useState<Punto | null>(null);
+  /** formato standard scelto per il riferimento (A4, A5, A3, bancomat) */
+  const [formatoRif, setFormatoRif] = useState('A4');
+  /** numero di celle della griglia di calibrazione/verifica (3×3, 5×5…) */
+  const [celleGriglia, setCelleGriglia] = useState(3);
   /** griglia di verifica sul piano calibrato (controllo visivo della scala) */
   const [mostraGriglia, setMostraGriglia] = useState(false);
   /** poligono proposto dall'autoquotatura (base + altezza), da confermare */
@@ -761,6 +784,15 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     fid === fotoId ? annotazioni : (annotazioniProgetto ?? []).filter((a) => a.fotoId === fid);
   const codiceForma = (a: Annotazione) => codiceLocaleForma(a, numeriForme);
 
+  // calibrazione da riferimento: dimensioni reali (auto-orientate) e piano
+  // provvisorio per la griglia live mentre si aggiustano i 4 angoli
+  const formatoSel = FORMATI.find((f) => f.id === formatoRif) ?? FORMATI[0];
+  const calibDims = calibQuad ? orientaFormato(calibQuad, formatoSel) : null;
+  const calibPiano =
+    calibQuad && calibDims
+      ? { punti: calibQuad, larghezzaReale: calibDims.L, altezzaReale: calibDims.A, unita: 'mm' as const }
+      : null;
+
   /** annotazioni che si modificano nell'ambiente dedicato a tutto schermo:
    *  un tocco le apre direttamente, senza pannello in basso */
   const haAmbienteDedicato = (a: Annotazione) =>
@@ -862,7 +894,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         onRiferimento={riferimentoTocco}
         calibQuad={calibQuad}
         onCalibQuad={setCalibQuad}
+        calibPiano={calibPiano}
         mostraGriglia={mostraGriglia}
+        celleGriglia={celleGriglia}
         onAutoTraccia={autoTraccia}
         onSeleziona={setSelezioneId}
         onModifica={apriModifica}
@@ -957,6 +991,26 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       {riferimentoPunto && (
         <div className="pannello-proprieta" role="group" aria-label="Riferimento di calibrazione">
           <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>📐 Riferimento</span>
+          {/* formato standard: l'orientamento è automatico */}
+          <span className="segmenti" role="group" aria-label="Formato del riferimento">
+            {FORMATI.map((f) => (
+              <button
+                key={f.id}
+                className={formatoRif === f.id ? 'attivo' : ''}
+                onClick={() => setFormatoRif(f.id)}
+              >
+                {f.nome}
+              </button>
+            ))}
+          </span>
+          {/* numero di celle della griglia di rifinitura */}
+          <button
+            className="btn"
+            title="Celle della griglia"
+            onClick={() => setCelleGriglia((c) => (c >= 7 ? 3 : c + 2))}
+          >
+            ▦ {celleGriglia}×{celleGriglia}
+          </button>
           <span
             style={{
               fontSize: 12,
@@ -970,17 +1024,17 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           </span>
           <button
             className="btn primario"
-            disabled={!calibQuad}
+            disabled={!calibQuad || !calibDims}
             onClick={() => {
-              if (!calibQuad) return;
-              setSchedaPiano({ punti: calibQuad });
+              if (!calibQuad || !calibDims) return;
+              void salvaPiano(calibQuad, calibDims.L, calibDims.A, 'mm');
               chiudiRiferimento();
             }}
           >
-            ✓ Conferma
+            ✓ Calibra
           </button>
           <button className="btn pericolo" onClick={chiudiRiferimento}>
-            ✕ Annulla
+            ✕
           </button>
         </div>
       )}
