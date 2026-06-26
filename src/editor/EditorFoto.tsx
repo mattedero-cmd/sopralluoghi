@@ -197,6 +197,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [testoInModifica, setTestoInModifica] = useState<string | null>(null);
   const [schedaScala, setSchedaScala] = useState<{ px: number } | null>(null);
   const [schedaPiano, setSchedaPiano] = useState<{ punti: [Punto, Punto, Punto, Punto] } | null>(null);
+  /** rettangolo di riferimento rilevato, in correzione (4 angoli trascinabili) */
+  const [calibQuad, setCalibQuad] = useState<[Punto, Punto, Punto, Punto] | null>(null);
+  /** griglia di verifica sul piano calibrato (controllo visivo della scala) */
+  const [mostraGriglia, setMostraGriglia] = useState(false);
   /** poligono proposto dall'autoquotatura (base + altezza), da confermare */
   const [proposta, setProposta] = useState<QuotaPoligono | null>(null);
   /** angoli del quadrilatero rilevato (per l'opzione cerchio) */
@@ -493,7 +497,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       );
       return;
     }
-    setSchedaPiano({ punti: esito.punti });
+    // si entra in correzione: l'utente può aggiustare i 4 angoli prima di confermare
+    setCalibQuad(esito.punti);
     setStrumento('seleziona');
   };
 
@@ -659,9 +664,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     }
     await aggiornaFoto(foto.id, { piano });
     ricalcolaConCalibrazione({ scala: foto.scala, piano });
+    setMostraGriglia(true); // mostra subito la griglia per verificare la scala
     mostraToast(
       'successo',
-      'Piano di riferimento attivo: le misure su quel piano vengono calcolate in prospettiva.'
+      'Piano attivo: la griglia di verifica mostra la scala reale. Le misure su quel piano correggono la prospettiva.'
     );
     setStrumento('seleziona');
   };
@@ -787,6 +793,16 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         <button className="btn icona" aria-label="Note della foto" onClick={() => setSchedaNote(true)}>
           🗒️
         </button>
+        {foto.piano && (
+          <button
+            className={`btn icona${mostraGriglia ? ' attivo' : ''}`}
+            aria-label="Griglia di verifica del piano"
+            title="Griglia di verifica del piano"
+            onClick={() => setMostraGriglia((g) => !g)}
+          >
+            ▦
+          </button>
+        )}
         <button
           className={`btn icona${snapAttivo || vincolo !== 'off' || bordiAttivo ? ' attivo' : ''}`}
           aria-label="Opzioni di disegno"
@@ -817,6 +833,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         proposte={proposta ? [proposta] : []}
         onAutoTocco={autoTocco}
         onRiferimento={riferimentoTocco}
+        calibQuad={calibQuad}
+        onCalibQuad={setCalibQuad}
+        mostraGriglia={mostraGriglia}
         onAutoTraccia={autoTraccia}
         onSeleziona={setSelezioneId}
         onModifica={apriModifica}
@@ -907,6 +926,24 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             </button>
           </div>
         )}
+
+      {calibQuad && (
+        <div className="pannello-proprieta" role="group" aria-label="Correggi il riferimento">
+          <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>📐 Aggiusta i 4 angoli</span>
+          <button
+            className="btn primario"
+            onClick={() => {
+              setSchedaPiano({ punti: calibQuad });
+              setCalibQuad(null);
+            }}
+          >
+            ✓ Conferma
+          </button>
+          <button className="btn pericolo" onClick={() => setCalibQuad(null)}>
+            ✕ Annulla
+          </button>
+        </div>
+      )}
 
       {proposta && propostaSorgente && (
         <div className="sensibilita-flottante" role="group" aria-label="Sensibilità ai bordi">
@@ -1079,6 +1116,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       {schedaPiano && (
         <SchedaPiano
           unitaDefault={impostazioni.unitaDefault}
+          punti={schedaPiano.punti}
           onChiudi={() => setSchedaPiano(null)}
           onSalva={(larghezza, altezza, unita) => {
             void salvaPiano(schedaPiano.punti, larghezza, altezza, unita);
@@ -3188,13 +3226,33 @@ function SchedaScala({
 
 function SchedaPiano({
   unitaDefault,
+  punti,
   onChiudi,
   onSalva
 }: {
   unitaDefault: Unita;
+  punti?: [Punto, Punto, Punto, Punto];
   onChiudi: () => void;
   onSalva: (larghezza: number, altezza: number, unita: Unita) => void;
 }) {
+  // qualità della calibrazione: più grande appare il riferimento (in pixel),
+  // più la scala è precisa. Stima grezza dell'errore = 1px sul lato più corto.
+  const latoMinPx = punti
+    ? Math.min(
+        distanza(punti[0], punti[1]),
+        distanza(punti[1], punti[2]),
+        distanza(punti[2], punti[3]),
+        distanza(punti[3], punti[0])
+      )
+    : 0;
+  const qualita =
+    latoMinPx <= 0
+      ? null
+      : latoMinPx > 400
+        ? { testo: '● Riferimento ampio: ottima precisione', colore: 'var(--ok)' }
+        : latoMinPx > 200
+          ? { testo: '◐ Precisione buona', colore: '#ffc400' }
+          : { testo: '○ Riferimento piccolo: avvicinati per più precisione', colore: '#ff9500' };
   const [testoL, setTestoL] = useState('');
   const [testoA, setTestoA] = useState('');
   const [unita, setUnita] = useState<Unita>(unitaDefault);
@@ -3257,6 +3315,11 @@ function SchedaPiano({
           <option value="m">m</option>
         </select>
       </div>
+      {qualita && (
+        <p style={{ color: qualita.colore, fontSize: 13, fontWeight: 700, margin: '4px 0 0' }}>
+          {qualita.testo}
+        </p>
+      )}
       <div className="riga-pulsanti">
         <button className="btn" onClick={onChiudi}>
           Annulla

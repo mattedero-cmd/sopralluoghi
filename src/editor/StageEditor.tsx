@@ -6,6 +6,7 @@ import {
   segmentiPoligono,
   type Annotazione,
   type Foto,
+  type PianoProspettiva,
   type Punto,
   type Rettangolo,
   type SottotipoQuota
@@ -30,6 +31,7 @@ import type { RicercaBordi } from '../geometry/bordi';
 import { traslaAnnotazione } from './fabbrica';
 import { immagineDettaglio } from '../utils/immaginiCallout';
 import { eFormaEtichettabile } from '../geometry/nomenclatura';
+import { omografiaPianoInversa } from '../geometry/omografia';
 
 export type Strumento =
   | 'seleziona'
@@ -97,6 +99,11 @@ interface Props {
   /** tocco con lo strumento "riferimento": rileva il rettangolo di un oggetto
    *  di dimensione nota per calibrare il piano automaticamente */
   onRiferimento: (p: Punto) => void;
+  /** rettangolo di calibrazione in fase di correzione (4 angoli trascinabili) */
+  calibQuad: [Punto, Punto, Punto, Punto] | null;
+  onCalibQuad: (punti: [Punto, Punto, Punto, Punto]) => void;
+  /** mostra la griglia di verifica sul piano calibrato */
+  mostraGriglia: boolean;
   /** evidenziatura con lo strumento autoquotatura (oggetto completo) */
   onAutoTraccia: (punti: Punto[]) => void;
   onCommit: (annotazioni: Annotazione[]) => void;
@@ -935,6 +942,67 @@ export function StageEditor(p: Props) {
               listening={false}
             />
           )}
+          {/* Griglia di verifica sul piano calibrato */}
+          {p.mostraGriglia &&
+            p.foto.piano &&
+            (() => {
+              try {
+                const { linee } = griglia(p.foto.piano, p.foto.larghezzaPx, p.foto.altezzaPx);
+                return (
+                  <>
+                    {linee.map((pt, i) => (
+                      <Line
+                        key={i}
+                        points={pt}
+                        stroke="rgba(52,199,89,0.55)"
+                        strokeWidth={1.2 / vista.scala}
+                        listening={false}
+                      />
+                    ))}
+                    <Line
+                      points={p.foto.piano.punti.flatMap((pt) => [pt.x, pt.y])}
+                      closed
+                      stroke="#34c759"
+                      strokeWidth={2.5 / vista.scala}
+                      listening={false}
+                    />
+                  </>
+                );
+              } catch {
+                return null;
+              }
+            })()}
+          {/* Rettangolo di calibrazione in correzione: 4 angoli trascinabili */}
+          {p.calibQuad && (
+            <>
+              <Line
+                points={p.calibQuad.flatMap((pt) => [pt.x, pt.y])}
+                closed
+                stroke="#2f81f7"
+                strokeWidth={2.5 / vista.scala}
+                dash={[8 / vista.scala, 5 / vista.scala]}
+                listening={false}
+              />
+              {p.calibQuad.map((pt, i) => (
+                <Circle
+                  key={i}
+                  x={pt.x}
+                  y={pt.y}
+                  radius={raggioManiglia}
+                  fill="rgba(47,129,247,0.4)"
+                  stroke="#58a6ff"
+                  strokeWidth={2.5 / vista.scala}
+                  draggable
+                  onDragMove={(e) => {
+                    const nuovi = p.calibQuad!.map((q, j) =>
+                      j === i ? { x: e.target.x(), y: e.target.y() } : q
+                    ) as [Punto, Punto, Punto, Punto];
+                    p.onCalibQuad(nuovi);
+                  }}
+                />
+              ))}
+            </>
+          )}
           {(bozza?.tipo === 'angolo' ||
             bozza?.tipo === 'piano' ||
             bozza?.tipo === 'quad' ||
@@ -1389,6 +1457,48 @@ function AnnotazioneShape({
       }}
     />
   );
+}
+
+/** passo "tondo" (1, 2, 5 ×10^n) vicino al valore grezzo */
+function passoBello(v: number): number {
+  if (!(v > 0)) return 1;
+  const base = Math.pow(10, Math.floor(Math.log10(v)));
+  const m = v / base;
+  return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * base;
+}
+
+/**
+ * Linee della griglia di verifica sul piano calibrato, in coordinate immagine.
+ * Ancorata al rettangolo di riferimento ed estesa di alcune celle: bounded, con
+ * scarto dei punti degeneri (vicino all'orizzonte). Restituisce anche il passo.
+ */
+function griglia(piano: PianoProspettiva, w: number, h: number): { linee: number[][]; passo: number } {
+  const Hinv = omografiaPianoInversa(piano);
+  const passo = passoBello(Math.max(piano.larghezzaReale, piano.altezzaReale) / 4);
+  const N = 6; // celle oltre il riferimento per lato
+  const x0 = -N * passo;
+  const x1 = piano.larghezzaReale + N * passo;
+  const y0 = -N * passo;
+  const y1 = piano.altezzaReale + N * passo;
+  const mappa = (x: number, y: number): Punto | null => {
+    const wd = Hinv[6] * x + Hinv[7] * y + Hinv[8];
+    if (Math.abs(wd) < 1e-9) return null;
+    return { x: (Hinv[0] * x + Hinv[1] * y + Hinv[2]) / wd, y: (Hinv[3] * x + Hinv[4] * y + Hinv[5]) / wd };
+  };
+  const dentro = (p: Punto) => p.x > -1.5 * w && p.x < 2.5 * w && p.y > -1.5 * h && p.y < 2.5 * h;
+  const linee: number[][] = [];
+  const passoX = (val: number, a: number, b: number) => {
+    const pa = mappa(val, a);
+    const pb = mappa(val, b);
+    if (pa && pb && (dentro(pa) || dentro(pb))) linee.push([pa.x, pa.y, pb.x, pb.y]);
+  };
+  for (let x = x0; x <= x1 + 1e-6; x += passo) passoX(x, y0, y1);
+  for (let y = y0; y <= y1 + 1e-6; y += passo) {
+    const pa = mappa(x0, y);
+    const pb = mappa(x1, y);
+    if (pa && pb && (dentro(pa) || dentro(pb))) linee.push([pa.x, pa.y, pb.x, pb.y]);
+  }
+  return { linee, passo };
 }
 
 function boxAnnotazione(a: Annotazione): Rettangolo {

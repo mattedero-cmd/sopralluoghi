@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { PianoProspettiva, Quota, QuotaAngolare, QuotaRaggio } from '../../db/types';
-import { applicaOmografia, calcolaOmografia, omografiaPiano } from '../omografia';
+import {
+  applicaOmografia,
+  calcolaOmografia,
+  omografiaPiano,
+  omografiaPianoInversa
+} from '../omografia';
 import {
   angoloGradi,
   applicaValoriAuto,
@@ -181,5 +186,39 @@ describe('snap angolare', () => {
     const q = vincolaAngolo({ x: 0, y: 0 }, { x: 100, y: 50 }, 15);
     const angolo = (Math.atan2(q.y, q.x) * 180) / Math.PI;
     expect(angolo).toBeCloseTo(30, 5); // ~26.6° → 30°
+  });
+});
+
+describe('omografia inversa del piano (griglia di verifica)', () => {
+  const piano: PianoProspettiva = {
+    punti: [
+      { x: 100, y: 120 },
+      { x: 820, y: 90 },
+      { x: 880, y: 660 },
+      { x: 60, y: 700 }
+    ],
+    larghezzaReale: 100,
+    altezzaReale: 100,
+    unita: 'cm'
+  };
+
+  it('inversa annulla la diretta: immagine → reale → immagine', () => {
+    const H = omografiaPiano(piano);
+    const Hinv = omografiaPianoInversa(piano);
+    const p = { x: 450, y: 380 };
+    const reale = applicaOmografia(H, p);
+    const indietro = applicaOmografia(Hinv, reale);
+    expect(indietro.x).toBeCloseTo(p.x, 3);
+    expect(indietro.y).toBeCloseTo(p.y, 3);
+  });
+
+  it('gli angoli reali (0,0)…(L,A) tornano sui 4 punti del piano', () => {
+    const Hinv = omografiaPianoInversa(piano);
+    const a = applicaOmografia(Hinv, { x: 0, y: 0 });
+    const b = applicaOmografia(Hinv, { x: 100, y: 100 });
+    expect(a.x).toBeCloseTo(piano.punti[0].x, 3);
+    expect(a.y).toBeCloseTo(piano.punti[0].y, 3);
+    expect(b.x).toBeCloseTo(piano.punti[2].x, 3);
+    expect(b.y).toBeCloseTo(piano.punti[2].y, 3);
   });
 });

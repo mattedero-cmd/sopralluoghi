@@ -67,6 +67,25 @@ export function omografiaPiano(piano: PianoProspettiva): Omografia {
   ]);
 }
 
+/**
+ * Omografia INVERSA del piano: mappa le coordinate reali (sul rettangolo
+ * 0,0–L,A) di nuovo nei pixel dell'immagine. Serve per disegnare sull'immagine
+ * elementi definiti in coordinate reali (es. la griglia di verifica).
+ */
+export function omografiaPianoInversa(piano: PianoProspettiva): Omografia {
+  const L = piano.larghezzaReale;
+  const A = piano.altezzaReale;
+  return calcolaOmografia(
+    [
+      { x: 0, y: 0 },
+      { x: L, y: 0 },
+      { x: L, y: A },
+      { x: 0, y: A }
+    ],
+    piano.punti
+  );
+}
+
 /** Distanza reale tra due punti immagine misurata sul piano */
 export function distanzaSulPiano(H: Omografia, p1: Punto, p2: Punto): number {
   const a = applicaOmografia(H, p1);
