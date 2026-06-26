@@ -672,6 +672,17 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     }
   };
 
+  // Numerazione condivisa delle forme del progetto. DEVE stare prima dei return
+  // condizionali sotto: è uno hook (useMemo) e va eseguito a ogni render, anche
+  // mentre la foto sta caricando, altrimenti React cambia il numero di hook tra
+  // un render e l'altro e l'editor va in crash (schermo nero).
+  const numeriForme = useMemo(() => {
+    const lista = fotoProgetto && fotoProgetto.length ? fotoProgetto : foto ? [foto] : [];
+    return numeriProgetto(lista, (fid) =>
+      fid === fotoId ? annotazioni ?? [] : (annotazioniProgetto ?? []).filter((a) => a.fotoId === fid)
+    );
+  }, [fotoId, annotazioni, annotazioniProgetto, fotoProgetto, foto]);
+
   if (foto && fotoIllegibile(foto)) {
     return <SchermataFotoDanneggiata foto={foto} />;
   }
@@ -692,16 +703,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const selezionata = annotazioni.find((a) => a.id === selezioneId) ?? null;
 
   // numerazione condivisa delle forme nel progetto: per la foto corrente usa le
-  // annotazioni "vive" (con le modifiche non ancora salvate), per le altre il DB
+  // annotazioni "vive", per le altre il DB. `numeriForme` (lo useMemo) è
+  // dichiarato PRIMA dei return condizionali, qui restano solo funzioni pure.
   const annotazioniDi = (fid: string): Annotazione[] =>
     fid === fotoId ? annotazioni : (annotazioniProgetto ?? []).filter((a) => a.fotoId === fid);
-  const numeriForme = useMemo(
-    () =>
-      numeriProgetto(fotoProgetto && fotoProgetto.length ? fotoProgetto : [foto], (fid) =>
-        fid === fotoId ? annotazioni : (annotazioniProgetto ?? []).filter((a) => a.fotoId === fid)
-      ),
-    [fotoId, annotazioni, annotazioniProgetto, fotoProgetto, foto]
-  );
   const codiceForma = (a: Annotazione) => codiceLocaleForma(a, numeriForme);
 
   /** annotazioni che si modificano nell'ambiente dedicato a tutto schermo:
