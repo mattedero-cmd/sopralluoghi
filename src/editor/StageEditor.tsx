@@ -994,11 +994,17 @@ export function StageEditor(p: Props) {
                   strokeWidth={2.5 / vista.scala}
                   draggable
                   onDragMove={(e) => {
-                    const nuovi = p.calibQuad!.map((q, j) =>
-                      j === i ? { x: e.target.x(), y: e.target.y() } : q
-                    ) as [Punto, Punto, Punto, Punto];
+                    const nuovo = { x: e.target.x(), y: e.target.y() };
+                    const nuovi = p.calibQuad!.map((q, j) => (j === i ? nuovo : q)) as [
+                      Punto,
+                      Punto,
+                      Punto,
+                      Punto
+                    ];
+                    setPuntoLente(nuovo); // lente di ingrandimento come per le quote
                     p.onCalibQuad(nuovi);
                   }}
+                  onDragEnd={() => setPuntoLente(null)}
                 />
               ))}
             </>

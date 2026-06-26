@@ -199,6 +199,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [schedaPiano, setSchedaPiano] = useState<{ punti: [Punto, Punto, Punto, Punto] } | null>(null);
   /** rettangolo di riferimento rilevato, in correzione (4 angoli trascinabili) */
   const [calibQuad, setCalibQuad] = useState<[Punto, Punto, Punto, Punto] | null>(null);
+  /** punto toccato per il riferimento: permette di ri-rilevare al variare della sensibilità */
+  const [riferimentoPunto, setRiferimentoPunto] = useState<Punto | null>(null);
   /** griglia di verifica sul piano calibrato (controllo visivo della scala) */
   const [mostraGriglia, setMostraGriglia] = useState(false);
   /** poligono proposto dall'autoquotatura (base + altezza), da confermare */
@@ -477,6 +479,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   };
 
   const autoTocco = (punto: Punto) => {
+    chiudiRiferimento(); // non confondere col flusso del riferimento
     const sorgente = { tipo: 'tocco' as const, punto };
     setPropostaSorgente(sorgente);
     setProposta(null);
@@ -490,16 +493,40 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
    */
   const riferimentoTocco = (punto: Punto) => {
     const esito = rilevaDaSorgente({ tipo: 'tocco', punto }, sensibilita);
+    chiudiProposta(); // non confondere col flusso dell'autoquotatura
+    // si memorizza il punto: come per l'autoquotatura, si può ri-rilevare
+    // live al variare del cursore di sensibilità
+    setRiferimentoPunto(punto);
     if (!esito) {
+      setCalibQuad(null);
+      setConfidenza(0);
       mostraToast(
         'info',
-        'Nessun rettangolo riconosciuto: tocca al centro dell’oggetto, regola la sensibilità, oppure usa "Piano" e tocca i 4 angoli a mano.'
+        'Nessun rettangolo riconosciuto: regola la sensibilità col cursore, tocca al centro dell’oggetto, oppure usa "Piano" e tocca i 4 angoli a mano.'
       );
       return;
     }
     // si entra in correzione: l'utente può aggiustare i 4 angoli prima di confermare
     setCalibQuad(esito.punti);
+    setConfidenza(esito.confidenza);
     setStrumento('seleziona');
+  };
+
+  /** ricalcolo del riferimento al variare del cursore di sensibilità */
+  const aggiornaSensibilitaRif = (sens: number) => {
+    setSensibilita(sens);
+    if (!riferimentoPunto) return;
+    const esito = rilevaDaSorgente({ tipo: 'tocco', punto: riferimentoPunto }, sens);
+    if (esito) {
+      setCalibQuad(esito.punti);
+      setConfidenza(esito.confidenza);
+    }
+  };
+
+  const chiudiRiferimento = () => {
+    setCalibQuad(null);
+    setRiferimentoPunto(null);
+    setConfidenza(0);
   };
 
   /** evidenziatore: il motore cerca l'oggetto nella zona tracciata */
@@ -927,53 +954,72 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           </div>
         )}
 
-      {calibQuad && (
-        <div className="pannello-proprieta" role="group" aria-label="Correggi il riferimento">
-          <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>📐 Aggiusta i 4 angoli</span>
+      {riferimentoPunto && (
+        <div className="pannello-proprieta" role="group" aria-label="Riferimento di calibrazione">
+          <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>📐 Riferimento</span>
+          <span
+            style={{
+              fontSize: 12,
+              fontWeight: 700,
+              whiteSpace: 'nowrap',
+              color: confidenza >= 0.55 ? 'var(--ok)' : confidenza >= 0.4 ? '#ff9500' : 'var(--testo-2)'
+            }}
+            title="Confidenza del rilevamento"
+          >
+            {confidenza >= 0.55 ? '● netto' : confidenza >= 0.4 ? '◐ incerto' : '○ debole'}
+          </span>
           <button
             className="btn primario"
+            disabled={!calibQuad}
             onClick={() => {
+              if (!calibQuad) return;
               setSchedaPiano({ punti: calibQuad });
-              setCalibQuad(null);
+              chiudiRiferimento();
             }}
           >
             ✓ Conferma
           </button>
-          <button className="btn pericolo" onClick={() => setCalibQuad(null)}>
+          <button className="btn pericolo" onClick={chiudiRiferimento}>
             ✕ Annulla
           </button>
         </div>
       )}
 
-      {proposta && propostaSorgente && (
-        <div className="sensibilita-flottante" role="group" aria-label="Sensibilità ai bordi">
-          <button
-            className="passo"
-            aria-label="Più sensibile (bordi deboli)"
-            onClick={() => aggiornaSensibilita(Math.min(100, sensibilita + 5))}
-          >
-            ＋
-          </button>
-          <input
-            type="range"
-            className="cursore-vert"
-            min={0}
-            max={100}
-            step={5}
-            aria-label="Sensibilità ai bordi"
-            value={sensibilita}
-            onChange={(e) => aggiornaSensibilita(Number(e.target.value))}
-          />
-          <button
-            className="passo"
-            aria-label="Meno sensibile (solo bordi netti)"
-            onClick={() => aggiornaSensibilita(Math.max(0, sensibilita - 5))}
-          >
-            −
-          </button>
-          <span className="etichetta">bordi</span>
-        </div>
-      )}
+      {/* cursore di sensibilità: stesso comportamento dell'autoquotatura, sia
+          per la quota proposta sia per il riferimento di calibrazione */}
+      {((proposta && propostaSorgente) || riferimentoPunto) &&
+        (() => {
+          const cambia = riferimentoPunto ? aggiornaSensibilitaRif : aggiornaSensibilita;
+          return (
+            <div className="sensibilita-flottante" role="group" aria-label="Sensibilità ai bordi">
+              <button
+                className="passo"
+                aria-label="Più sensibile (bordi deboli)"
+                onClick={() => cambia(Math.min(100, sensibilita + 5))}
+              >
+                ＋
+              </button>
+              <input
+                type="range"
+                className="cursore-vert"
+                min={0}
+                max={100}
+                step={5}
+                aria-label="Sensibilità ai bordi"
+                value={sensibilita}
+                onChange={(e) => cambia(Number(e.target.value))}
+              />
+              <button
+                className="passo"
+                aria-label="Meno sensibile (solo bordi netti)"
+                onClick={() => cambia(Math.max(0, sensibilita - 5))}
+              >
+                −
+              </button>
+              <span className="etichetta">bordi</span>
+            </div>
+          );
+        })()}
 
       <div className="barra-strumenti">
         {menuAperto && (
