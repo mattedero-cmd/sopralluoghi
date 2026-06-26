@@ -861,21 +861,31 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         )
       )}
 
-      {/* oggetti con ambiente dedicato: al primo tap solo un discreto elimina;
-          il secondo tap apre l'ambiente di modifica completo */}
+      {/* oggetto selezionato (con ambiente dedicato): subito due pulsanti
+          discreti — Modifica ed Elimina — senza dover azzeccare il secondo tap */}
       {!proposta &&
         selezionata &&
         haAmbienteDedicato(selezionata) &&
         quotaInModifica === null &&
         testoInModifica === null && (
-          <button
-            className="elimina-flottante"
-            aria-label="Elimina"
-            title="Elimina"
-            onClick={eliminaSelezionata}
-          >
-            🗑
-          </button>
+          <div className="azioni-flottanti" role="group" aria-label="Azioni elemento">
+            <button
+              className="azione-flottante modifica"
+              aria-label="Modifica"
+              title="Modifica"
+              onClick={() => apriModifica(selezionata.id)}
+            >
+              ✎
+            </button>
+            <button
+              className="azione-flottante elimina"
+              aria-label="Elimina"
+              title="Elimina"
+              onClick={eliminaSelezionata}
+            >
+              🗑
+            </button>
+          </div>
         )}
 
       {proposta && propostaSorgente && (
