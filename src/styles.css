@@ -906,6 +906,69 @@ h2 {
   min-height: 40px;
 }
 
+/* Menu "richiama misura": elenco delle misure originali del progetto */
+.lista-richiamo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.voce-richiamo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--bordo);
+  background: var(--sfondo-2);
+  color: var(--testo);
+  cursor: pointer;
+}
+
+.voce-richiamo:active {
+  background: var(--accento, #2f81f7);
+}
+
+.voce-richiamo .codice {
+  flex: 0 0 auto;
+  min-width: 52px;
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--accento, #2f81f7);
+}
+
+.voce-richiamo:active .codice {
+  color: #fff;
+}
+
+.voce-richiamo .dettaglio {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.voce-richiamo .misura {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.voce-richiamo .dove {
+  font-size: 11px;
+  color: var(--testo-2);
+}
+
+.voce-richiamo .freccia {
+  flex: 0 0 auto;
+  font-size: 18px;
+  opacity: 0.7;
+}
+
 /* Cursore di sensibilità dell'autoquotatura: fisso, verticale, a sinistra */
 .sensibilita-flottante {
   position: fixed;

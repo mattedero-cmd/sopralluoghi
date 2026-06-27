@@ -27,7 +27,7 @@ import {
   segmentiPoligono,
   segmentoELato
 } from '../db/types';
-import { aggiornaFoto, eliminaFoto, leggiImpostazioni, salvaAnnotazioniFoto } from '../db/repository';
+import { aggiornaFoto, eliminaFoto, leggiImpostazioni, salvaAnnotazione, salvaAnnotazioniFoto } from '../db/repository';
 import { blobOrigine, caricaImmagine, fotoIllegibile, importaFoto } from '../utils/image';
 import { caricaDettaglio } from '../utils/immaginiCallout';
 import { naviga } from '../router';
@@ -44,8 +44,15 @@ import {
   misureRettangolo,
   valoreAutomatico
 } from '../geometry/calibrazione';
-import { nomeFormaPoligono, simboliPoligono, versiSegmento } from '../geometry/primitive';
-import { codiceLocaleForma, numeriProgetto, ordinePerNumero } from '../geometry/nomenclatura';
+import { etichettaPoligono, nomeFormaPoligono, simboliPoligono, versiSegmento } from '../geometry/primitive';
+import {
+  codiceCompletoForma,
+  codiceLocaleForma,
+  famigliaDi,
+  numeriProgetto,
+  ordinePerNumero,
+  percorsoEtichette
+} from '../geometry/nomenclatura';
 import { applicaOmografia, omografiaPiano, omografiaPianoInversa } from '../geometry/omografia';
 import { lunghezzaPxQuota } from '../geometry/punti';
 import { RicercaBordi } from '../geometry/bordi';
@@ -190,6 +197,12 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         : [],
     [fotoProgetto]
   );
+  // dati dell'INTERO archivio: la numerazione e il richiamo delle misure valgono
+  // tra foto e cartelle diverse, quindi servono tutte le forme/foto/cartelle
+  const tutteFoto = useLiveQuery(() => db.foto.toArray(), []);
+  const tutteAnnotazioni = useLiveQuery(() => db.annotazioni.toArray(), []);
+  const tuttiProgetti = useLiveQuery(() => db.progetti.toArray(), []);
+  const tutteCartelle = useLiveQuery(() => db.cartelle.toArray(), []);
   const [immagine, setImmagine] = useState<HTMLImageElement | null>(null);
   const [impostazioni, setImpostazioni] = useState<Impostazioni>(IMPOSTAZIONI_DEFAULT);
   const [annotazioni, setAnnotazioni] = useState<Annotazione[] | null>(null);
@@ -241,6 +254,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [menuFormato, setMenuFormato] = useState(false);
   /** modalità duplica: la forma "master" da copiare sugli elementi uguali */
   const [duplicaMaster, setDuplicaMaster] = useState<QuotaPoligono | null>(null);
+  /** menu "richiama misura": elenco delle misure originali del progetto/edificio */
+  const [menuRichiamo, setMenuRichiamo] = useState(false);
   /** griglia di verifica sul piano calibrato (controllo visivo della scala) */
   const [mostraGriglia, setMostraGriglia] = useState(false);
   /** poligono proposto dall'autoquotatura (base + altezza), da confermare */
@@ -735,19 +750,39 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     commit([...annotazioni, d]);
   };
 
-  /** Avvia la modalità "duplica misura" sulla forma selezionata: assegna un
-   *  gruppo (se manca) e poi ogni tocco sulla foto crea una copia collegata. */
+  /** Avvia la modalità "duplica misura" sulla forma selezionata (stessa foto):
+   *  fissa il gruppo della famiglia e poi ogni tocco crea una copia collegata. */
   const avviaDuplica = () => {
     if (!annotazioni || !selezionata || selezionata.tipo !== 'quotaPoligono') return;
     let master = selezionata;
     if (!master.gruppoQuota) {
-      master = { ...master, gruppoQuota: nuovoId() };
+      // la chiave di famiglia è l'id dell'originale: così è ritrovabile ovunque
+      master = { ...master, gruppoQuota: master.id };
       commit(annotazioni.map((a) => (a.id === master.id ? master : a)));
     }
     setDuplicaMaster(master);
   };
 
-  /** Crea una copia del master nel punto toccato (stessa misura, stesso gruppo) */
+  /** Richiama una misura ORIGINALE (anche di un'altra foto/cartella) e avvia la
+   *  modalità "tocca per ripetere" nella foto corrente. */
+  const richiamaMisura = async (originale: QuotaPoligono) => {
+    let master = originale;
+    if (!master.gruppoQuota) {
+      master = { ...master, gruppoQuota: master.id };
+      // l'originale può stare in un'altra foto: lo si aggiorna direttamente nel DB
+      if (master.fotoId === fotoId && annotazioni) {
+        commit(annotazioni.map((a) => (a.id === master.id ? master : a)));
+      } else {
+        await salvaAnnotazione(master);
+      }
+    }
+    setMenuRichiamo(false);
+    setSelezioneId(null);
+    setDuplicaMaster(master);
+  };
+
+  /** Crea una copia "solo etichetta" nel punto toccato, collegata alla famiglia
+   *  del master (la misura resta quella dell'originale). */
   const duplicaTocco = (punto: Punto) => {
     if (!annotazioni || !duplicaMaster) return;
     const n = duplicaMaster.punti.length || 1;
@@ -755,12 +790,14 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     const cy = duplicaMaster.punti.reduce((s, p) => s + p.y, 0) / n;
     const dx = punto.x - cx;
     const dy = punto.y - cy;
+    const zIndex = annotazioni.reduce((m, a) => Math.max(m, a.zIndex), 0) + 1;
     const copia: QuotaPoligono = {
       ...duplicaMaster,
       id: nuovoId(),
+      fotoId, // la copia vive nella foto CORRENTE (anche se l'originale è altrove)
+      zIndex,
       punti: duplicaMaster.punti.map((p) => ({ x: p.x + dx, y: p.y + dy })),
-      // le misure restano quelle del master (fisse, non ricalcolate dai pixel)
-      segmenti: segmentiPoligono(duplicaMaster).map((s) => ({ ...s })),
+      segmenti: undefined, // la misura è dell'originale (fonte unica), non copiata
       lati: undefined,
       offsetLati: undefined,
       valoreAuto: false,
@@ -769,7 +806,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       // copia "solo etichetta": sulla foto compare unicamente il codice nel
       // punto toccato; la misura resta quella dell'originale della famiglia
       soloEtichetta: true,
-      gruppoQuota: duplicaMaster.gruppoQuota,
+      gruppoQuota: famigliaDi(duplicaMaster),
       creatoIl: Date.now(),
       ordine: undefined
     };
@@ -856,7 +893,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     if (!foto || !annotazioni) return;
     salvaOra();
     try {
-      const blob = await renderFotoAnnotata(foto, annotazioni);
+      const blob = await renderFotoAnnotata(foto, annotazioni, 'image/jpeg', 0.92, (a) =>
+        codiceLocaleForma(a, numeriForme)
+      );
       await condividiOScarica(
         blob,
         nomeFileSicuro(foto.didascalia || 'foto_quotata', 'jpg'),
@@ -872,11 +911,60 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   // mentre la foto sta caricando, altrimenti React cambia il numero di hook tra
   // un render e l'altro e l'editor va in crash (schermo nero).
   const numeriForme = useMemo(() => {
-    const lista = fotoProgetto && fotoProgetto.length ? fotoProgetto : foto ? [foto] : [];
-    return numeriProgetto(lista, (fid) =>
-      fid === fotoId ? annotazioni ?? [] : (annotazioniProgetto ?? []).filter((a) => a.fotoId === fid)
-    );
-  }, [fotoId, annotazioni, annotazioniProgetto, fotoProgetto, foto]);
+    // numerazione su tutto l'archivio: i codici restano coerenti anche per le
+    // misure richiamate da altre foto/cartelle. Per la foto in modifica si usano
+    // le annotazioni "vive"; per le altre quelle del DB.
+    const lista =
+      tutteFoto && tutteFoto.length ? tutteFoto : fotoProgetto && fotoProgetto.length ? fotoProgetto : foto ? [foto] : [];
+    const percorsoProg = new Map<string, string[]>();
+    for (const p of tuttiProgetti ?? []) percorsoProg.set(p.id, percorsoEtichette(p, tutteCartelle ?? []));
+    const percorsoDi = (fid: string) => {
+      const ff = lista.find((f) => f.id === fid);
+      return ff ? percorsoProg.get(ff.progettoId) ?? [] : [];
+    };
+    const annDi = (fid: string) =>
+      fid === fotoId ? annotazioni ?? [] : (tutteAnnotazioni ?? []).filter((a) => a.fotoId === fid);
+    return numeriProgetto(lista, annDi, percorsoDi);
+  }, [fotoId, annotazioni, tutteAnnotazioni, tutteFoto, tuttiProgetti, tutteCartelle, fotoProgetto, foto]);
+
+  // misure ORIGINALI richiamabili (una per famiglia), da tutto l'archivio: il
+  // menu di richiamo mostra solo gli originali (A1, A2, B1…), non le copie
+  const misureRichiamabili = useMemo(() => {
+    const annTutte = tutteAnnotazioni ?? [];
+    const fotoDi = new Map((tutteFoto ?? []).map((f) => [f.id, f]));
+    const percorsoProg = new Map<string, string[]>();
+    for (const p of tuttiProgetti ?? []) percorsoProg.set(p.id, percorsoEtichette(p, tutteCartelle ?? []));
+    // raggruppa per famiglia, scegli l'originale (misura vera, non copia)
+    const perFam = new Map<string, QuotaPoligono[]>();
+    for (const a of annTutte) {
+      if (a.tipo !== 'quotaPoligono') continue;
+      const liveSelf = a.fotoId === fotoId ? (annotazioni ?? []).find((x) => x.id === a.id) : undefined;
+      const forma = (liveSelf as QuotaPoligono) ?? a;
+      const k = famigliaDi(forma);
+      if (!perFam.has(k)) perFam.set(k, []);
+      perFam.get(k)!.push(forma);
+    }
+    const voci = [...perFam.entries()].map(([k, membri]) => {
+      const orig = membri.find((m) => !m.soloEtichetta) ?? membri[0];
+      const info = numeriForme.get(orig.id);
+      const f = fotoDi.get(orig.fotoId);
+      const perc = f ? percorsoProg.get(f.progettoId) ?? [] : [];
+      const base = info ? `${info.etichettaFoto}${info.numero}` : codiceLocaleForma(orig, numeriForme);
+      const codice = codiceCompletoForma(perc, base);
+      const quante = membri.length;
+      return {
+        famiglia: k,
+        originale: orig,
+        codice,
+        misura: etichettaPoligono(orig),
+        dove: f?.didascalia?.trim() || (perc.length ? perc.join('.') : 'Foto'),
+        nellaFoto: orig.fotoId === fotoId,
+        quante
+      };
+    });
+    voci.sort((a, b) => a.codice.localeCompare(b.codice, undefined, { numeric: true }));
+    return voci;
+  }, [tutteAnnotazioni, tutteFoto, tuttiProgetti, tutteCartelle, numeriForme, annotazioni, fotoId]);
 
   if (foto && fotoIllegibile(foto)) {
     return <SchermataFotoDanneggiata foto={foto} />;
@@ -1159,6 +1247,41 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         </div>
       )}
 
+      {/* MENU RICHIAMO: elenco delle misure ORIGINALI richiamabili nel progetto */}
+      {menuRichiamo && (
+        <Modale titolo="Richiama una misura" onChiudi={() => setMenuRichiamo(false)}>
+          <p className="aiuto" style={{ marginTop: 0 }}>
+            Scegli una misura già presa: la riporti su questa foto toccando gli elementi
+            uguali, senza rimisurarla. Vengono mostrate solo le misure originali.
+          </p>
+          {misureRichiamabili.length === 0 ? (
+            <p className="vuoto">Nessuna misura ancora creata in questo progetto.</p>
+          ) : (
+            <div className="lista-richiamo" role="menu">
+              {misureRichiamabili.map((m) => (
+                <button
+                  key={m.famiglia}
+                  className="voce-richiamo"
+                  role="menuitem"
+                  onClick={() => void richiamaMisura(m.originale)}
+                >
+                  <span className="codice">{m.codice}</span>
+                  <span className="dettaglio">
+                    <span className="misura">{m.misura}</span>
+                    <span className="dove">
+                      {m.dove}
+                      {m.nellaFoto ? ' · questa foto' : ''}
+                      {m.quante > 1 ? ` · ${m.quante} elementi` : ''}
+                    </span>
+                  </span>
+                  <span className="freccia">⧉</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </Modale>
+      )}
+
       {/* STADIO 1: riferimento rilevato, si aggiustano i 4 angoli (zoomati) */}
       {riferimentoPunto && !calibGriglia && (
         <div className="barra-calibra" role="group" aria-label="Riferimento di calibrazione">
@@ -1319,6 +1442,17 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             }}
             icona="✨"
             testo="Auto"
+          />
+          <BtnStrumento
+            attivo={menuRichiamo || !!duplicaMaster}
+            onClick={() => {
+              setStrumento('seleziona');
+              setMenuAperto(null);
+              setSelezioneId(null);
+              setMenuRichiamo(true);
+            }}
+            icona="⧉"
+            testo="Richiama"
           />
           {GRUPPI_STRUMENTI.map((g) => {
             const voceAtt = g.voci.find((v) => v.s === strumento);

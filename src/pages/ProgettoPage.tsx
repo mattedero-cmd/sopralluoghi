@@ -26,6 +26,7 @@ import {
 import { mostraToast } from '../state/toast';
 import { condividiOScarica, nomeFileSicuro } from '../utils/share';
 import { renderFotoAnnotata } from '../render/renderAnnotata';
+import { codiceLocaleForma, numeriProgetto } from '../geometry/nomenclatura';
 
 export function ProgettoPage({ id }: { id: string }) {
   const progetto = useLiveQuery(() => db.progetti.get(id), [id]);
@@ -118,7 +119,19 @@ export function ProgettoPage({ id }: { id: string }) {
             }
             try {
               const annotazioni = await db.annotazioni.where('fotoId').equals(f.id).toArray();
-              const blob = await renderFotoAnnotata(f, annotazioni);
+              // numerazione del progetto, così la foto esportata mostra i codici
+              // aggiornati (A1, A1.1…) e non le vecchie etichette numeriche
+              const fotoProgetto = await db.foto.where('progettoId').equals(f.progettoId).toArray();
+              const annProgetto = await db.annotazioni
+                .where('fotoId')
+                .anyOf(fotoProgetto.map((x) => x.id))
+                .toArray();
+              const numeri = numeriProgetto(fotoProgetto, (fid) =>
+                annProgetto.filter((a) => a.fotoId === fid)
+              );
+              const blob = await renderFotoAnnotata(f, annotazioni, 'image/jpeg', 0.92, (a) =>
+                codiceLocaleForma(a, numeri)
+              );
               await condividiOScarica(
                 blob,
                 nomeFileSicuro(f.didascalia || progetto.nome, 'jpg'),

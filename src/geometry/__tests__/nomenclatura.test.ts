@@ -141,6 +141,46 @@ describe('elementi ripetuti (duplicazione)', () => {
     expect(codiceLocaleForma(ann[1], numeri)).toBe('A1.2');
     expect(codiceLocaleForma(ann[2], numeri)).toBe('A2');
   });
+
+  it('famiglia richiamata tra foto diverse della stessa cartella → sequenza continua', () => {
+    // due foto dello stesso progetto: la misura originale è in f1 e viene
+    // richiamata in f2; il sotto-indice prosegue (stessa cartella)
+    const f1 = { id: 'f1', ordine: 1, progettoId: 'p1' } as Foto;
+    const f2 = { id: 'f2', ordine: 2, progettoId: 'p1' } as Foto;
+    const ann: Record<string, Annotazione[]> = {
+      f1: [forma('orig', 'f1', { creatoIl: 100, gruppoQuota: 'G' })],
+      f2: [forma('cop', 'f2', { creatoIl: 200, gruppoQuota: 'G', soloEtichetta: true })]
+    };
+    const numeri = numeriProgetto([f1, f2], (id) => ann[id] ?? []);
+    // l'originale (in f1, foto A) dà la base A1; due membri → A1.1 e A1.2
+    expect(codiceLocaleForma(ann.f1[0], numeri)).toBe('A1.1');
+    expect(codiceLocaleForma(ann.f2[0], numeri)).toBe('A1.2');
+    expect(numeri.get('cop')!.quantitaGlobale).toBe(2);
+  });
+
+  it('famiglia richiamata in una cartella diversa → il sotto-indice riparte da .1', () => {
+    const f1 = { id: 'f1', ordine: 1, progettoId: 'p1' } as Foto;
+    const f2 = { id: 'f2', ordine: 2, progettoId: 'p2' } as Foto;
+    const ann: Record<string, Annotazione[]> = {
+      f1: [
+        forma('o1', 'f1', { creatoIl: 100, gruppoQuota: 'G' }),
+        forma('c1', 'f1', { creatoIl: 110, gruppoQuota: 'G', soloEtichetta: true })
+      ],
+      f2: [
+        forma('c2', 'f2', { creatoIl: 200, gruppoQuota: 'G', soloEtichetta: true }),
+        forma('c3', 'f2', { creatoIl: 210, gruppoQuota: 'G', soloEtichetta: true })
+      ]
+    };
+    const percorso: Record<string, string[]> = { f1: ['P1'], f2: ['P2'] };
+    const numeri = numeriProgetto([f1, f2], (id) => ann[id] ?? [], (id) => percorso[id] ?? []);
+    // P1: A1.1, A1.2 — P2 riparte: A1.1, A1.2 (stessa misura originale A1)
+    expect(codiceLocaleForma(ann.f1[0], numeri)).toBe('A1.1');
+    expect(codiceLocaleForma(ann.f1[1], numeri)).toBe('A1.2');
+    expect(codiceLocaleForma(ann.f2[0], numeri)).toBe('A1.1');
+    expect(codiceLocaleForma(ann.f2[1], numeri)).toBe('A1.2');
+    expect(numeri.get('c2')!.quantita).toBe(2); // copie dentro P2
+    expect(numeri.get('c2')!.quantitaGlobale).toBe(4); // copie totali
+  });
 });
 
 describe('riordino manuale del numero', () => {

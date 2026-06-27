@@ -7,6 +7,8 @@ import { nomeFormaPoligono, simboliPoligono, versiSegmento } from '../geometry/p
 import {
   codiceCompletoForma,
   codiceLocaleForma,
+  eCopiaEtichetta,
+  eFormaEtichettabile,
   famigliaDi,
   numeriProgetto,
   percorsoEtichette,
@@ -79,6 +81,77 @@ export const OPZIONI_REPORT_DEFAULT: OpzioniReport = {
   includiDistinta: true
 };
 
+/**
+ * Contesto di numerazione GLOBALE (tutto l'archivio): serve perché i codici e
+ * le misure restino coerenti anche quando una misura originale è richiamata in
+ * foto o cartelle diverse. Il report disegna solo le sue foto, ma numera e
+ * recupera le misure guardando l'intero progetto/edificio.
+ */
+interface ContestoGlobale {
+  numeri: Map<string, NumeroForma>;
+  /** percorso (cartelle + progetto) di ogni foto */
+  percorsoFoto: Map<string, string[]>;
+  /** originale (misura vera) di ogni famiglia, con la sua foto (per area/scala) */
+  originaleFamiglia: Map<string, { forma: Annotazione; foto: Foto }>;
+  /** tutti i membri (originale + copie) di ogni famiglia */
+  membriFamiglia: Map<string, Annotazione[]>;
+}
+
+async function caricaContestoGlobale(): Promise<ContestoGlobale> {
+  const [foto, ann, progetti, cartelle] = await Promise.all([
+    db.foto.toArray(),
+    db.annotazioni.toArray(),
+    db.progetti.toArray(),
+    db.cartelle.toArray()
+  ]);
+  const fotoDi = new Map(foto.map((f) => [f.id, f]));
+  const annPerFoto = new Map<string, Annotazione[]>();
+  for (const a of ann) {
+    if (!annPerFoto.has(a.fotoId)) annPerFoto.set(a.fotoId, []);
+    annPerFoto.get(a.fotoId)!.push(a);
+  }
+  const percorsoProgetto = new Map<string, string[]>();
+  for (const p of progetti) percorsoProgetto.set(p.id, percorsoEtichette(p, cartelle));
+  const percorsoFoto = new Map<string, string[]>();
+  for (const f of foto) percorsoFoto.set(f.id, percorsoProgetto.get(f.progettoId) ?? []);
+
+  const numeri = numeriProgetto(
+    foto,
+    (id) => annPerFoto.get(id) ?? [],
+    (id) => percorsoFoto.get(id) ?? []
+  );
+
+  const membriFamiglia = new Map<string, Annotazione[]>();
+  for (const a of ann) {
+    if (!eFormaEtichettabile(a)) continue;
+    const k = famigliaDi(a);
+    if (!membriFamiglia.has(k)) membriFamiglia.set(k, []);
+    membriFamiglia.get(k)!.push(a);
+  }
+  const originaleFamiglia = new Map<string, { forma: Annotazione; foto: Foto }>();
+  for (const [k, membri] of membriFamiglia) {
+    const orig = membri.find((m) => !eCopiaEtichetta(m)) ?? membri[0];
+    const f = fotoDi.get(orig.fotoId);
+    if (f) originaleFamiglia.set(k, { forma: orig, foto: f });
+  }
+  return { numeri, percorsoFoto, originaleFamiglia, membriFamiglia };
+}
+
+/** codice locale (badge sulla foto, es. A1.2) di una forma nel contesto globale */
+function codiceLocaleCtx(ctx: ContestoGlobale, a: Annotazione): string {
+  return codiceLocaleForma(a, ctx.numeri);
+}
+
+/** elenco dei codici delle copie di una famiglia DENTRO un percorso (cartella) */
+function codiciCopie(ctx: ContestoGlobale, famKey: string, percorso: string[]): string[] {
+  const chiave = percorso.join(' ');
+  return (ctx.membriFamiglia.get(famKey) ?? [])
+    .filter((m) => (ctx.percorsoFoto.get(m.fotoId) ?? []).join(' ') === chiave)
+    .map((m) => ({ m, sub: ctx.numeri.get(m.id)?.sub ?? 0 }))
+    .sort((x, y) => x.sub - y.sub)
+    .map(({ m }) => codiceCompletoForma(percorso, codiceLocaleForma(m, ctx.numeri)));
+}
+
 export async function generaReportPdf(
   progetto: Progetto,
   avanzamento?: (msg: string) => void,
@@ -100,12 +173,16 @@ export async function generaReportPdf(
   // percorso di etichette (cartelle annidate + progetto) per i codici delle forme
   const cartelle = await db.cartelle.toArray();
   const percorso = percorsoEtichette(progetto, cartelle);
+  // numerazione/misure coerenti su tutto l'archivio (richiami tra foto e cartelle)
+  const ctx = await caricaContestoGlobale();
 
   const immagini: Record<string, string> = {};
   for (let i = 0; i < fotoList.length; i++) {
     avanzamento?.(`Preparazione immagine ${i + 1} di ${fotoList.length}…`);
     const f = fotoList[i];
-    const blob = await renderFotoAnnotata(f, annotazioniPerFoto.get(f.id) ?? []);
+    const blob = await renderFotoAnnotata(f, annotazioniPerFoto.get(f.id) ?? [], 'image/jpeg', 0.92, (a) =>
+      codiceLocaleCtx(ctx, a)
+    );
     immagini[`foto_${f.id}`] = await blobInDataUrlRidotto(blob, LATO_MAX_PDF);
   }
 
@@ -149,18 +226,14 @@ export async function generaReportPdf(
     } as Content);
   }
 
-  // numerazione condivisa di tutto il progetto (foto con stessa etichetta →
-  // stessa sequenza, nell'ordine di creazione delle forme)
-  const numeri = numeriProgetto(fotoList, (id) => annotazioniPerFoto.get(id) ?? []);
-
   // --- Una sezione per foto ---------------------------------------------------
   fotoList.forEach((f, indice) => {
     const annotazioni = annotazioniPerFoto.get(f.id) ?? [];
-    contenuto.push(...sezioneFoto(f, indice, annotazioni, opzioni, impostazioni.pdf, numeri, percorso));
+    contenuto.push(...sezioneFoto(f, indice, annotazioni, opzioni, impostazioni.pdf, ctx, percorso));
   });
 
-  // tutte le foto del progetto condividono numerazione e percorso
-  const info: InfoFoto = () => ({ numeri, percorso });
+  // tutte le foto del progetto condividono il percorso
+  const info: InfoFoto = () => ({ ctx, percorso });
 
   // --- Tabella riassuntiva delle misure ---------------------------------------
   if (opzioni.includiRiepilogo) {
@@ -267,9 +340,11 @@ export async function generaReportCartella(
   const progettiIn = (id: string) =>
     tuttiProgetti.filter((p) => p.cartellaId === id).sort((a, b) => a.nome.localeCompare(b.nome));
 
+  // numerazione/misure coerenti su tutto l'archivio (richiami tra cartelle)
+  const ctx = await caricaContestoGlobale();
+
   const fotoPerProgetto = new Map<string, Foto[]>();
   const annotPerFoto = new Map<string, Annotazione[]>();
-  const infoFoto = new Map<string, { numeri: Map<string, NumeroForma>; percorso: string[] }>();
   const tutteFoto: Foto[] = [];
 
   const caricaProgetto = async (p: Progetto) => {
@@ -277,14 +352,10 @@ export async function generaReportCartella(
       .filter((f) => !fotoIllegibile(f))
       .sort((a, b) => a.ordine - b.ordine);
     fotoPerProgetto.set(p.id, lista);
-    const percorso = percorsoEtichette(p, tutteCartelle);
     for (const f of lista) {
       annotPerFoto.set(f.id, await db.annotazioni.where('fotoId').equals(f.id).toArray());
       tutteFoto.push(f);
     }
-    // numerazione condivisa del progetto (foto con stessa etichetta)
-    const numeri = numeriProgetto(lista, (id) => annotPerFoto.get(id) ?? []);
-    for (const f of lista) infoFoto.set(f.id, { numeri, percorso });
   };
   const raccogli = async (id: string) => {
     for (const p of progettiIn(id)) await caricaProgetto(p);
@@ -300,7 +371,9 @@ export async function generaReportCartella(
   for (let i = 0; i < tutteFoto.length; i++) {
     avanzamento?.(`Preparazione immagine ${i + 1} di ${tutteFoto.length}…`);
     const f = tutteFoto[i];
-    const blob = await renderFotoAnnotata(f, annotPerFoto.get(f.id) ?? []);
+    const blob = await renderFotoAnnotata(f, annotPerFoto.get(f.id) ?? [], 'image/jpeg', 0.92, (a) =>
+      codiceLocaleCtx(ctx, a)
+    );
     immagini[`foto_${f.id}`] = await blobInDataUrlRidotto(blob, LATO_MAX_PDF);
   }
 
@@ -316,9 +389,8 @@ export async function generaReportCartella(
       out.push({ text: p.nome, style: 'h3', margin: [0, 8, 0, 4] });
       if (p.note.trim()) out.push({ text: p.note.trim(), style: 'corpo', italics: true });
       for (const f of lista) {
-        const inf = infoFoto.get(f.id)!;
         out.push(
-          ...sezioneFoto(f, indiceFoto++, annotPerFoto.get(f.id) ?? [], opzioni, impostazioni.pdf, inf.numeri, inf.percorso, {
+          ...sezioneFoto(f, indiceFoto++, annotPerFoto.get(f.id) ?? [], opzioni, impostazioni.pdf, ctx, ctx.percorsoFoto.get(f.id) ?? [], {
             style: 'h3',
             toc: false,
             etichetta: ''
@@ -374,7 +446,7 @@ export async function generaReportCartella(
   }
   figlie(radice.id).forEach((c, i) => contenuto.push(...sezioneCartella(c, String(i + 1), 0)));
 
-  const info: InfoFoto = (f) => infoFoto.get(f.id) ?? { numeri: new Map(), percorso: [] };
+  const info: InfoFoto = (f) => ({ ctx, percorso: ctx.percorsoFoto.get(f.id) ?? [] });
   if (opzioni.includiRiepilogo) {
     contenuto.push(...tabellaRiassuntiva(tutteFoto, annotPerFoto, info));
   }
@@ -459,9 +531,10 @@ function dettaglioAbb(
 function righeMisureFoto(
   annotazioni: Annotazione[],
   foto: Foto,
-  numeri: Map<string, NumeroForma> = new Map(),
+  ctx: ContestoGlobale,
   percorso: string[] = []
 ): RigaMisura[] {
+  const numeri = ctx.numeri;
   // codice strutturato completo di una forma (percorso cartelle + etich.+numero)
   const codiceForma = (a: Annotazione): string =>
     codiceCompletoForma(percorso, codiceLocaleForma(a, numeri));
@@ -526,60 +599,62 @@ function righeMisureFoto(
       }
       righe.push(rigaR);
     } else if (a.tipo === 'quotaPoligono') {
-      // elementi RIPETUTI: la famiglia compare UNA sola volta nella distinta.
-      // Si tiene il primo membro (sub 1) e si salta gli altri; la quantità e i
-      // codici collegati riassumono l'intera famiglia.
+      // elementi RIPETUTI: la famiglia compare UNA sola volta per cartella. Si
+      // tiene il rappresentante (sub 1, o forma singola) e si saltano le copie.
       const infoFam = numeri.get(a.id);
       if (infoFam && infoFam.sub && infoFam.sub > 1) continue;
-      const nome = nomeFormaPoligono(a);
+      // la MISURA è sempre quella dell'ORIGINALE (fonte unica), anche se il
+      // rappresentante in questa cartella è una copia richiamata da altrove
+      const famKey = famigliaDi(a);
+      const orig = ctx.originaleFamiglia.get(famKey);
+      const formaMis = orig && orig.forma.tipo === 'quotaPoligono' ? orig.forma : a;
+      const fotoMis = orig?.foto ?? foto;
+      const nome = nomeFormaPoligono(formaMis);
       const n = (v: number | null) => (v === null ? '?' : formattaNumero(v));
-      const simboli = simboliPoligono(a);
-      const segs = segmentiPoligono(a);
-      const reale = `${segs.map((s, i) => `${simboli[i]} ${n(s.valore)}`).join(' · ')} ${a.unita}`;
+      const simboli = simboliPoligono(formaMis);
+      const segs = segmentiPoligono(formaMis);
+      const reale = `${segs.map((s, i) => `${simboli[i]} ${n(s.valore)}`).join(' · ')} ${formaMis.unita}`;
       // il taglio riguarda solo i LATI: le diagonali non si tagliano
-      const nVert = a.punti.length;
+      const nVert = formaMis.punti.length;
       const lati = segs
         .map((s, i) => ({ s, i }))
         .filter(({ s }) => segmentoELato(s, nVert));
       const abbTot = lati.reduce((acc, { s }) => acc + abbondanzaTotale(s), 0);
-      const riga: RigaMisura = { codice: codiceForma(a), forma: nome, reale, stato: a.stato, pezzo: true };
+      const riga: RigaMisura = { codice: codiceForma(a), forma: nome, reale, stato: formaMis.stato, pezzo: true };
       if (abbTot > 0) {
         riga.taglio = `${lati
           .map(({ s, i }) => `${simboli[i]} ${s.valore === null ? '?' : formattaNumero(s.valore + abbondanzaTotale(s))}`)
-          .join(' · ')} ${a.unita}`;
+          .join(' · ')} ${formaMis.unita}`;
         riga.abbondanze = lati
-          .map(({ s, i }) => dettaglioAbb(simboli[i], s.abbInizio, s.abbFine, a.punti[s.da], a.punti[s.a]))
+          .map(({ s, i }) => dettaglioAbb(simboli[i], s.abbInizio, s.abbFine, formaMis.punti[s.da], formaMis.punti[s.a]))
           .filter(Boolean)
           .join('   ');
       }
       // perimetro: solo quello reale
-      const perimetro = perimetroReale(a);
+      const perimetro = perimetroReale(formaMis);
       if (perimetro !== null) {
-        riga.perimetro = `perim. ${formattaNumero(perimetro)} ${a.unita}`;
+        riga.perimetro = `perim. ${formattaNumero(perimetro)} ${formaMis.unita}`;
       }
       // triangolo: angoli ai vertici, ricavati dai 3 lati (caso SSS)
-      const angoli = angoliTriangolo(a);
+      const angoli = angoliTriangolo(formaMis);
       if (angoli) {
         const lett = ['α', 'β', 'γ'];
         riga.angoli = angoli.map((g, i) => `${lett[i]} ${formattaNumero(g)}°`).join(' · ');
       }
       // superficie in m² (metodo più affidabile disponibile)
-      const area = areaReale(a, foto);
+      const area = areaReale(formaMis, fotoMis);
       if (area) {
         riga.area = formattaArea(area);
         riga.areaAffidabile = area.affidabile;
         riga.areaM2 = area.m2;
       }
-      // famiglia di elementi ripetuti: una riga, con quantità e codici collegati
-      if (infoFam && infoFam.quantita > 1) {
-        riga.quantita = infoFam.quantita;
+      // famiglia di elementi ripetuti: una riga, con quantità e sotto-elenco dei
+      // codici delle copie DENTRO questa cartella (P1.A1.1, P1.A1.2…)
+      if (infoFam && infoFam.quantitaGlobale > 1) {
+        riga.quantita = infoFam.quantita; // copie in questa cartella
         // codice della famiglia senza sotto-indice (es. "A1" invece di "A1.1")
         riga.codice = codiceCompletoForma(percorso, `${infoFam.etichettaFoto}${infoFam.numero}`);
-        riga.collegati = annotazioni
-          .filter((x) => x.tipo === 'quotaPoligono' && famigliaDi(x) === famigliaDi(a))
-          .map((x) => ({ x, sub: numeri.get(x.id)?.sub ?? 0 }))
-          .sort((p, q) => p.sub - q.sub)
-          .map((e) => codiceForma(e.x));
+        riga.collegati = codiciCopie(ctx, famKey, percorso);
       }
       righe.push(riga);
     }
@@ -587,19 +662,42 @@ function righeMisureFoto(
   return righe;
 }
 
+/**
+ * Cella "codice": la misura originale come riferimento principale e, sotto, il
+ * sotto-elenco dei codici delle copie collegate (A1 → A1.1, A1.2, A1.3…).
+ */
+function cellaCodice(m: RigaMisura, fallback: string): Content {
+  const base = m.codice ?? fallback;
+  if (!m.collegati || m.collegati.length <= 1) {
+    return { text: base, style: m.codice ? 'tdForma' : 'tdNum' };
+  }
+  return {
+    stack: [
+      { text: base, style: 'tdForma' },
+      ...m.collegati.map(
+        (c) =>
+          ({
+            text: `• ${c}`,
+            fontSize: 8.5,
+            color: GRIGIO,
+            margin: [6, 1, 0, 0]
+          }) as Content
+      )
+    ]
+  };
+}
+
 /** Cella "dettaglio" del riepilogo: misure su righe separate, con gerarchia */
 function cellaDettaglio(m: RigaMisura): Content {
   const linee: Content[] = [{ text: m.reale, bold: true, fontSize: 10.5, color: '#1a1a1a' }];
   if (m.quantita && m.quantita > 1) {
+    // quantità in evidenza (il sotto-elenco dei codici è nella colonna "Cod.")
     linee.push({
       text: [
-        { text: 'Quantità  ', color: GRIGIO_CHIARO, fontSize: 8 },
-        { text: `${m.quantita} elementi uguali`, color: BLU_FORMA, bold: true, fontSize: 9.5 },
-        ...(m.collegati && m.collegati.length
-          ? [{ text: `  (${m.collegati.join(', ')})`, color: GRIGIO, fontSize: 8 } as Content]
-          : [])
+        { text: '▣ ', color: BLU_FORMA, fontSize: 10 },
+        { text: `${m.quantita} elementi uguali`, color: BLU_FORMA, bold: true, fontSize: 10 }
       ],
-      margin: [0, 1, 0, 0]
+      margin: [0, 2, 0, 1]
     });
   }
   if (m.taglio) {
@@ -663,7 +761,7 @@ function sezioneFoto(
   annotazioni: Annotazione[],
   opzioni: OpzioniReport,
   pdfImp: { mostraGeotag: boolean; mostraDataScatto: boolean },
-  numeri: Map<string, NumeroForma>,
+  ctx: ContestoGlobale,
   percorso: string[],
   /** stile del titolo della foto e voce indice: nel report di cartella le foto
    *  sono "contenuto" dei capitoli, quindi titolo più piccolo e fuori indice */
@@ -674,7 +772,7 @@ function sezioneFoto(
   }
 ): Content[] {
   const titolo = `${titoloFoto.etichetta}${f.didascalia || `Foto ${indice + 1}`}`;
-  const misure = righeMisureFoto(annotazioni, f, numeri, percorso);
+  const misure = righeMisureFoto(annotazioni, f, ctx, percorso);
   const callouts = annotazioni.filter((a) => a.tipo === 'callout');
   const catene = calcolaCatene(annotazioni);
   // layout compatto: due foto per pagina, immagine più bassa
@@ -709,7 +807,7 @@ function sezioneFoto(
 
   if (opzioni.includiTabellaMisure && misure.length > 0) {
     const corpoTabella = misure.map((m, i) => [
-      { text: m.codice ?? String(i + 1), style: m.codice ? 'tdForma' : 'tdNum' },
+      cellaCodice(m, String(i + 1)),
       { text: m.forma, style: 'tdForma' },
       cellaDettaglio(m),
       cellaStato(m.stato)
@@ -762,8 +860,8 @@ function sezioneFoto(
   return out;
 }
 
-/** per ogni foto: la numerazione del suo progetto e il percorso di etichette */
-type InfoFoto = (f: Foto) => { numeri: Map<string, NumeroForma>; percorso: string[] };
+/** per ogni foto: il contesto di numerazione e il percorso di etichette */
+type InfoFoto = (f: Foto) => { ctx: ContestoGlobale; percorso: string[] };
 
 function tabellaRiassuntiva(
   fotoList: Foto[],
@@ -772,11 +870,11 @@ function tabellaRiassuntiva(
 ): Content[] {
   const righe: Content[][] = [];
   fotoList.forEach((f, indice) => {
-    const { numeri, percorso } = info(f);
-    const misure = righeMisureFoto(annotazioniPerFoto.get(f.id) ?? [], f, numeri, percorso);
+    const { ctx, percorso } = info(f);
+    const misure = righeMisureFoto(annotazioniPerFoto.get(f.id) ?? [], f, ctx, percorso);
     misure.forEach((m, i) => {
       righe.push([
-        { text: m.codice ?? `${indice + 1}.${i + 1}`, style: m.codice ? 'tdForma' : 'tdNum' },
+        cellaCodice(m, `${indice + 1}.${i + 1}`),
         { text: f.didascalia || `Foto ${indice + 1}`, fontSize: 8.5, color: GRIGIO_CHIARO },
         { text: m.forma, style: 'tdForma' },
         cellaDettaglio(m),
@@ -846,8 +944,8 @@ function distintaTaglio(
   let areaCompleta = true; // false se a qualche pezzo manca l'area
 
   fotoList.forEach((f) => {
-    const { numeri, percorso } = info(f);
-    const misure = righeMisureFoto(annotazioniPerFoto.get(f.id) ?? [], f, numeri, percorso).filter(
+    const { ctx, percorso } = info(f);
+    const misure = righeMisureFoto(annotazioniPerFoto.get(f.id) ?? [], f, ctx, percorso).filter(
       (m) => m.pezzo
     );
     misure.forEach((m) => {
@@ -856,18 +954,12 @@ function distintaTaglio(
       if (m.areaM2 !== undefined) areaTot += m.areaM2 * qta;
       else areaCompleta = false;
       righe.push([
-        { text: m.codice ?? '', style: 'tdForma' },
+        cellaCodice(m, ''),
         {
           stack: [
             { text: m.forma, style: 'tdForma' },
             ...(qta > 1
-              ? [
-                  {
-                    text: `×${qta}${m.collegati && m.collegati.length ? `  ${m.collegati.join(', ')}` : ''}`,
-                    fontSize: 8,
-                    color: GRIGIO
-                  } as Content
-                ]
+              ? [{ text: `${qta} elementi uguali`, fontSize: 8.5, color: BLU_FORMA, bold: true } as Content]
               : [])
           ]
         },

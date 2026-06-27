@@ -13,7 +13,10 @@ export async function renderFotoAnnotata(
   foto: Foto,
   annotazioni: Annotazione[],
   formato: 'image/jpeg' | 'image/png' = 'image/jpeg',
-  qualita = 0.92
+  qualita = 0.92,
+  /** codice/etichetta strutturato della forma (nomenclatura): se assente si usa
+   *  l'etichetta grezza salvata. Serve perché la foto del PDF mostri A1, A1.1… */
+  codiceForma?: (a: Annotazione) => string | undefined
 ): Promise<Blob> {
   const img = await caricaImmagine(blobOrigine(foto));
   const canvas = document.createElement('canvas');
@@ -39,7 +42,7 @@ export async function renderFotoAnnotata(
 
   const ordinate = [...annotazioni].sort((a, b) => a.zIndex - b.zIndex);
   for (const ann of ordinate) {
-    for (const p of primitiveAnnotazione(ann, risolvi)) {
+    for (const p of primitiveAnnotazione(ann, risolvi, codiceForma)) {
       disegnaPrimitiva(ctx, p, img);
     }
   }
