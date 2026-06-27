@@ -957,27 +957,31 @@ h2 {
 }
 
 /* Azioni discrete dell'elemento selezionato: Modifica + Elimina, subito
-   disponibili in basso a sinistra (niente dipendenza dal "secondo tap"). */
+   disponibili (niente dipendenza dal "secondo tap"). Stanno SOPRA la barra
+   strumenti, così non si sovrappongono al menu principale. */
 .azioni-flottanti {
   position: absolute;
   left: 10px;
-  bottom: 14px;
+  /* sopra la toolbar (~56px pulsanti + padding + safe-area) */
+  bottom: calc(env(safe-area-inset-bottom) + 88px);
   display: flex;
-  gap: 8px;
+  gap: 10px;
   z-index: 40;
 }
 
 .azione-flottante {
-  width: 46px;
-  height: 46px;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   border: 1px solid var(--bordo);
-  background: rgba(26, 32, 41, 0.82);
+  background: rgba(26, 32, 41, 0.9);
   color: var(--testo);
-  font-size: 20px;
   cursor: pointer;
-  backdrop-filter: blur(4px);
-  opacity: 0.92;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  opacity: 0.96;
 }
 
 .azione-flottante.modifica:active {
