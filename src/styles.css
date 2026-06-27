@@ -944,6 +944,19 @@ h2 {
   margin: 0 0 6px;
 }
 
+.riga-aggiungi-sezione {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 2px;
+}
+
+.btn.piccolo {
+  padding: 6px 12px;
+  font-size: 13px;
+  min-height: 38px;
+}
+
 .link {
   background: none;
   border: none;

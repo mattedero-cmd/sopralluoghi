@@ -214,7 +214,8 @@ export function ProgettoPage({ id }: { id: string }) {
       pos: { x: e.clientX, y: e.clientY },
       voci: [
         { testo: '✏️ Modifica (nome, etichetta)', onClick: () => setSezioneInModifica(s) },
-        { testo: '📷 Aggiungi foto qui', onClick: () => aggiungiA(s.id, 'camera') },
+        { testo: '📷 Scatta foto qui', onClick: () => aggiungiA(s.id, 'camera') },
+        { testo: '🖼️ Galleria / file qui', onClick: () => aggiungiA(s.id, 'galleria') },
         {
           testo: 'Elimina sezione…',
           pericolo: true,
@@ -228,6 +229,17 @@ export function ProgettoPage({ id }: { id: string }) {
       ]
     });
   };
+
+  const barraAggiungi = (sid: string | null) => (
+    <div className="riga-aggiungi-sezione">
+      <button className="btn piccolo" disabled={importInCorso} onClick={() => aggiungiA(sid, 'camera')}>
+        📷 Scatta
+      </button>
+      <button className="btn piccolo" disabled={importInCorso} onClick={() => aggiungiA(sid, 'galleria')}>
+        🖼️ Galleria / file
+      </button>
+    </div>
+  );
 
   const grigliaFoto = (lista: Foto[]) => (
     <div className="griglia-foto">
@@ -365,13 +377,9 @@ export function ProgettoPage({ id }: { id: string }) {
                 {fotoDi(s.id).length > 0 ? (
                   grigliaFoto(fotoDi(s.id))
                 ) : (
-                  <p className="sezione-vuota">
-                    Sezione vuota.{' '}
-                    <button className="link" onClick={() => aggiungiA(s.id, 'camera')}>
-                      Aggiungi foto
-                    </button>
-                  </p>
+                  <p className="sezione-vuota">Sezione vuota: aggiungi le foto qui sotto.</p>
                 )}
+                {barraAggiungi(s.id)}
               </section>
             ))}
             {(fotoDi(null).length > 0 || sezioni.length > 0) && (
@@ -382,7 +390,8 @@ export function ProgettoPage({ id }: { id: string }) {
                     <span className="conta-sezione">{fotoDi(null).length}</span>
                   </h3>
                 </div>
-                {grigliaFoto(fotoDi(null))}
+                {fotoDi(null).length > 0 && grigliaFoto(fotoDi(null))}
+                {barraAggiungi(null)}
               </section>
             )}
           </>
