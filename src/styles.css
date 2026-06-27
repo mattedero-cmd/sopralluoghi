@@ -777,28 +777,51 @@ h2 {
   position: absolute;
   left: 8px;
   right: 8px;
-  top: 8px;
+  /* sotto l'header dell'editor (safe-area + 48px tocco + 20px padding) */
+  top: calc(env(safe-area-inset-top) + 72px);
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
   border-radius: 12px;
-  background: rgba(16, 20, 26, 0.92);
+  background: rgba(16, 20, 26, 0.95);
   border: 1px solid var(--bordo);
   backdrop-filter: blur(6px);
   z-index: 45;
 }
 
 .barra-calibra .titolo {
+  flex: 1 1 100%; /* il titolo occupa la prima riga; i comandi vanno sotto */
   font-weight: 700;
   font-size: 14px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .barra-calibra .spazio {
   flex: 1;
+}
+
+/* Menu del formato di riferimento: si apre VERSO IL BASSO (la barra è in alto) */
+.popover-formato {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 8px;
+  z-index: 49;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  min-width: 180px;
+  background: var(--sfondo-2);
+  border: 1px solid var(--bordo);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.popover-formato .btn {
+  width: 100%;
+  justify-content: flex-start;
 }
 
 .barra-calibra .confid {

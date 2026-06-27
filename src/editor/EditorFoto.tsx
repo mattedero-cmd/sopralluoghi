@@ -1102,23 +1102,21 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             {menuFormato && (
               <>
                 <div className="backdrop-strumenti" onClick={() => setMenuFormato(false)} />
-                <div className="popover-colore" role="menu" aria-label="Formato del riferimento">
+                <div className="popover-formato" role="menu" aria-label="Formato del riferimento">
                   <button
                     className={`btn${formatoRif === 'pers' ? ' attivo' : ''}`}
-                    style={{ minWidth: 96 }}
                     onClick={() => {
                       setFormatoRif('pers');
                       setMenuFormato(false);
                       setSchedaFormatoPers(true);
                     }}
                   >
-                    ✎ Personalizzato
+                    ✎ Personalizzato…
                   </button>
                   {FORMATI.map((f) => (
                     <button
                       key={f.id}
                       className={`btn${formatoRif === f.id ? ' attivo' : ''}`}
-                      style={{ minWidth: 96 }}
                       onClick={() => {
                         setFormatoRif(f.id);
                         setMenuFormato(false);
