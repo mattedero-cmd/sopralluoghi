@@ -59,10 +59,11 @@ function etichettaManuale(a: Annotazione): string | undefined {
   if (a.tipo === 'quotaPoligono' || a.tipo === 'quotaRett' || a.tipo === 'callout') {
     const e = a.etichetta?.trim();
     if (!e) return undefined;
-    // i valori della VECCHIA numerazione automatica (solo cifre, oppure una
-    // singola lettera) non sono override: lasciano applicare il nuovo codice,
-    // così anche le foto già quotate ottengono A1, A2, B1…
-    if (/^\d+$/.test(e) || /^[A-Z]$/.test(e)) return undefined;
+    // i valori che COINCIDONO con un codice automatico non sono override: una
+    // singola lettera ("A"), sole cifre ("3") oppure un codice intero generato
+    // dall'app ("A3", "A1.2", "AA12"). Così, eliminando una forma, le altre si
+    // rinumerano davvero invece di restare "congelate" sul vecchio codice.
+    if (/^\d+$/.test(e) || /^[A-Z]$/.test(e) || /^[A-Z]+\d+(\.\d+)?$/.test(e)) return undefined;
     return e;
   }
   return undefined;

@@ -1675,6 +1675,13 @@ function boxAnnotazione(a: Annotazione): Rettangolo {
     }
     case 'quotaPoligono': {
       const margine = Math.max(24, a.stile.dimensioneTesto * 1.1) + a.stile.dimensioneTesto;
+      // copia "solo etichetta": il riquadro di selezione cinge solo il badge
+      if (a.soloEtichetta) {
+        const pos = posizioneEtichettaPoligono(a);
+        const m = a.stile.dimensioneTesto;
+        punti.push({ x: pos.x - m * 1.6, y: pos.y - m }, { x: pos.x + m * 1.6, y: pos.y + m });
+        break;
+      }
       for (const q of a.punti) {
         punti.push({ x: q.x - margine, y: q.y - margine }, { x: q.x + margine, y: q.y + margine });
       }

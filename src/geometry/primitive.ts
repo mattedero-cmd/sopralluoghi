@@ -616,6 +616,12 @@ export function primitiveQuotaPoligono(q: QuotaPoligono, etichetta?: string): Pr
   const n = punti.length;
   const colore = coloreQuota(q);
   const badge = etichetta ?? q.etichetta;
+  // copia "solo etichetta" di un elemento ripetuto: nessun contorno né quote,
+  // solo il codice nel punto toccato (baricentro della copia).
+  if (q.soloEtichetta) {
+    if (!badge) return [];
+    return badgePoligono(q, badge, colore, posizioneEtichettaPoligono(q));
+  }
   const contorno: number[] = [];
   for (const pt of punti) contorno.push(pt.x, pt.y);
   if (n > 0) contorno.push(punti[0].x, punti[0].y);
@@ -654,30 +660,32 @@ export function primitiveQuotaPoligono(q: QuotaPoligono, etichetta?: string): Pr
   }
 
   // nomenclatura: badge spostabile, che esce dalla figura se è troppo piccola
-  if (badge) {
-    const dim = q.stile.dimensioneTesto;
-    const pos = posizioneEtichettaPoligono(q);
-    const mezzaL = Math.max(dim * 0.9, misuraLarghezzaTesto(badge, dim) / 2 + dim * 0.4);
-    prim.push(
-      {
-        kind: 'rettangolo',
-        rect: { x: pos.x - mezzaL, y: pos.y - dim * 0.8, width: mezzaL * 2, height: dim * 1.6 },
-        colore,
-        spessore: 0,
-        riempimento: colore
-      },
-      {
-        kind: 'testo',
-        testo: badge,
-        posizione: pos,
-        rotazioneDeg: 0,
-        dimensione: dim,
-        colore: '#ffffff',
-        sfondo: null
-      }
-    );
-  }
+  if (badge) prim.push(...badgePoligono(q, badge, colore, posizioneEtichettaPoligono(q)));
   return prim;
+}
+
+/** Badge della nomenclatura (riquadro pieno + codice bianco) di un poligono */
+function badgePoligono(q: QuotaPoligono, badge: string, colore: string, pos: Punto): Primitiva[] {
+  const dim = q.stile.dimensioneTesto;
+  const mezzaL = Math.max(dim * 0.9, misuraLarghezzaTesto(badge, dim) / 2 + dim * 0.4);
+  return [
+    {
+      kind: 'rettangolo',
+      rect: { x: pos.x - mezzaL, y: pos.y - dim * 0.8, width: mezzaL * 2, height: dim * 1.6 },
+      colore,
+      spessore: 0,
+      riempimento: colore
+    },
+    {
+      kind: 'testo',
+      testo: badge,
+      posizione: pos,
+      rotazioneDeg: 0,
+      dimensione: dim,
+      colore: '#ffffff',
+      sfondo: null
+    }
+  ];
 }
 
 export function etichettaRaggio(q: Pick<QuotaRaggio, 'valore' | 'unita' | 'stato' | 'modo'>): string {

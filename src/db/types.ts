@@ -385,6 +385,12 @@ export interface QuotaPoligono extends AnnotazioneBase {
   etichetta?: string;
   /** spostamento della nomenclatura (badge) rispetto al baricentro, in px */
   etichettaOffset?: Punto;
+  /**
+   * Copia "solo etichetta" di un elemento ripetuto: sulla foto mostra unicamente
+   * il codice (A1.2, A1.3…) nel punto toccato, senza ridisegnare il contorno né
+   * le quote. La misura resta quella dell'originale della famiglia.
+   */
+  soloEtichetta?: boolean;
   /** LEGACY (≤0.16): valore per lato; usato solo se `segmenti` è assente */
   lati?: (number | null)[];
   /** LEGACY (≤0.16): proiezione per lato */

@@ -101,6 +101,19 @@ describe('numerazione condivisa per etichetta foto', () => {
     const numeri = numeriProgetto([f1], () => ann);
     expect(codiceLocaleForma(ann[0], numeri)).toBe('SPEC');
   });
+
+  it('vecchio codice ("A3") non è un override: eliminando una forma le altre si rinumerano', () => {
+    const f1 = foto('f1', 1, 'A');
+    // dati legacy: la forma rimasta ha "A3" salvato in etichetta; resta solo
+    // un'altra forma → "A3" deve diventare A2, non restare congelata su A3
+    const ann = [
+      forma('s1', 'f1', { etichetta: 'A1', creatoIl: 100 }),
+      forma('s3', 'f1', { etichetta: 'A3', creatoIl: 300 })
+    ];
+    const numeri = numeriProgetto([f1], () => ann);
+    expect(codiceLocaleForma(ann[0], numeri)).toBe('A1');
+    expect(codiceLocaleForma(ann[1], numeri)).toBe('A2');
+  });
 });
 
 describe('elementi ripetuti (duplicazione)', () => {

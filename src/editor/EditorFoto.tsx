@@ -766,6 +766,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       valoreAuto: false,
       etichetta: '',
       etichettaOffset: undefined,
+      // copia "solo etichetta": sulla foto compare unicamente il codice nel
+      // punto toccato; la misura resta quella dell'originale della famiglia
+      soloEtichetta: true,
       gruppoQuota: duplicaMaster.gruppoQuota,
       creatoIl: Date.now(),
       ordine: undefined
@@ -941,6 +944,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const apriModifica = (id: string) => {
     const a = annotazioni.find((x) => x.id === id);
     if (!a) return;
+    // una copia "solo etichetta" non ha un editor proprio (la misura è
+    // dell'originale): si può solo spostare o eliminare
+    if (a.tipo === 'quotaPoligono' && a.soloEtichetta) return;
     if (a.tipo === 'quotaPoligono') setQuotaInModifica({ tipo: 'poligono', id });
     else if (a.tipo === 'callout') setQuotaInModifica({ tipo: 'callout', id });
     else if (a.tipo === 'testo') setTestoInModifica(id);
@@ -1108,14 +1114,16 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         quotaInModifica === null &&
         testoInModifica === null && (
           <div className="azioni-flottanti" role="group" aria-label="Azioni elemento">
-            <button
-              className="azione-flottante modifica"
-              aria-label="Modifica"
-              title="Modifica"
-              onClick={() => apriModifica(selezionata.id)}
-            >
-              ✎
-            </button>
+            {!(selezionata.tipo === 'quotaPoligono' && selezionata.soloEtichetta) && (
+              <button
+                className="azione-flottante modifica"
+                aria-label="Modifica"
+                title="Modifica"
+                onClick={() => apriModifica(selezionata.id)}
+              >
+                ✎
+              </button>
+            )}
             {selezionata.tipo === 'quotaPoligono' && (
               <button
                 className="azione-flottante duplica"
