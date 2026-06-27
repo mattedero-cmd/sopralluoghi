@@ -104,10 +104,15 @@ interface Props {
   onCalibQuad: (punti: [Punto, Punto, Punto, Punto]) => void;
   /** piano provvisorio (calibQuad + formato) per la griglia live in calibrazione */
   calibPiano: PianoProspettiva | null;
+  /** SECONDO stadio: griglia proiettata con i 4 angoli ESTERNI trascinabili */
+  calibGrigliaPiano: PianoProspettiva | null;
+  onCalibGrigliaCorner: (punti: [Punto, Punto, Punto, Punto]) => void;
   /** mostra la griglia di verifica sul piano calibrato */
   mostraGriglia: boolean;
   /** numero di celle della griglia (es. 3 → 3×3 attorno al riferimento) */
   celleGriglia: number;
+  /** inquadra automaticamente un'area dell'immagine (zoom sul riferimento) */
+  inquadra: Rettangolo | null;
   /** evidenziatura con lo strumento autoquotatura (oggetto completo) */
   onAutoTraccia: (punti: Punto[]) => void;
   onCommit: (annotazioni: Annotazione[]) => void;
@@ -261,6 +266,22 @@ export function StageEditor(p: Props) {
       adattato.current = true;
     }
   }, [dimensioni, adatta]);
+
+  // zoom automatico su un'area (riferimento di calibrazione, griglia…)
+  const inquadrato = useRef<Rettangolo | null>(null);
+  useEffect(() => {
+    const box = p.inquadra;
+    if (!box || dimensioni.w === 0 || inquadrato.current === box) return;
+    inquadrato.current = box;
+    const pad = 1.7; // margine attorno all'area
+    const scala = Math.min(
+      SCALA_MAX,
+      Math.max(SCALA_MIN, Math.min(dimensioni.w / (box.width * pad), dimensioni.h / (box.height * pad)))
+    );
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    setVista({ scala, x: dimensioni.w / 2 - cx * scala, y: dimensioni.h / 2 - cy * scala });
+  }, [p.inquadra, dimensioni]);
 
   // Espone "adatta vista" tramite evento custom (pulsante nella barra)
   useEffect(() => {
@@ -951,7 +972,13 @@ export function StageEditor(p: Props) {
             p.foto.piano &&
             (() => {
               try {
-                const linee = griglia(p.foto.piano, p.foto.larghezzaPx, p.foto.altezzaPx, p.celleGriglia);
+                const piano = p.foto.piano;
+                // se il piano è stato calibrato con la griglia (celle>1) si
+                // suddivide il quadrilatero; altrimenti griglia attorno al riferimento
+                const linee =
+                  piano.celle && piano.celle > 1
+                    ? grigliaSuddivisa(piano, piano.celle)
+                    : griglia(piano, p.foto.larghezzaPx, p.foto.altezzaPx, p.celleGriglia);
                 return (
                   <>
                     {linee.map((pt, i) => (
@@ -1031,6 +1058,55 @@ export function StageEditor(p: Props) {
               ))}
             </>
           )}
+          {/* SECONDO stadio: griglia proiettata con i 4 angoli ESTERNI
+              trascinabili per la regolazione fine della prospettiva */}
+          {p.calibGrigliaPiano &&
+            (() => {
+              let linee: number[][] = [];
+              try {
+                linee = grigliaSuddivisa(p.calibGrigliaPiano, p.celleGriglia);
+              } catch {
+                linee = [];
+              }
+              const angoli = p.calibGrigliaPiano.punti;
+              return (
+                <>
+                  {linee.map((pt, i) => (
+                    <Line
+                      key={i}
+                      points={pt}
+                      stroke="rgba(47,129,247,0.55)"
+                      strokeWidth={1.3 / vista.scala}
+                      listening={false}
+                    />
+                  ))}
+                  {angoli.map((pt, i) => (
+                    <Circle
+                      key={i}
+                      x={pt.x}
+                      y={pt.y}
+                      radius={raggioManiglia * 1.15}
+                      fill="rgba(255,196,0,0.45)"
+                      stroke="#ffc400"
+                      strokeWidth={3 / vista.scala}
+                      draggable
+                      onDragMove={(e) => {
+                        const nuovo = { x: e.target.x(), y: e.target.y() };
+                        const nuovi = angoli.map((q, j) => (j === i ? nuovo : q)) as [
+                          Punto,
+                          Punto,
+                          Punto,
+                          Punto
+                        ];
+                        setPuntoLente(nuovo);
+                        p.onCalibGrigliaCorner(nuovi);
+                      }}
+                      onDragEnd={() => setPuntoLente(null)}
+                    />
+                  ))}
+                </>
+              );
+            })()}
           {(bozza?.tipo === 'angolo' ||
             bozza?.tipo === 'piano' ||
             bozza?.tipo === 'quad' ||
@@ -1521,6 +1597,34 @@ function griglia(piano: PianoProspettiva, w: number, h: number, celle = 3): numb
     const a = mappa(x0, y);
     const b = mappa(x1, y);
     if (a && b && (dentro(a) || dentro(b))) linee.push([a.x, a.y, b.x, b.y]);
+  }
+  return linee;
+}
+
+/**
+ * Griglia che SUDDIVIDE il quadrilatero del piano in celle×celle (riempie
+ * esattamente la proiezione). Usata nello stadio di regolazione fine: i 4
+ * angoli esterni sono il quadrilatero stesso. Niente scarti: il quad è limitato.
+ */
+function grigliaSuddivisa(piano: PianoProspettiva, celle: number): number[][] {
+  const Hinv = omografiaPianoInversa(piano);
+  const W = piano.larghezzaReale;
+  const A = piano.altezzaReale;
+  const mappa = (x: number, y: number): Punto | null => {
+    const wd = Hinv[6] * x + Hinv[7] * y + Hinv[8];
+    if (Math.abs(wd) < 1e-9) return null;
+    return { x: (Hinv[0] * x + Hinv[1] * y + Hinv[2]) / wd, y: (Hinv[3] * x + Hinv[4] * y + Hinv[5]) / wd };
+  };
+  const linee: number[][] = [];
+  for (let i = 0; i <= celle; i++) {
+    const a = mappa((i * W) / celle, 0);
+    const b = mappa((i * W) / celle, A);
+    if (a && b) linee.push([a.x, a.y, b.x, b.y]);
+  }
+  for (let j = 0; j <= celle; j++) {
+    const a = mappa(0, (j * A) / celle);
+    const b = mappa(W, (j * A) / celle);
+    if (a && b) linee.push([a.x, a.y, b.x, b.y]);
   }
   return linee;
 }

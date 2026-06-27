@@ -46,7 +46,7 @@ import {
 } from '../geometry/calibrazione';
 import { nomeFormaPoligono, simboliPoligono, versiSegmento } from '../geometry/primitive';
 import { codiceLocaleForma, numeriProgetto, ordinePerNumero } from '../geometry/nomenclatura';
-import { omografiaPiano } from '../geometry/omografia';
+import { applicaOmografia, omografiaPiano, omografiaPianoInversa } from '../geometry/omografia';
 import { lunghezzaPxQuota } from '../geometry/punti';
 import { RicercaBordi } from '../geometry/bordi';
 import { rilevaQuad4, type EsitoQuad4 } from '../geometry/quad4';
@@ -224,6 +224,14 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [formatoRif, setFormatoRif] = useState('A4');
   /** numero di celle della griglia di calibrazione/verifica (3×3, 5×5…) */
   const [celleGriglia, setCelleGriglia] = useState(3);
+  /** SECONDO stadio: griglia proiettata, 4 angoli ESTERNI trascinabili */
+  const [calibGriglia, setCalibGriglia] = useState<
+    { punti: [Punto, Punto, Punto, Punto]; L: number; A: number; celle: number } | null
+  >(null);
+  /** area da inquadrare automaticamente (zoom sul riferimento / sulla griglia) */
+  const [inquadraCalib, setInquadraCalib] = useState<Rettangolo | null>(null);
+  /** menu separato per la scelta del formato */
+  const [menuFormato, setMenuFormato] = useState(false);
   /** griglia di verifica sul piano calibrato (controllo visivo della scala) */
   const [mostraGriglia, setMostraGriglia] = useState(false);
   /** poligono proposto dall'autoquotatura (base + altezza), da confermare */
@@ -529,10 +537,68 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       );
       return;
     }
-    // si entra in correzione: l'utente può aggiustare i 4 angoli prima di confermare
+    // si entra in correzione: l'utente può aggiustare i 4 angoli prima di
+    // confermare; zoom automatico sul riferimento per vedere bene gli angoli
     setCalibQuad(esito.punti);
     setConfidenza(esito.confidenza);
+    setInquadraCalib(boxDiPunti(esito.punti));
     setStrumento('seleziona');
+  };
+
+  /** Bounding box di un insieme di punti, in coordinate immagine */
+  const boxDiPunti = (punti: Punto[]): Rettangolo => {
+    const xs = punti.map((p) => p.x);
+    const ys = punti.map((p) => p.y);
+    const x = Math.min(...xs);
+    const y = Math.min(...ys);
+    return { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y };
+  };
+
+  /** STADIO 1 → 2: "Calibra" genera la griglia proiettata, con i 4 angoli
+   *  ESTERNI trascinabili (la regolazione fine non tocca il riferimento) */
+  const generaGriglia = () => {
+    if (!calibQuad || !calibDims) return;
+    const { L, A } = calibDims;
+    const celle = celleGriglia;
+    const off = Math.floor((celle - 1) / 2);
+    const Hinv = omografiaPianoInversa({
+      punti: calibQuad,
+      larghezzaReale: L,
+      altezzaReale: A,
+      unita: 'mm'
+    });
+    const angoliPiano: Punto[] = [
+      { x: -off * L, y: -off * A },
+      { x: (celle - off) * L, y: -off * A },
+      { x: (celle - off) * L, y: (celle - off) * A },
+      { x: -off * L, y: (celle - off) * A }
+    ];
+    const esterni = angoliPiano.map((q) => applicaOmografia(Hinv, q)) as [Punto, Punto, Punto, Punto];
+    setCalibGriglia({ punti: esterni, L, A, celle });
+    setCalibQuad(null);
+    setInquadraCalib(boxDiPunti(esterni)); // zoom out: si vede tutta la griglia
+  };
+
+  const confermaGriglia = () => {
+    if (!calibGriglia) return;
+    const { punti, L, A, celle } = calibGriglia;
+    void salvaPiano(punti, celle * L, celle * A, 'mm', celle);
+    chiudiRiferimento();
+  };
+
+  /** STADIO 2 → 1: torna al riferimento (ri-rileva dal punto toccato) */
+  const tornaAlRiferimento = () => {
+    setCalibGriglia(null);
+    if (!riferimentoPunto) {
+      chiudiRiferimento();
+      return;
+    }
+    const esito = rilevaDaSorgente({ tipo: 'tocco', punto: riferimentoPunto }, sensibilita);
+    if (esito) {
+      setCalibQuad(esito.punti);
+      setConfidenza(esito.confidenza);
+      setInquadraCalib(boxDiPunti(esito.punti));
+    }
   };
 
   /** ricalcolo del riferimento al variare del cursore di sensibilità */
@@ -548,8 +614,11 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
 
   const chiudiRiferimento = () => {
     setCalibQuad(null);
+    setCalibGriglia(null);
     setRiferimentoPunto(null);
     setConfidenza(0);
+    setInquadraCalib(null);
+    setMenuFormato(false);
   };
 
   /** evidenziatore: il motore cerca l'oggetto nella zona tracciata */
@@ -702,10 +771,11 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     punti: [Punto, Punto, Punto, Punto],
     larghezzaReale: number,
     altezzaReale: number,
-    unita: Unita
+    unita: Unita,
+    celle = 1
   ) => {
     if (!foto) return;
-    const piano = { punti, larghezzaReale, altezzaReale, unita };
+    const piano = { punti, larghezzaReale, altezzaReale, unita, celle };
     try {
       omografiaPiano(piano); // verifica che i punti non siano degeneri
     } catch (e) {
@@ -792,6 +862,14 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     calibQuad && calibDims
       ? { punti: calibQuad, larghezzaReale: calibDims.L, altezzaReale: calibDims.A, unita: 'mm' as const }
       : null;
+  const calibGrigliaPiano = calibGriglia
+    ? {
+        punti: calibGriglia.punti,
+        larghezzaReale: calibGriglia.celle * calibGriglia.L,
+        altezzaReale: calibGriglia.celle * calibGriglia.A,
+        unita: 'mm' as const
+      }
+    : null;
 
   /** annotazioni che si modificano nell'ambiente dedicato a tutto schermo:
    *  un tocco le apre direttamente, senza pannello in basso */
@@ -895,8 +973,11 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         calibQuad={calibQuad}
         onCalibQuad={setCalibQuad}
         calibPiano={calibPiano}
+        calibGrigliaPiano={calibGrigliaPiano}
+        onCalibGrigliaCorner={(punti) => setCalibGriglia((g) => (g ? { ...g, punti } : g))}
         mostraGriglia={mostraGriglia}
-        celleGriglia={celleGriglia}
+        celleGriglia={calibGriglia ? calibGriglia.celle : celleGriglia}
+        inquadra={inquadraCalib}
         onAutoTraccia={autoTraccia}
         onSeleziona={setSelezioneId}
         onModifica={apriModifica}
@@ -988,50 +1069,65 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           </div>
         )}
 
-      {riferimentoPunto && (
-        <div className="pannello-proprieta" role="group" aria-label="Riferimento di calibrazione">
-          <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>📐 Riferimento</span>
-          {/* formato standard: l'orientamento è automatico */}
-          <span className="segmenti" role="group" aria-label="Formato del riferimento">
-            {FORMATI.map((f) => (
-              <button
-                key={f.id}
-                className={formatoRif === f.id ? 'attivo' : ''}
-                onClick={() => setFormatoRif(f.id)}
-              >
-                {f.nome}
-              </button>
-            ))}
+      {/* STADIO 1: riferimento rilevato, si aggiustano i 4 angoli (zoomati) */}
+      {riferimentoPunto && !calibGriglia && (
+        <div className="barra-calibra" role="group" aria-label="Riferimento di calibrazione">
+          <span className="titolo">📐 Aggiusta i 4 angoli del riferimento</span>
+          <span className="spazio" />
+          {/* menu separato per il formato */}
+          <span className="colore-wrap">
+            <button className="btn" onClick={() => setMenuFormato((m) => !m)}>
+              {formatoSel.nome} ▾
+            </button>
+            {menuFormato && (
+              <>
+                <div className="backdrop-strumenti" onClick={() => setMenuFormato(false)} />
+                <div className="popover-colore" role="menu" aria-label="Formato del riferimento">
+                  {FORMATI.map((f) => (
+                    <button
+                      key={f.id}
+                      className={`btn${formatoRif === f.id ? ' attivo' : ''}`}
+                      style={{ minWidth: 96 }}
+                      onClick={() => {
+                        setFormatoRif(f.id);
+                        setMenuFormato(false);
+                      }}
+                    >
+                      {f.nome}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </span>
-          {/* numero di celle della griglia di rifinitura */}
-          <button
-            className="btn"
-            title="Celle della griglia"
-            onClick={() => setCelleGriglia((c) => (c >= 7 ? 3 : c + 2))}
-          >
+          <button className="btn" title="Celle della griglia" onClick={() => setCelleGriglia((c) => (c >= 7 ? 3 : c + 2))}>
             ▦ {celleGriglia}×{celleGriglia}
           </button>
           <span
-            style={{
-              fontSize: 12,
-              fontWeight: 700,
-              whiteSpace: 'nowrap',
-              color: confidenza >= 0.55 ? 'var(--ok)' : confidenza >= 0.4 ? '#ff9500' : 'var(--testo-2)'
-            }}
-            title="Confidenza del rilevamento"
+            className="confid"
+            style={{ color: confidenza >= 0.55 ? 'var(--ok)' : confidenza >= 0.4 ? '#ff9500' : 'var(--testo-2)' }}
           >
-            {confidenza >= 0.55 ? '● netto' : confidenza >= 0.4 ? '◐ incerto' : '○ debole'}
+            {confidenza >= 0.55 ? '●' : confidenza >= 0.4 ? '◐' : '○'}
           </span>
-          <button
-            className="btn primario"
-            disabled={!calibQuad || !calibDims}
-            onClick={() => {
-              if (!calibQuad || !calibDims) return;
-              void salvaPiano(calibQuad, calibDims.L, calibDims.A, 'mm');
-              chiudiRiferimento();
-            }}
-          >
-            ✓ Calibra
+          <button className="btn primario" disabled={!calibQuad || !calibDims} onClick={generaGriglia}>
+            Calibra →
+          </button>
+          <button className="btn pericolo" onClick={chiudiRiferimento}>
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* STADIO 2: griglia proiettata, si trascinano i 4 angoli ESTERNI */}
+      {calibGriglia && (
+        <div className="barra-calibra" role="group" aria-label="Regolazione fine della griglia">
+          <span className="titolo">▦ Trascina i 4 angoli esterni sulla scena reale</span>
+          <span className="spazio" />
+          <button className="btn" onClick={tornaAlRiferimento}>
+            ← Riferimento
+          </button>
+          <button className="btn primario" onClick={confermaGriglia}>
+            ✓ Conferma
           </button>
           <button className="btn pericolo" onClick={chiudiRiferimento}>
             ✕
@@ -1041,7 +1137,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
 
       {/* cursore di sensibilità: stesso comportamento dell'autoquotatura, sia
           per la quota proposta sia per il riferimento di calibrazione */}
-      {((proposta && propostaSorgente) || riferimentoPunto) &&
+      {((proposta && propostaSorgente) || (riferimentoPunto && !calibGriglia)) &&
         (() => {
           const cambia = riferimentoPunto ? aggiornaSensibilitaRif : aggiornaSensibilita;
           return (

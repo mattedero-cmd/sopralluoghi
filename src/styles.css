@@ -771,6 +771,46 @@ h2 {
   background: var(--accento);
 }
 
+/* Barra dedicata della calibrazione da riferimento: in alto, compatta, niente
+   scorrimento laterale. Sostituisce il menu in basso a scorrimento. */
+.barra-calibra {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(16, 20, 26, 0.92);
+  border: 1px solid var(--bordo);
+  backdrop-filter: blur(6px);
+  z-index: 45;
+}
+
+.barra-calibra .titolo {
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.barra-calibra .spazio {
+  flex: 1;
+}
+
+.barra-calibra .confid {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.barra-calibra .btn {
+  flex: 0 0 auto;
+  min-height: 40px;
+}
+
 /* Azioni discrete dell'elemento selezionato: Modifica + Elimina, subito
    disponibili in basso a sinistra (niente dipendenza dal "secondo tap"). */
 .azioni-flottanti {

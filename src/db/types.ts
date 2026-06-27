@@ -176,6 +176,8 @@ export interface PianoProspettiva {
   larghezzaReale: number;
   altezzaReale: number;
   unita: Unita;
+  /** suddivisioni della griglia di verifica (1 = solo il riferimento) */
+  celle?: number;
 }
 
 export type TipoAnnotazione =
