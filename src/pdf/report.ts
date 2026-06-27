@@ -1,7 +1,7 @@
 import { pdfMake } from './engine';
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { db } from '../db/db';
-import type { Annotazione, Cartella, Foto, Progetto, Punto, Quota, StatoMisura } from '../db/types';
+import type { Annotazione, Cartella, Foto, Progetto, Punto, Quota, QuotaPoligono, StatoMisura } from '../db/types';
 import { abbondanzaTotale, segmentiPoligono, segmentoELato } from '../db/types';
 import { nomeFormaPoligono, simboliPoligono, versiSegmento } from '../geometry/primitive';
 import {
@@ -533,6 +533,8 @@ interface RigaMisura {
   quantita?: number;
   /** codici delle copie collegate (es. ["A1.1","A1.2",…]) */
   collegati?: string[];
+  /** copia richiamata: codice della misura ORIGINALE da cui deriva (es. "A1") */
+  derivaDa?: string;
   stato: StatoMisura;
 }
 
@@ -565,12 +567,59 @@ function dettaglioAbb(
   return parti.length ? `${simbolo}: ${parti.join(', ')}` : '';
 }
 
-/** Tutte le misure di una foto in forma STRUTTURATA per il riepilogo */
+/** Misure (lati, taglio, perimetro, angoli, area) di un poligono, dalla forma
+ *  ORIGINALE: condivise da tutte le istanze della famiglia (fonte unica). */
+function dettaglioPoligono(formaMis: QuotaPoligono, fotoMis: Foto): Partial<RigaMisura> {
+  const n = (v: number | null) => (v === null ? '?' : formattaNumero(v));
+  const simboli = simboliPoligono(formaMis);
+  const segs = segmentiPoligono(formaMis);
+  const out: Partial<RigaMisura> = {
+    forma: nomeFormaPoligono(formaMis),
+    reale: `${segs.map((s, i) => `${simboli[i]} ${n(s.valore)}`).join(' · ')} ${formaMis.unita}`
+  };
+  // il taglio riguarda solo i LATI: le diagonali non si tagliano
+  const nVert = formaMis.punti.length;
+  const lati = segs.map((s, i) => ({ s, i })).filter(({ s }) => segmentoELato(s, nVert));
+  const abbTot = lati.reduce((acc, { s }) => acc + abbondanzaTotale(s), 0);
+  if (abbTot > 0) {
+    out.taglio = `${lati
+      .map(({ s, i }) => `${simboli[i]} ${s.valore === null ? '?' : formattaNumero(s.valore + abbondanzaTotale(s))}`)
+      .join(' · ')} ${formaMis.unita}`;
+    out.abbondanze = lati
+      .map(({ s, i }) => dettaglioAbb(simboli[i], s.abbInizio, s.abbFine, formaMis.punti[s.da], formaMis.punti[s.a]))
+      .filter(Boolean)
+      .join('   ');
+  }
+  const perimetro = perimetroReale(formaMis);
+  if (perimetro !== null) out.perimetro = `perim. ${formattaNumero(perimetro)} ${formaMis.unita}`;
+  const angoli = angoliTriangolo(formaMis);
+  if (angoli) {
+    const lett = ['α', 'β', 'γ'];
+    out.angoli = angoli.map((g, i) => `${lett[i]} ${formattaNumero(g)}°`).join(' · ');
+  }
+  const area = areaReale(formaMis, fotoMis);
+  if (area) {
+    out.area = formattaArea(area);
+    out.areaAffidabile = area.affidabile;
+    out.areaM2 = area.m2;
+  }
+  return out;
+}
+
+/**
+ * Tutte le misure di una foto in forma STRUTTURATA.
+ * - `modo` 'perFoto': una riga per OGNI istanza presente nella foto (le copie
+ *   richiamate compaiono sotto la foto dove sono state usate, con il rimando
+ *   alla misura originale);
+ * - `modo` 'aggregato' (default): la famiglia compare UNA volta per cartella,
+ *   con quantità e sotto-elenco — per riepilogo generale e distinta di taglio.
+ */
 function righeMisureFoto(
   annotazioni: Annotazione[],
   foto: Foto,
   ctx: ContestoGlobale,
-  percorso: string[] = []
+  percorso: string[] = [],
+  modo: 'perFoto' | 'aggregato' = 'aggregato'
 ): RigaMisura[] {
   const numeri = ctx.numeri;
   // codice strutturato completo di una forma (percorso cartelle + etich.+numero)
@@ -637,64 +686,46 @@ function righeMisureFoto(
       }
       righe.push(rigaR);
     } else if (a.tipo === 'quotaPoligono') {
-      // elementi RIPETUTI: la famiglia compare UNA sola volta per cartella. Si
-      // tiene il rappresentante (sub 1, o forma singola) e si saltano le copie.
       const infoFam = numeri.get(a.id);
-      if (infoFam && infoFam.sub && infoFam.sub > 1) continue;
-      // la MISURA è sempre quella dell'ORIGINALE (fonte unica), anche se il
-      // rappresentante in questa cartella è una copia richiamata da altrove
+      // la MISURA è sempre quella dell'ORIGINALE della famiglia (fonte unica)
       const famKey = famigliaDi(a);
       const orig = ctx.originaleFamiglia.get(famKey);
       const formaMis = orig && orig.forma.tipo === 'quotaPoligono' ? orig.forma : a;
       const fotoMis = orig?.foto ?? foto;
-      const nome = nomeFormaPoligono(formaMis);
-      const n = (v: number | null) => (v === null ? '?' : formattaNumero(v));
-      const simboli = simboliPoligono(formaMis);
-      const segs = segmentiPoligono(formaMis);
-      const reale = `${segs.map((s, i) => `${simboli[i]} ${n(s.valore)}`).join(' · ')} ${formaMis.unita}`;
-      // il taglio riguarda solo i LATI: le diagonali non si tagliano
-      const nVert = formaMis.punti.length;
-      const lati = segs
-        .map((s, i) => ({ s, i }))
-        .filter(({ s }) => segmentoELato(s, nVert));
-      const abbTot = lati.reduce((acc, { s }) => acc + abbondanzaTotale(s), 0);
-      const riga: RigaMisura = { codice: codiceForma(a), forma: nome, reale, stato: formaMis.stato, pezzo: true };
-      if (abbTot > 0) {
-        riga.taglio = `${lati
-          .map(({ s, i }) => `${simboli[i]} ${s.valore === null ? '?' : formattaNumero(s.valore + abbondanzaTotale(s))}`)
-          .join(' · ')} ${formaMis.unita}`;
-        riga.abbondanze = lati
-          .map(({ s, i }) => dettaglioAbb(simboli[i], s.abbInizio, s.abbFine, formaMis.punti[s.da], formaMis.punti[s.a]))
-          .filter(Boolean)
-          .join('   ');
+      const base = `${infoFam?.etichettaFoto ?? ''}${infoFam?.numero ?? ''}`;
+      const det = dettaglioPoligono(formaMis, fotoMis);
+      if (modo === 'perFoto') {
+        // una riga per OGNI istanza presente in QUESTA foto, nella sua posizione
+        // reale. Le copie richiamate indicano la misura originale da cui derivano.
+        const riga: RigaMisura = {
+          ...det,
+          forma: det.forma ?? '',
+          reale: det.reale ?? '',
+          codice: codiceForma(a),
+          stato: formaMis.stato,
+          pezzo: true
+        };
+        if (eCopiaEtichetta(a) && infoFam) riga.derivaDa = codiceCompletoForma(percorso, base);
+        righe.push(riga);
+      } else {
+        // aggregato: la famiglia compare UNA sola volta per cartella (rappresentante
+        // sub 1, o forma singola); le copie successive vengono saltate.
+        if (infoFam && infoFam.sub && infoFam.sub > 1) continue;
+        const riga: RigaMisura = {
+          ...det,
+          forma: det.forma ?? '',
+          reale: det.reale ?? '',
+          codice: codiceForma(a),
+          stato: formaMis.stato,
+          pezzo: true
+        };
+        if (infoFam && infoFam.quantitaGlobale > 1) {
+          riga.quantita = infoFam.quantita; // copie in questa cartella
+          riga.codice = codiceCompletoForma(percorso, base); // "A1" senza sotto-indice
+          riga.collegati = codiciCopie(ctx, famKey, percorso);
+        }
+        righe.push(riga);
       }
-      // perimetro: solo quello reale
-      const perimetro = perimetroReale(formaMis);
-      if (perimetro !== null) {
-        riga.perimetro = `perim. ${formattaNumero(perimetro)} ${formaMis.unita}`;
-      }
-      // triangolo: angoli ai vertici, ricavati dai 3 lati (caso SSS)
-      const angoli = angoliTriangolo(formaMis);
-      if (angoli) {
-        const lett = ['α', 'β', 'γ'];
-        riga.angoli = angoli.map((g, i) => `${lett[i]} ${formattaNumero(g)}°`).join(' · ');
-      }
-      // superficie in m² (metodo più affidabile disponibile)
-      const area = areaReale(formaMis, fotoMis);
-      if (area) {
-        riga.area = formattaArea(area);
-        riga.areaAffidabile = area.affidabile;
-        riga.areaM2 = area.m2;
-      }
-      // famiglia di elementi ripetuti: una riga, con quantità e sotto-elenco dei
-      // codici delle copie DENTRO questa cartella (P1.A1.1, P1.A1.2…)
-      if (infoFam && infoFam.quantitaGlobale > 1) {
-        riga.quantita = infoFam.quantita; // copie in questa cartella
-        // codice della famiglia senza sotto-indice (es. "A1" invece di "A1.1")
-        riga.codice = codiceCompletoForma(percorso, `${infoFam.etichettaFoto}${infoFam.numero}`);
-        riga.collegati = codiciCopie(ctx, famKey, percorso);
-      }
-      righe.push(riga);
     }
   }
   return righe;
@@ -728,6 +759,17 @@ function cellaCodice(m: RigaMisura, fallback: string): Content {
 /** Cella "dettaglio" del riepilogo: misure su righe separate, con gerarchia */
 function cellaDettaglio(m: RigaMisura): Content {
   const linee: Content[] = [{ text: m.reale, bold: true, fontSize: 10.5, color: '#1a1a1a' }];
+  if (m.derivaDa) {
+    // copia richiamata: rimando chiaro alla misura originale
+    linee.push({
+      text: [
+        { text: '↳ ', color: BLU_FORMA, fontSize: 9 },
+        { text: 'copia di ', color: GRIGIO_CHIARO, fontSize: 8 },
+        { text: m.derivaDa, color: BLU_FORMA, bold: true, fontSize: 9 }
+      ],
+      margin: [0, 2, 0, 0]
+    });
+  }
   if (m.quantita && m.quantita > 1) {
     // quantità in evidenza (il sotto-elenco dei codici è nella colonna "Cod.")
     linee.push({
@@ -813,7 +855,9 @@ function sezioneFoto(
   sezioneTitolo?: string
 ): Content[] {
   const titolo = `${titoloFoto.etichetta}${f.didascalia || `Foto ${indice + 1}`}`;
-  const misure = righeMisureFoto(annotazioni, f, ctx, percorso);
+  // sotto la foto: SOLO gli elementi realmente presenti in questa foto (le copie
+  // richiamate compaiono qui, non sotto la foto della misura originale)
+  const misure = righeMisureFoto(annotazioni, f, ctx, percorso, 'perFoto');
   const callouts = annotazioni.filter((a) => a.tipo === 'callout');
   const catene = calcolaCatene(annotazioni);
   // layout compatto: due foto per pagina, immagine più bassa
