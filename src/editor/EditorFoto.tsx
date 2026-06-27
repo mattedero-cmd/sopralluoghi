@@ -55,7 +55,9 @@ import {
   aInputDataOra,
   analizzaMisura,
   daInputDataOra,
-  formattaNumero
+  daMillimetri,
+  formattaNumero,
+  inMillimetri
 } from '../utils/format';
 import { condividiOScarica, nomeFileSicuro } from '../utils/share';
 import { renderFotoAnnotata } from '../render/renderAnnotata';
@@ -220,8 +222,12 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [calibQuad, setCalibQuad] = useState<[Punto, Punto, Punto, Punto] | null>(null);
   /** punto toccato per il riferimento: permette di ri-rilevare al variare della sensibilità */
   const [riferimentoPunto, setRiferimentoPunto] = useState<Punto | null>(null);
-  /** formato standard scelto per il riferimento (A4, A5, A3, bancomat) */
-  const [formatoRif, setFormatoRif] = useState('A4');
+  /** formato del riferimento: 'pers' (personalizzato, default) o A4/A5/A3/bancomat */
+  const [formatoRif, setFormatoRif] = useState('pers');
+  /** dimensioni del formato personalizzato (mm), riusate tra una calibrazione e l'altra */
+  const [formatoPers, setFormatoPers] = useState<{ lungo: number; corto: number } | null>(null);
+  /** dialog per impostare le misure del formato personalizzato */
+  const [schedaFormatoPers, setSchedaFormatoPers] = useState(false);
   /** numero di celle della griglia di calibrazione/verifica (3×3, 5×5…) */
   const [celleGriglia, setCelleGriglia] = useState(3);
   /** SECONDO stadio: griglia proiettata, 4 angoli ESTERNI trascinabili */
@@ -856,8 +862,17 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
 
   // calibrazione da riferimento: dimensioni reali (auto-orientate) e piano
   // provvisorio per la griglia live mentre si aggiustano i 4 angoli
-  const formatoSel = FORMATI.find((f) => f.id === formatoRif) ?? FORMATI[0];
-  const calibDims = calibQuad ? orientaFormato(calibQuad, formatoSel) : null;
+  const formatoSel: { id: string; nome: string; lungo: number; corto: number } | null =
+    formatoRif === 'pers'
+      ? formatoPers
+        ? {
+            id: 'pers',
+            nome: `Pers. ${formattaNumero(formatoPers.lungo / 10)}×${formattaNumero(formatoPers.corto / 10)} cm`,
+            ...formatoPers
+          }
+        : null
+      : (FORMATI.find((f) => f.id === formatoRif) ?? null);
+  const calibDims = calibQuad && formatoSel ? orientaFormato(calibQuad, formatoSel) : null;
   const calibPiano =
     calibQuad && calibDims
       ? { punti: calibQuad, larghezzaReale: calibDims.L, altezzaReale: calibDims.A, unita: 'mm' as const }
@@ -1076,13 +1091,29 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           <span className="spazio" />
           {/* menu separato per il formato */}
           <span className="colore-wrap">
-            <button className="btn" onClick={() => setMenuFormato((m) => !m)}>
-              {formatoSel.nome} ▾
+            <button
+              className={`btn${formatoRif === 'pers' && !formatoPers ? ' attivo' : ''}`}
+              onClick={() =>
+                formatoRif === 'pers' && !formatoPers ? setSchedaFormatoPers(true) : setMenuFormato((m) => !m)
+              }
+            >
+              {formatoSel ? formatoSel.nome : 'Personalizzato — imposta misure'} ▾
             </button>
             {menuFormato && (
               <>
                 <div className="backdrop-strumenti" onClick={() => setMenuFormato(false)} />
                 <div className="popover-colore" role="menu" aria-label="Formato del riferimento">
+                  <button
+                    className={`btn${formatoRif === 'pers' ? ' attivo' : ''}`}
+                    style={{ minWidth: 96 }}
+                    onClick={() => {
+                      setFormatoRif('pers');
+                      setMenuFormato(false);
+                      setSchedaFormatoPers(true);
+                    }}
+                  >
+                    ✎ Personalizzato
+                  </button>
                   {FORMATI.map((f) => (
                     <button
                       key={f.id}
@@ -1317,6 +1348,18 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           onSalva={(larghezza, altezza, unita) => {
             void salvaPiano(schedaPiano.punti, larghezza, altezza, unita);
             setSchedaPiano(null);
+          }}
+        />
+      )}
+      {schedaFormatoPers && (
+        <SchedaFormatoPers
+          unitaDefault={impostazioni.unitaDefault}
+          iniziale={formatoPers}
+          onChiudi={() => setSchedaFormatoPers(false)}
+          onSalva={(lungo, corto) => {
+            setFormatoPers({ lungo, corto });
+            setFormatoRif('pers');
+            setSchedaFormatoPers(false);
           }}
         />
       )}
@@ -3414,6 +3457,65 @@ function SchedaScala({
         </button>
         <button className="btn primario" disabled={valore === null || valore <= 0} onClick={() => onSalva(valore!, unita)}>
           Calibra
+        </button>
+      </div>
+    </Modale>
+  );
+}
+
+/** Dialog per le misure del formato di riferimento personalizzato */
+function SchedaFormatoPers({
+  unitaDefault,
+  iniziale,
+  onChiudi,
+  onSalva
+}: {
+  unitaDefault: Unita;
+  iniziale: { lungo: number; corto: number } | null;
+  onChiudi: () => void;
+  onSalva: (lungoMm: number, cortoMm: number) => void;
+}) {
+  // mostra i valori iniziali (mm) convertiti nell'unità scelta
+  const [unita, setUnita] = useState<Unita>(unitaDefault);
+  const conv = (mm: number) => String(daMillimetri(mm, unita)).replace('.', ',');
+  const [a, setA] = useState(iniziale ? conv(iniziale.lungo) : '');
+  const [b, setB] = useState(iniziale ? conv(iniziale.corto) : '');
+  const va = analizzaMisura(a);
+  const vb = analizzaMisura(b);
+  const valido = va !== null && va > 0 && vb !== null && vb > 0;
+  return (
+    <Modale titolo="Formato personalizzato" onChiudi={onChiudi} centro>
+      <p style={{ color: 'var(--testo-2)' }}>
+        Inserisci le due dimensioni reali dell'oggetto di riferimento (es. una piastrella, un
+        mattone). L'orientamento viene assegnato automaticamente.
+      </p>
+      <div className="campo">
+        <label>Dimensioni *</label>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input autoFocus inputMode="decimal" value={a} onChange={(e) => setA(e.target.value)} placeholder="lato 1" style={{ flex: 1 }} />
+          <span style={{ fontWeight: 700 }}>×</span>
+          <input inputMode="decimal" value={b} onChange={(e) => setB(e.target.value)} placeholder="lato 2" style={{ flex: 1 }} />
+          <select value={unita} onChange={(e) => setUnita(e.target.value as Unita)} style={{ width: 80 }}>
+            <option value="mm">mm</option>
+            <option value="cm">cm</option>
+            <option value="m">m</option>
+          </select>
+        </div>
+      </div>
+      <div className="riga-pulsanti">
+        <button className="btn" onClick={onChiudi}>
+          Annulla
+        </button>
+        <button
+          className="btn primario"
+          disabled={!valido}
+          onClick={() => {
+            const m1 = inMillimetri(va!, unita);
+            const m2 = inMillimetri(vb!, unita);
+            onSalva(Math.max(m1, m2), Math.min(m1, m2));
+          }}
+        >
+          Usa questo formato
         </button>
       </div>
     </Modale>
