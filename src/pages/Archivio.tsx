@@ -106,7 +106,7 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
       pos: { x: e.clientX, y: e.clientY },
       voci: [
         { testo: '📄 Esporta (PDF / ZIP)', onClick: () => setReportCartella(c) },
-        { testo: 'Rinomina', onClick: () => setRinomina(c) },
+        { testo: '✏️ Modifica (nome, etichetta, note)', onClick: () => setRinomina(c) },
         { testo: 'Sposta…', onClick: () => setDaSpostare({ tipo: 'cartella', id: c.id }) },
         {
           testo: 'Elimina…',
@@ -213,7 +213,10 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
               >
                 <span style={{ fontSize: 26 }}>📁</span>
                 <span className="corpo">
-                  <div className="titolo">{c.nome}</div>
+                  <div className="titolo">
+                    {c.nome}
+                    {c.etichetta ? <span className="badge-etichetta">{c.etichetta}</span> : null}
+                  </div>
                 </span>
                 <span
                   className="btn icona"
@@ -234,7 +237,10 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
               >
                 <span style={{ fontSize: 26 }}>📋</span>
                 <span className="corpo">
-                  <div className="titolo">{p.nome}</div>
+                  <div className="titolo">
+                    {p.nome}
+                    {p.etichetta ? <span className="badge-etichetta">{p.etichetta}</span> : null}
+                  </div>
                   <div className="sotto">
                     {[p.cliente, p.luogo].filter(Boolean).join(' — ') || 'Senza cliente'} ·{' '}
                     {formattaData(p.modificatoIl)}
@@ -263,17 +269,21 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
       </main>
 
       {nuovaCartella && (
-        <FormNome
+        <FormCartella
           titolo="Nuova cartella"
           onChiudi={() => setNuovaCartella(false)}
-          onSalva={async (nome) => {
-            await creaCartella(nome, cartellaId);
+          onSalva={async (nome, etichetta, note) => {
+            const c = await creaCartella(nome, cartellaId);
+            if (etichetta.trim() || note.trim()) {
+              await aggiornaCartella(c.id, { etichetta, note });
+            }
           }}
         />
       )}
       {rinomina && (
         <FormCartella
-          cartella={rinomina}
+          titolo="Modifica cartella"
+          iniziale={{ nome: rinomina.nome, etichetta: rinomina.etichetta, note: rinomina.note }}
           onChiudi={() => setRinomina(null)}
           onSalva={async (nome, etichetta, note) => {
             await aggiornaCartella(rinomina.id, { nome, etichetta, note });
@@ -330,57 +340,22 @@ export function EtichettaStato({ stato }: { stato: Progetto['stato'] }) {
   return <span className={`badge ${stato}`}>{testo}</span>;
 }
 
-function FormNome({
-  titolo,
+function FormCartella({
+  titolo = 'Cartella',
   iniziale,
   onChiudi,
   onSalva
 }: {
-  titolo: string;
-  iniziale?: string;
-  onChiudi: () => void;
-  onSalva: (nome: string) => Promise<void>;
-}) {
-  const [nome, setNome] = useState(iniziale ?? '');
-  return (
-    <Modale titolo={titolo} onChiudi={onChiudi} centro>
-      <div className="campo">
-        <label>Nome</label>
-        <input autoFocus value={nome} onChange={(e) => setNome(e.target.value)} />
-      </div>
-      <div className="riga-pulsanti">
-        <button className="btn" onClick={onChiudi}>
-          Annulla
-        </button>
-        <button
-          className="btn primario"
-          disabled={!nome.trim()}
-          onClick={async () => {
-            await onSalva(nome);
-            onChiudi();
-          }}
-        >
-          Salva
-        </button>
-      </div>
-    </Modale>
-  );
-}
-
-function FormCartella({
-  cartella,
-  onChiudi,
-  onSalva
-}: {
-  cartella: Cartella;
+  titolo?: string;
+  iniziale?: { nome?: string; etichetta?: string; note?: string };
   onChiudi: () => void;
   onSalva: (nome: string, etichetta: string, note: string) => Promise<void>;
 }) {
-  const [nome, setNome] = useState(cartella.nome);
-  const [etichetta, setEtichetta] = useState(cartella.etichetta ?? '');
-  const [note, setNote] = useState(cartella.note ?? '');
+  const [nome, setNome] = useState(iniziale?.nome ?? '');
+  const [etichetta, setEtichetta] = useState(iniziale?.etichetta ?? '');
+  const [note, setNote] = useState(iniziale?.note ?? '');
   return (
-    <Modale titolo="Cartella" onChiudi={onChiudi} centro>
+    <Modale titolo={titolo} onChiudi={onChiudi} centro>
       <div className="campo">
         <label>Nome (titolo del capitolo nel PDF)</label>
         <input autoFocus value={nome} onChange={(e) => setNome(e.target.value)} />
@@ -390,10 +365,14 @@ function FormCartella({
         <input
           value={etichetta}
           maxLength={6}
-          placeholder="facoltativa"
+          placeholder="facoltativa — es. P1, E1…"
           onChange={(e) => setEtichetta(e.target.value)}
-          style={{ width: 140 }}
+          style={{ width: 180 }}
         />
+        <p className="aiuto" style={{ marginTop: 4 }}>
+          Compare davanti ai codici delle misure (es. <strong>P1</strong>.A1.1) e numera in
+          autonomia i duplicati di questa cartella.
+        </p>
       </div>
       <div className="campo">
         <label>Note (descrizione del capitolo nel PDF)</label>

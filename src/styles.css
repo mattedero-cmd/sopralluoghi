@@ -906,6 +906,19 @@ h2 {
   min-height: 40px;
 }
 
+/* Etichetta (codice nomenclatura, es. P1) accanto al nome di cartella/progetto */
+.badge-etichetta {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accento, #2f81f7);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  vertical-align: middle;
+}
+
 /* Menu "richiama misura": elenco delle misure originali del progetto */
 .lista-richiamo {
   display: flex;

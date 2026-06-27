@@ -200,8 +200,14 @@ export function ProgettoPage({ id }: { id: string }) {
       <main className="contenuto">
         <button className="scheda" onClick={() => setModificaDati(true)}>
           <span className="corpo">
-            <div className="titolo">{progetto.cliente || 'Cliente non indicato'}</div>
+            <div className="titolo">
+              {progetto.cliente || 'Cliente non indicato'}
+              {progetto.etichetta ? <span className="badge-etichetta">{progetto.etichetta}</span> : null}
+            </div>
             <div className="sotto">{progetto.luogo || 'Luogo non indicato'}</div>
+            <div className="sotto" style={{ color: 'var(--accento, #2f81f7)' }}>
+              ✏️ Tocca per modificare dati ed etichetta (codice nelle misure)
+            </div>
             {progetto.note && <div className="sotto">{progetto.note.slice(0, 120)}</div>}
           </span>
           <SelettoreStato progetto={progetto} />
