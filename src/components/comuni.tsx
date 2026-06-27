@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useStore } from '../state/store';
 import { toastStore, chiudiToast } from '../state/toast';
 import { saveStatusStore } from '../state/saveStatus';
+import { Icona, type NomeIcona } from './Icona';
 
 // ---------------------------------------------------------------------------
 // Toast (nessun fallimento silenzioso: gli errori sono sempre visibili)
@@ -14,7 +15,7 @@ export function Toasts() {
     <div className="toasts" role="status">
       {toasts.map((t) => (
         <div key={t.id} className={`toast ${t.tipo}`} onClick={() => chiudiToast(t.id)}>
-          <span>{t.tipo === 'errore' ? '⚠️' : t.tipo === 'successo' ? '✓' : 'ℹ️'}</span>
+          <Icona nome={t.tipo === 'errore' ? 'avviso' : t.tipo === 'successo' ? 'check' : 'info'} dimensione={20} />
           <span>{t.messaggio}</span>
         </div>
       ))}
@@ -132,6 +133,7 @@ export function ConfermaDialog({
 
 export interface VoceMenu {
   testo: string;
+  icona?: NomeIcona;
   pericolo?: boolean;
   onClick: () => void;
 }
@@ -161,7 +163,8 @@ export function MenuContesto({
               v.onClick();
             }}
           >
-            {v.testo}
+            {v.icona && <Icona nome={v.icona} dimensione={19} />}
+            <span>{v.testo}</span>
           </button>
         ))}
       </div>
@@ -194,10 +197,10 @@ export function ImmagineBlob({ dati, tipo, alt }: { dati: ArrayBuffer | Blob; ti
           justifyContent: 'center',
           width: '100%',
           height: '100%',
-          fontSize: 34
+          color: 'var(--avviso)'
         }}
       >
-        ⚠️
+        <Icona nome="avviso" dimensione={34} />
       </span>
     );
   }

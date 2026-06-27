@@ -47,23 +47,37 @@ textarea {
 }
 
 .barra {
+  position: sticky;
+  top: 0;
+  z-index: 30;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: 6px;
+  padding: 10px 10px;
   padding-top: calc(10px + env(safe-area-inset-top));
-  background: var(--sfondo-2);
-  border-bottom: 1px solid var(--bordo);
+  background: color-mix(in srgb, var(--sfondo-2) 86%, transparent);
+  backdrop-filter: saturate(180%) blur(18px);
+  -webkit-backdrop-filter: saturate(180%) blur(18px);
+  border-bottom: 1px solid color-mix(in srgb, var(--bordo) 70%, transparent);
   flex-shrink: 0;
 }
 
 .barra h1 {
-  font-size: 19px;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   margin: 0;
   flex: 1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Icone vettoriali: allineate al testo, non si schiacciano */
+.icona {
+  flex-shrink: 0;
+  display: inline-block;
+  vertical-align: -0.18em;
 }
 
 .contenuto {
@@ -86,35 +100,54 @@ textarea {
   background: var(--sfondo-3);
   color: var(--testo);
   font-weight: 600;
+  letter-spacing: -0.01em;
   cursor: pointer;
   user-select: none;
+  transition:
+    transform 0.12s ease,
+    filter 0.12s ease,
+    background 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .btn:active {
-  filter: brightness(1.25);
+  transform: scale(0.97);
+  filter: brightness(1.15);
 }
 
 .btn.primario {
   background: var(--accento);
   border-color: var(--accento);
   color: #fff;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--accento) 40%, transparent);
 }
 
 .btn.pericolo {
   background: transparent;
-  border-color: var(--pericolo);
+  border-color: color-mix(in srgb, var(--pericolo) 60%, transparent);
   color: var(--pericolo);
 }
 
 .btn.icona {
   min-width: var(--tocco);
   padding: 0;
-  font-size: 22px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--testo);
+}
+
+.btn.icona:active {
+  background: color-mix(in srgb, var(--testo) 12%, transparent);
 }
 
 .btn:disabled {
-  opacity: 0.45;
+  opacity: 0.4;
   cursor: default;
+  box-shadow: none;
+}
+
+.btn:disabled:active {
+  transform: none;
 }
 
 .btn.attivo {
@@ -164,25 +197,70 @@ textarea {
 .scheda {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 13px;
   width: 100%;
   text-align: left;
   background: var(--sfondo-2);
-  border: 1px solid var(--bordo);
-  border-radius: var(--raggio);
-  padding: 14px;
-  margin-bottom: 10px;
+  border: 1px solid color-mix(in srgb, var(--bordo) 75%, transparent);
+  border-radius: 14px;
+  padding: 13px 14px;
+  margin-bottom: 9px;
   cursor: pointer;
   color: var(--testo);
+  transition:
+    transform 0.12s ease,
+    background 0.15s ease;
 }
 
 .scheda:active {
   background: var(--sfondo-3);
+  transform: scale(0.985);
+}
+
+/* icona guida (chevron) a destra delle schede navigabili */
+.scheda .vai {
+  color: var(--testo-2);
+  opacity: 0.6;
+  margin-left: 2px;
 }
 
 .scheda .titolo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-weight: 700;
   font-size: 17px;
+  letter-spacing: -0.01em;
+}
+
+/* glifo guida (icona tonda colorata) all'inizio di una scheda */
+.glifo {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  color: #fff;
+  background: var(--accento);
+}
+
+.glifo.neutro {
+  background: var(--sfondo-3);
+  color: var(--accento-2);
+  border: 1px solid var(--bordo);
+}
+
+.glifo.verde {
+  background: linear-gradient(160deg, #2bb24a, #1d8f3a);
+}
+
+.glifo.viola {
+  background: linear-gradient(160deg, #7a5cff, #5b3fe0);
+}
+
+.glifo.ambra {
+  background: linear-gradient(160deg, #f0a500, #d98800);
 }
 
 .scheda .sotto {
@@ -274,11 +352,14 @@ h2 {
 .velo {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
   display: flex;
   align-items: flex-end;
   justify-content: center;
   z-index: 100;
+  animation: velo-in 0.18s ease;
 }
 
 .velo.centro {
@@ -289,22 +370,55 @@ h2 {
 .modale {
   background: var(--sfondo-2);
   border: 1px solid var(--bordo);
-  border-radius: 16px 16px 0 0;
+  border-radius: 20px 20px 0 0;
   width: 100%;
   max-width: 640px;
   max-height: 88vh;
   overflow: auto;
-  padding: 18px;
-  padding-bottom: calc(18px + env(safe-area-inset-bottom));
+  padding: 20px;
+  padding-bottom: calc(20px + env(safe-area-inset-bottom));
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.4);
+  animation: modale-su 0.26s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 .velo.centro .modale {
-  border-radius: 16px;
+  border-radius: 20px;
+  animation: modale-fade 0.2s ease;
 }
 
 .modale h2 {
   margin: 0 0 14px;
-  font-size: 19px;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+@keyframes velo-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes modale-su {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes modale-fade {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
 }
 
 .riga-pulsanti {
@@ -500,8 +614,14 @@ h2 {
 }
 
 .editor-toolbar .btn .ico {
-  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   line-height: 1;
+}
+
+.editor-toolbar .caret {
+  opacity: 0.6;
 }
 
 /* Gruppi di strumenti: ordine visivo per categorie */
@@ -583,7 +703,9 @@ h2 {
 }
 
 .btn-strumento-grande .ico {
-  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   line-height: 1;
 }
 
@@ -944,6 +1066,38 @@ h2 {
   margin: 0 0 6px;
 }
 
+/* Interruttore a riga (opzioni report) con casella di spunta */
+.check-box {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  border: 1.5px solid var(--bordo);
+  background: var(--sfondo-2);
+  color: #fff;
+  flex-shrink: 0;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.check-box.on {
+  background: var(--accento);
+  border-color: var(--accento);
+}
+
+.btn.interruttore {
+  gap: 12px;
+}
+
+.btn.interruttore.attivo {
+  background: var(--sfondo-3);
+  border-color: color-mix(in srgb, var(--accento) 55%, var(--bordo));
+  color: var(--testo);
+  box-shadow: none;
+}
+
 .riga-aggiungi-sezione {
   display: flex;
   flex-wrap: wrap;
@@ -1115,6 +1269,10 @@ h2 {
 }
 
 .segmenti button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   border: none;
   background: var(--sfondo-3);
   color: var(--testo);
@@ -1185,39 +1343,55 @@ h2 {
 }
 
 .vuoto .grande {
-  font-size: 44px;
-  margin-bottom: 10px;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12px;
+  color: color-mix(in srgb, var(--testo-2) 70%, transparent);
 }
 
 .menu-contesto {
   position: fixed;
   z-index: 150;
-  background: var(--sfondo-3);
-  border: 1px solid var(--bordo);
-  border-radius: var(--raggio);
+  background: color-mix(in srgb, var(--sfondo-3) 92%, transparent);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border: 1px solid color-mix(in srgb, var(--bordo) 80%, transparent);
+  border-radius: 14px;
   overflow: hidden;
-  min-width: 220px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+  min-width: 236px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+  animation: modale-fade 0.16s ease;
 }
 
 .menu-contesto button {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 12px;
   width: 100%;
   text-align: left;
-  padding: 14px 16px;
+  padding: 13px 16px;
   background: none;
   border: none;
-  border-bottom: 1px solid var(--bordo);
+  border-bottom: 1px solid color-mix(in srgb, var(--bordo) 55%, transparent);
   color: var(--testo);
   cursor: pointer;
   font-weight: 600;
+}
+
+.menu-contesto button .icona {
+  color: var(--testo-2);
+}
+
+.menu-contesto button:active {
+  background: color-mix(in srgb, var(--testo) 10%, transparent);
 }
 
 .menu-contesto button:last-child {
   border-bottom: none;
 }
 
-.menu-contesto button.pericolo {
+.menu-contesto button.pericolo,
+.menu-contesto button.pericolo .icona {
   color: var(--pericolo);
 }
 

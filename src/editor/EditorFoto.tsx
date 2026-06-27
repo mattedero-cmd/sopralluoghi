@@ -70,6 +70,7 @@ import { condividiOScarica, nomeFileSicuro } from '../utils/share';
 import { nuovoId } from '../utils/id';
 import { renderFotoAnnotata } from '../render/renderAnnotata';
 import { avviaDettatura, dettaturaDisponibile } from '../utils/dettatura';
+import { Icona, type NomeIcona } from '../components/Icona';
 
 const COLORI = [COLORE_QUOTA, '#ff3b30', '#34c759', '#007aff', '#ffffff', '#111111'];
 
@@ -107,59 +108,59 @@ function formattaAreaM2(v: number): string {
  */
 const GRUPPI_STRUMENTI: Array<{
   id: string;
-  icona: string;
+  icona: NomeIcona;
   testo: string;
-  voci: Array<{ s: Strumento; icona: string; testo: string }>;
+  voci: Array<{ s: Strumento; icona: NomeIcona; testo: string }>;
 }> = [
   {
     id: 'quote',
-    icona: '↔',
+    icona: 'quota-orizz',
     testo: 'Quota',
     voci: [
-      { s: 'quotaO', icona: '↔', testo: 'Orizzontale' },
-      { s: 'quotaV', icona: '↕', testo: 'Verticale' },
-      { s: 'quotaA', icona: '⤡', testo: 'Allineata' }
+      { s: 'quotaO', icona: 'quota-orizz', testo: 'Orizzontale' },
+      { s: 'quotaV', icona: 'quota-vert', testo: 'Verticale' },
+      { s: 'quotaA', icona: 'quota-allin', testo: 'Allineata' }
     ]
   },
   {
     id: 'forme',
-    icona: '▭',
+    icona: 'rettangolo',
     testo: 'Poligono',
     voci: [
-      { s: 'rettangolo', icona: '▭', testo: 'Rettangolo' },
-      { s: 'quad', icona: '◇', testo: '4 angoli' },
-      { s: 'tri', icona: '△', testo: 'Triangolo' },
-      { s: 'polilinea', icona: '⬡', testo: 'Polilinea' }
+      { s: 'rettangolo', icona: 'rettangolo', testo: 'Rettangolo' },
+      { s: 'quad', icona: 'quad', testo: '4 angoli' },
+      { s: 'tri', icona: 'triangolo', testo: 'Triangolo' },
+      { s: 'polilinea', icona: 'polilinea', testo: 'Polilinea' }
     ]
   },
   {
     id: 'curve',
-    icona: '◔',
+    icona: 'cerchio',
     testo: 'Cerchi',
     voci: [
-      { s: 'raggio', icona: '◔', testo: 'Raggio' },
-      { s: 'cerchio3p', icona: '○', testo: 'Cerchio 3 punti' },
-      { s: 'angolo', icona: '∠', testo: 'Angolo' }
+      { s: 'raggio', icona: 'cerchio', testo: 'Raggio' },
+      { s: 'cerchio3p', icona: 'cerchio-3p', testo: 'Cerchio 3 punti' },
+      { s: 'angolo', icona: 'angolo', testo: 'Angolo' }
     ]
   },
   {
     id: 'note',
-    icona: '✎',
+    icona: 'matita',
     testo: 'Note',
     voci: [
-      { s: 'testo', icona: 'T', testo: 'Testo' },
-      { s: 'freccia', icona: '➚', testo: 'Freccia' },
-      { s: 'disegno', icona: '✏️', testo: 'Disegno' },
-      { s: 'callout', icona: '🔍', testo: 'Dettaglio' }
+      { s: 'testo', icona: 'testo', testo: 'Testo' },
+      { s: 'freccia', icona: 'freccia', testo: 'Freccia' },
+      { s: 'disegno', icona: 'disegno', testo: 'Disegno' },
+      { s: 'callout', icona: 'dettaglio', testo: 'Dettaglio' }
     ]
   },
   {
     id: 'calibra',
-    icona: '📐',
+    icona: 'righello',
     testo: 'Scala',
     voci: [
-      { s: 'riferimento', icona: '🪪', testo: 'Riferimento auto' },
-      { s: 'calibra', icona: '📐', testo: 'Scala (segmento)' }
+      { s: 'riferimento', icona: 'riferimento', testo: 'Riferimento auto' },
+      { s: 'calibra', icona: 'righello', testo: 'Scala (segmento)' }
     ]
   }
 ];
@@ -1068,18 +1069,18 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             naviga({ nome: 'progetto', id: foto.progettoId });
           }}
         >
-          ←
+          <Icona nome="indietro" />
         </button>
         <h1>{foto.didascalia || 'Foto'}</h1>
         <StatoApp />
         <button className="btn icona" aria-label="Annulla" disabled={passato.current.length === 0} onClick={undo}>
-          ↩
+          <Icona nome="annulla" />
         </button>
         <button className="btn icona" aria-label="Ripristina" disabled={futuro.current.length === 0} onClick={redo}>
-          ↪
+          <Icona nome="ripristina" />
         </button>
         <button className="btn icona" aria-label="Note della foto" onClick={() => setSchedaNote(true)}>
-          🗒️
+          <Icona nome="documento" />
         </button>
         {foto.piano && (
           <button
@@ -1088,7 +1089,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             title="Griglia di verifica del piano"
             onClick={() => setMostraGriglia((g) => !g)}
           >
-            ▦
+            <Icona nome="griglia" />
           </button>
         )}
         <button
@@ -1099,10 +1100,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             setMenuAperto(null);
           }}
         >
-          ⚙
+          <Icona nome="impostazioni" />
         </button>
         <button className="btn icona" aria-label="Esporta immagine" onClick={() => void esporta()}>
-          ⬆️
+          <Icona nome="condividi" />
         </button>
       </header>
 
@@ -1152,7 +1153,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
 
       {proposta ? (
         <div className="pannello-proprieta" role="group" aria-label="Quota proposta">
-          <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>✨ Elemento rilevato</span>
+          <span style={{ fontWeight: 700, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <Icona nome="auto" dimensione={18} /> Elemento rilevato
+          </span>
           <span
             style={{
               fontSize: 12,
@@ -1165,13 +1168,13 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             {confidenza >= 0.55 ? '● netto' : confidenza >= 0.4 ? '◐ incerto' : '○ debole'}
           </span>
           <button className="btn primario" onClick={accettaProposta}>
-            ✓ Quote
+            <Icona nome="check" dimensione={18} /> Quote
           </button>
           <button className="btn" onClick={accettaCerchio} title="Inscrivi una circonferenza nell'elemento rilevato">
-            ◯ Cerchio
+            <Icona nome="cerchio" dimensione={18} /> Cerchio
           </button>
           <button className="btn pericolo" onClick={chiudiProposta}>
-            ✕ Annulla
+            <Icona nome="chiudi" dimensione={18} /> Annulla
           </button>
         </div>
       ) : (
@@ -1210,7 +1213,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 title="Modifica"
                 onClick={() => apriModifica(selezionata.id)}
               >
-                ✎
+                <Icona nome="matita" dimensione={20} />
               </button>
             )}
             {selezionata.tipo === 'quotaPoligono' && (
@@ -1220,7 +1223,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 title="Duplica su elementi uguali"
                 onClick={avviaDuplica}
               >
-                ⧉
+                <Icona nome="duplica" dimensione={20} />
               </button>
             )}
             <button
@@ -1229,7 +1232,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               title="Elimina"
               onClick={eliminaSelezionata}
             >
-              🗑
+              <Icona nome="cestino" dimensione={20} />
             </button>
           </div>
         )}
@@ -1238,12 +1241,12 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       {duplicaMaster && (
         <div className="barra-duplica" role="group" aria-label="Duplica misura">
           <span className="titolo">
-            ⧉ Tocca gli elementi uguali a{' '}
+            <Icona nome="duplica" dimensione={18} /> Tocca gli elementi uguali a{' '}
             <strong>{codiceForma(duplicaMaster)}</strong>
           </span>
           <span className="spazio" />
           <button className="btn primario" onClick={() => setDuplicaMaster(null)}>
-            ✓ Fine
+            <Icona nome="check" dimensione={18} /> Fine
           </button>
         </div>
       )}
@@ -1275,7 +1278,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                       {m.quante > 1 ? ` · ${m.quante} elementi` : ''}
                     </span>
                   </span>
-                  <span className="freccia">⧉</span>
+                  <span className="freccia">
+                    <Icona nome="duplica" dimensione={20} />
+                  </span>
                 </button>
               ))}
             </div>
@@ -1286,7 +1291,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       {/* STADIO 1: riferimento rilevato, si aggiustano i 4 angoli (zoomati) */}
       {riferimentoPunto && !calibGriglia && (
         <div className="barra-calibra" role="group" aria-label="Riferimento di calibrazione">
-          <span className="titolo">📐 Aggiusta i 4 angoli del riferimento</span>
+          <span className="titolo">
+            <Icona nome="righello" dimensione={18} /> Aggiusta i 4 angoli del riferimento
+          </span>
           <span className="spazio" />
           {/* menu separato per il formato */}
           <span className="colore-wrap">
@@ -1418,7 +1425,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                       setMenuAperto(null);
                     }}
                   >
-                    <span className="ico">{v.icona}</span>
+                    <span className="ico">
+                      <Icona nome={v.icona} dimensione={26} />
+                    </span>
                     <span>{v.testo}</span>
                   </button>
                 ))}
@@ -1432,7 +1441,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               setStrumento('seleziona');
               setMenuAperto(null);
             }}
-            icona="☝️"
+            icona="cursore"
             testo="Seleziona"
           />
           <BtnStrumento
@@ -1441,7 +1450,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               setStrumento('auto');
               setMenuAperto(null);
             }}
-            icona="✨"
+            icona="auto"
             testo="Auto"
           />
           <BtnStrumento
@@ -1452,7 +1461,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               setSelezioneId(null);
               setMenuRichiamo(true);
             }}
-            icona="⧉"
+            icona="duplica"
             testo="Richiama"
           />
           {GRUPPI_STRUMENTI.map((g) => {
@@ -1477,7 +1486,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             <label>Aggancio (snap)</label>
             <span className="segmenti" role="group">
               <button className={snapAttivo ? 'attivo' : ''} onClick={() => setSnapAttivo(true)}>
-                🧲 Punti quota
+                <Icona nome="magnete" dimensione={18} /> Punti quota
               </button>
               <button className={!snapAttivo ? 'attivo' : ''} onClick={() => setSnapAttivo(false)}>
                 Libero
@@ -1513,13 +1522,13 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             <label>Livelli visibili</label>
             <span className="segmenti" role="group">
               <button className={layerVisibili.quote ? 'attivo' : ''} onClick={() => toggleLayer('quote')}>
-                📏 Quote
+                <Icona nome="righello" dimensione={18} /> Quote
               </button>
               <button className={layerVisibili.note ? 'attivo' : ''} onClick={() => toggleLayer('note')}>
-                🗒 Note
+                <Icona nome="documento" dimensione={18} /> Note
               </button>
               <button className={layerVisibili.callout ? 'attivo' : ''} onClick={() => toggleLayer('callout')}>
-                🔍 Dettagli
+                <Icona nome="dettaglio" dimensione={18} /> Dettagli
               </button>
             </span>
           </div>
@@ -2108,10 +2117,10 @@ function EditorQuota({
       </div>
       <div className="eq-azioni">
         <button className="btn pericolo" onClick={onElimina}>
-          🗑 Elimina
+          <Icona nome="cestino" dimensione={18} /> Elimina
         </button>
         <button className="btn primario" onClick={salva}>
-          ✓ Salva quota
+          <Icona nome="check" dimensione={18} /> Salva quota
         </button>
       </div>
     </div>
@@ -2376,10 +2385,10 @@ function EditorCerchio({
       </div>
       <div className="eq-azioni">
         <button className="btn pericolo" onClick={onElimina}>
-          🗑 Elimina
+          <Icona nome="cestino" dimensione={18} /> Elimina
         </button>
         <button className="btn primario" onClick={salva}>
-          ✓ Salva cerchio
+          <Icona nome="check" dimensione={18} /> Salva cerchio
         </button>
       </div>
     </div>
@@ -2594,10 +2603,10 @@ function EditorAngolo({
       </div>
       <div className="eq-azioni">
         <button className="btn pericolo" onClick={onElimina}>
-          🗑 Elimina
+          <Icona nome="cestino" dimensione={18} /> Elimina
         </button>
         <button className="btn primario" onClick={salva}>
-          ✓ Salva angolo
+          <Icona nome="check" dimensione={18} /> Salva angolo
         </button>
       </div>
     </div>
@@ -2927,7 +2936,7 @@ function EditorPoligono({
       </div>
       <div className="eq-azioni">
         <button className="btn pericolo" onClick={onElimina}>
-          🗑 Elimina
+          <Icona nome="cestino" dimensione={18} /> Elimina
         </button>
         <button className="btn primario" onClick={onChiudi}>
           ✓ Fine
@@ -2975,7 +2984,7 @@ function SchermataFotoDanneggiata({ foto }: { foto: Foto }) {
                 })
               }
             >
-              🗑 Elimina questa foto
+              <Icona nome="cestino" dimensione={18} /> Elimina questa foto
             </button>
           </p>
         </div>
@@ -2994,17 +3003,19 @@ function BtnStrumento({
 }: {
   attivo: boolean;
   onClick: () => void;
-  icona: string;
+  icona: NomeIcona;
   testo: string;
   /** pulsante-gruppo: mostra la freccetta che indica le opzioni nascoste */
   gruppo?: boolean;
 }) {
   return (
     <button className={`btn${attivo ? ' attivo' : ''}`} onClick={onClick}>
-      <span className="ico">{icona}</span>
+      <span className="ico">
+        <Icona nome={icona} dimensione={23} />
+      </span>
       <span className="testo-strumento">
         {testo}
-        {gruppo && <span className="caret">▾</span>}
+        {gruppo && <Icona nome="giu" dimensione={13} className="caret" />}
       </span>
     </button>
   );
@@ -3043,7 +3054,7 @@ function BottoneColore({ colore, onScegli }: { colore: string; onScegli: (c: str
               />
             ))}
             <label className="swatch-custom" title="Colore personalizzato">
-              🎨
+              <Icona nome="goccia" dimensione={20} />
               <input
                 type="color"
                 value={/^#[0-9a-fA-F]{6}$/.test(colore) ? colore : '#ffc400'}
@@ -3101,7 +3112,7 @@ function PannelloProprieta({
         {ann.tipo === 'quota' && (
           <>
             <button className="btn primario" onClick={onModificaQuota}>
-              ✎ Modifica
+              <Icona nome="matita" dimensione={18} /> Modifica
             </button>
             <ProprietaQuota
               quota={ann}
@@ -3122,7 +3133,7 @@ function PannelloProprieta({
         {ann.tipo === 'quotaAngolo' && (
           <>
             <button className="btn primario" onClick={onModificaQuota}>
-              ✎ Modifica
+              <Icona nome="matita" dimensione={18} /> Modifica
             </button>
             <ProprietaAngolo angolo={ann} foto={foto} onModifica={onModifica} />
           </>
@@ -3130,14 +3141,14 @@ function PannelloProprieta({
         {ann.tipo === 'quotaRaggio' && (
           <>
             <button className="btn primario" onClick={onModificaQuota}>
-              ✎ Modifica
+              <Icona nome="matita" dimensione={18} /> Modifica
             </button>
             <ProprietaRaggio raggio={ann} foto={foto} inputValore={inputValore} onModifica={onModifica} />
           </>
         )}
         {ann.tipo === 'testo' && (
           <button className="btn" onClick={onModificaTesto}>
-            ✏️ Modifica testo
+            <Icona nome="matita" dimensione={18} /> Modifica testo
           </button>
         )}
         {ann.tipo === 'callout' && (
@@ -3167,7 +3178,7 @@ function PannelloProprieta({
         onScegli={(c) => onModifica({ stile: { ...ann.stile, colore: c } })}
       />
       <button className="btn pericolo prop-elimina" onClick={onElimina} aria-label="Elimina" title="Elimina">
-        🗑
+        <Icona nome="cestino" dimensione={20} />
       </button>
     </div>
   );
@@ -3307,7 +3318,7 @@ function ProprietaQuota({
       </span>
       {quota.valore !== null && !quota.valoreAuto && !calibrata && (
         <button className="btn" onClick={() => onCalibraDaQuota(quota)} title="Usa questa quota come riferimento di scala per calcolare le altre">
-          📐 Usa come scala
+          <Icona nome="righello" dimensione={18} /> Usa come scala
         </button>
       )}
       {catena && sommaCatenaInUnita(catena) !== null && (
@@ -3931,7 +3942,8 @@ function SchedaNoteFoto({
               onClick={toggleDettatura}
               type="button"
             >
-              {dettaturaAttiva ? '🎤 In ascolto… (tocca per fermare)' : '🎤 Detta'}
+              <Icona nome="microfono" dimensione={17} />{' '}
+              {dettaturaAttiva ? 'In ascolto… (tocca per fermare)' : 'Detta'}
             </button>
           )}
         </label>
@@ -4197,10 +4209,10 @@ function EditorTesto({
       </div>
       <div className="eq-azioni">
         <button className="btn pericolo" onClick={onElimina}>
-          🗑 Elimina
+          <Icona nome="cestino" dimensione={18} /> Elimina
         </button>
         <button className="btn primario" onClick={salva}>
-          ✓ Salva
+          <Icona nome="check" dimensione={18} /> Salva
         </button>
       </div>
     </div>
@@ -4387,13 +4399,13 @@ function EditorCallout({
           <label>Contenuto dell'inserto</label>
           <span className="segmenti" role="group">
             <button className={fotoDettaglio ? '' : 'attivo'} onClick={rimuoviFoto}>
-              🔍 Ingrandimento
+              <Icona nome="dettaglio" dimensione={17} /> Ingrandimento
             </button>
             <button
               className={fotoDettaglio ? 'attivo' : ''}
               onClick={() => fileRef.current?.click()}
             >
-              📷 Foto scattata
+              <Icona nome="fotocamera" dimensione={17} /> Foto scattata
             </button>
           </span>
           <input
@@ -4449,10 +4461,10 @@ function EditorCallout({
       </div>
       <div className="eq-azioni">
         <button className="btn pericolo" onClick={onElimina}>
-          🗑 Elimina
+          <Icona nome="cestino" dimensione={18} /> Elimina
         </button>
         <button className="btn primario" onClick={salva}>
-          ✓ Salva
+          <Icona nome="check" dimensione={18} /> Salva
         </button>
       </div>
     </div>

@@ -26,6 +26,7 @@ import {
 } from '../components/comuni';
 import { mostraToast } from '../state/toast';
 import { formattaData } from '../utils/format';
+import { Icona } from '../components/Icona';
 
 export function Archivio({ cartellaId }: { cartellaId: string | null }) {
   const [ricerca, setRicerca] = useState('');
@@ -105,11 +106,12 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
     setMenu({
       pos: { x: e.clientX, y: e.clientY },
       voci: [
-        { testo: '📄 Esporta (PDF / ZIP)', onClick: () => setReportCartella(c) },
-        { testo: '✏️ Modifica (nome, etichetta, note)', onClick: () => setRinomina(c) },
-        { testo: 'Sposta…', onClick: () => setDaSpostare({ tipo: 'cartella', id: c.id }) },
+        { testo: 'Esporta (PDF / ZIP)', icona: 'condividi', onClick: () => setReportCartella(c) },
+        { testo: 'Modifica (nome, etichetta, note)', icona: 'matita', onClick: () => setRinomina(c) },
+        { testo: 'Sposta…', icona: 'sposta', onClick: () => setDaSpostare({ tipo: 'cartella', id: c.id }) },
         {
           testo: 'Elimina…',
+          icona: 'cestino',
           pericolo: true,
           onClick: async () => {
             const contenuto = await contenutoCartella(c.id);
@@ -129,9 +131,10 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
     setMenu({
       pos: { x: e.clientX, y: e.clientY },
       voci: [
-        { testo: 'Sposta…', onClick: () => setDaSpostare({ tipo: 'progetto', id: p.id }) },
+        { testo: 'Sposta…', icona: 'sposta', onClick: () => setDaSpostare({ tipo: 'progetto', id: p.id }) },
         {
           testo: 'Duplica come modello',
+          icona: 'duplica',
           onClick: async () => {
             await duplicaProgetto(p.id);
             mostraToast('successo', 'Progetto duplicato.');
@@ -139,6 +142,7 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
         },
         {
           testo: 'Elimina…',
+          icona: 'cestino',
           pericolo: true,
           onClick: async () => {
             const nFoto = await db.foto.where('progettoId').equals(p.id).count();
@@ -159,14 +163,14 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
         <h1>{corrente ? corrente.nome : 'Sopralluoghi'}</h1>
         <StatoApp />
         <button className="btn icona" aria-label="Clienti" onClick={() => naviga({ nome: 'clienti' })}>
-          👥
+          <Icona nome="persone" />
         </button>
         <button
           className="btn icona"
           aria-label="Impostazioni"
           onClick={() => naviga({ nome: 'impostazioni' })}
         >
-          ⚙️
+          <Icona nome="impostazioni" />
         </button>
       </header>
       <main className="contenuto">
@@ -198,10 +202,10 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
 
             <div className="riga-pulsanti" style={{ marginBottom: 16 }}>
               <button className="btn" onClick={() => setNuovaCartella(true)}>
-                📁 Nuova cartella
+                <Icona nome="cartella-piu" dimensione={20} /> Nuova cartella
               </button>
               <button className="btn primario" onClick={() => setNuovoProgetto(true)}>
-                ＋ Nuovo progetto
+                <Icona nome="piu" dimensione={20} /> Nuovo progetto
               </button>
             </div>
 
@@ -211,7 +215,9 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
                 className="scheda"
                 onClick={() => naviga({ nome: 'archivio', cartellaId: c.id })}
               >
-                <span style={{ fontSize: 26 }}>📁</span>
+                <span className="glifo neutro">
+                  <Icona nome="cartella" dimensione={22} />
+                </span>
                 <span className="corpo">
                   <div className="titolo">
                     {c.nome}
@@ -224,8 +230,9 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
                   aria-label={`Azioni cartella ${c.nome}`}
                   onClick={(e) => apriMenuCartella(c, e)}
                 >
-                  ⋮
+                  <Icona nome="altro" />
                 </span>
+                <Icona nome="avanti" dimensione={18} className="vai" />
               </button>
             ))}
 
@@ -235,7 +242,9 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
                 className="scheda"
                 onClick={() => naviga({ nome: 'progetto', id: p.id })}
               >
-                <span style={{ fontSize: 26 }}>📋</span>
+                <span className="glifo">
+                  <Icona nome="progetto" dimensione={22} />
+                </span>
                 <span className="corpo">
                   <div className="titolo">
                     {p.nome}
@@ -253,14 +262,16 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
                   aria-label={`Azioni progetto ${p.nome}`}
                   onClick={(e) => apriMenuProgetto(p, e)}
                 >
-                  ⋮
+                  <Icona nome="altro" />
                 </span>
               </button>
             ))}
 
             {cartelle?.length === 0 && progetti?.length === 0 && (
               <div className="vuoto">
-                <div className="grande">🗂️</div>
+                <div className="grande">
+                  <Icona nome="archivio" dimensione={46} />
+                </div>
                 <p>Nessun contenuto. Crea un progetto per iniziare il sopralluogo.</p>
               </div>
             )}
@@ -465,7 +476,7 @@ function FormOpzioniCartella({
           }
           title="PDF + foto originali (JPG) nella struttura delle cartelle"
         >
-          📦 ZIP
+          <Icona nome="archivio" dimensione={19} /> ZIP
         </button>
         <button
           className="btn primario"
@@ -576,7 +587,9 @@ export function SelettoreCartella({
   return (
     <Modale titolo="Sposta in…" onChiudi={onChiudi}>
       <button className="scheda" onClick={() => scegli(null)}>
-        <span style={{ fontSize: 22 }}>🗂️</span>
+        <span className="glifo neutro">
+          <Icona nome="archivio" dimensione={20} />
+        </span>
         <span className="corpo">
           <div className="titolo">Archivio (radice)</div>
         </span>
@@ -588,7 +601,9 @@ export function SelettoreCartella({
           style={{ marginLeft: livello * 18 }}
           onClick={() => scegli(c.id)}
         >
-          <span style={{ fontSize: 22 }}>📁</span>
+          <span className="glifo neutro">
+            <Icona nome="cartella" dimensione={20} />
+          </span>
           <span className="corpo">
             <div className="titolo">{c.nome}</div>
           </span>
@@ -641,7 +656,9 @@ function RisultatiRicerca({ query }: { query: string }) {
         )}
       {clientiTrovati.map((c) => (
         <button key={c.id} className="scheda" onClick={() => naviga({ nome: 'cliente', id: c.id })}>
-          <span style={{ fontSize: 26 }}>👤</span>
+          <span className="glifo verde">
+            <Icona nome="persona" dimensione={22} />
+          </span>
           <span className="corpo">
             <div className="titolo">{c.nome}</div>
             <div className="sotto">{[c.telefono, c.email].filter(Boolean).join(' · ')}</div>
@@ -650,7 +667,9 @@ function RisultatiRicerca({ query }: { query: string }) {
       ))}
       {preventiviTrovati.map((p) => (
         <button key={p.id} className="scheda" onClick={() => naviga({ nome: 'preventivo', id: p.id })}>
-          <span style={{ fontSize: 26 }}>💶</span>
+          <span className="glifo ambra">
+            <Icona nome="documento" dimensione={22} />
+          </span>
           <span className="corpo">
             <div className="titolo">Preventivo {p.numero}</div>
             <div className="sotto">{formattaData(p.data)} · {p.voci.length} voci</div>
@@ -659,7 +678,9 @@ function RisultatiRicerca({ query }: { query: string }) {
       ))}
       {progettiTrovati.map((p) => (
         <button key={p.id} className="scheda" onClick={() => naviga({ nome: 'progetto', id: p.id })}>
-          <span style={{ fontSize: 26 }}>📋</span>
+          <span className="glifo">
+            <Icona nome="progetto" dimensione={22} />
+          </span>
           <span className="corpo">
             <div className="titolo">{p.nome}</div>
             <div className="sotto">{[p.cliente, p.luogo].filter(Boolean).join(' — ')}</div>
@@ -669,7 +690,9 @@ function RisultatiRicerca({ query }: { query: string }) {
       ))}
       {fotoTrovate.map((f) => (
         <button key={f.id} className="scheda" onClick={() => naviga({ nome: 'foto', id: f.id })}>
-          <span style={{ fontSize: 26 }}>🖼️</span>
+          <span className="glifo viola">
+            <Icona nome="immagine" dimensione={22} />
+          </span>
           <span className="corpo">
             <div className="titolo">{f.didascalia || 'Foto senza didascalia'}</div>
             <div className="sotto">

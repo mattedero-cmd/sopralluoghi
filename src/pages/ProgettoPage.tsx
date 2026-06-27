@@ -32,6 +32,7 @@ import { mostraToast } from '../state/toast';
 import { condividiOScarica, nomeFileSicuro } from '../utils/share';
 import { renderFotoAnnotata } from '../render/renderAnnotata';
 import { codiceLocaleForma, numeriProgetto } from '../geometry/nomenclatura';
+import { Icona } from '../components/Icona';
 
 export function ProgettoPage({ id }: { id: string }) {
   const progetto = useLiveQuery(() => db.progetti.get(id), [id]);
@@ -121,6 +122,7 @@ export function ProgettoPage({ id }: { id: string }) {
       voci: [
         {
           testo: 'Condividi / salva immagine quotata',
+          icona: 'condividi',
           onClick: async () => {
             if (fotoIllegibile(f)) {
               mostraToast(
@@ -154,9 +156,10 @@ export function ProgettoPage({ id }: { id: string }) {
             }
           }
         },
-        { testo: '📂 Sposta in sezione…', onClick: () => setAssegnaFoto(f) },
+        { testo: 'Sposta in sezione…', icona: 'sposta', onClick: () => setAssegnaFoto(f) },
         {
           testo: 'Elimina foto…',
+          icona: 'cestino',
           pericolo: true,
           onClick: () =>
             setConferma({
@@ -213,11 +216,12 @@ export function ProgettoPage({ id }: { id: string }) {
     setMenu({
       pos: { x: e.clientX, y: e.clientY },
       voci: [
-        { testo: '✏️ Modifica (nome, etichetta)', onClick: () => setSezioneInModifica(s) },
-        { testo: '📷 Scatta foto qui', onClick: () => aggiungiA(s.id, 'camera') },
-        { testo: '🖼️ Galleria / file qui', onClick: () => aggiungiA(s.id, 'galleria') },
+        { testo: 'Modifica (nome, etichetta)', icona: 'matita', onClick: () => setSezioneInModifica(s) },
+        { testo: 'Scatta foto qui', icona: 'fotocamera', onClick: () => aggiungiA(s.id, 'camera') },
+        { testo: 'Galleria / file qui', icona: 'immagine', onClick: () => aggiungiA(s.id, 'galleria') },
         {
           testo: 'Elimina sezione…',
+          icona: 'cestino',
           pericolo: true,
           onClick: () =>
             setConferma({
@@ -233,10 +237,10 @@ export function ProgettoPage({ id }: { id: string }) {
   const barraAggiungi = (sid: string | null) => (
     <div className="riga-aggiungi-sezione">
       <button className="btn piccolo" disabled={importInCorso} onClick={() => aggiungiA(sid, 'camera')}>
-        📷 Scatta
+        <Icona nome="fotocamera" dimensione={18} /> Scatta
       </button>
       <button className="btn piccolo" disabled={importInCorso} onClick={() => aggiungiA(sid, 'galleria')}>
-        🖼️ Galleria / file
+        <Icona nome="immagine" dimensione={18} /> Galleria / file
       </button>
     </div>
   );
@@ -277,21 +281,24 @@ export function ProgettoPage({ id }: { id: string }) {
           aria-label="Indietro"
           onClick={() => naviga({ nome: 'archivio', cartellaId: progetto.cartellaId })}
         >
-          ←
+          <Icona nome="indietro" />
         </button>
         <h1>{progetto.nome}</h1>
         <StatoApp />
       </header>
       <main className="contenuto">
         <button className="scheda" onClick={() => setModificaDati(true)}>
+          <span className="glifo neutro">
+            <Icona nome="matita" dimensione={20} />
+          </span>
           <span className="corpo">
             <div className="titolo">
               {progetto.cliente || 'Cliente non indicato'}
               {progetto.etichetta ? <span className="badge-etichetta">{progetto.etichetta}</span> : null}
             </div>
             <div className="sotto">{progetto.luogo || 'Luogo non indicato'}</div>
-            <div className="sotto" style={{ color: 'var(--accento, #2f81f7)' }}>
-              ✏️ Tocca per modificare dati ed etichetta (codice nelle misure)
+            <div className="sotto" style={{ color: 'var(--accento-2)' }}>
+              Tocca per modificare dati ed etichetta (codice nelle misure)
             </div>
             {progetto.note && <div className="sotto">{progetto.note.slice(0, 120)}</div>}
           </span>
@@ -304,13 +311,13 @@ export function ProgettoPage({ id }: { id: string }) {
             disabled={importInCorso}
             onClick={() => aggiungiA(null, 'camera')}
           >
-            📷 Scatta
+            <Icona nome="fotocamera" dimensione={20} /> Scatta
           </button>
           <button className="btn" disabled={importInCorso} onClick={() => aggiungiA(null, 'galleria')}>
-            🖼️ Galleria
+            <Icona nome="immagine" dimensione={20} /> Galleria
           </button>
           <button className="btn" onClick={() => setSezioneInModifica('nuova')}>
-            📂 Nuova sezione
+            <Icona nome="cartella-piu" dimensione={20} /> Nuova sezione
           </button>
           <button
             className="btn"
@@ -323,7 +330,7 @@ export function ProgettoPage({ id }: { id: string }) {
               setOpzioniPdfAperte(true);
             }}
           >
-            📤 Esporta (PDF / ZIP)
+            <Icona nome="condividi" dimensione={20} /> Esporta (PDF / ZIP)
           </button>
         </div>
         {importInCorso && <p style={{ color: 'var(--testo-2)' }}>Importazione foto in corso…</p>}
@@ -349,7 +356,9 @@ export function ProgettoPage({ id }: { id: string }) {
         <h2>Foto ({foto.length})</h2>
         {foto.length === 0 && sezioni.length === 0 ? (
           <div className="vuoto">
-            <div className="grande">📷</div>
+            <div className="grande">
+              <Icona nome="fotocamera" dimensione={46} />
+            </div>
             <p>Nessuna foto. Scatta la prima foto del sopralluogo.</p>
             <p style={{ fontSize: 13, color: 'var(--testo-2)' }}>
               Suggerimento: crea delle sezioni (es. Piano 1, Piano 2) per organizzare le foto;
@@ -400,7 +409,9 @@ export function ProgettoPage({ id }: { id: string }) {
         <h2>Preventivi ({preventivi?.length ?? 0})</h2>
         {(preventivi ?? []).map((p) => (
           <button key={p.id} className="scheda" onClick={() => naviga({ nome: 'preventivo', id: p.id })}>
-            <span style={{ fontSize: 24 }}>💶</span>
+            <span className="glifo ambra">
+              <Icona nome="documento" dimensione={20} />
+            </span>
             <span className="corpo">
               <div className="titolo">Preventivo {p.numero}</div>
               <div className="sotto">{p.voci.length} voci</div>
@@ -416,7 +427,7 @@ export function ProgettoPage({ id }: { id: string }) {
               naviga({ nome: 'preventivo', id: p.id });
             }}
           >
-            ＋ Nuovo preventivo
+            <Icona nome="piu" dimensione={20} /> Nuovo preventivo
           </button>
         </div>
       </main>
@@ -552,21 +563,24 @@ function SelettoreSezione({
         <span className="corpo">
           <div className="titolo">Senza sezione</div>
         </span>
-        {attuale === null ? <span>✓</span> : null}
+        {attuale === null ? <Icona nome="check" className="vai" /> : null}
       </button>
       {sezioni.map((s) => (
         <button key={s.id} className="scheda" onClick={() => void onScegli(s.id)}>
+          <span className="glifo neutro">
+            <Icona nome="piano" dimensione={20} />
+          </span>
           <span className="corpo">
             <div className="titolo">
               {s.nome}
               {s.etichetta ? <span className="badge-etichetta">{s.etichetta}</span> : null}
             </div>
           </span>
-          {attuale === s.id ? <span>✓</span> : null}
+          {attuale === s.id ? <Icona nome="check" className="vai" /> : null}
         </button>
       ))}
       {sezioni.length === 0 && (
-        <p className="aiuto">Nessuna sezione: creane una con “📂 Nuova sezione”.</p>
+        <p className="aiuto">Nessuna sezione: creane una con “Nuova sezione”.</p>
       )}
     </Modale>
   );
@@ -608,8 +622,8 @@ function FormDatiProgetto({ progetto, onChiudi }: { progetto: Progetto; onChiudi
         <label>Cliente {clienteId ? '(collegato all’anagrafica)' : ''}</label>
         <div style={{ display: 'flex', gap: 8 }}>
           <input value={cliente} onChange={(e) => setCliente(e.target.value)} style={{ flex: 1 }} />
-          <button className="btn" onClick={() => setScegliCliente(true)} type="button">
-            👥
+          <button className="btn icona" onClick={() => setScegliCliente(true)} type="button" aria-label="Scegli cliente">
+            <Icona nome="persone" />
           </button>
         </div>
       </div>
@@ -710,11 +724,14 @@ function FormOpzioniReport({
     testo: string;
   }) => (
     <button
-      className={`btn${attivo ? ' attivo' : ''}`}
+      className={`btn interruttore${attivo ? ' attivo' : ''}`}
       style={{ justifyContent: 'flex-start', width: '100%', marginBottom: 8 }}
       onClick={onCommuta}
     >
-      {attivo ? '☑' : '☐'} {testo}
+      <span className={`check-box${attivo ? ' on' : ''}`}>
+        {attivo && <Icona nome="check" dimensione={15} strokeWidth={2.4} />}
+      </span>
+      {testo}
     </button>
   );
 
@@ -745,12 +762,13 @@ function FormOpzioniReport({
                     background: 'var(--accento)',
                     color: '#fff',
                     borderRadius: 999,
-                    padding: '2px 8px',
-                    fontWeight: 700,
-                    fontSize: 13
+                    width: 22,
+                    height: 22,
+                    display: 'grid',
+                    placeItems: 'center'
                   }}
                 >
-                  ✓
+                  <Icona nome="check" dimensione={15} strokeWidth={2.6} />
                 </span>
               )}
             </button>
@@ -804,7 +822,7 @@ function FormOpzioniReport({
             })
           }
         >
-          📦 ZIP
+          <Icona nome="archivio" dimensione={19} /> ZIP
         </button>
         <button
           className="btn primario"
@@ -821,7 +839,7 @@ function FormOpzioniReport({
             })
           }
         >
-          📄 Genera ({selezione.size} foto)
+          <Icona nome="documento" dimensione={19} /> Genera ({selezione.size} foto)
         </button>
       </div>
     </Modale>
