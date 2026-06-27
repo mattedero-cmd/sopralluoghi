@@ -571,7 +571,12 @@ export function simboliPoligono(q: QuotaPoligono): string[] {
  * troppo piccola perché il numero ci stia leggibile, il numero esce
  * automaticamente, appena sopra il vertice più alto.
  */
-export function posizioneEtichettaPoligono(q: QuotaPoligono): Punto {
+/**
+ * Posizione di DEFAULT del badge (senza spostamento manuale): il baricentro se
+ * la figura è abbastanza grande da contenerlo, altrimenti appena sopra la figura
+ * (quando è troppo piccola). È la base su cui si somma `etichettaOffset`.
+ */
+export function posizioneEtichettaBase(q: QuotaPoligono): Punto {
   const punti = q.punti;
   const n = punti.length || 1;
   const centro: Punto = {
@@ -590,13 +595,18 @@ export function posizioneEtichettaPoligono(q: QuotaPoligono): Punto {
   if (Math.min(maxX - minX, maxY - minY) < serve) {
     return { x: (minX + maxX) / 2, y: minY - dim * 1.3 };
   }
+  return centro;
+}
+
+/**
+ * Posizione effettiva del badge: base + spostamento manuale (`etichettaOffset`).
+ * Lo spostamento è SEMPRE applicato — anche quando la figura è piccola e il
+ * badge sta fuori — così l'etichetta resta liberamente trascinabile.
+ */
+export function posizioneEtichettaPoligono(q: QuotaPoligono): Punto {
+  const base = posizioneEtichettaBase(q);
   const off = q.etichettaOffset ?? { x: 0, y: 0 };
-  // resta dentro il rettangolo che contiene la figura, con un margine
-  const m = dim;
-  return {
-    x: Math.min(maxX - m, Math.max(minX + m, centro.x + off.x)),
-    y: Math.min(maxY - m, Math.max(minY + m, centro.y + off.y))
-  };
+  return { x: base.x + off.x, y: base.y + off.y };
 }
 
 export function etichettaPoligono(q: QuotaPoligono): string {

@@ -5,10 +5,15 @@ import type { Foto, Progetto, StatoProgetto } from '../db/types';
 import {
   aggiungiFoto,
   aggiornaProgetto,
+  aggiornaSezione,
+  assegnaFotoSezione,
   creaPreventivo,
+  creaSezione,
   eliminaFoto,
+  eliminaSezione,
   leggiImpostazioni
 } from '../db/repository';
+import type { Sezione } from '../db/types';
 import type { OpzioniReport } from '../pdf/report';
 import { SelettoreCliente } from './ClientiPage';
 import { EtichettaStatoPreventivo } from './PreventivoPage';
@@ -50,8 +55,14 @@ export function ProgettoPage({ id }: { id: string }) {
   const [importInCorso, setImportInCorso] = useState(false);
   const [pdfInCorso, setPdfInCorso] = useState<string | null>(null);
   const [opzioniPdfAperte, setOpzioniPdfAperte] = useState(false);
+  /** sezione in creazione/modifica: {} = nuova, una Sezione = modifica */
+  const [sezioneInModifica, setSezioneInModifica] = useState<Sezione | 'nuova' | null>(null);
+  /** foto da assegnare a una sezione (apre il selettore) */
+  const [assegnaFoto, setAssegnaFoto] = useState<Foto | null>(null);
   const inputCamera = useRef<HTMLInputElement>(null);
   const inputGalleria = useRef<HTMLInputElement>(null);
+  /** sezione di destinazione delle prossime foto importate (null = nessuna) */
+  const sezioneTarget = useRef<string | null>(null);
 
   if (progetto === undefined || foto === undefined) {
     return <div className="app" />;
@@ -82,7 +93,8 @@ export function ProgettoPage({ id }: { id: string }) {
             ...dati,
             didascalia: '',
             noteDato: '',
-            scala: null
+            scala: null,
+            sezioneId: sezioneTarget.current ?? undefined
           });
           importate++;
         } catch (e) {
@@ -142,6 +154,7 @@ export function ProgettoPage({ id }: { id: string }) {
             }
           }
         },
+        { testo: '📂 Sposta in sezione…', onClick: () => setAssegnaFoto(f) },
         {
           testo: 'Elimina foto…',
           pericolo: true,
@@ -184,6 +197,66 @@ export function ProgettoPage({ id }: { id: string }) {
     }
   };
 
+  const sezioni = [...(progetto.sezioni ?? [])].sort((a, b) => a.ordine - b.ordine);
+  const idsSezioni = new Set(sezioni.map((s) => s.id));
+  const fotoDi = (sid: string | null) =>
+    foto.filter((f) => (sid === null ? !f.sezioneId || !idsSezioni.has(f.sezioneId) : f.sezioneId === sid));
+
+  /** importa foto direttamente in una sezione (null = nessuna sezione) */
+  const aggiungiA = (sid: string | null, fonte: 'camera' | 'galleria') => {
+    sezioneTarget.current = sid;
+    (fonte === 'camera' ? inputCamera : inputGalleria).current?.click();
+  };
+
+  const apriMenuSezione = (s: Sezione, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setMenu({
+      pos: { x: e.clientX, y: e.clientY },
+      voci: [
+        { testo: '✏️ Modifica (nome, etichetta)', onClick: () => setSezioneInModifica(s) },
+        { testo: '📷 Aggiungi foto qui', onClick: () => aggiungiA(s.id, 'camera') },
+        {
+          testo: 'Elimina sezione…',
+          pericolo: true,
+          onClick: () =>
+            setConferma({
+              titolo: `Eliminare la sezione "${s.nome}"?`,
+              messaggio: 'Le foto NON vengono eliminate: tornano “senza sezione”.',
+              onConferma: () => void eliminaSezione(progetto.id, s.id)
+            })
+        }
+      ]
+    });
+  };
+
+  const grigliaFoto = (lista: Foto[]) => (
+    <div className="griglia-foto">
+      {lista.map((f) => (
+        <button
+          key={f.id}
+          className="cella-foto"
+          onClick={() => naviga({ nome: 'foto', id: f.id })}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            apriMenuFoto(f, e);
+          }}
+        >
+          <ImmagineBlob dati={f.miniatura} tipo={f.miniaturaTipo} alt={f.didascalia || 'Foto'} />
+          <span
+            className="btn icona"
+            role="button"
+            aria-label="Azioni foto"
+            style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.55)' }}
+            onClick={(e) => apriMenuFoto(f, e)}
+          >
+            ⋮
+          </span>
+          {f.didascalia && <span className="didascalia">{f.didascalia}</span>}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div className="app">
       <header className="barra">
@@ -217,16 +290,15 @@ export function ProgettoPage({ id }: { id: string }) {
           <button
             className="btn primario"
             disabled={importInCorso}
-            onClick={() => inputCamera.current?.click()}
+            onClick={() => aggiungiA(null, 'camera')}
           >
             📷 Scatta
           </button>
-          <button
-            className="btn"
-            disabled={importInCorso}
-            onClick={() => inputGalleria.current?.click()}
-          >
+          <button className="btn" disabled={importInCorso} onClick={() => aggiungiA(null, 'galleria')}>
             🖼️ Galleria
+          </button>
+          <button className="btn" onClick={() => setSezioneInModifica('nuova')}>
+            📂 Nuova sezione
           </button>
           <button
             className="btn"
@@ -263,37 +335,57 @@ export function ProgettoPage({ id }: { id: string }) {
         />
 
         <h2>Foto ({foto.length})</h2>
-        {foto.length === 0 ? (
+        {foto.length === 0 && sezioni.length === 0 ? (
           <div className="vuoto">
             <div className="grande">📷</div>
             <p>Nessuna foto. Scatta la prima foto del sopralluogo.</p>
+            <p style={{ fontSize: 13, color: 'var(--testo-2)' }}>
+              Suggerimento: crea delle sezioni (es. Piano 1, Piano 2) per organizzare le foto;
+              l’etichetta della sezione (P1, P2) entra nei codici delle misure.
+            </p>
           </div>
         ) : (
-          <div className="griglia-foto">
-            {foto.map((f) => (
-              <button
-                key={f.id}
-                className="cella-foto"
-                onClick={() => naviga({ nome: 'foto', id: f.id })}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  apriMenuFoto(f, e);
-                }}
-              >
-                <ImmagineBlob dati={f.miniatura} tipo={f.miniaturaTipo} alt={f.didascalia || 'Foto'} />
-                <span
-                  className="btn icona"
-                  role="button"
-                  aria-label="Azioni foto"
-                  style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.55)' }}
-                  onClick={(e) => apriMenuFoto(f, e)}
-                >
-                  ⋮
-                </span>
-                {f.didascalia && <span className="didascalia">{f.didascalia}</span>}
-              </button>
+          <>
+            {sezioni.map((s) => (
+              <section key={s.id} className="gruppo-sezione">
+                <div className="intestazione-sezione">
+                  <h3>
+                    {s.nome}
+                    {s.etichetta ? <span className="badge-etichetta">{s.etichetta}</span> : null}
+                    <span className="conta-sezione">{fotoDi(s.id).length}</span>
+                  </h3>
+                  <button
+                    className="btn icona"
+                    aria-label={`Azioni sezione ${s.nome}`}
+                    onClick={(e) => apriMenuSezione(s, e)}
+                  >
+                    ⋮
+                  </button>
+                </div>
+                {fotoDi(s.id).length > 0 ? (
+                  grigliaFoto(fotoDi(s.id))
+                ) : (
+                  <p className="sezione-vuota">
+                    Sezione vuota.{' '}
+                    <button className="link" onClick={() => aggiungiA(s.id, 'camera')}>
+                      Aggiungi foto
+                    </button>
+                  </p>
+                )}
+              </section>
             ))}
-          </div>
+            {(fotoDi(null).length > 0 || sezioni.length > 0) && (
+              <section className="gruppo-sezione">
+                <div className="intestazione-sezione">
+                  <h3>
+                    {sezioni.length > 0 ? 'Senza sezione' : 'Tutte le foto'}
+                    <span className="conta-sezione">{fotoDi(null).length}</span>
+                  </h3>
+                </div>
+                {grigliaFoto(fotoDi(null))}
+              </section>
+            )}
+          </>
         )}
 
         <h2>Preventivi ({preventivi?.length ?? 0})</h2>
@@ -335,6 +427,27 @@ export function ProgettoPage({ id }: { id: string }) {
         />
       )}
       {modificaDati && <FormDatiProgetto progetto={progetto} onChiudi={() => setModificaDati(false)} />}
+      {sezioneInModifica && (
+        <FormSezione
+          sezione={sezioneInModifica === 'nuova' ? null : sezioneInModifica}
+          onChiudi={() => setSezioneInModifica(null)}
+          onSalva={async (nome, etichetta) => {
+            if (sezioneInModifica === 'nuova') await creaSezione(progetto.id, nome, etichetta);
+            else await aggiornaSezione(progetto.id, sezioneInModifica.id, { nome, etichetta });
+          }}
+        />
+      )}
+      {assegnaFoto && (
+        <SelettoreSezione
+          sezioni={sezioni}
+          attuale={assegnaFoto.sezioneId ?? null}
+          onChiudi={() => setAssegnaFoto(null)}
+          onScegli={async (sid) => {
+            await assegnaFotoSezione(assegnaFoto.id, sid);
+            setAssegnaFoto(null);
+          }}
+        />
+      )}
       <ConfermaDialog richiesta={conferma} onChiudi={() => setConferma(null)} />
       {menu && <MenuContesto posizione={menu.pos} voci={menu.voci} onChiudi={() => setMenu(null)} />}
     </div>
@@ -360,6 +473,93 @@ function SelettoreStato({ progetto }: { progetto: Progetto }) {
       <option value="in_corso">In corso</option>
       <option value="completato">Completato</option>
     </select>
+  );
+}
+
+function FormSezione({
+  sezione,
+  onChiudi,
+  onSalva
+}: {
+  sezione: Sezione | null;
+  onChiudi: () => void;
+  onSalva: (nome: string, etichetta: string) => Promise<void>;
+}) {
+  const [nome, setNome] = useState(sezione?.nome ?? '');
+  const [etichetta, setEtichetta] = useState(sezione?.etichetta ?? '');
+  return (
+    <Modale titolo={sezione ? 'Modifica sezione' : 'Nuova sezione'} onChiudi={onChiudi} centro>
+      <div className="campo">
+        <label>Nome (es. Piano 1)</label>
+        <input autoFocus value={nome} onChange={(e) => setNome(e.target.value)} />
+      </div>
+      <div className="campo">
+        <label>Etichetta (codice nelle misure, es. P1)</label>
+        <input
+          value={etichetta}
+          maxLength={6}
+          placeholder="facoltativa — es. P1"
+          onChange={(e) => setEtichetta(e.target.value)}
+          style={{ width: 180 }}
+        />
+        <p className="aiuto" style={{ marginTop: 4 }}>
+          Compare davanti ai codici delle misure (es. <strong>P1</strong>.A1.1) e fa ripartire da
+          .1 la numerazione dei duplicati di questa sezione.
+        </p>
+      </div>
+      <div className="riga-pulsanti">
+        <button className="btn" onClick={onChiudi}>
+          Annulla
+        </button>
+        <button
+          className="btn primario"
+          disabled={!nome.trim()}
+          onClick={async () => {
+            await onSalva(nome, etichetta);
+            onChiudi();
+          }}
+        >
+          Salva
+        </button>
+      </div>
+    </Modale>
+  );
+}
+
+function SelettoreSezione({
+  sezioni,
+  attuale,
+  onChiudi,
+  onScegli
+}: {
+  sezioni: Sezione[];
+  attuale: string | null;
+  onChiudi: () => void;
+  onScegli: (sezioneId: string | null) => void | Promise<void>;
+}) {
+  return (
+    <Modale titolo="Sposta in sezione" onChiudi={onChiudi} centro>
+      <button className="scheda" onClick={() => void onScegli(null)}>
+        <span className="corpo">
+          <div className="titolo">Senza sezione</div>
+        </span>
+        {attuale === null ? <span>✓</span> : null}
+      </button>
+      {sezioni.map((s) => (
+        <button key={s.id} className="scheda" onClick={() => void onScegli(s.id)}>
+          <span className="corpo">
+            <div className="titolo">
+              {s.nome}
+              {s.etichetta ? <span className="badge-etichetta">{s.etichetta}</span> : null}
+            </div>
+          </span>
+          {attuale === s.id ? <span>✓</span> : null}
+        </button>
+      ))}
+      {sezioni.length === 0 && (
+        <p className="aiuto">Nessuna sezione: creane una con “📂 Nuova sezione”.</p>
+      )}
+    </Modale>
   );
 }
 

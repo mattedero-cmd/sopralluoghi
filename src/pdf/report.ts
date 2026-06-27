@@ -11,6 +11,7 @@ import {
   eFormaEtichettabile,
   famigliaDi,
   numeriProgetto,
+  percorsoDellaFoto,
   percorsoEtichette,
   type NumeroForma
 } from '../geometry/nomenclatura';
@@ -110,10 +111,12 @@ async function caricaContestoGlobale(): Promise<ContestoGlobale> {
     if (!annPerFoto.has(a.fotoId)) annPerFoto.set(a.fotoId, []);
     annPerFoto.get(a.fotoId)!.push(a);
   }
-  const percorsoProgetto = new Map<string, string[]>();
-  for (const p of progetti) percorsoProgetto.set(p.id, percorsoEtichette(p, cartelle));
+  const progettoDi = new Map(progetti.map((p) => [p.id, p]));
   const percorsoFoto = new Map<string, string[]>();
-  for (const f of foto) percorsoFoto.set(f.id, percorsoProgetto.get(f.progettoId) ?? []);
+  for (const f of foto) {
+    const p = progettoDi.get(f.progettoId);
+    percorsoFoto.set(f.id, p ? percorsoDellaFoto(f, p, cartelle) : []);
+  }
 
   const numeri = numeriProgetto(
     foto,
@@ -227,13 +230,29 @@ export async function generaReportPdf(
   }
 
   // --- Una sezione per foto ---------------------------------------------------
+  // raggruppa le foto per SEZIONE del progetto (piani), con un'intestazione
+  const sezioni = [...(progetto.sezioni ?? [])].sort((a, b) => a.ordine - b.ordine);
+  const rankSez = (f: Foto) => {
+    const i = sezioni.findIndex((s) => s.id === f.sezioneId);
+    return i < 0 ? 1e9 : i;
+  };
+  fotoList.sort((a, b) => rankSez(a) - rankSez(b) || a.ordine - b.ordine);
+  let sezPrec: string | null | undefined = ' ';
   fotoList.forEach((f, indice) => {
     const annotazioni = annotazioniPerFoto.get(f.id) ?? [];
-    contenuto.push(...sezioneFoto(f, indice, annotazioni, opzioni, impostazioni.pdf, ctx, percorso));
+    const perc = ctx.percorsoFoto.get(f.id) ?? percorso;
+    const sid = f.sezioneId && sezioni.some((s) => s.id === f.sezioneId) ? f.sezioneId : null;
+    let titoloSez: string | undefined;
+    if (sezioni.length > 0 && sid !== sezPrec) {
+      const s = sezioni.find((x) => x.id === sid);
+      titoloSez = s ? `${s.nome}${s.etichetta ? ` — ${s.etichetta}` : ''}` : 'Senza sezione';
+    }
+    sezPrec = sid;
+    contenuto.push(...sezioneFoto(f, indice, annotazioni, opzioni, impostazioni.pdf, ctx, perc, undefined, titoloSez));
   });
 
-  // tutte le foto del progetto condividono il percorso
-  const info: InfoFoto = () => ({ ctx, percorso });
+  // ogni foto usa il proprio percorso (cartelle + progetto + sezione)
+  const info: InfoFoto = (f) => ({ ctx, percorso: ctx.percorsoFoto.get(f.id) ?? percorso });
 
   // --- Tabella riassuntiva delle misure ---------------------------------------
   if (opzioni.includiRiepilogo) {
@@ -388,7 +407,26 @@ export async function generaReportCartella(
       if (lista.length === 0) continue;
       out.push({ text: p.nome, style: 'h3', margin: [0, 8, 0, 4] });
       if (p.note.trim()) out.push({ text: p.note.trim(), style: 'corpo', italics: true });
-      for (const f of lista) {
+      // foto raggruppate per sezione del progetto, con una riga d'intestazione
+      const sezioni = [...(p.sezioni ?? [])].sort((a, b) => a.ordine - b.ordine);
+      const rankSez = (f: Foto) => {
+        const i = sezioni.findIndex((s) => s.id === f.sezioneId);
+        return i < 0 ? 1e9 : i;
+      };
+      const ordinata = [...lista].sort((a, b) => rankSez(a) - rankSez(b) || a.ordine - b.ordine);
+      let sezPrec: string | null | undefined = ' ';
+      for (const f of ordinata) {
+        const sid = f.sezioneId && sezioni.some((s) => s.id === f.sezioneId) ? f.sezioneId : null;
+        if (sezioni.length > 0 && sid !== sezPrec) {
+          const s = sezioni.find((x) => x.id === sid);
+          out.push({
+            text: s ? `${s.nome}${s.etichetta ? ` — ${s.etichetta}` : ''}` : 'Senza sezione',
+            style: 'corpo',
+            bold: true,
+            margin: [0, 6, 0, 2]
+          });
+        }
+        sezPrec = sid;
         out.push(
           ...sezioneFoto(f, indiceFoto++, annotPerFoto.get(f.id) ?? [], opzioni, impostazioni.pdf, ctx, ctx.percorsoFoto.get(f.id) ?? [], {
             style: 'h3',
@@ -769,7 +807,10 @@ function sezioneFoto(
     style: 'h2',
     toc: true,
     etichetta: `${indice + 1}. `
-  }
+  },
+  /** intestazione di sezione (es. "Piano 1 — P1") da mostrare sopra questa foto:
+   *  presente solo sulla PRIMA foto di ogni sezione del progetto */
+  sezioneTitolo?: string
 ): Content[] {
   const titolo = `${titoloFoto.etichetta}${f.didascalia || `Foto ${indice + 1}`}`;
   const misure = righeMisureFoto(annotazioni, f, ctx, percorso);
@@ -788,14 +829,23 @@ function sezioneFoto(
     .filter(Boolean)
     .join(' — ');
 
-  const out: Content[] = [
-    {
-      text: titolo,
-      style: titoloFoto.style,
-      tocItem: titoloFoto.toc,
-      ...(interrompi ? { pageBreak: 'before' } : { margin: [0, 18, 0, 6] })
-    } as Content
-  ];
+  const out: Content[] = [];
+  // intestazione di sezione: porta lei l'interruzione di pagina, così resta
+  // attaccata alla sua prima foto (niente titolo orfano in fondo alla pagina)
+  if (sezioneTitolo) {
+    out.push({
+      text: sezioneTitolo,
+      style: 'h2',
+      tocItem: true,
+      ...(interrompi ? { pageBreak: 'before' } : { margin: [0, 16, 0, 2] })
+    } as Content);
+  }
+  out.push({
+    text: titolo,
+    style: titoloFoto.style,
+    tocItem: titoloFoto.toc,
+    ...(interrompi && !sezioneTitolo ? { pageBreak: 'before' } : { margin: [0, sezioneTitolo ? 4 : 18, 0, 6] })
+  } as Content);
   if (sottotitolo) {
     out.push({ text: sottotitolo, style: 'didascalia' });
   }

@@ -51,7 +51,7 @@ import {
   famigliaDi,
   numeriProgetto,
   ordinePerNumero,
-  percorsoEtichette
+  percorsoDellaFoto
 } from '../geometry/nomenclatura';
 import { applicaOmografia, omografiaPiano, omografiaPianoInversa } from '../geometry/omografia';
 import { lunghezzaPxQuota } from '../geometry/punti';
@@ -124,7 +124,7 @@ const GRUPPI_STRUMENTI: Array<{
   {
     id: 'forme',
     icona: '▭',
-    testo: 'Forma',
+    testo: 'Poligono',
     voci: [
       { s: 'rettangolo', icona: '▭', testo: 'Rettangolo' },
       { s: 'quad', icona: '◇', testo: '4 angoli' },
@@ -916,11 +916,12 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     // le annotazioni "vive"; per le altre quelle del DB.
     const lista =
       tutteFoto && tutteFoto.length ? tutteFoto : fotoProgetto && fotoProgetto.length ? fotoProgetto : foto ? [foto] : [];
-    const percorsoProg = new Map<string, string[]>();
-    for (const p of tuttiProgetti ?? []) percorsoProg.set(p.id, percorsoEtichette(p, tutteCartelle ?? []));
+    const progettoDi = new Map((tuttiProgetti ?? []).map((p) => [p.id, p]));
     const percorsoDi = (fid: string) => {
       const ff = lista.find((f) => f.id === fid);
-      return ff ? percorsoProg.get(ff.progettoId) ?? [] : [];
+      if (!ff) return [];
+      const p = progettoDi.get(ff.progettoId);
+      return p ? percorsoDellaFoto(ff, p, tutteCartelle ?? []) : [];
     };
     const annDi = (fid: string) =>
       fid === fotoId ? annotazioni ?? [] : (tutteAnnotazioni ?? []).filter((a) => a.fotoId === fid);
@@ -932,8 +933,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const misureRichiamabili = useMemo(() => {
     const annTutte = tutteAnnotazioni ?? [];
     const fotoDi = new Map((tutteFoto ?? []).map((f) => [f.id, f]));
-    const percorsoProg = new Map<string, string[]>();
-    for (const p of tuttiProgetti ?? []) percorsoProg.set(p.id, percorsoEtichette(p, tutteCartelle ?? []));
+    const progettoDi = new Map((tuttiProgetti ?? []).map((p) => [p.id, p]));
     // raggruppa per famiglia, scegli l'originale (misura vera, non copia)
     const perFam = new Map<string, QuotaPoligono[]>();
     for (const a of annTutte) {
@@ -948,7 +948,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       const orig = membri.find((m) => !m.soloEtichetta) ?? membri[0];
       const info = numeriForme.get(orig.id);
       const f = fotoDi.get(orig.fotoId);
-      const perc = f ? percorsoProg.get(f.progettoId) ?? [] : [];
+      const prog = f ? progettoDi.get(f.progettoId) : undefined;
+      const perc = f && prog ? percorsoDellaFoto(f, prog, tutteCartelle ?? []) : [];
       const base = info ? `${info.etichettaFoto}${info.numero}` : codiceLocaleForma(orig, numeriForme);
       const codice = codiceCompletoForma(perc, base);
       const quante = membri.length;

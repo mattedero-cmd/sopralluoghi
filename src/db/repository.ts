@@ -8,7 +8,8 @@ import {
   type ID,
   type Impostazioni,
   type Preventivo,
-  type Progetto
+  type Progetto,
+  type Sezione
 } from './types';
 import { nuovoId } from '../utils/id';
 import { inizioSalvataggio, fineSalvataggio } from '../state/saveStatus';
@@ -163,6 +164,68 @@ export async function aggiornaProgetto(
 
 export async function spostaProgetto(id: ID, cartellaId: ID | null): Promise<void> {
   await aggiornaProgetto(id, { cartellaId });
+}
+
+// --- Sezioni interne del progetto (piani/aree) -----------------------------
+
+/** Crea una nuova sezione (es. "Piano 1") in coda a quelle del progetto */
+export async function creaSezione(progettoId: ID, nome: string, etichetta?: string): Promise<Sezione> {
+  const p = await db.progetti.get(progettoId);
+  if (!p) throw new Error('Progetto non trovato.');
+  const sezioni = p.sezioni ?? [];
+  const sez: Sezione = {
+    id: nuovoId(),
+    nome: nome.trim() || 'Sezione',
+    etichetta: etichetta?.trim() || undefined,
+    ordine: sezioni.length
+  };
+  await aggiornaProgetto(progettoId, { sezioni: [...sezioni, sez] });
+  return sez;
+}
+
+/** Aggiorna nome/etichetta di una sezione */
+export async function aggiornaSezione(
+  progettoId: ID,
+  sezioneId: ID,
+  dati: { nome?: string; etichetta?: string }
+): Promise<void> {
+  const p = await db.progetti.get(progettoId);
+  if (!p) return;
+  const sezioni = (p.sezioni ?? []).map((s) =>
+    s.id === sezioneId
+      ? {
+          ...s,
+          nome: dati.nome !== undefined ? dati.nome.trim() || s.nome : s.nome,
+          etichetta: dati.etichetta !== undefined ? dati.etichetta.trim() || undefined : s.etichetta
+        }
+      : s
+  );
+  await aggiornaProgetto(progettoId, { sezioni });
+}
+
+/** Elimina una sezione; le sue foto tornano "senza sezione" (non vengono perse) */
+export async function eliminaSezione(progettoId: ID, sezioneId: ID): Promise<void> {
+  await scrivi('eliminare la sezione', () =>
+    db.transaction('rw', [db.progetti, db.foto], async () => {
+      const p = await db.progetti.get(progettoId);
+      if (!p) return;
+      const sezioni = (p.sezioni ?? []).filter((s) => s.id !== sezioneId);
+      await db.progetti.update(progettoId, { sezioni, modificatoIl: ora() });
+      const foto = await db.foto.where('progettoId').equals(progettoId).toArray();
+      for (const f of foto) {
+        if (f.sezioneId === sezioneId) {
+          await db.foto.update(f.id, { sezioneId: undefined, modificataIl: ora() });
+        }
+      }
+    })
+  );
+}
+
+/** Assegna una foto a una sezione (o la toglie, con null) */
+export async function assegnaFotoSezione(fotoId: ID, sezioneId: ID | null): Promise<void> {
+  await scrivi('spostare la foto', () =>
+    db.foto.update(fotoId, { sezioneId: sezioneId ?? undefined, modificataIl: ora() })
+  );
 }
 
 export async function eliminaProgetto(id: ID): Promise<void> {

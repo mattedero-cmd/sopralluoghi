@@ -906,6 +906,54 @@ h2 {
   min-height: 40px;
 }
 
+/* Sezioni interne al progetto (piani/aree) */
+.gruppo-sezione {
+  margin: 10px 0 18px;
+}
+
+.intestazione-sezione {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--bordo);
+  margin-bottom: 10px;
+}
+
+.intestazione-sezione h3 {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 16px;
+}
+
+.conta-sezione {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--testo-2);
+  background: var(--sfondo-2);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.sezione-vuota {
+  color: var(--testo-2);
+  font-size: 13px;
+  margin: 0 0 6px;
+}
+
+.link {
+  background: none;
+  border: none;
+  color: var(--accento, #2f81f7);
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+
 /* Etichetta (codice nomenclatura, es. P1) accanto al nome di cartella/progetto */
 .badge-etichetta {
   display: inline-block;

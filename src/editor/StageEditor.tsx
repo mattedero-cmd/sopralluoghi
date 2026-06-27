@@ -12,7 +12,7 @@ import {
   type SottotipoQuota
 } from '../db/types';
 import { primitiveAnnotazione, latiQuotaRett } from '../geometry/primitive';
-import { geometriaQuota, posizioneEtichettaPoligono } from '../geometry/primitive';
+import { geometriaQuota, posizioneEtichettaBase, posizioneEtichettaPoligono } from '../geometry/primitive';
 import { disegnaPrimitiva } from '../render/renderAnnotata';
 import { puntiAggancio, snapPunto } from '../geometry/snap';
 import {
@@ -1895,6 +1895,17 @@ function ManiglieAnnotazione({
     }
     case 'quotaPoligono': {
       const punti = ann.punti;
+      // maniglia del badge: SEMPRE presente (il codice è calcolato, non salvato
+      // in `etichetta`), trascinabile anche fuori dalla figura piccola
+      const manigliaEtichetta = (() => {
+        const base = posizioneEtichettaBase(ann);
+        return maniglia('etichetta', posizioneEtichettaPoligono(ann), (n) => ({
+          ...ann,
+          etichettaOffset: { x: n.x - base.x, y: n.y - base.y }
+        }));
+      })();
+      // copia "solo etichetta": niente vertici/quote, solo lo spostamento del badge
+      if (ann.soloEtichetta) return <>{manigliaEtichetta}</>;
       const segs = segmentiPoligono(ann);
       return (
         <>
@@ -1929,16 +1940,8 @@ function ManiglieAnnotazione({
               return { ...ann, lati: undefined, offsetLati: undefined, segmenti: nuovi };
             });
           })}
-          {/* maniglia del numero del poligono: spostalo dentro la figura */}
-          {ann.etichetta &&
-            (() => {
-              const cx = punti.reduce((s, p) => s + p.x, 0) / (punti.length || 1);
-              const cy = punti.reduce((s, p) => s + p.y, 0) / (punti.length || 1);
-              return maniglia('etichetta', posizioneEtichettaPoligono(ann), (n) => ({
-                ...ann,
-                etichettaOffset: { x: n.x - cx, y: n.y - cy }
-              }));
-            })()}
+          {/* maniglia del badge: spostabile liberamente, anche fuori figura */}
+          {manigliaEtichetta}
         </>
       );
     }

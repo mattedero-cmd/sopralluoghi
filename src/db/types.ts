@@ -26,12 +26,27 @@ export interface Cartella {
   modificataIl: number;
 }
 
+/**
+ * Sezione interna a un progetto (es. "Piano 1", "Piano 2"): raggruppa le foto
+ * dentro lo stesso progetto. La sua `etichetta` (es. P1) entra nella
+ * nomenclatura come una cartella e fa RIPARTIRE la numerazione dei duplicati.
+ */
+export interface Sezione {
+  id: ID;
+  nome: string;
+  /** etichetta breve per la nomenclatura (es. P1), come per cartelle/progetto */
+  etichetta?: string;
+  ordine: number;
+}
+
 export interface Progetto {
   id: ID;
   /** null = radice dell'archivio */
   cartellaId: ID | null;
   /** Etichetta breve per la nomenclatura strutturata (come per le cartelle) */
   etichetta?: string;
+  /** Sezioni interne (piani/aree): raggruppano le foto del progetto */
+  sezioni?: Sezione[];
   nome: string;
   /** nome cliente denormalizzato (mostrato ovunque, anche senza anagrafica) */
   cliente: string;
@@ -134,6 +149,8 @@ export interface Foto {
   piano?: PianoProspettiva | null;
   /** Ordine di presentazione nel progetto e nel PDF */
   ordine: number;
+  /** Sezione del progetto a cui appartiene la foto (es. Piano 1); assente = nessuna */
+  sezioneId?: ID;
   /**
    * Etichetta della foto per la nomenclatura (es. "A"): se assente si usa la
    * lettera automatica ricavata dall'ordine. Due foto con la stessa etichetta
