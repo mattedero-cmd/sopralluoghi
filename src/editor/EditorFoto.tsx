@@ -198,11 +198,13 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         : [],
     [fotoProgetto]
   );
-  // dati dell'INTERO archivio: la numerazione e il richiamo delle misure valgono
-  // tra foto e cartelle diverse, quindi servono tutte le forme/foto/cartelle
-  const tutteFoto = useLiveQuery(() => db.foto.toArray(), []);
-  const tutteAnnotazioni = useLiveQuery(() => db.annotazioni.toArray(), []);
-  const tuttiProgetti = useLiveQuery(() => db.progetti.toArray(), []);
+  // progetto corrente: il CONTESTO di lavoro. Numerazione e richiamo delle
+  // misure restano DENTRO il progetto aperto (le sue sezioni/foto), mai globali.
+  const progetto = useLiveQuery(
+    () => (foto ? db.progetti.get(foto.progettoId) : undefined),
+    [foto?.progettoId]
+  );
+  // cartelle: solo per comporre il percorso (prefisso dei codici, es. P1)
   const tutteCartelle = useLiveQuery(() => db.cartelle.toArray(), []);
   const [immagine, setImmagine] = useState<HTMLImageElement | null>(null);
   const [impostazioni, setImpostazioni] = useState<Impostazioni>(IMPOSTAZIONI_DEFAULT);
@@ -912,45 +914,39 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   // mentre la foto sta caricando, altrimenti React cambia il numero di hook tra
   // un render e l'altro e l'editor va in crash (schermo nero).
   const numeriForme = useMemo(() => {
-    // numerazione su tutto l'archivio: i codici restano coerenti anche per le
-    // misure richiamate da altre foto/cartelle. Per la foto in modifica si usano
-    // le annotazioni "vive"; per le altre quelle del DB.
-    const lista =
-      tutteFoto && tutteFoto.length ? tutteFoto : fotoProgetto && fotoProgetto.length ? fotoProgetto : foto ? [foto] : [];
-    const progettoDi = new Map((tuttiProgetti ?? []).map((p) => [p.id, p]));
+    // numerazione DEL SOLO PROGETTO corrente (mai globale): i codici e i richiami
+    // restano dentro il progetto aperto. Per la foto in modifica si usano le
+    // annotazioni "vive"; per le altre foto del progetto quelle del DB.
+    const lista = fotoProgetto && fotoProgetto.length ? fotoProgetto : foto ? [foto] : [];
     const percorsoDi = (fid: string) => {
       const ff = lista.find((f) => f.id === fid);
-      if (!ff) return [];
-      const p = progettoDi.get(ff.progettoId);
-      return p ? percorsoDellaFoto(ff, p, tutteCartelle ?? []) : [];
+      return ff && progetto ? percorsoDellaFoto(ff, progetto, tutteCartelle ?? []) : [];
     };
     const annDi = (fid: string) =>
-      fid === fotoId ? annotazioni ?? [] : (tutteAnnotazioni ?? []).filter((a) => a.fotoId === fid);
+      fid === fotoId ? annotazioni ?? [] : (annotazioniProgetto ?? []).filter((a) => a.fotoId === fid);
     return numeriProgetto(lista, annDi, percorsoDi);
-  }, [fotoId, annotazioni, tutteAnnotazioni, tutteFoto, tuttiProgetti, tutteCartelle, fotoProgetto, foto]);
+  }, [fotoId, annotazioni, annotazioniProgetto, progetto, tutteCartelle, fotoProgetto, foto]);
 
-  // misure ORIGINALI richiamabili (una per famiglia), da tutto l'archivio: il
-  // menu di richiamo mostra solo gli originali (A1, A2, B1…), non le copie
+  // misure ORIGINALI richiamabili (una per famiglia) del SOLO progetto corrente:
+  // il menu mostra solo gli originali (A1, A2, B1…) di questo progetto, non quelli
+  // di altri progetti o cartelle (eviterebbero confusione e richiami sbagliati)
   const misureRichiamabili = useMemo(() => {
-    const annTutte = tutteAnnotazioni ?? [];
-    const fotoDi = new Map((tutteFoto ?? []).map((f) => [f.id, f]));
-    const progettoDi = new Map((tuttiProgetti ?? []).map((p) => [p.id, p]));
+    const fotoDi = new Map((fotoProgetto ?? []).map((f) => [f.id, f]));
+    // annotazioni del progetto, con la foto in modifica "viva"
+    const annProg = (annotazioniProgetto ?? []).filter((a) => a.fotoId !== fotoId).concat(annotazioni ?? []);
     // raggruppa per famiglia, scegli l'originale (misura vera, non copia)
     const perFam = new Map<string, QuotaPoligono[]>();
-    for (const a of annTutte) {
+    for (const a of annProg) {
       if (a.tipo !== 'quotaPoligono') continue;
-      const liveSelf = a.fotoId === fotoId ? (annotazioni ?? []).find((x) => x.id === a.id) : undefined;
-      const forma = (liveSelf as QuotaPoligono) ?? a;
-      const k = famigliaDi(forma);
+      const k = famigliaDi(a);
       if (!perFam.has(k)) perFam.set(k, []);
-      perFam.get(k)!.push(forma);
+      perFam.get(k)!.push(a);
     }
     const voci = [...perFam.entries()].map(([k, membri]) => {
       const orig = membri.find((m) => !m.soloEtichetta) ?? membri[0];
       const info = numeriForme.get(orig.id);
       const f = fotoDi.get(orig.fotoId);
-      const prog = f ? progettoDi.get(f.progettoId) : undefined;
-      const perc = f && prog ? percorsoDellaFoto(f, prog, tutteCartelle ?? []) : [];
+      const perc = f && progetto ? percorsoDellaFoto(f, progetto, tutteCartelle ?? []) : [];
       const base = info ? `${info.etichettaFoto}${info.numero}` : codiceLocaleForma(orig, numeriForme);
       const codice = codiceCompletoForma(perc, base);
       const quante = membri.length;
@@ -966,7 +962,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     });
     voci.sort((a, b) => a.codice.localeCompare(b.codice, undefined, { numeric: true }));
     return voci;
-  }, [tutteAnnotazioni, tutteFoto, tuttiProgetti, tutteCartelle, numeriForme, annotazioni, fotoId]);
+  }, [annotazioniProgetto, fotoProgetto, progetto, tutteCartelle, numeriForme, annotazioni, fotoId]);
 
   if (foto && fotoIllegibile(foto)) {
     return <SchermataFotoDanneggiata foto={foto} />;
