@@ -7,6 +7,7 @@ import { nomeFormaPoligono, simboliPoligono, versiSegmento } from '../geometry/p
 import {
   codiceCompletoForma,
   codiceLocaleForma,
+  famigliaDi,
   numeriProgetto,
   percorsoEtichette,
   type NumeroForma
@@ -418,6 +419,10 @@ interface RigaMisura {
   /** true se è un PEZZO da produrre (poligono, elemento, cerchio): entra
    *  nella distinta di taglio. Le quote lineari e gli angoli no. */
   pezzo?: boolean;
+  /** elementi RIPETUTI: quantità totale di copie uguali (>1) della famiglia */
+  quantita?: number;
+  /** codici delle copie collegate (es. ["A1.1","A1.2",…]) */
+  collegati?: string[];
   stato: StatoMisura;
 }
 
@@ -521,6 +526,11 @@ function righeMisureFoto(
       }
       righe.push(rigaR);
     } else if (a.tipo === 'quotaPoligono') {
+      // elementi RIPETUTI: la famiglia compare UNA sola volta nella distinta.
+      // Si tiene il primo membro (sub 1) e si salta gli altri; la quantità e i
+      // codici collegati riassumono l'intera famiglia.
+      const infoFam = numeri.get(a.id);
+      if (infoFam && infoFam.sub && infoFam.sub > 1) continue;
       const nome = nomeFormaPoligono(a);
       const n = (v: number | null) => (v === null ? '?' : formattaNumero(v));
       const simboli = simboliPoligono(a);
@@ -560,6 +570,17 @@ function righeMisureFoto(
         riga.areaAffidabile = area.affidabile;
         riga.areaM2 = area.m2;
       }
+      // famiglia di elementi ripetuti: una riga, con quantità e codici collegati
+      if (infoFam && infoFam.quantita > 1) {
+        riga.quantita = infoFam.quantita;
+        // codice della famiglia senza sotto-indice (es. "A1" invece di "A1.1")
+        riga.codice = codiceCompletoForma(percorso, `${infoFam.etichettaFoto}${infoFam.numero}`);
+        riga.collegati = annotazioni
+          .filter((x) => x.tipo === 'quotaPoligono' && famigliaDi(x) === famigliaDi(a))
+          .map((x) => ({ x, sub: numeri.get(x.id)?.sub ?? 0 }))
+          .sort((p, q) => p.sub - q.sub)
+          .map((e) => codiceForma(e.x));
+      }
       righe.push(riga);
     }
   }
@@ -569,6 +590,18 @@ function righeMisureFoto(
 /** Cella "dettaglio" del riepilogo: misure su righe separate, con gerarchia */
 function cellaDettaglio(m: RigaMisura): Content {
   const linee: Content[] = [{ text: m.reale, bold: true, fontSize: 10.5, color: '#1a1a1a' }];
+  if (m.quantita && m.quantita > 1) {
+    linee.push({
+      text: [
+        { text: 'Quantità  ', color: GRIGIO_CHIARO, fontSize: 8 },
+        { text: `${m.quantita} elementi uguali`, color: BLU_FORMA, bold: true, fontSize: 9.5 },
+        ...(m.collegati && m.collegati.length
+          ? [{ text: `  (${m.collegati.join(', ')})`, color: GRIGIO, fontSize: 8 } as Content]
+          : [])
+      ],
+      margin: [0, 1, 0, 0]
+    });
+  }
   if (m.taglio) {
     linee.push({
       text: [
@@ -818,12 +851,26 @@ function distintaTaglio(
       (m) => m.pezzo
     );
     misure.forEach((m) => {
-      nPezzi += 1;
-      if (m.areaM2 !== undefined) areaTot += m.areaM2;
+      const qta = m.quantita && m.quantita > 1 ? m.quantita : 1;
+      nPezzi += qta;
+      if (m.areaM2 !== undefined) areaTot += m.areaM2 * qta;
       else areaCompleta = false;
       righe.push([
         { text: m.codice ?? '', style: 'tdForma' },
-        { text: m.forma, style: 'tdForma' },
+        {
+          stack: [
+            { text: m.forma, style: 'tdForma' },
+            ...(qta > 1
+              ? [
+                  {
+                    text: `×${qta}${m.collegati && m.collegati.length ? `  ${m.collegati.join(', ')}` : ''}`,
+                    fontSize: 8,
+                    color: GRIGIO
+                  } as Content
+                ]
+              : [])
+          ]
+        },
         { text: m.reale, fontSize: 9.5, color: '#1a1a1a' },
         {
           // misura di taglio: con abbondanze se presenti, altrimenti = reale
@@ -834,7 +881,13 @@ function distintaTaglio(
         },
         { text: m.abbondanze ?? '—', fontSize: 8.5, color: GRIGIO },
         {
-          text: m.area ? (m.areaAffidabile === false ? `${m.area} (stima)` : m.area) : '—',
+          text: !m.area
+            ? '—'
+            : qta > 1 && m.areaM2 !== undefined
+              ? `${m.area} ×${qta} = ${formattaArea({ m2: m.areaM2 * qta, affidabile: m.areaAffidabile !== false, metodo: 'piano' })}${m.areaAffidabile === false ? ' (stima)' : ''}`
+              : m.areaAffidabile === false
+                ? `${m.area} (stima)`
+                : m.area,
           fontSize: 9,
           color: m.areaAffidabile === false ? ARANCIO_STIMATA : BLU_FORMA,
           alignment: 'right'

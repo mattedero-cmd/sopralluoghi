@@ -71,46 +71,81 @@ function etichettaManuale(a: Annotazione): string | undefined {
 export interface NumeroForma {
   /** etichetta della foto a cui appartiene la forma (es. "A") */
   etichettaFoto: string;
-  /** numero progressivo nella sequenza condivisa dell'etichetta */
+  /** numero della FAMIGLIA nella sequenza (es. 1 → A1) */
   numero: number;
+  /** indice nella famiglia, presente solo se la famiglia ha più copie (A1.2) */
+  sub?: number;
+  /** quantità: numero di elementi uguali (copie) della famiglia */
+  quantita: number;
+}
+
+/** Famiglia di una forma: il gruppo di duplicazione, o la forma stessa */
+export function famigliaDi(a: Annotazione): string {
+  const g = a.gruppoQuota?.trim();
+  return g || a.id;
 }
 
 /**
- * Numerazione di TUTTE le forme di un progetto: raggruppa le forme per
- * etichetta-foto (foto con la stessa etichetta condividono la sequenza) e le
- * numera nell'ordine reale di creazione. Restituisce: id forma → {etichetta, n}.
+ * Numerazione di TUTTE le forme di un progetto: raggruppa per etichetta-foto
+ * (foto con la stessa etichetta condividono la sequenza), poi per FAMIGLIA
+ * (elementi ripetuti). Ogni famiglia ha un numero (A1, A2…); se ha più copie i
+ * membri diventano A1.1, A1.2… L'ordine segue la creazione delle forme.
  */
 export function numeriProgetto(
   fotoProgetto: Foto[],
   annotazioniDi: (fotoId: string) => Annotazione[]
 ): Map<string, NumeroForma> {
   const ordinate = [...fotoProgetto].sort((a, b) => a.ordine - b.ordine);
-  const gruppi = new Map<string, { a: Annotazione; chiave: number }[]>();
+  const perEtichetta = new Map<string, { a: Annotazione; chiave: number }[]>();
   ordinate.forEach((f, idxFoto) => {
     const lbl = etichettaFoto(f, fotoProgetto);
     for (const a of annotazioniDi(f.id)) {
       if (!eFormaEtichettabile(a)) continue;
-      if (!gruppi.has(lbl)) gruppi.set(lbl, []);
-      gruppi.get(lbl)!.push({ a, chiave: chiaveOrdine(a, idxFoto) });
+      if (!perEtichetta.has(lbl)) perEtichetta.set(lbl, []);
+      perEtichetta.get(lbl)!.push({ a, chiave: chiaveOrdine(a, idxFoto) });
     }
   });
   const out = new Map<string, NumeroForma>();
-  for (const [lbl, lista] of gruppi) {
-    lista.sort((x, y) => x.chiave - y.chiave || x.a.id.localeCompare(y.a.id));
-    lista.forEach((it, i) => out.set(it.a.id, { etichettaFoto: lbl, numero: i + 1 }));
+  for (const [lbl, lista] of perEtichetta) {
+    // raggruppa in famiglie (elementi ripetuti)
+    const famiglie = new Map<string, { a: Annotazione; chiave: number }[]>();
+    for (const it of lista) {
+      const k = famigliaDi(it.a);
+      if (!famiglie.has(k)) famiglie.set(k, []);
+      famiglie.get(k)!.push(it);
+    }
+    // ordina i membri di ogni famiglia e le famiglie per chiave minima (1ª creata)
+    const fams = [...famiglie.values()].map((membri) => {
+      membri.sort((x, y) => x.chiave - y.chiave || x.a.id.localeCompare(y.a.id));
+      return { membri, min: membri[0].chiave };
+    });
+    fams.sort((p, r) => p.min - r.min);
+    fams.forEach((fam, i) => {
+      const quantita = fam.membri.length;
+      fam.membri.forEach((it, j) => {
+        out.set(it.a.id, {
+          etichettaFoto: lbl,
+          numero: i + 1,
+          sub: quantita > 1 ? j + 1 : undefined,
+          quantita
+        });
+      });
+    });
   }
   return out;
 }
 
 /**
  * Codice LOCALE della forma (badge sulla foto): l'override manuale se presente,
- * altrimenti etichetta-foto + numero dalla sequenza condivisa.
+ * altrimenti etichetta-foto + numero famiglia (+ eventuale sotto-indice A1.2).
  */
 export function codiceLocaleForma(a: Annotazione, numeri: Map<string, NumeroForma>): string {
   const manuale = etichettaManuale(a);
   if (manuale) return manuale;
   const info = numeri.get(a.id);
-  return info ? `${info.etichettaFoto}${info.numero}` : '';
+  if (!info) return '';
+  const base = `${info.etichettaFoto}${info.numero}`;
+  return info.sub ? `${base}.${info.sub}` : base;
 }
 
 /**

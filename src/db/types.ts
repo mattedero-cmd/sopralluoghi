@@ -207,6 +207,12 @@ interface AnnotazioneBase {
    * si rinumerano da sole. Se assente vale `creatoIl`.
    */
   ordine?: number;
+  /**
+   * Elementi RIPETUTI: le forme con lo stesso `gruppoQuota` sono copie della
+   * stessa misura (es. cinque vetrine uguali). Nel codice diventano A1.1, A1.2…
+   * e nel report/distinta contano come un solo elemento con quantità.
+   */
+  gruppoQuota?: string;
   stile: Stile;
 }
 

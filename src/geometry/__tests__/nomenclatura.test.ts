@@ -103,6 +103,33 @@ describe('numerazione condivisa per etichetta foto', () => {
   });
 });
 
+describe('elementi ripetuti (duplicazione)', () => {
+  it('una sola forma → A1; duplicata su 5 elementi → A1.1…A1.5', () => {
+    const f1 = foto('f1', 1, 'A');
+    // 5 forme con lo stesso gruppoQuota (copie), create in ordine
+    const ann = [0, 1, 2, 3, 4].map((i) =>
+      forma(`s${i}`, 'f1', { creatoIl: 100 + i, gruppoQuota: 'G' })
+    );
+    const numeri = numeriProgetto([f1], () => ann);
+    expect(codiceLocaleForma(ann[0], numeri)).toBe('A1.1');
+    expect(codiceLocaleForma(ann[4], numeri)).toBe('A1.5');
+    expect(numeri.get('s0')!.quantita).toBe(5);
+  });
+
+  it('famiglia ripetuta + elemento singolo → A1.x e A2', () => {
+    const f1 = foto('f1', 1, 'A');
+    const ann = [
+      forma('w1', 'f1', { creatoIl: 100, gruppoQuota: 'G' }),
+      forma('w2', 'f1', { creatoIl: 110, gruppoQuota: 'G' }),
+      forma('porta', 'f1', { creatoIl: 200 }) // singola, nessun gruppo
+    ];
+    const numeri = numeriProgetto([f1], () => ann);
+    expect(codiceLocaleForma(ann[0], numeri)).toBe('A1.1');
+    expect(codiceLocaleForma(ann[1], numeri)).toBe('A1.2');
+    expect(codiceLocaleForma(ann[2], numeri)).toBe('A2');
+  });
+});
+
 describe('riordino manuale del numero', () => {
   it('porta una forma al numero 1: la sua chiave d’ordine diventa la più piccola', () => {
     const f1 = foto('f1', 1, 'A');

@@ -868,6 +868,44 @@ h2 {
   opacity: 1;
 }
 
+.azione-flottante.duplica:active {
+  background: var(--accento, #2f81f7);
+  opacity: 1;
+}
+
+/* Modalità duplica misura: barra in alto, stessa veste della barra-calibra */
+.barra-duplica {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: calc(env(safe-area-inset-top) + 72px);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(16, 20, 26, 0.95);
+  border: 1px solid var(--accento, #2f81f7);
+  backdrop-filter: blur(6px);
+  z-index: 45;
+}
+
+.barra-duplica .titolo {
+  flex: 1 1 auto;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.barra-duplica .spazio {
+  flex: 1;
+}
+
+.barra-duplica .btn {
+  flex: 0 0 auto;
+  min-height: 40px;
+}
+
 /* Cursore di sensibilità dell'autoquotatura: fisso, verticale, a sinistra */
 .sensibilita-flottante {
   position: fixed;

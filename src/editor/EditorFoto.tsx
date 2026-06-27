@@ -60,6 +60,7 @@ import {
   inMillimetri
 } from '../utils/format';
 import { condividiOScarica, nomeFileSicuro } from '../utils/share';
+import { nuovoId } from '../utils/id';
 import { renderFotoAnnotata } from '../render/renderAnnotata';
 import { avviaDettatura, dettaturaDisponibile } from '../utils/dettatura';
 
@@ -238,6 +239,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [inquadraCalib, setInquadraCalib] = useState<Rettangolo | null>(null);
   /** menu separato per la scelta del formato */
   const [menuFormato, setMenuFormato] = useState(false);
+  /** modalità duplica: la forma "master" da copiare sugli elementi uguali */
+  const [duplicaMaster, setDuplicaMaster] = useState<QuotaPoligono | null>(null);
   /** griglia di verifica sul piano calibrato (controllo visivo della scala) */
   const [mostraGriglia, setMostraGriglia] = useState(false);
   /** poligono proposto dall'autoquotatura (base + altezza), da confermare */
@@ -732,6 +735,44 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     commit([...annotazioni, d]);
   };
 
+  /** Avvia la modalità "duplica misura" sulla forma selezionata: assegna un
+   *  gruppo (se manca) e poi ogni tocco sulla foto crea una copia collegata. */
+  const avviaDuplica = () => {
+    if (!annotazioni || !selezionata || selezionata.tipo !== 'quotaPoligono') return;
+    let master = selezionata;
+    if (!master.gruppoQuota) {
+      master = { ...master, gruppoQuota: nuovoId() };
+      commit(annotazioni.map((a) => (a.id === master.id ? master : a)));
+    }
+    setDuplicaMaster(master);
+  };
+
+  /** Crea una copia del master nel punto toccato (stessa misura, stesso gruppo) */
+  const duplicaTocco = (punto: Punto) => {
+    if (!annotazioni || !duplicaMaster) return;
+    const n = duplicaMaster.punti.length || 1;
+    const cx = duplicaMaster.punti.reduce((s, p) => s + p.x, 0) / n;
+    const cy = duplicaMaster.punti.reduce((s, p) => s + p.y, 0) / n;
+    const dx = punto.x - cx;
+    const dy = punto.y - cy;
+    const copia: QuotaPoligono = {
+      ...duplicaMaster,
+      id: nuovoId(),
+      punti: duplicaMaster.punti.map((p) => ({ x: p.x + dx, y: p.y + dy })),
+      // le misure restano quelle del master (fisse, non ricalcolate dai pixel)
+      segmenti: segmentiPoligono(duplicaMaster).map((s) => ({ ...s })),
+      lati: undefined,
+      offsetLati: undefined,
+      valoreAuto: false,
+      etichetta: '',
+      etichettaOffset: undefined,
+      gruppoQuota: duplicaMaster.gruppoQuota,
+      creatoIl: Date.now(),
+      ordine: undefined
+    };
+    commit([...annotazioni, copia]);
+  };
+
   const creaCallout = (sorgente: Rettangolo) => {
     if (!fabbrica || !annotazioni) return;
     const c = fabbrica.callout(sorgente, annotazioni);
@@ -1011,6 +1052,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         onNuovoCallout={creaCallout}
         onCalibra={(p1, p2) => setSchedaScala({ px: distanza(p1, p2) })}
         onPiano={(punti) => setSchedaPiano({ punti })}
+        onDuplica={duplicaMaster ? duplicaTocco : null}
       />
 
       {proposta ? (
@@ -1060,6 +1102,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       {/* oggetto selezionato (con ambiente dedicato): subito due pulsanti
           discreti — Modifica ed Elimina — senza dover azzeccare il secondo tap */}
       {!proposta &&
+        !duplicaMaster &&
         selezionata &&
         haAmbienteDedicato(selezionata) &&
         quotaInModifica === null &&
@@ -1073,6 +1116,16 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             >
               ✎
             </button>
+            {selezionata.tipo === 'quotaPoligono' && (
+              <button
+                className="azione-flottante duplica"
+                aria-label="Duplica misura su elementi uguali"
+                title="Duplica su elementi uguali"
+                onClick={avviaDuplica}
+              >
+                ⧉
+              </button>
+            )}
             <button
               className="azione-flottante elimina"
               aria-label="Elimina"
@@ -1083,6 +1136,20 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             </button>
           </div>
         )}
+
+      {/* MODALITÀ DUPLICA: tocca gli altri elementi uguali per ripetere la misura */}
+      {duplicaMaster && (
+        <div className="barra-duplica" role="group" aria-label="Duplica misura">
+          <span className="titolo">
+            ⧉ Tocca gli elementi uguali a{' '}
+            <strong>{codiceForma(duplicaMaster)}</strong>
+          </span>
+          <span className="spazio" />
+          <button className="btn primario" onClick={() => setDuplicaMaster(null)}>
+            ✓ Fine
+          </button>
+        </div>
+      )}
 
       {/* STADIO 1: riferimento rilevato, si aggiustano i 4 angoli (zoomati) */}
       {riferimentoPunto && !calibGriglia && (

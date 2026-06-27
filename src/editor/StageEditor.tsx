@@ -113,6 +113,8 @@ interface Props {
   celleGriglia: number;
   /** inquadra automaticamente un'area dell'immagine (zoom sul riferimento) */
   inquadra: Rettangolo | null;
+  /** modalità duplica misura: un tocco sulla foto crea una copia in quel punto */
+  onDuplica: ((p: Punto) => void) | null;
   /** evidenziatura con lo strumento autoquotatura (oggetto completo) */
   onAutoTraccia: (punti: Punto[]) => void;
   onCommit: (annotazioni: Annotazione[]) => void;
@@ -449,7 +451,9 @@ export function StageEditor(p: Props) {
 
     if (p.strumento === 'seleziona') {
       if (e.target === stage || e.target.name() === 'sfondo-foto') {
-        p.onSeleziona(null);
+        // in modalità duplica il tocco sul vuoto NON deseleziona (la copia
+        // viene creata sull'onClick/onTap, che non scatta dopo un trascinamento)
+        if (!p.onDuplica) p.onSeleziona(null);
       }
       return;
     }
@@ -900,6 +904,14 @@ export function StageEditor(p: Props) {
             width={p.foto.larghezzaPx}
             height={p.foto.altezzaPx}
             listening={true}
+            onClick={() => {
+              const pos = posImmagine();
+              if (p.onDuplica && pos) p.onDuplica(pos);
+            }}
+            onTap={() => {
+              const pos = posImmagine();
+              if (p.onDuplica && pos) p.onDuplica(pos);
+            }}
           />
           {annotazioniVisibili.map((a) => (
             <AnnotazioneShape
