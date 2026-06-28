@@ -8,6 +8,7 @@ import {
 import { leggiImpostazioni, salvaImpostazioni } from '../db/repository';
 import { apriContesto, caricaOggetto, elencaNomi, scaricaOggetto, scaricaTesto } from './supabaseBackup';
 import { segnaSincronizzato } from './promemoria';
+import { mantieniSchermoAcceso } from '../utils/schermo';
 
 /**
  * Sincronizzazione incrementale tra dispositivi (manuale / su richiesta).
@@ -61,6 +62,16 @@ function bufferDaBlob(blob: Blob): Promise<ArrayBuffer> {
 }
 
 async function eseguiSync(avanzamento?: Avanzamento): Promise<RisultatoSync> {
+  // lo schermo resta acceso per tutta la sincronizzazione (rilasciato nel finally)
+  const rilasciaSchermo = mantieniSchermoAcceso();
+  try {
+    return await eseguiSyncInterna(avanzamento);
+  } finally {
+    rilasciaSchermo();
+  }
+}
+
+async function eseguiSyncInterna(avanzamento?: Avanzamento): Promise<RisultatoSync> {
   const ctx = await apriContesto();
 
   // ----- PULL: indice + foto mancanti -----
