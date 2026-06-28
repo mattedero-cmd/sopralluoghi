@@ -820,18 +820,21 @@ function righeMisureFoto(
  */
 function cellaCodice(m: RigaMisura, fallback: string): Content {
   const base = m.codice ?? fallback;
+  // `noWrap` impedisce che il codice vada a capo (es. "P2.A5.1"): la colonna
+  // "Cod." è a larghezza automatica, quindi si allarga quanto basta.
   if (!m.collegati || m.collegati.length <= 1) {
-    return { text: base, style: m.codice ? 'tdForma' : 'tdNum' };
+    return { text: base, style: m.codice ? 'tdForma' : 'tdNum', noWrap: true };
   }
   return {
     stack: [
-      { text: base, style: 'tdForma' },
+      { text: base, style: 'tdForma', noWrap: true },
       ...m.collegati.map(
         (c) =>
           ({
             text: `• ${c}`,
             fontSize: 8.5,
             color: GRIGIO,
+            noWrap: true,
             margin: [6, 1, 0, 0]
           }) as Content
       )
@@ -1060,7 +1063,7 @@ function sezioneFoto(
       table: {
         headerRows: 1,
         dontBreakRows: true,
-        widths: [38, 'auto', '*', 'auto', 'auto', 'auto'],
+        widths: ['auto', 'auto', '*', 'auto', 'auto', 'auto'],
         body: [
           [
             { text: 'Cod.', style: 'th' },
@@ -1161,7 +1164,7 @@ function tabellaRiassuntiva(
       table: {
         headerRows: 1,
         dontBreakRows: true,
-        widths: [34, 'auto', 'auto', '*', 'auto', 'auto', 'auto'],
+        widths: ['auto', 'auto', 'auto', '*', 'auto', 'auto', 'auto'],
         body: [
           [
             { text: 'Cod.', style: 'th' },
@@ -1274,7 +1277,7 @@ function distintaTaglio(
       table: {
         headerRows: 1,
         dontBreakRows: true,
-        widths: [44, 'auto', '*', '*', 'auto', 'auto'],
+        widths: ['auto', 'auto', '*', '*', 'auto', 'auto'],
         body: [
           [
             { text: 'Codice', style: 'th' },
