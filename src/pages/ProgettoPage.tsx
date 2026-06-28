@@ -33,6 +33,7 @@ import { condividiOScarica, nomeFileSicuro } from '../utils/share';
 import { renderFotoAnnotata } from '../render/renderAnnotata';
 import { codiceLocaleForma, numeriProgetto } from '../geometry/nomenclatura';
 import { Icona } from '../components/Icona';
+import { PannelloOpzioniPdf } from '../components/OpzioniPdf';
 
 export function ProgettoPage({ id }: { id: string }) {
   const progetto = useLiveQuery(() => db.progetti.get(id), [id]);
@@ -433,7 +434,8 @@ export function ProgettoPage({ id }: { id: string }) {
       </main>
 
       {opzioniPdfAperte && (
-        <FormOpzioniReport
+        <PannelloOpzioniPdf
+          titolo="Esporta PDF o pacchetto ZIP"
           foto={foto}
           onChiudi={() => setOpzioniPdfAperte(false)}
           onGenera={(opzioni) => {
@@ -683,183 +685,3 @@ export function useFotoProgetto(progettoId: string | undefined) {
   return lista;
 }
 
-/**
- * Opzioni del report PDF: quali foto includere, layout e sezioni.
- */
-function FormOpzioniReport({
-  foto,
-  onChiudi,
-  onGenera,
-  onGeneraZip
-}: {
-  foto: Foto[];
-  onChiudi: () => void;
-  onGenera: (opzioni: OpzioniReport) => void;
-  onGeneraZip: (opzioni: OpzioniReport) => void;
-}) {
-  const [selezione, setSelezione] = useState<Set<string>>(new Set(foto.map((f) => f.id)));
-  const [fotoPerPagina, setFotoPerPagina] = useState<1 | 2 | 4 | 6>(1);
-  const [orizzontale, setOrizzontale] = useState(false);
-  const [includiIndice, setIncludiIndice] = useState(true);
-  const [includiRiepilogo, setIncludiRiepilogo] = useState(true);
-  const [includiNoteDato, setIncludiNoteDato] = useState(true);
-  const [includiTabellaMisure, setIncludiTabellaMisure] = useState(true);
-  const [includiDistinta, setIncludiDistinta] = useState(true);
-
-  const commuta = (id: string) => {
-    setSelezione((prev) => {
-      const nuova = new Set(prev);
-      if (nuova.has(id)) nuova.delete(id);
-      else nuova.add(id);
-      return nuova;
-    });
-  };
-
-  const Interruttore = ({
-    attivo,
-    onCommuta,
-    testo
-  }: {
-    attivo: boolean;
-    onCommuta: () => void;
-    testo: string;
-  }) => (
-    <button
-      className={`btn interruttore${attivo ? ' attivo' : ''}`}
-      style={{ justifyContent: 'flex-start', width: '100%', marginBottom: 8 }}
-      onClick={onCommuta}
-    >
-      <span className={`check-box${attivo ? ' on' : ''}`}>
-        {attivo && <Icona nome="check" dimensione={15} strokeWidth={2.4} />}
-      </span>
-      {testo}
-    </button>
-  );
-
-  return (
-    <Modale titolo="Esporta: PDF o pacchetto ZIP" onChiudi={onChiudi}>
-      <div className="campo">
-        <label>
-          Foto da includere ({selezione.size} di {foto.length})
-        </label>
-        <div className="griglia-foto" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))' }}>
-          {foto.map((f, i) => (
-            <button
-              key={f.id}
-              className="cella-foto"
-              style={{
-                outline: selezione.has(f.id) ? '3px solid var(--accento)' : 'none',
-                opacity: selezione.has(f.id) ? 1 : 0.45
-              }}
-              onClick={() => commuta(f.id)}
-            >
-              <ImmagineBlob dati={f.miniatura} tipo={f.miniaturaTipo} alt={f.didascalia || `Foto ${i + 1}`} />
-              {selezione.has(f.id) && (
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: 4,
-                    left: 4,
-                    background: 'var(--accento)',
-                    color: '#fff',
-                    borderRadius: 999,
-                    width: 22,
-                    height: 22,
-                    display: 'grid',
-                    placeItems: 'center'
-                  }}
-                >
-                  <Icona nome="check" dimensione={15} strokeWidth={2.6} />
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-        <div className="riga-pulsanti" style={{ marginTop: 8 }}>
-          <button className="btn" onClick={() => setSelezione(new Set(foto.map((f) => f.id)))}>
-            Tutte
-          </button>
-          <button className="btn" onClick={() => setSelezione(new Set())}>
-            Nessuna
-          </button>
-        </div>
-      </div>
-      <div className="campo">
-        <label>Foto per pagina</label>
-        <span className="segmenti" role="group">
-          {([1, 2, 4, 6] as const).map((n) => (
-            <button key={n} className={fotoPerPagina === n ? 'attivo' : ''} onClick={() => setFotoPerPagina(n)}>
-              {n}
-            </button>
-          ))}
-        </span>
-        <p className="aiuto" style={{ marginTop: 4 }}>
-          {fotoPerPagina >= 4
-            ? 'Report fotografico a griglia: solo foto e didascalie (le misure restano nel riepilogo finale).'
-            : '1 = foto grande con tabella misure; 2 = compatto con tabella.'}
-        </p>
-      </div>
-      <div className="campo">
-        <label>Orientamento pagina</label>
-        <span className="segmenti" role="group">
-          <button className={!orizzontale ? 'attivo' : ''} onClick={() => setOrizzontale(false)}>
-            Verticale
-          </button>
-          <button className={orizzontale ? 'attivo' : ''} onClick={() => setOrizzontale(true)}>
-            Orizzontale
-          </button>
-        </span>
-      </div>
-      <div className="campo">
-        <label>Sezioni del documento</label>
-        <Interruttore attivo={includiIndice} onCommuta={() => setIncludiIndice(!includiIndice)} testo="Indice con numeri di pagina" />
-        <Interruttore attivo={includiNoteDato} onCommuta={() => setIncludiNoteDato(!includiNoteDato)} testo="Note dato delle foto" />
-        <Interruttore attivo={includiTabellaMisure} onCommuta={() => setIncludiTabellaMisure(!includiTabellaMisure)} testo="Tabella misure per ogni foto" />
-        <Interruttore attivo={includiRiepilogo} onCommuta={() => setIncludiRiepilogo(!includiRiepilogo)} testo="Riepilogo finale delle misure" />
-        <Interruttore attivo={includiDistinta} onCommuta={() => setIncludiDistinta(!includiDistinta)} testo="Distinta di taglio (pezzi da produrre)" />
-      </div>
-      <div className="riga-pulsanti">
-        <button className="btn" onClick={onChiudi}>
-          Annulla
-        </button>
-        <button
-          className="btn"
-          disabled={selezione.size === 0}
-          title="PDF + foto originali (JPG)"
-          onClick={() =>
-            onGeneraZip({
-              fotoIds: selezione.size === foto.length ? null : Array.from(selezione),
-              fotoPerPagina,
-              orizzontale,
-              includiIndice,
-              includiRiepilogo,
-              includiNoteDato,
-              includiTabellaMisure,
-              includiDistinta
-            })
-          }
-        >
-          <Icona nome="archivio" dimensione={19} /> ZIP
-        </button>
-        <button
-          className="btn primario"
-          disabled={selezione.size === 0}
-          onClick={() =>
-            onGenera({
-              fotoIds: selezione.size === foto.length ? null : Array.from(selezione),
-              fotoPerPagina,
-              orizzontale,
-              includiIndice,
-              includiRiepilogo,
-              includiNoteDato,
-              includiTabellaMisure,
-              includiDistinta
-            })
-          }
-        >
-          <Icona nome="documento" dimensione={19} /> Genera ({selezione.size} foto)
-        </button>
-      </div>
-    </Modale>
-  );
-}

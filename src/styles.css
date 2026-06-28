@@ -1070,6 +1070,117 @@ h2 {
   margin: 0 0 6px;
 }
 
+/* Anteprima impaginazione del PDF (mock visivo, si aggiorna in tempo reale) */
+.anteprima-pdf {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 0 0 16px;
+}
+
+.mock-pagina {
+  width: 168px;
+  height: 238px; /* A4 verticale ≈ 1:1.414 */
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition:
+    width 0.2s ease,
+    height 0.2s ease;
+}
+
+.mock-pagina.orizz {
+  width: 238px;
+  height: 168px;
+}
+
+.mock-titolo {
+  height: 8px;
+  width: 55%;
+  border-radius: 3px;
+  background: var(--accento);
+  flex-shrink: 0;
+}
+
+.mock-corpo {
+  flex: 1;
+  display: grid;
+  gap: 6px;
+  min-height: 0;
+}
+
+.mock-cella {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-height: 0;
+}
+
+.mock-foto {
+  flex: 1;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #cfd8e3, #aab8c8);
+  min-height: 14px;
+}
+
+.mock-nota {
+  height: 5px;
+  width: 70%;
+  border-radius: 2px;
+  background: #d7dee7;
+  flex-shrink: 0;
+}
+
+.mock-didascalia {
+  height: 4px;
+  width: 50%;
+  margin: 2px auto 0;
+  border-radius: 2px;
+  background: #d7dee7;
+  flex-shrink: 0;
+}
+
+.mock-tabella {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.mock-tabella > div {
+  height: 4px;
+  border-radius: 2px;
+  background: #e1e7ee;
+}
+
+.mock-tabella > div:first-child {
+  background: var(--accento);
+  opacity: 0.6;
+}
+
+/* Riga che apre/chiude una sezione di opzioni (compatta, poche cose a vista) */
+.riga-espandi {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: var(--sfondo-2);
+  border: 1px solid var(--bordo);
+  border-radius: var(--raggio);
+  color: var(--testo);
+  font-weight: 600;
+  padding: 12px 14px;
+  cursor: pointer;
+}
+
+.riga-espandi .icona {
+  color: var(--testo-2);
+}
+
 /* Interruttore a riga (opzioni report) con casella di spunta */
 .check-box {
   display: grid;

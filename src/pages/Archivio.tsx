@@ -27,6 +27,7 @@ import {
 import { mostraToast } from '../state/toast';
 import { formattaData } from '../utils/format';
 import { Icona } from '../components/Icona';
+import { PannelloOpzioniPdf } from '../components/OpzioniPdf';
 
 export function Archivio({ cartellaId }: { cartellaId: string | null }) {
   const [ricerca, setRicerca] = useState('');
@@ -305,8 +306,8 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
         <FormProgetto cartellaId={cartellaId} onChiudi={() => setNuovoProgetto(false)} />
       )}
       {reportCartella && (
-        <FormOpzioniCartella
-          cartella={reportCartella}
+        <PannelloOpzioniPdf
+          titolo={`Report — ${reportCartella.nome}`}
           onChiudi={() => setReportCartella(null)}
           onGenera={(opzioni) => {
             const c = reportCartella;
@@ -402,115 +403,6 @@ function FormCartella({
           }}
         >
           Salva
-        </button>
-      </div>
-    </Modale>
-  );
-}
-
-function FormOpzioniCartella({
-  cartella,
-  onChiudi,
-  onGenera,
-  onGeneraZip
-}: {
-  cartella: Cartella;
-  onChiudi: () => void;
-  onGenera: (opzioni: OpzioniReport) => void;
-  onGeneraZip: (opzioni: OpzioniReport) => void;
-}) {
-  const [fotoPerPagina, setFotoPerPagina] = useState<1 | 2 | 4 | 6>(1);
-  const [orizzontale, setOrizzontale] = useState(false);
-  const [includiIndice, setIncludiIndice] = useState(true);
-  const [includiNoteDato, setIncludiNoteDato] = useState(true);
-  const [includiTabellaMisure, setIncludiTabellaMisure] = useState(true);
-  const [includiRiepilogo, setIncludiRiepilogo] = useState(true);
-  const [includiDistinta, setIncludiDistinta] = useState(true);
-
-  const Riga = ({ attivo, onCommuta, testo }: { attivo: boolean; onCommuta: () => void; testo: string }) => (
-    <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', cursor: 'pointer' }}>
-      <input type="checkbox" checked={attivo} onChange={onCommuta} />
-      <span>{testo}</span>
-    </label>
-  );
-
-  return (
-    <Modale titolo={`Report — ${cartella.nome}`} onChiudi={onChiudi}>
-      <p style={{ color: 'var(--testo-2)', fontSize: 14 }}>
-        Il PDF segue la struttura delle cartelle: ogni sottocartella è un capitolo, con nome, note e
-        foto della sezione.
-      </p>
-      <div className="campo">
-        <label>Foto per pagina</label>
-        <span className="segmenti" role="group">
-          {([1, 2, 4, 6] as const).map((n) => (
-            <button key={n} className={fotoPerPagina === n ? 'attivo' : ''} onClick={() => setFotoPerPagina(n)}>
-              {n}
-            </button>
-          ))}
-        </span>
-        <p className="aiuto" style={{ marginTop: 4 }}>
-          {fotoPerPagina >= 4
-            ? 'Report fotografico a griglia: solo foto e didascalie.'
-            : 'Con tabella misure sotto ogni foto.'}
-        </p>
-      </div>
-      <div className="campo">
-        <label>Orientamento pagina</label>
-        <span className="segmenti" role="group">
-          <button className={!orizzontale ? 'attivo' : ''} onClick={() => setOrizzontale(false)}>
-            Verticale
-          </button>
-          <button className={orizzontale ? 'attivo' : ''} onClick={() => setOrizzontale(true)}>
-            Orizzontale
-          </button>
-        </span>
-      </div>
-      <div style={{ marginTop: 8 }}>
-        <Riga attivo={includiIndice} onCommuta={() => setIncludiIndice(!includiIndice)} testo="Indice con numeri di pagina" />
-        <Riga attivo={includiNoteDato} onCommuta={() => setIncludiNoteDato(!includiNoteDato)} testo="Note dato delle foto" />
-        <Riga attivo={includiTabellaMisure} onCommuta={() => setIncludiTabellaMisure(!includiTabellaMisure)} testo="Tabella misure per ogni foto" />
-        <Riga attivo={includiRiepilogo} onCommuta={() => setIncludiRiepilogo(!includiRiepilogo)} testo="Riepilogo finale delle misure" />
-        <Riga attivo={includiDistinta} onCommuta={() => setIncludiDistinta(!includiDistinta)} testo="Distinta di taglio (pezzi da produrre)" />
-      </div>
-      <div className="riga-pulsanti">
-        <button className="btn" onClick={onChiudi}>
-          Annulla
-        </button>
-        <button
-          className="btn"
-          onClick={() =>
-            onGeneraZip({
-              fotoIds: null,
-              fotoPerPagina,
-              orizzontale,
-              includiIndice,
-              includiRiepilogo,
-              includiNoteDato,
-              includiTabellaMisure,
-              includiDistinta
-            })
-          }
-          title="PDF + foto originali (JPG) nella struttura delle cartelle"
-        >
-          <Icona nome="archivio" dimensione={19} /> ZIP
-        </button>
-        <button
-          className="btn primario"
-          onClick={() =>
-            onGenera({
-              fotoIds: null,
-              fotoPerPagina,
-              orizzontale,
-              includiIndice,
-              includiRiepilogo,
-              includiNoteDato,
-              includiTabellaMisure,
-              includiDistinta
-            })
-          }
-        >
-          Genera PDF
         </button>
       </div>
     </Modale>
