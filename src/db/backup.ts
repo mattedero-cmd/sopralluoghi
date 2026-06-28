@@ -13,6 +13,21 @@ import type {
 
 const VERSIONE_BACKUP = 2;
 
+/**
+ * Callback di avanzamento: messaggio per l'utente e, quando è nota, la
+ * frazione completata (0..1) della fase in corso, per la barra di progresso.
+ */
+export type Avanzamento = (messaggio: string, frazione?: number) => void;
+
+/**
+ * Rimappa una callback di avanzamento su un sotto-intervallo [base, base+span]
+ * della barra complessiva: così una fase locale (0..1) contribuisce solo alla
+ * sua porzione del totale.
+ */
+export function frazionaAvanzamento(av: Avanzamento | undefined, base: number, span: number): Avanzamento {
+  return (messaggio, frazione) => av?.(messaggio, base + (frazione ?? 0) * span);
+}
+
 interface ManifestBackup {
   app: 'sopralluoghi';
   versione: number;
@@ -32,7 +47,7 @@ interface ManifestBackup {
  * Backup locale su file: rete di sicurezza indipendente da qualsiasi
  * servizio cloud. Contiene TUTTO: struttura, metadati e foto originali.
  */
-export async function esportaBackup(avanzamento?: (msg: string) => void): Promise<Blob> {
+export async function esportaBackup(avanzamento?: Avanzamento): Promise<Blob> {
   avanzamento?.('Lettura archivio…');
   const [cartelle, progetti, foto, annotazioni, impostazioni, clienti, preventivi] =
     await Promise.all([
@@ -64,10 +79,10 @@ export async function esportaBackup(avanzamento?: (msg: string) => void): Promis
     zip.file(`foto/${f.id}.jpg`, f.origine);
     zip.file(`miniature/${f.id}.jpg`, f.miniatura);
   }
-  avanzamento?.('Compressione…');
+  avanzamento?.('Compressione…', 0);
   return zip.generateAsync(
     { type: 'blob', compression: 'STORE' }, // i JPEG sono già compressi
-    (meta) => avanzamento?.(`Compressione… ${meta.percent.toFixed(0)}%`)
+    (meta) => avanzamento?.('Compressione…', meta.percent / 100)
   );
 }
 
@@ -85,7 +100,7 @@ export interface EsitoRipristino {
  */
 export async function importaBackup(
   file: Blob,
-  avanzamento?: (msg: string) => void,
+  avanzamento?: Avanzamento,
   opzioni?: { preservaSessioneCloud?: boolean }
 ): Promise<EsitoRipristino> {
   avanzamento?.('Lettura file…');
@@ -113,9 +128,11 @@ export async function importaBackup(
     );
   }
 
-  avanzamento?.('Estrazione foto…');
+  avanzamento?.('Estrazione foto…', 0);
+  const totaleFoto = manifest.foto.length;
   const fotoComplete: Foto[] = [];
-  for (const meta of manifest.foto) {
+  for (let i = 0; i < totaleFoto; i++) {
+    const meta = manifest.foto[i];
     const fOrig = zip.file(`foto/${meta.id}.jpg`);
     const fMini = zip.file(`miniature/${meta.id}.jpg`);
     if (!fOrig) throw new Error(`Backup incompleto: manca l'immagine della foto ${meta.id}.`);
@@ -128,6 +145,7 @@ export async function importaBackup(
       miniatura,
       miniaturaTipo: meta.miniaturaTipo || 'image/jpeg'
     });
+    avanzamento?.('Estrazione foto…', totaleFoto ? (i + 1) / totaleFoto : 1);
   }
 
   // Durante la sincronizzazione automatica la sessione cloud locale (token,

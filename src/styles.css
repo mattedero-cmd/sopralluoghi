@@ -1983,6 +1983,22 @@ a {
   }
 }
 
+/* barra di avanzamento (sincronizzazione, backup/ripristino) */
+.barra-avanzamento {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--sfondo-2);
+  border: 1px solid var(--bordo);
+  overflow: hidden;
+}
+.barra-avanzamento .riempimento {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accento);
+  transition: width 0.2s ease;
+}
+
 /* zoom +/− del canvas: solo con puntatore (su touch resta solo il pinch) */
 .zoom-flottante button.solo-puntatore {
   display: none;

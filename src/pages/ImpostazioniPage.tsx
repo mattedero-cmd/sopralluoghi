@@ -17,7 +17,7 @@ import {
   statoStorage,
   type StatoStorage
 } from '../db/repository';
-import { esportaBackup, importaBackup } from '../db/backup';
+import { esportaBackup, importaBackup, type Avanzamento } from '../db/backup';
 import { naviga } from '../router';
 import { StatoApp } from '../components/comuni';
 import { mostraToast } from '../state/toast';
@@ -284,9 +284,16 @@ function SezioneCloud({
   const [email, setEmail] = useState(cloud?.email ?? '');
   const [password, setPassword] = useState('');
   const [operazione, setOperazione] = useState<string | null>(null);
+  const [progresso, setProgresso] = useState<number | null>(null);
   const [lista, setLista] = useState<FileCloud[] | null>(null);
 
   const connesso = Boolean(cloud?.refreshToken);
+
+  // aggiorna testo e barra di avanzamento delle operazioni cloud
+  const riporta: Avanzamento = (msg, fr) => {
+    setOperazione(msg);
+    setProgresso(fr ?? null);
+  };
 
   const salvaConfig = () => {
     const nuova: ConfigCloud = {
@@ -313,8 +320,9 @@ function SezioneCloud({
 
   const sincronizzaOra = async () => {
     setOperazione('Sincronizzazione in corso…');
+    setProgresso(0);
     try {
-      const r = await sincronizzaGiornaliera(setOperazione);
+      const r = await sincronizzaGiornaliera(riporta);
       const dett = r.importato
         ? `Unite dal cloud ${r.importato.progetti} progetti e ${r.importato.foto} foto (${r.filesCloud} backup presenti).`
         : `Nessun backup remoto da unire: caricato il primo (${r.filesCloud} presenti).`;
@@ -325,6 +333,7 @@ function SezioneCloud({
       mostraToast('errore', e instanceof Error ? e.message : 'Sincronizzazione non riuscita.');
     } finally {
       setOperazione(null);
+      setProgresso(null);
     }
   };
 
@@ -346,7 +355,7 @@ function SezioneCloud({
   const backupCloud = async () => {
     setOperazione('Backup sul cloud…');
     try {
-      const nome = await backupSuCloud(setOperazione);
+      const nome = await backupSuCloud(riporta);
       mostraToast('successo', `Backup caricato sul cloud: ${nome}`);
       ricaricaImpostazioni();
       setLista(null);
@@ -354,6 +363,7 @@ function SezioneCloud({
       mostraToast('errore', e instanceof Error ? e.message : 'Backup cloud non riuscito.');
     } finally {
       setOperazione(null);
+      setProgresso(null);
     }
   };
 
@@ -523,7 +533,19 @@ function SezioneCloud({
           )}
         </>
       )}
-      {operazione && <p style={{ color: 'var(--testo-2)' }}>{operazione}</p>}
+      {operazione && (
+        <div style={{ marginTop: 10 }}>
+          <p style={{ color: 'var(--testo-2)', margin: '0 0 6px' }}>
+            {operazione}
+            {progresso != null ? ` ${Math.round(progresso * 100)}%` : ''}
+          </p>
+          {progresso != null && (
+            <div className="barra-avanzamento">
+              <div className="riempimento" style={{ width: `${Math.round(progresso * 100)}%` }} />
+            </div>
+          )}
+        </div>
+      )}
     </>
   );
 }

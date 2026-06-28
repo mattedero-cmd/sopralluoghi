@@ -1,5 +1,11 @@
 import type { ConfigCloud } from '../db/types';
-import { esportaBackup, importaBackup, type EsitoRipristino } from '../db/backup';
+import {
+  esportaBackup,
+  frazionaAvanzamento,
+  importaBackup,
+  type Avanzamento,
+  type EsitoRipristino
+} from '../db/backup';
 import { leggiImpostazioni, salvaImpostazioni } from '../db/repository';
 
 /**
@@ -125,34 +131,70 @@ export interface FileCloud {
   updatedAt: string | null;
 }
 
+interface RispostaCaricamento {
+  ok: boolean;
+  status: number;
+  testo: string;
+}
+
+/** POST con barra di avanzamento reale dell'upload (fetch non espone il progresso). */
+function caricaConProgresso(
+  url: string,
+  headers: Record<string, string>,
+  corpo: Blob,
+  onProgresso?: (frazione: number) => void
+): Promise<RispostaCaricamento> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    for (const [k, v] of Object.entries(headers)) xhr.setRequestHeader(k, v);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgresso) onProgresso(e.loaded / e.total);
+    };
+    xhr.onload = () =>
+      resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, testo: xhr.responseText });
+    xhr.onerror = () => reject(new Error('rete'));
+    xhr.ontimeout = () => reject(new Error('rete'));
+    xhr.send(corpo);
+  });
+}
+
 /** Esegue il backup completo e lo carica nel bucket privato dell'utente */
-export async function backupSuCloud(avanzamento?: (msg: string) => void): Promise<string> {
+export async function backupSuCloud(avanzamento?: Avanzamento): Promise<string> {
   const { cfg, sessione } = await sessioneCorrente();
-  const blob = await esportaBackup(avanzamento);
+  // compressione = prima metà della barra, caricamento = seconda metà
+  const blob = await esportaBackup(frazionaAvanzamento(avanzamento, 0, 0.6));
   const nome = nomeFileBackup();
   const percorso = `${sessione.userId}/${nome}`;
-  avanzamento?.(`Caricamento sul cloud… (${(blob.size / (1024 * 1024)).toFixed(1)} MB)`);
-  let risposta: Response;
+  avanzamento?.('Caricamento sul cloud…', 0.6);
+  let risposta: RispostaCaricamento;
   try {
-    risposta = await fetch(`${baseUrl(cfg)}/storage/v1/object/${BUCKET}/${percorso}`, {
-      method: 'POST',
-      headers: {
+    risposta = await caricaConProgresso(
+      `${baseUrl(cfg)}/storage/v1/object/${BUCKET}/${percorso}`,
+      {
         apikey: cfg.anonKey,
         Authorization: `Bearer ${sessione.accessToken}`,
         'Content-Type': 'application/zip',
         'x-upsert': 'true'
       },
-      body: blob
-    });
+      blob,
+      (fr) => avanzamento?.('Caricamento sul cloud…', 0.6 + fr * 0.4)
+    );
   } catch {
     throw new Error('Caricamento interrotto: connessione assente o instabile. Riprova.');
   }
   if (!risposta.ok) {
-    const errore = (await risposta.json().catch(() => ({}))) as { message?: string };
+    let dettaglio: string | number = risposta.status;
+    try {
+      dettaglio = (JSON.parse(risposta.testo) as { message?: string }).message ?? risposta.status;
+    } catch {
+      /* corpo non JSON: si usa lo status */
+    }
     throw new Error(
-      `Il cloud ha rifiutato il backup: ${errore.message ?? risposta.status}. Verifica che il bucket "backup" esista e abbia le policy per gli utenti autenticati.`
+      `Il cloud ha rifiutato il backup: ${dettaglio}. Verifica che il bucket "backup" esista e abbia le policy per gli utenti autenticati.`
     );
   }
+  avanzamento?.('Caricato', 1);
   const imp = await leggiImpostazioni();
   if (imp.cloud) {
     await salvaImpostazioni({ ...imp, cloud: { ...imp.cloud, ultimoBackup: Date.now() } });
@@ -193,14 +235,37 @@ export async function elencaBackupCloud(): Promise<FileCloud[]> {
     }));
 }
 
+/** Scarica leggendo lo stream, così la barra avanza in base ai byte ricevuti. */
+async function scaricaConProgresso(risposta: Response, avanzamento?: Avanzamento): Promise<Blob> {
+  const lunghezza = Number(risposta.headers.get('content-length') || 0);
+  const tipo = risposta.headers.get('content-type') || 'application/zip';
+  if (!risposta.body || !lunghezza) {
+    // niente stream o lunghezza ignota: scarico in un colpo (barra indeterminata)
+    return risposta.blob();
+  }
+  const reader = risposta.body.getReader();
+  const pezzi: BlobPart[] = [];
+  let ricevuti = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) {
+      pezzi.push(value);
+      ricevuti += value.length;
+      avanzamento?.('Scaricamento dal cloud…', Math.min(1, ricevuti / lunghezza));
+    }
+  }
+  return new Blob(pezzi, { type: tipo });
+}
+
 /** Scarica un backup dal cloud e lo ripristina (unione per id, come da file) */
 export async function ripristinaDaCloud(
   nomeFile: string,
-  avanzamento?: (msg: string) => void,
+  avanzamento?: Avanzamento,
   opzioni?: { preservaSessioneCloud?: boolean }
 ): Promise<EsitoRipristino> {
   const { cfg, sessione } = await sessioneCorrente();
-  avanzamento?.('Scaricamento dal cloud…');
+  avanzamento?.('Scaricamento dal cloud…', 0);
   let risposta: Response;
   try {
     risposta = await fetch(
@@ -213,6 +278,7 @@ export async function ripristinaDaCloud(
     throw new Error('Scaricamento interrotto: connessione assente o instabile.');
   }
   if (!risposta.ok) throw new Error('Backup non trovato sul cloud.');
-  const blob = await risposta.blob();
-  return importaBackup(blob, avanzamento, opzioni);
+  // scaricamento = prima parte della barra, scrittura nel DB = seconda parte
+  const blob = await scaricaConProgresso(risposta, frazionaAvanzamento(avanzamento, 0, 0.6));
+  return importaBackup(blob, frazionaAvanzamento(avanzamento, 0.6, 0.4), opzioni);
 }

@@ -1,4 +1,4 @@
-import type { EsitoRipristino } from '../db/backup';
+import { frazionaAvanzamento, type Avanzamento, type EsitoRipristino } from '../db/backup';
 import { leggiImpostazioni, salvaImpostazioni } from '../db/repository';
 import { backupSuCloud, elencaBackupCloud, ripristinaDaCloud } from './supabaseBackup';
 
@@ -42,7 +42,7 @@ export interface RisultatoSync {
  * così il pulsante manuale attende il lavoro reale e ne riporta l'esito vero,
  * invece di dichiarare "successo" su un'operazione mai eseguita.
  */
-export function sincronizzaGiornaliera(avanzamento?: (msg: string) => void): Promise<RisultatoSync> {
+export function sincronizzaGiornaliera(avanzamento?: Avanzamento): Promise<RisultatoSync> {
   if (promessaInCorso) return promessaInCorso;
   const p = eseguiSync(avanzamento);
   promessaInCorso = p;
@@ -52,25 +52,29 @@ export function sincronizzaGiornaliera(avanzamento?: (msg: string) => void): Pro
   return p;
 }
 
-async function eseguiSync(avanzamento?: (msg: string) => void): Promise<RisultatoSync> {
+async function eseguiSync(avanzamento?: Avanzamento): Promise<RisultatoSync> {
   // 1) PULL: prendi il backup più recente dal cloud e fondilo nell'archivio
   //    locale, senza toccare la sessione cloud di questo dispositivo.
-  avanzamento?.('Sincronizzazione: lettura dal cloud…');
+  avanzamento?.('Lettura dal cloud…', 0);
   const lista = await elencaBackupCloud(); // già ordinati dal più recente
   let scaricato: string | null = null;
   let importato: EsitoRipristino | null = null;
+  // se c'è qualcosa da scaricare, il pull occupa la prima parte della barra
+  const pesoPull = lista.length > 0 ? 0.45 : 0;
   if (lista.length > 0) {
     scaricato = lista[0].name;
-    importato = await ripristinaDaCloud(scaricato, avanzamento, { preservaSessioneCloud: true });
+    importato = await ripristinaDaCloud(scaricato, frazionaAvanzamento(avanzamento, 0, pesoPull), {
+      preservaSessioneCloud: true
+    });
   }
   // 2) PUSH: ripubblica lo stato unito perché lo vedano gli altri dispositivi.
-  avanzamento?.('Sincronizzazione: invio al cloud…');
-  const caricato = await backupSuCloud(avanzamento);
+  const caricato = await backupSuCloud(frazionaAvanzamento(avanzamento, pesoPull, 1 - pesoPull));
   // 3) segna l'orario dell'ultima sincronizzazione riuscita
   const imp = await leggiImpostazioni();
   if (imp.cloud) {
     await salvaImpostazioni({ ...imp, cloud: { ...imp.cloud, ultimaSync: Date.now() } });
   }
+  avanzamento?.('Completato', 1);
   return { filesCloud: lista.length, scaricato, importato, caricato };
 }
 
