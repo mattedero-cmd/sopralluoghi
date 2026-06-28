@@ -214,8 +214,8 @@ export function PannelloOpzioniPdf({
           {scegliFoto && (
             <>
               <div
-                className="griglia-foto"
-                style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(74px, 1fr))', marginTop: 8 }}
+                className="griglia-foto-scelta"
+                style={{ marginTop: 8 }}
               >
                 {foto.map((f, i) => (
                   <button

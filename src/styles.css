@@ -1799,3 +1799,197 @@ a {
     --max-contenuto: 1200px;
   }
 }
+
+/* ---- Responsive desktop: rifiniture per-area (dall'audit) ---- */
+@media (hover: hover) and (pointer: fine) {
+  .scheda:hover {
+    border-color: color-mix(in srgb, var(--accento) 45%, var(--bordo));
+  }
+  .menu-contesto button:hover {
+    background: color-mix(in srgb, var(--accento) 16%, transparent);
+  }
+  .briciole button:hover {
+    text-decoration: underline;
+  }
+  .btn-strumento-grande:hover:not(.attivo),
+  .barra-calibra .btn:hover,
+  .popover-formato .btn:hover,
+  .zoom-flottante button:hover,
+  .sfoglia-freccia:hover {
+    filter: brightness(1.12);
+  }
+  .azione-flottante.modifica:hover,
+  .azione-flottante.duplica:hover {
+    background: var(--accento);
+    opacity: 1;
+  }
+  .azione-flottante.elimina:hover {
+    background: var(--pericolo);
+    opacity: 1;
+  }
+  .btn.interruttore:hover {
+    border-color: color-mix(in srgb, var(--accento) 45%, var(--bordo));
+  }
+  /* su desktop il pulsante azioni della foto compare al passaggio del mouse */
+  .cella-foto .btn.icona {
+    opacity: 0;
+    transition: opacity 0.12s ease;
+  }
+  .cella-foto:hover .btn.icona {
+    opacity: 1;
+  }
+}
+
+@media (min-width: 760px) {
+  /* header allineato alla colonna del contenuto (sfondo full-bleed) */
+  .barra {
+    padding-inline: max(12px, calc((100% - var(--max-contenuto)) / 2 + 28px));
+  }
+
+  /* pulsanti delle modali allineati a destra con larghezza naturale */
+  .modale .riga-pulsanti {
+    justify-content: flex-end;
+  }
+  .modale .riga-pulsanti .btn {
+    flex: 0 0 auto;
+    min-width: 120px;
+  }
+
+  /* toolbar editor: pulsanti a larghezza naturale, non stirati */
+  .editor-toolbar .btn {
+    flex: 0 0 auto;
+    min-width: 92px;
+  }
+
+  /* barre flottanti calibrazione/duplica centrate e contenute */
+  .barra-calibra,
+  .barra-duplica {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    width: calc(100% - 16px);
+    max-width: 760px;
+  }
+
+  /* pannello sotto-strumenti contenuto */
+  .pannello-strumenti {
+    max-width: 940px;
+    margin-inline: auto;
+  }
+  .btn-strumento-grande {
+    flex: 0 1 110px;
+  }
+
+  /* ambiente di modifica dedicato: pannello controlli contenuto e centrato */
+  .eq-controlli,
+  .pannello-proprieta {
+    justify-content: center;
+  }
+  .prop-specifici {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    justify-content: center;
+  }
+  .input-misura {
+    width: 140px;
+  }
+
+  /* riepilogo/tabelle non si stirano */
+  .totali-card {
+    margin-left: auto;
+    max-width: 480px;
+  }
+  .tabella {
+    max-width: 760px;
+  }
+
+  /* zoom canvas: cursore a mano */
+  .zoom-flottante button {
+    cursor: pointer;
+  }
+
+  /* anteprima PDF più grande sul desktop */
+  .mock-pagina {
+    width: 220px;
+    height: 311px;
+  }
+  .mock-pagina.orizz {
+    width: 311px;
+    height: 220px;
+  }
+  .anteprima-pagina-img {
+    max-height: min(640px, 70vh);
+  }
+
+  /* griglia di selezione foto (opzioni PDF) con celle più grandi */
+  .griglia-foto-scelta {
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 12px;
+  }
+
+  /* form a due colonne dove raggruppato */
+  .campo-griglia {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 16px;
+  }
+}
+
+/* griglia di selezione foto: base mobile */
+.griglia-foto-scelta {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(74px, 1fr));
+  gap: 8px;
+}
+
+/* liste archivio/preventivi in griglia su schermo largo */
+@media (min-width: 760px) {
+  .lista-griglia {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 12px;
+  }
+  .lista-griglia .scheda {
+    margin-bottom: 0;
+  }
+}
+
+/* schermi molto larghi: griglia foto più densa e ordinata */
+@media (min-width: 1280px) {
+  .griglia-foto {
+    grid-template-columns: repeat(auto-fill, minmax(190px, 230px));
+    justify-content: start;
+  }
+}
+
+/* Preventivo: due colonne su desktop (voci a sx, riepilogo a dx) */
+.prev-griglia {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+}
+@media (min-width: 1000px) {
+  .prev-griglia {
+    grid-template-columns: minmax(0, 1.7fr) minmax(320px, 1fr);
+    align-items: start;
+  }
+  .prev-col-lato {
+    position: sticky;
+    top: 80px;
+  }
+  .prev-col-lato .totali-card {
+    max-width: none;
+    margin-left: 0;
+  }
+}
+
+/* zoom +/− del canvas: solo con puntatore (su touch resta solo il pinch) */
+.zoom-flottante button.solo-puntatore {
+  display: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .zoom-flottante button.solo-puntatore {
+    display: grid;
+    place-items: center;
+  }
+}

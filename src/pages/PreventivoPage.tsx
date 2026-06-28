@@ -257,6 +257,8 @@ export function PreventivoPage({ id }: { id: string }) {
         <StatoApp />
       </header>
       <main className="contenuto">
+       <div className="prev-griglia">
+        <div className="prev-col-main">
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
           <div className="campo" style={{ flex: 1, minWidth: 130, marginBottom: 0 }}>
             <label>Numero</label>
@@ -294,7 +296,7 @@ export function PreventivoPage({ id }: { id: string }) {
           </span>
           <span className="corpo">
             <div className="titolo">{cliente ? cliente.nome : 'Nessun cliente collegato'}</div>
-            <div className="sotto">Tocca per scegliere dall'anagrafica</div>
+            <div className="sotto">Scegli dall'anagrafica</div>
           </span>
         </button>
         {progetto && (
@@ -364,7 +366,9 @@ export function PreventivoPage({ id }: { id: string }) {
             </button>
           )}
         </div>
+        </div>
 
+        <div className="prev-col-lato">
         {/* Regime fiscale del documento */}
         <div className="campo">
           <label>Regime fiscale</label>
@@ -467,6 +471,8 @@ export function PreventivoPage({ id }: { id: string }) {
             <Icona nome="cestino" dimensione={19} /> Elimina
           </button>
         </div>
+        </div>
+       </div>
       </main>
       {scegliCliente && (
         <SelettoreCliente

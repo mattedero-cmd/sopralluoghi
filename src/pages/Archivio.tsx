@@ -210,6 +210,7 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
               </button>
             </div>
 
+            <div className="lista-griglia">
             {(cartelle ?? []).map((c) => (
               <button
                 key={c.id}
@@ -267,6 +268,7 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
                 </span>
               </button>
             ))}
+            </div>
 
             {cartelle?.length === 0 && progetti?.length === 0 && (
               <div className="vuoto">

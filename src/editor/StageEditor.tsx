@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Stage, Layer, Image as KonvaImage, Shape, Circle, Rect, Line } from 'react-konva';
 import type Konva from 'konva';
+
+/** true con mouse/trackpad (puntatore fine): la lente di ingrandimento, utile
+ *  col dito che copre il punto, non serve e viene nascosta */
+const PUNTATORE_FINE = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: fine)').matches;
 import {
   quadrilateroQuotaRett,
   segmentiPoligono,
@@ -364,9 +368,15 @@ export function StageEditor(p: Props) {
     e.evt.preventDefault();
     const stage = stageRef.current;
     if (!stage) return;
-    const pos = stage.getPointerPosition();
-    if (!pos) return;
-    zoomVerso(pos, e.evt.deltaY < 0 ? 1.12 : 1 / 1.12);
+    // pinch del trackpad / ctrl(⌘)+rotella = ZOOM; rotella o scroll a due dita = PAN.
+    // Su Mac lo scroll a due dita è il gesto naturale per spostarsi.
+    if (e.evt.ctrlKey || e.evt.metaKey) {
+      const pos = stage.getPointerPosition();
+      const fattore = Math.exp(-e.evt.deltaY * 0.01);
+      zoomVerso(pos ?? { x: dimensioni.w / 2, y: dimensioni.h / 2 }, fattore);
+    } else {
+      setVista((v) => ({ ...v, x: v.x - e.evt.deltaX, y: v.y - e.evt.deltaY }));
+    }
   };
 
   const suTouchStart = (e: Konva.KonvaEventObject<TouchEvent>) => {
@@ -1252,7 +1262,7 @@ export function StageEditor(p: Props) {
           )}
         </Layer>
       </Stage>
-      {puntoLente && (
+      {puntoLente && !PUNTATORE_FINE && (
         <Lente
           immagine={p.immagine}
           annotazioni={annotazioniVisibili}
@@ -1263,8 +1273,22 @@ export function StageEditor(p: Props) {
           contenitore={dimensioni}
         />
       )}
-      {/* zoom con le dita (pinch); resta solo "adatta alla vista" */}
+      {/* zoom: con le dita (pinch) su touch; +/− e "adatta" col puntatore */}
       <div className="zoom-flottante">
+        <button
+          className="solo-puntatore"
+          aria-label="Ingrandisci"
+          onClick={() => window.dispatchEvent(new CustomEvent('editor:zoom', { detail: 1.2 }))}
+        >
+          +
+        </button>
+        <button
+          className="solo-puntatore"
+          aria-label="Riduci"
+          onClick={() => window.dispatchEvent(new CustomEvent('editor:zoom', { detail: 1 / 1.2 }))}
+        >
+          −
+        </button>
         <button aria-label="Adatta alla vista" onClick={() => adatta(dimensioni.w, dimensioni.h)}>
           ⤢
         </button>
