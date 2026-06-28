@@ -953,32 +953,41 @@ function grigliaContatti(
 ): Content[] {
   const orizz = !!opzioni.orizzontale;
   const cols = orizz ? (opzioni.fotoPerPagina >= 6 ? 3 : 2) : 2;
-  const rows = Math.max(1, Math.round(opzioni.fotoPerPagina / cols));
-  const usableW = orizz ? 762 : 515;
-  const usableH = orizz ? 470 : 715;
-  const gutter = 12;
-  const cellW = (usableW - gutter * (cols - 1)) / cols;
-  const rowH = Math.max(80, usableH / rows - 30);
-  const out: Content[] = [];
+  const rows = Math.max(1, Math.ceil(opzioni.fotoPerPagina / cols));
+  // spazio utile della pagina (A4 meno margini, intestazioni e piè di pagina)
+  const usableW = orizz ? 752 : 515;
+  const usableH = orizz ? 455 : 690;
+  const captionH = pdfImp.mostraDataScatto ? 26 : 14;
+  const cellW = usableW / cols;
+  // altezza dell'immagine così che `rows` righe stiano in una pagina
+  const imgH = Math.max(64, Math.floor(usableH / rows) - captionH - 10);
+
+  // griglia come TABELLA senza bordi: pdfmake dispone le righe e va a capo
+  // pagina da solo → una vera griglia (non una sola riga)
+  const body: Content[][] = [];
   for (let i = 0; i < fotoSezione.length; i += cols) {
-    const riga = fotoSezione.slice(i, i + cols);
-    out.push({
-      columns: riga.map((f) => ({
-        width: cellW,
-        stack: [
-          { image: `foto_${f.id}`, fit: [cellW, rowH], alignment: 'center' },
-          { text: f.didascalia || ' ', style: 'didascalia', alignment: 'center', margin: [0, 4, 0, 0] },
-          ...(pdfImp.mostraDataScatto
-            ? [{ text: formattaData(f.dataScatto), fontSize: 8, color: GRIGIO, alignment: 'center' } as Content]
-            : [])
-        ]
-      })),
-      columnGap: gutter,
-      margin: [0, 0, 0, 14],
-      unbreakable: true
-    } as Content);
+    const gruppo = fotoSezione.slice(i, i + cols);
+    const celle: Content[] = gruppo.map((f) => ({
+      stack: [
+        { image: `foto_${f.id}`, fit: [cellW - 12, imgH], alignment: 'center' },
+        { text: f.didascalia || ' ', style: 'didascalia', alignment: 'center', margin: [0, 3, 0, 0] },
+        ...(pdfImp.mostraDataScatto
+          ? [{ text: formattaData(f.dataScatto), fontSize: 8, color: GRIGIO, alignment: 'center' } as Content]
+          : [])
+      ],
+      margin: [2, 4, 2, 6]
+    }));
+    while (celle.length < cols) celle.push({ text: '' });
+    body.push(celle);
   }
-  return out;
+  if (body.length === 0) return [];
+  return [
+    {
+      table: { widths: Array(cols).fill('*'), dontBreakRows: true, body },
+      layout: 'noBorders',
+      margin: [0, 6, 0, 0]
+    } as Content
+  ];
 }
 
 function sezioneFoto(
