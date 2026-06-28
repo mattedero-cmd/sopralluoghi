@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import type { Preventivo, StatoPreventivo, VocePreventivo } from '../db/types';
+import type { Annotazione, Foto, Preventivo, StatoPreventivo, VocePreventivo } from '../db/types';
+import { areaReale, perimetroReale } from '../geometry/calibrazione';
+import { nomeFormaPoligono } from '../geometry/primitive';
+import { famigliaDi } from '../geometry/nomenclatura';
 import {
   aggiornaPreventivo,
   eliminaPreventivo,
@@ -13,6 +16,7 @@ import { ConfermaDialog, StatoApp, type RichiestaConferma } from '../components/
 import { SelettoreCliente } from './ClientiPage';
 import { mostraToast } from '../state/toast';
 import { condividiOScarica, nomeFileSicuro } from '../utils/share';
+import { Icona } from '../components/Icona';
 import {
   analizzaMisura,
   formattaNumero,
@@ -97,7 +101,7 @@ export function PreventivoPage({ id }: { id: string }) {
       <div className="app">
         <header className="barra">
           <button className="btn icona" onClick={() => history.back()}>
-            ←
+            <Icona nome="indietro" />
           </button>
           <h1>Preventivo non trovato</h1>
         </header>
@@ -127,40 +131,83 @@ export function PreventivoPage({ id }: { id: string }) {
     const fotoList = (
       await db.foto.where('progettoId').equals(preventivo.progettoId).toArray()
     ).sort((a, b) => a.ordine - b.ordine);
-    const nuove: VocePreventivo[] = [];
+
+    // carica tutte le annotazioni del progetto con la loro foto
+    const voci: { a: Annotazione; foto: Foto; nomeFoto: string }[] = [];
     for (const [i, f] of fotoList.entries()) {
-      const annotazioni = await db.annotazioni.where('fotoId').equals(f.id).toArray();
+      const annotazioni = (await db.annotazioni.where('fotoId').equals(f.id).toArray()).sort(
+        (x, y) => x.zIndex - y.zIndex
+      );
       const nomeFoto = f.didascalia || `Foto ${i + 1}`;
-      for (const a of annotazioni.sort((x, y) => x.zIndex - y.zIndex)) {
-        if (a.tipo === 'quota' && a.valore !== null) {
+      for (const a of annotazioni) voci.push({ a, foto: f, nomeFoto });
+    }
+
+    // quanti elementi per ogni famiglia (originale + copie richiamate)
+    const contaFamiglia = new Map<string, number>();
+    for (const { a } of voci) {
+      if (a.tipo === 'quotaPoligono') {
+        contaFamiglia.set(famigliaDi(a), (contaFamiglia.get(famigliaDi(a)) ?? 0) + 1);
+      }
+    }
+
+    const nuove: VocePreventivo[] = [];
+    const arr2 = (x: number) => Math.round(x * 100) / 100;
+    for (const { a, foto, nomeFoto } of voci) {
+      if (a.tipo === 'quota' && a.valore !== null) {
+        nuove.push({
+          id: nuovoId(),
+          descrizione: `${nomeFoto} — misura ${a.stato === 'stimata' ? '(stimata)' : ''}`.trim(),
+          quantita: a.valore,
+          unita: a.unita,
+          prezzoUnitario: 0
+        });
+      } else if (a.tipo === 'quotaRaggio' && a.valore !== null) {
+        nuove.push({
+          id: nuovoId(),
+          descrizione: `${nomeFoto} — ${a.modo === 'diametro' ? 'diametro' : 'raggio'}`,
+          quantita: a.valore,
+          unita: a.unita,
+          prezzoUnitario: 0
+        });
+      } else if (a.tipo === 'quotaPoligono') {
+        // elementi/poligoni (rettangoli, vetrine…): si tiene l'ORIGINALE della
+        // famiglia (le copie richiamate sono solo etichette, senza geometria) e
+        // si conta quante volte è presente (× pezzi)
+        if (a.soloEtichetta) continue;
+        const n = contaFamiglia.get(famigliaDi(a)) ?? 1;
+        const pezzi = n > 1 ? ` (${n} pz)` : '';
+        const area = areaReale(a, foto);
+        if (area) {
           nuove.push({
             id: nuovoId(),
-            descrizione: `${nomeFoto} — misura ${a.stato === 'stimata' ? '(stimata)' : ''}`.trim(),
-            quantita: a.valore,
-            unita: a.unita,
-            prezzoUnitario: 0
-          });
-        } else if (a.tipo === 'quotaRaggio' && a.valore !== null) {
-          nuove.push({
-            id: nuovoId(),
-            descrizione: `${nomeFoto} — ${a.modo === 'diametro' ? 'diametro' : 'raggio'}`,
-            quantita: a.valore,
-            unita: a.unita,
-            prezzoUnitario: 0
-          });
-        } else if (a.tipo === 'quotaRett' && a.valoreBase !== null && a.valoreAltezza !== null) {
-          // il rettangolo entra come superficie: utile per posa/finiture
-          const areaMq =
-            (inMillimetri(a.valoreBase, a.unita) / 1000) *
-            (inMillimetri(a.valoreAltezza, a.unita) / 1000);
-          nuove.push({
-            id: nuovoId(),
-            descrizione: `${nomeFoto} — elemento ${a.etichetta ?? ''} ${formattaNumero(a.valoreBase)} × ${formattaNumero(a.valoreAltezza)} ${a.unita}`.replace(/\s+/g, ' '),
-            quantita: Math.round(areaMq * 100) / 100,
+            descrizione: `${nomeFoto} — ${nomeFormaPoligono(a)}${pezzi}`,
+            quantita: arr2(area.m2 * n),
             unita: 'm²',
             prezzoUnitario: 0
           });
+        } else {
+          // niente calibrazione di superficie: si importa il perimetro in metri
+          const perim = perimetroReale(a);
+          if (perim !== null) {
+            nuove.push({
+              id: nuovoId(),
+              descrizione: `${nomeFoto} — ${nomeFormaPoligono(a)} (perimetro)${pezzi}`,
+              quantita: arr2((inMillimetri(perim, a.unita) / 1000) * n),
+              unita: 'm',
+              prezzoUnitario: 0
+            });
+          }
         }
+      } else if (a.tipo === 'quotaRett' && a.valoreBase !== null && a.valoreAltezza !== null) {
+        const areaMq =
+          (inMillimetri(a.valoreBase, a.unita) / 1000) * (inMillimetri(a.valoreAltezza, a.unita) / 1000);
+        nuove.push({
+          id: nuovoId(),
+          descrizione: `${nomeFoto} — elemento ${a.etichetta ?? ''} ${formattaNumero(a.valoreBase)} × ${formattaNumero(a.valoreAltezza)} ${a.unita}`.replace(/\s+/g, ' '),
+          quantita: arr2(areaMq),
+          unita: 'm²',
+          prezzoUnitario: 0
+        });
       }
     }
     if (nuove.length === 0) {
@@ -200,7 +247,7 @@ export function PreventivoPage({ id }: { id: string }) {
             else naviga({ nome: 'archivio', cartellaId: null });
           }}
         >
-          ←
+          <Icona nome="indietro" />
         </button>
         <h1>Preventivo {preventivo.numero}</h1>
         <StatoApp />
@@ -237,7 +284,9 @@ export function PreventivoPage({ id }: { id: string }) {
         </div>
 
         <button className="scheda" onClick={() => setScegliCliente(true)}>
-          <span style={{ fontSize: 22 }}>👤</span>
+          <span className="glifo verde">
+            <Icona nome="persona" dimensione={20} />
+          </span>
           <span className="corpo">
             <div className="titolo">{cliente ? cliente.nome : 'Nessun cliente collegato'}</div>
             <div className="sotto">Tocca per scegliere dall'anagrafica</div>
@@ -245,7 +294,9 @@ export function PreventivoPage({ id }: { id: string }) {
         </button>
         {progetto && (
           <button className="scheda" onClick={() => naviga({ nome: 'progetto', id: progetto.id })}>
-            <span style={{ fontSize: 22 }}>📋</span>
+            <span className="glifo">
+              <Icona nome="progetto" dimensione={20} />
+            </span>
             <span className="corpo">
               <div className="titolo">{progetto.nome}</div>
               <div className="sotto">Sopralluogo di riferimento</div>
@@ -278,7 +329,7 @@ export function PreventivoPage({ id }: { id: string }) {
                 aria-label="Elimina voce"
                 onClick={() => applica({ voci: preventivo.voci.filter((x) => x.id !== v.id) })}
               >
-                🗑
+                <Icona nome="cestino" dimensione={20} />
               </button>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -300,11 +351,11 @@ export function PreventivoPage({ id }: { id: string }) {
 
         <div className="riga-pulsanti" style={{ marginBottom: 18 }}>
           <button className="btn" onClick={aggiungiVoce}>
-            ＋ Voce
+            <Icona nome="piu" dimensione={20} /> Voce
           </button>
           {preventivo.progettoId && (
             <button className="btn" onClick={() => void importaMisure()}>
-              📏 Importa misure
+              <Icona nome="righello" dimensione={19} /> Importa misure
             </button>
           )}
         </div>
@@ -343,7 +394,7 @@ export function PreventivoPage({ id }: { id: string }) {
 
         <div className="riga-pulsanti">
           <button className="btn primario" disabled={pdfInCorso} onClick={() => void generaPdf()}>
-            📄 PDF preventivo
+            <Icona nome="documento" dimensione={19} /> PDF preventivo
           </button>
           <button
             className="btn pericolo"
@@ -360,7 +411,7 @@ export function PreventivoPage({ id }: { id: string }) {
               })
             }
           >
-            🗑 Elimina
+            <Icona nome="cestino" dimensione={19} /> Elimina
           </button>
         </div>
       </main>
