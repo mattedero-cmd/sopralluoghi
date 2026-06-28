@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../db';
 import { applicaMetadati, costruisciIndice, type IndiceArchivio } from '../backup';
+import { leggiImpostazioni, salvaImpostazioni } from '../repository';
 import { IMPOSTAZIONI_DEFAULT, type ConfigCloud, type Foto, type Progetto } from '../types';
 
 function cloud(refreshToken: string): ConfigCloud {
@@ -89,9 +90,8 @@ describe('indice di sincronizzazione', () => {
     expect(ids).toEqual(['locale', 'remoto']);
   });
 
-  it('applicaMetadati preserva la sessione cloud locale', async () => {
-    await db.impostazioni.put({ ...IMPOSTAZIONI_DEFAULT, cloud: cloud('mio-token') });
-    const indice: IndiceArchivio = {
+  function indiceConImpostazioni(impostazioni: IndiceArchivio['impostazioni']): IndiceArchivio {
+    return {
       app: 'sopralluoghi',
       versione: 2,
       aggiornatoIl: 2,
@@ -101,11 +101,57 @@ describe('indice di sincronizzazione', () => {
       annotazioni: [],
       clienti: [],
       preventivi: [],
-      // l'indice remoto porta impostazioni senza sessione cloud
-      impostazioni: { ...IMPOSTAZIONI_DEFAULT, cloud: null }
+      impostazioni
     };
-    await applicaMetadati(indice);
+  }
+
+  it('applica le impostazioni remote PIÙ RECENTI preservando la sessione cloud locale', async () => {
+    await db.impostazioni.put({
+      ...IMPOSTAZIONI_DEFAULT,
+      cloud: cloud('mio-token'),
+      modificatoIl: 100
+    });
+    // l'indice remoto è più recente e porta un colore PDF diverso, senza sessione cloud
+    await applicaMetadati(
+      indiceConImpostazioni({
+        ...IMPOSTAZIONI_DEFAULT,
+        pdf: { ...IMPOSTAZIONI_DEFAULT.pdf, colore: '#abcdef' },
+        cloud: null,
+        modificatoIl: 200
+      })
+    );
     const imp = await db.impostazioni.get('app');
-    expect(imp?.cloud?.refreshToken).toBe('mio-token');
+    expect(imp?.pdf.colore).toBe('#abcdef'); // impostazione remota applicata
+    expect(imp?.cloud?.refreshToken).toBe('mio-token'); // sessione cloud locale preservata
+  });
+
+  it('NON sovrascrive le impostazioni locali se le remote sono più vecchie', async () => {
+    await db.impostazioni.put({
+      ...IMPOSTAZIONI_DEFAULT,
+      pdf: { ...IMPOSTAZIONI_DEFAULT.pdf, colore: '#111111' },
+      cloud: cloud('mio-token'),
+      modificatoIl: 500
+    });
+    await applicaMetadati(
+      indiceConImpostazioni({
+        ...IMPOSTAZIONI_DEFAULT,
+        pdf: { ...IMPOSTAZIONI_DEFAULT.pdf, colore: '#999999' },
+        cloud: null,
+        modificatoIl: 200
+      })
+    );
+    const imp = await db.impostazioni.get('app');
+    expect(imp?.pdf.colore).toBe('#111111'); // la modifica locale recente resta
+  });
+
+  it('il timestamp delle impostazioni cambia solo per modifiche reali, non per la sessione cloud', async () => {
+    await salvaImpostazioni({ ...IMPOSTAZIONI_DEFAULT, pdf: { ...IMPOSTAZIONI_DEFAULT.pdf, colore: '#123456' } });
+    const dopo1 = await leggiImpostazioni();
+    expect(typeof dopo1.modificatoIl).toBe('number');
+    const t1 = dopo1.modificatoIl!;
+
+    // scrittura della sola sessione cloud (es. ultimaSync): NON deve toccare il timestamp
+    await salvaImpostazioni({ ...dopo1, cloud: cloud('nuovo-token') });
+    expect((await leggiImpostazioni()).modificatoIl).toBe(t1);
   });
 });

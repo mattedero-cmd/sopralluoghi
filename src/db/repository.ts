@@ -512,7 +512,33 @@ export async function leggiImpostazioni(): Promise<Impostazioni> {
 }
 
 export async function salvaImpostazioni(i: Impostazioni): Promise<void> {
-  await scrivi('salvare le impostazioni', () => db.impostazioni.put({ ...i, id: 'app' }));
+  const esistente = await db.impostazioni.get('app');
+  // Bump del timestamp solo se cambiano le IMPOSTAZIONI vere e proprie, non la
+  // sola sessione cloud (token, ultimaSync…): così la sincronizzazione propaga
+  // le modifiche dell'utente, ma non considera "nuove" le scritture interne.
+  const cambiate = !esistente || !stesseImpostazioni(esistente, i);
+  const da = cambiate ? { ...i, modificatoIl: ora() } : i;
+  await scrivi('salvare le impostazioni', () => db.impostazioni.put({ ...da, id: 'app' }));
+}
+
+/** Confronta due impostazioni ignorando sessione cloud e timestamp di modifica. */
+function stesseImpostazioni(a: Impostazioni, b: Impostazioni): boolean {
+  const senza = (i: Impostazioni) => {
+    const { cloud: _c, modificatoIl: _m, ...resto } = i;
+    return stabile(resto); // ordine delle chiavi indifferente
+  };
+  return senza(a) === senza(b);
+}
+
+/** Serializzazione deterministica (chiavi ordinate) per confronti robusti. */
+function stabile(v: unknown): string {
+  if (v === null || typeof v !== 'object') return JSON.stringify(v) ?? 'null';
+  if (Array.isArray(v)) return `[${v.map(stabile).join(',')}]`;
+  const o = v as Record<string, unknown>;
+  return `{${Object.keys(o)
+    .sort()
+    .map((k) => JSON.stringify(k) + ':' + stabile(o[k]))
+    .join(',')}}`;
 }
 
 // ---------------------------------------------------------------------------

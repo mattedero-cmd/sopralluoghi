@@ -229,7 +229,14 @@ export async function costruisciIndice(): Promise<IndiceArchivio> {
  * delle nuove foto sono gestiti dal chiamante (vedi sincronizzazione).
  */
 export async function applicaMetadati(indice: IndiceArchivio): Promise<void> {
-  const cloudLocale = (await db.impostazioni.get('app'))?.cloud ?? null;
+  const impLocale = await db.impostazioni.get('app');
+  const cloudLocale = impLocale?.cloud ?? null;
+  // Le impostazioni remote si applicano solo se più recenti di quelle locali,
+  // così la sincronizzazione non sovrascrive modifiche locali non ancora
+  // inviate. La sessione cloud resta sempre quella locale.
+  const impRemoteNuove =
+    !!indice.impostazioni &&
+    (indice.impostazioni.modificatoIl ?? 0) > (impLocale?.modificatoIl ?? 0);
   await db.transaction(
     'rw',
     [db.cartelle, db.progetti, db.annotazioni, db.impostazioni, db.clienti, db.preventivi],
@@ -239,8 +246,8 @@ export async function applicaMetadati(indice: IndiceArchivio): Promise<void> {
       await db.annotazioni.bulkPut(indice.annotazioni);
       if (indice.clienti) await db.clienti.bulkPut(indice.clienti);
       if (indice.preventivi) await db.preventivi.bulkPut(indice.preventivi);
-      if (indice.impostazioni) {
-        await db.impostazioni.put({ ...indice.impostazioni, cloud: cloudLocale });
+      if (impRemoteNuove) {
+        await db.impostazioni.put({ ...indice.impostazioni!, cloud: cloudLocale });
       }
     }
   );

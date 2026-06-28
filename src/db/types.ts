@@ -583,6 +583,13 @@ export interface Impostazioni {
   };
   /** Configurazione del backup cloud (Supabase), opzionale */
   cloud?: ConfigCloud | null;
+  /**
+   * Quando le impostazioni (esclusa la sessione cloud) sono state modificate
+   * dall'utente l'ultima volta. Serve alla sincronizzazione per applicare le
+   * impostazioni remote solo se più recenti, senza sovrascrivere modifiche
+   * locali non ancora sincronizzate.
+   */
+  modificatoIl?: number;
 }
 
 /** Configurazione fiscale dell'utente, usata per costruire i preventivi */
