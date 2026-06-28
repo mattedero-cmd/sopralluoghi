@@ -1709,3 +1709,93 @@ a {
   font-size: 13px;
   text-transform: uppercase;
 }
+
+/* ============================================================
+   MULTIPIATTAFORMA — l'app resta mobile-first su iPhone e si
+   adatta a schermi grandi (Mac/desktop) con layout più ampio.
+   ============================================================ */
+
+/* Dispositivi con puntatore (mouse/trackpad): stati :hover discreti.
+   Su iPhone (no hover) queste regole non si attivano. */
+@media (hover: hover) and (pointer: fine) {
+  .scheda:hover {
+    background: var(--sfondo-3);
+  }
+  .btn:hover:not(:disabled) {
+    filter: brightness(1.08);
+  }
+  .btn.icona:hover {
+    background: color-mix(in srgb, var(--testo) 10%, transparent);
+  }
+  .voce-richiamo:hover,
+  .menu-contesto button:hover,
+  .riga-espandi:hover,
+  .segmenti button:hover:not(.attivo) {
+    background: color-mix(in srgb, var(--testo) 8%, transparent);
+  }
+  .cella-foto:hover {
+    outline: 2px solid color-mix(in srgb, var(--accento) 55%, transparent);
+    outline-offset: -2px;
+  }
+  .azione-flottante:hover,
+  .sfoglia-freccia:hover:not(:disabled) {
+    opacity: 1;
+    filter: brightness(1.1);
+  }
+}
+
+/* Tablet e desktop: contenuto centrato e con più respiro */
+@media (min-width: 760px) {
+  :root {
+    --max-contenuto: 1060px;
+  }
+
+  .contenuto {
+    width: 100%;
+    max-width: var(--max-contenuto);
+    margin-inline: auto;
+    padding: 22px 28px;
+    padding-bottom: calc(28px + env(safe-area-inset-bottom));
+  }
+
+  /* i pulsanti di riga non si stirano più a tutta larghezza */
+  .riga-pulsanti {
+    justify-content: flex-start;
+  }
+  .riga-pulsanti .btn {
+    flex: 0 1 auto;
+    min-width: 150px;
+  }
+
+  /* griglia foto più fitta su schermo ampio */
+  .griglia-foto {
+    grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+    gap: 14px;
+  }
+
+  /* le modali diventano dialog CENTRATI invece di fogli dal basso */
+  .velo {
+    align-items: center;
+    padding: 28px;
+  }
+  .velo .modale {
+    border-radius: 18px;
+    max-width: 760px;
+    animation: modale-fade 0.2s ease;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  }
+
+  /* la barra strumenti dell'editor resta centrata e non si allarga troppo */
+  .editor-toolbar {
+    max-width: 940px;
+    margin-inline: auto;
+    width: 100%;
+  }
+}
+
+/* Schermi larghi: più larghezza utile */
+@media (min-width: 1280px) {
+  :root {
+    --max-contenuto: 1200px;
+  }
+}
