@@ -1162,18 +1162,79 @@ h2 {
   opacity: 0.6;
 }
 
-/* Anteprima del PDF vero (iframe) */
+/* Anteprima del PDF vero, sfogliabile pagina per pagina */
 .anteprima-pdf-frame-wrap {
   position: relative;
   width: 100%;
 }
 
-.anteprima-pdf-frame {
+.anteprima-sfoglia {
   width: 100%;
-  height: 360px;
-  border: 1px solid var(--bordo);
-  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.anteprima-pagina-box {
+  position: relative;
+  width: 100%;
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.anteprima-pagina-img {
+  display: block;
+  max-width: 100%;
+  max-height: 460px;
+  border-radius: 8px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35);
   background: #fff;
+}
+
+.anteprima-pagina-vuota {
+  width: 70%;
+  height: 300px;
+  border-radius: 8px;
+  background: var(--sfondo-3);
+}
+
+.sfoglia-freccia {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--bordo);
+  background: rgba(16, 20, 26, 0.78);
+  color: var(--testo);
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
+.sfoglia-freccia.sx {
+  left: 4px;
+}
+
+.sfoglia-freccia.dx {
+  right: 4px;
+}
+
+.sfoglia-freccia:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.sfoglia-indicatore {
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--testo-2);
 }
 
 .anteprima-pdf-stato {

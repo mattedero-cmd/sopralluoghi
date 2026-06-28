@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import type { Foto } from '../db/types';
 import type { OpzioniReport } from '../pdf/report';
 import { Modale, ImmagineBlob } from './comuni';
 import { Icona } from './Icona';
+
+// pdf.js è pesante: si carica solo quando serve l'anteprima
+const AnteprimaPdf = lazy(() => import('./AnteprimaPdf'));
 
 /**
  * Pannello UNICO e ordinato per le opzioni di esportazione PDF/ZIP, con
@@ -69,6 +72,7 @@ export function PannelloOpzioniPdf({
   //     ricomposto (veloce) a ogni cambio di opzione, con debounce ----------
   const live = !!(preparaImmagini && generaAnteprima);
   const [immagini, setImmagini] = useState<Record<string, string> | null>(null);
+  const [blobPdf, setBlobPdf] = useState<Blob | null>(null);
   const [urlPdf, setUrlPdf] = useState<string | null>(null);
   const [generando, setGenerando] = useState(false);
   const [erroreAnteprima, setErroreAnteprima] = useState(false);
@@ -102,6 +106,7 @@ export function PannelloOpzioniPdf({
           if (urlRef.current) URL.revokeObjectURL(urlRef.current);
           urlRef.current = u;
           setUrlPdf(u);
+          setBlobPdf(blob);
           setGenerando(false);
         })
         .catch(() => {
@@ -130,24 +135,33 @@ export function PannelloOpzioniPdf({
       {/* Anteprima: il PDF vero se disponibile, altrimenti il mock dell'impaginazione */}
       {live && !erroreAnteprima ? (
         <div className="anteprima-pdf">
-          <div className="anteprima-pdf-frame-wrap">
-            {urlPdf ? (
-              <iframe src={`${urlPdf}#toolbar=0&view=FitH`} title="Anteprima PDF" className="anteprima-pdf-frame" />
-            ) : (
+          {blobPdf ? (
+            <Suspense
+              fallback={
+                <AnteprimaPagina
+                  fotoPerPagina={fotoPerPagina}
+                  orizzontale={orizzontale}
+                  conTabella={!griglia && includiTabellaMisure}
+                  conNote={!griglia && includiNoteDato}
+                />
+              }
+            >
+              <AnteprimaPdf blob={blobPdf} generando={generando} />
+            </Suspense>
+          ) : (
+            <div className="anteprima-pdf-frame-wrap">
               <AnteprimaPagina
                 fotoPerPagina={fotoPerPagina}
                 orizzontale={orizzontale}
                 conTabella={!griglia && includiTabellaMisure}
                 conNote={!griglia && includiNoteDato}
               />
-            )}
-            {(generando || !immagini) && (
               <div className="anteprima-pdf-stato">{immagini ? 'Aggiorno anteprima…' : 'Preparazione anteprima…'}</div>
-            )}
-          </div>
+            </div>
+          )}
           {urlPdf && (
-            <a className="link" href={urlPdf} target="_blank" rel="noreferrer" style={{ marginTop: 6 }}>
-              Apri l’anteprima a schermo intero
+            <a className="link" href={urlPdf} target="_blank" rel="noreferrer" style={{ marginTop: 6, textAlign: 'center', display: 'block' }}>
+              Apri a schermo intero
             </a>
           )}
         </div>
