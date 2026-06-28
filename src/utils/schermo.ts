@@ -13,21 +13,33 @@
 
 let sentinel: WakeLockSentinel | null = null;
 let attive = 0;
+let inAcquisizione = false; // una sola request('screen') in volo per volta
 let suVisibilita: (() => void) | null = null;
 
 async function acquisisci(): Promise<void> {
+  if (!('wakeLock' in navigator) || typeof document === 'undefined') return;
+  if (document.visibilityState !== 'visible') return; // l'API lo rifiuta se nascosto
+  if (sentinel || inAcquisizione) return; // già attivo o richiesta in corso
+  inAcquisizione = true;
   try {
-    if (!('wakeLock' in navigator) || typeof document === 'undefined') return;
-    if (document.visibilityState !== 'visible') return; // l'API lo rifiuta se nascosto
-    if (sentinel) return; // già attivo
-    sentinel = await navigator.wakeLock.request('screen');
+    const s = await navigator.wakeLock.request('screen');
+    // request() è asincrona: nel frattempo l'operazione può essere finita
+    // (rilascio → attive 0) o la pagina passata in background. In tal caso il
+    // lock appena ottenuto va liberato subito, altrimenti resta orfano e lo
+    // schermo non si spegne più (lost-wakeup).
+    if (attive === 0 || document.visibilityState !== 'visible') {
+      void s.release().catch(() => undefined);
+      return;
+    }
+    sentinel = s;
     // se il browser lo rilascia (es. background), azzera così si può riacquisire
     sentinel.addEventListener('release', () => {
       sentinel = null;
     });
   } catch {
     // permesso negato o API assente: si prosegue senza wake lock
-    sentinel = null;
+  } finally {
+    inAcquisizione = false;
   }
 }
 
