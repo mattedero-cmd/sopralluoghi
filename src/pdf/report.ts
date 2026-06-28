@@ -861,14 +861,14 @@ function cellaElemento(m: RigaMisura): Content {
   if (m.derivaDa) {
     linee.push({
       text: [
-        { text: '↳ copia di ', color: GRIGIO_CHIARO, fontSize: 8 },
+        { text: 'copia di ', color: GRIGIO_CHIARO, fontSize: 8 },
         { text: m.derivaDa, color: BLU_FORMA, bold: true, fontSize: 8.5 }
       ],
       margin: [0, 1, 0, 0]
     });
   }
   if (m.quantita && m.quantita > 1) {
-    linee.push({ text: `▣ ${m.quantita} uguali`, color: BLU_FORMA, bold: true, fontSize: 8.5, margin: [0, 1, 0, 0] });
+    linee.push({ text: `${m.quantita} elementi uguali`, color: BLU_FORMA, bold: true, fontSize: 8.5, margin: [0, 1, 0, 0] });
   }
   return { stack: linee };
 }
