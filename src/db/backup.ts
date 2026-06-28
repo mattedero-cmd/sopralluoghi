@@ -4,6 +4,7 @@ import type {
   Annotazione,
   Cartella,
   Cliente,
+  ConfigCloud,
   Foto,
   Impostazioni,
   Preventivo,
@@ -84,7 +85,8 @@ export interface EsitoRipristino {
  */
 export async function importaBackup(
   file: Blob,
-  avanzamento?: (msg: string) => void
+  avanzamento?: (msg: string) => void,
+  opzioni?: { preservaSessioneCloud?: boolean }
 ): Promise<EsitoRipristino> {
   avanzamento?.('Lettura file…');
   let zip: JSZip;
@@ -128,6 +130,14 @@ export async function importaBackup(
     });
   }
 
+  // Durante la sincronizzazione automatica la sessione cloud locale (token,
+  // userId, impostazioni di sync) NON deve essere sovrascritta dal backup di
+  // un altro dispositivo: la preserviamo e la reinnestiamo nelle impostazioni.
+  let cloudLocale: ConfigCloud | null = null;
+  if (opzioni?.preservaSessioneCloud) {
+    cloudLocale = (await db.impostazioni.get('app'))?.cloud ?? null;
+  }
+
   avanzamento?.('Scrittura nel database…');
   await db.transaction(
     'rw',
@@ -137,7 +147,12 @@ export async function importaBackup(
       await db.progetti.bulkPut(manifest.progetti);
       await db.foto.bulkPut(fotoComplete);
       await db.annotazioni.bulkPut(manifest.annotazioni);
-      if (manifest.impostazioni) await db.impostazioni.put(manifest.impostazioni);
+      if (manifest.impostazioni) {
+        const imp = opzioni?.preservaSessioneCloud
+          ? { ...manifest.impostazioni, cloud: cloudLocale }
+          : manifest.impostazioni;
+        await db.impostazioni.put(imp);
+      }
       // presenti dalla versione 2 del backup
       if (manifest.clienti) await db.clienti.bulkPut(manifest.clienti);
       if (manifest.preventivi) await db.preventivi.bulkPut(manifest.preventivi);

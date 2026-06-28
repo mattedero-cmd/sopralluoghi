@@ -9,6 +9,7 @@ import {
   ripristinaDaCloud,
   type FileCloud
 } from '../cloud/supabaseBackup';
+import { avviaPianificatoreSync, sincronizzaGiornaliera } from '../cloud/sincronizzazione';
 import { formattaDataOra } from '../utils/format';
 import {
   leggiImpostazioni,
@@ -294,9 +295,34 @@ function SezioneCloud({
       email: email.trim(),
       refreshToken: cloud?.refreshToken ?? null,
       userId: cloud?.userId ?? null,
-      ultimoBackup: cloud?.ultimoBackup ?? null
+      ultimoBackup: cloud?.ultimoBackup ?? null,
+      sincronizzaAuto: cloud?.sincronizzaAuto ?? false,
+      oraSync: cloud?.oraSync ?? 2,
+      ultimaSync: cloud?.ultimaSync ?? null
     };
     aggiorna({ cloud: nuova });
+  };
+
+  /** Aggiorna i campi della sync notturna e riprogramma il pianificatore. */
+  const impostaSync = async (modifica: Partial<ConfigCloud>) => {
+    if (!cloud) return;
+    await salvaImpostazioni({ ...imp, cloud: { ...cloud, ...modifica } });
+    ricaricaImpostazioni();
+    avviaPianificatoreSync();
+  };
+
+  const sincronizzaOra = async () => {
+    setOperazione('Sincronizzazione in corso…');
+    try {
+      await sincronizzaGiornaliera(setOperazione);
+      mostraToast('successo', 'Sincronizzazione completata.');
+      ricaricaImpostazioni();
+      setLista(null);
+    } catch (e) {
+      mostraToast('errore', e instanceof Error ? e.message : 'Sincronizzazione non riuscita.');
+    } finally {
+      setOperazione(null);
+    }
   };
 
   const accedi = async () => {
@@ -364,10 +390,10 @@ function SezioneCloud({
   return (
     <>
       <p style={{ color: 'var(--testo-2)' }}>
-        Copia di sicurezza unidirezionale (dispositivo → cloud) su un tuo progetto Supabase
-        gratuito. Setup una tantum: crea il progetto su supabase.com, un utente
-        (Authentication), un bucket privato chiamato «backup» con le policy per gli utenti
-        autenticati, poi incolla qui URL e chiave anon.
+        Backup e sincronizzazione tra i tuoi dispositivi su un progetto Supabase gratuito. Setup
+        una tantum: crea il progetto su supabase.com, un utente (Authentication), un bucket privato
+        chiamato «backup» con le policy per gli utenti autenticati, poi incolla qui URL e chiave
+        anon. Usa lo stesso account su ogni dispositivo per sincronizzare.
       </p>
       <div className="campo">
         <label>URL del progetto (https://xxx.supabase.co)</label>
@@ -423,6 +449,55 @@ function SezioneCloud({
             >
               Disconnetti
             </button>
+          </div>
+
+          <div className="scheda" style={{ cursor: 'default', alignItems: 'flex-start', marginTop: 12 }}>
+            <span className="corpo">
+              <div className="titolo" style={{ fontSize: 16 }}>Sincronizzazione tra dispositivi</div>
+              <div className="sotto" style={{ marginBottom: 10 }}>
+                Una volta al giorno l'app scarica e unisce lo stato del cloud, poi ripubblica
+                l'archivio aggiornato: i dispositivi convergono sugli stessi dati. La sync parte
+                all'ora prevista se l'app è aperta, altrimenti alla prima apertura successiva
+                (su iPhone un'app chiusa non può girare di notte).
+              </div>
+              <label className="fisc-check">
+                <input
+                  type="checkbox"
+                  checked={!!cloud?.sincronizzaAuto}
+                  disabled={operazione !== null}
+                  onChange={(e) => void impostaSync({ sincronizzaAuto: e.target.checked })}
+                />
+                Sincronizza automaticamente ogni notte
+              </label>
+              {cloud?.sincronizzaAuto && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                  <label htmlFor="ora-sync" style={{ color: 'var(--testo-2)' }}>Ora:</label>
+                  <select
+                    id="ora-sync"
+                    value={cloud?.oraSync ?? 2}
+                    disabled={operazione !== null}
+                    onChange={(e) => void impostaSync({ oraSync: Number(e.target.value) })}
+                    style={{ width: 'auto', minWidth: 90 }}
+                  >
+                    {Array.from({ length: 24 }, (_, h) => (
+                      <option key={h} value={h}>
+                        {String(h).padStart(2, '0')}:00
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div className="sotto" style={{ marginTop: 8 }}>
+                {cloud?.ultimaSync
+                  ? `Ultima sincronizzazione: ${formattaDataOra(cloud.ultimaSync)}.`
+                  : 'Mai sincronizzato.'}
+              </div>
+              <div className="riga-pulsanti" style={{ marginTop: 10 }}>
+                <button className="btn" disabled={operazione !== null} onClick={() => void sincronizzaOra()}>
+                  🔄 Sincronizza adesso
+                </button>
+              </div>
+            </span>
           </div>
           {lista && (
             <div style={{ marginTop: 12 }}>

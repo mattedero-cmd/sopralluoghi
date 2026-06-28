@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { registerSW } from 'virtual:pwa-register';
 import { App } from './App';
+import { avviaPianificatoreSync } from './cloud/sincronizzazione';
 import { inizializzaStorage } from './db/repository';
 import { mostraToast } from './state/toast';
 import './styles.css';
@@ -17,6 +18,9 @@ registerSW({
 });
 
 void inizializzaStorage();
+
+// Sincronizzazione notturna tra dispositivi (se configurata e abilitata).
+avviaPianificatoreSync();
 
 /**
  * Se un modulo caricato "su richiesta" (es. il motore PDF) non si trova,

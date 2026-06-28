@@ -196,7 +196,8 @@ export async function elencaBackupCloud(): Promise<FileCloud[]> {
 /** Scarica un backup dal cloud e lo ripristina (unione per id, come da file) */
 export async function ripristinaDaCloud(
   nomeFile: string,
-  avanzamento?: (msg: string) => void
+  avanzamento?: (msg: string) => void,
+  opzioni?: { preservaSessioneCloud?: boolean }
 ): Promise<EsitoRipristino> {
   const { cfg, sessione } = await sessioneCorrente();
   avanzamento?.('Scaricamento dal cloud…');
@@ -213,5 +214,5 @@ export async function ripristinaDaCloud(
   }
   if (!risposta.ok) throw new Error('Backup non trovato sul cloud.');
   const blob = await risposta.blob();
-  return importaBackup(blob, avanzamento);
+  return importaBackup(blob, avanzamento, opzioni);
 }
