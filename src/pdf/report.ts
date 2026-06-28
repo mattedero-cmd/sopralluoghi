@@ -835,6 +835,54 @@ function cellaStato(stato: StatoMisura): Content {
   };
 }
 
+// --- Celle della tabella per-foto (dati distribuiti su più colonne) ---------
+
+/** Colonna "Elemento": nome + eventuale rimando alla misura originale */
+function cellaElemento(m: RigaMisura): Content {
+  const linee: Content[] = [{ text: m.forma, style: 'tdForma' }];
+  if (m.derivaDa) {
+    linee.push({
+      text: [
+        { text: '↳ copia di ', color: GRIGIO_CHIARO, fontSize: 8 },
+        { text: m.derivaDa, color: BLU_FORMA, bold: true, fontSize: 8.5 }
+      ],
+      margin: [0, 1, 0, 0]
+    });
+  }
+  if (m.quantita && m.quantita > 1) {
+    linee.push({ text: `▣ ${m.quantita} uguali`, color: BLU_FORMA, bold: true, fontSize: 8.5, margin: [0, 1, 0, 0] });
+  }
+  return { stack: linee };
+}
+
+/** Colonna "Misure": misura reale + perimetro + angoli */
+function cellaReale(m: RigaMisura): Content {
+  const linee: Content[] = [{ text: m.reale, bold: true, fontSize: 10, color: '#1a1a1a' }];
+  if (m.angoli) linee.push({ text: m.angoli, color: GRIGIO, fontSize: 8.5, margin: [0, 1, 0, 0] });
+  if (m.perimetro) linee.push({ text: m.perimetro, color: GRIGIO, fontSize: 8.5, italics: true });
+  return { stack: linee };
+}
+
+/** Colonna "Taglio": misura di taglio + dettaglio abbondanze */
+function cellaTaglio(m: RigaMisura): Content {
+  if (!m.taglio && !m.abbondanze) return { text: '—', color: GRIGIO_CHIARO, fontSize: 9 };
+  const linee: Content[] = [];
+  if (m.taglio) linee.push({ text: m.taglio, color: VERDE_TAGLIO, bold: true, fontSize: 9.5 });
+  if (m.abbondanze) linee.push({ text: m.abbondanze, color: GRIGIO, fontSize: 8, margin: [0, 1, 0, 0] });
+  return { stack: linee };
+}
+
+/** Colonna "Superficie": area in m² (con nota "stima" se prospettiva non corretta) */
+function cellaSuperficie(m: RigaMisura): Content {
+  if (!m.area) return { text: '—', color: GRIGIO_CHIARO, fontSize: 9, alignment: 'right' };
+  const stima = m.areaAffidabile === false;
+  const linee: Content[] = [
+    { text: m.area, color: stima ? ARANCIO_STIMATA : BLU_FORMA, bold: true, fontSize: 9.5, alignment: 'right' }
+  ];
+  if (stima) linee.push({ text: 'stima', color: ARANCIO_STIMATA, fontSize: 7.5, italics: true, alignment: 'right' });
+  return { stack: linee };
+}
+
 function sezioneFoto(
   f: Foto,
   indice: number,
@@ -864,15 +912,6 @@ function sezioneFoto(
   const altezzaFoto = opzioni.fotoPerPagina === 2 ? 290 : 540;
   const interrompi = opzioni.fotoPerPagina === 2 ? indice % 2 === 0 : true;
 
-  const sottotitolo = [
-    pdfImp.mostraDataScatto ? `Scattata il ${formattaDataOra(f.dataScatto)}` : '',
-    pdfImp.mostraGeotag && f.geotag
-      ? `GPS ${f.geotag.lat.toFixed(5)}, ${f.geotag.lng.toFixed(5)}`
-      : ''
-  ]
-    .filter(Boolean)
-    .join(' — ');
-
   const out: Content[] = [];
   // intestazione di sezione: porta lei l'interruzione di pagina, così resta
   // attaccata alla sua prima foto (niente titolo orfano in fondo alla pagina)
@@ -884,38 +923,57 @@ function sezioneFoto(
       ...(interrompi ? { pageBreak: 'before' } : { margin: [0, 16, 0, 2] })
     } as Content);
   }
-  out.push({
-    text: titolo,
-    style: titoloFoto.style,
-    tocItem: titoloFoto.toc,
-    ...(interrompi && !sezioneTitolo ? { pageBreak: 'before' } : { margin: [0, sezioneTitolo ? 4 : 18, 0, 6] })
-  } as Content);
-  if (sottotitolo) {
-    out.push({ text: sottotitolo, style: 'didascalia' });
-  }
-  out.push({ image: `foto_${f.id}`, fit: [515, altezzaFoto], alignment: 'center' });
 
+  // BLOCCO INDIVISIBILE: titolo + note + foto + dati restano sulla stessa pagina.
+  // - le NOTE della foto stanno sotto il titolo (sopra l'immagine);
+  // - i DATI (data di scatto) stanno sotto la foto, allineati a destra (no GPS).
+  const blocco: Content[] = [
+    {
+      text: titolo,
+      style: titoloFoto.style,
+      tocItem: titoloFoto.toc,
+      margin: [0, sezioneTitolo ? 2 : 4, 0, 4]
+    } as Content
+  ];
   if (opzioni.includiNoteDato && f.noteDato.trim()) {
-    out.push({ text: f.noteDato.trim(), style: 'corpo', margin: [0, 10, 0, 6] });
+    blocco.push({ text: f.noteDato.trim(), style: 'corpo', margin: [0, 0, 0, 8] });
   }
+  blocco.push({ image: `foto_${f.id}`, fit: [515, altezzaFoto], alignment: 'center' });
+  if (pdfImp.mostraDataScatto) {
+    blocco.push({
+      text: `Scattata il ${formattaDataOra(f.dataScatto)}`,
+      style: 'didascalia',
+      alignment: 'right',
+      margin: [0, 4, 0, 0]
+    });
+  }
+  out.push({
+    stack: blocco,
+    unbreakable: true,
+    ...(interrompi && !sezioneTitolo ? { pageBreak: 'before' } : {})
+  } as Content);
 
   if (opzioni.includiTabellaMisure && misure.length > 0) {
     const corpoTabella = misure.map((m, i) => [
       cellaCodice(m, String(i + 1)),
-      { text: m.forma, style: 'tdForma' },
-      cellaDettaglio(m),
+      cellaElemento(m),
+      cellaReale(m),
+      cellaTaglio(m),
+      cellaSuperficie(m),
       cellaStato(m.stato)
     ]);
     out.push({
       table: {
         headerRows: 1,
         dontBreakRows: true,
-        widths: [40, 'auto', '*', 'auto'],
+        widths: [38, 'auto', '*', 'auto', 'auto', 'auto'],
         body: [
           [
             { text: 'Cod.', style: 'th' },
             { text: 'Elemento', style: 'th' },
             { text: 'Misure', style: 'th' },
+            { text: 'Taglio', style: 'th' },
+            { text: 'Superficie', style: 'th' },
             { text: 'Stato', style: 'th' }
           ],
           ...corpoTabella
