@@ -839,74 +839,6 @@ function cellaCodice(m: RigaMisura, fallback: string): Content {
   };
 }
 
-/** Cella "dettaglio" del riepilogo: misure su righe separate, con gerarchia */
-function cellaDettaglio(m: RigaMisura): Content {
-  const linee: Content[] = [{ text: m.reale, bold: true, fontSize: 10.5, color: '#1a1a1a' }];
-  if (m.derivaDa) {
-    // copia richiamata: rimando chiaro alla misura originale
-    linee.push({
-      text: [
-        { text: '↳ ', color: BLU_FORMA, fontSize: 9 },
-        { text: 'copia di ', color: GRIGIO_CHIARO, fontSize: 8 },
-        { text: m.derivaDa, color: BLU_FORMA, bold: true, fontSize: 9 }
-      ],
-      margin: [0, 2, 0, 0]
-    });
-  }
-  if (m.quantita && m.quantita > 1) {
-    // quantità in evidenza (il sotto-elenco dei codici è nella colonna "Cod.")
-    linee.push({
-      text: [
-        { text: '▣ ', color: BLU_FORMA, fontSize: 10 },
-        { text: `${m.quantita} elementi uguali`, color: BLU_FORMA, bold: true, fontSize: 10 }
-      ],
-      margin: [0, 2, 0, 1]
-    });
-  }
-  if (m.taglio) {
-    linee.push({
-      text: [
-        { text: 'Taglio  ', color: GRIGIO_CHIARO, fontSize: 8 },
-        { text: m.taglio, color: VERDE_TAGLIO, bold: true, fontSize: 9.5 }
-      ],
-      margin: [0, 1, 0, 0]
-    });
-  }
-  if (m.abbondanze) {
-    linee.push({
-      text: [
-        { text: 'Abbondanze  ', color: GRIGIO_CHIARO, fontSize: 8 },
-        { text: m.abbondanze, color: GRIGIO, fontSize: 8.5 }
-      ]
-    });
-  }
-  if (m.angoli) {
-    linee.push({
-      text: [
-        { text: 'Angoli  ', color: GRIGIO_CHIARO, fontSize: 8 },
-        { text: m.angoli, color: GRIGIO, fontSize: 8.5 }
-      ]
-    });
-  }
-  if (m.perimetro) {
-    linee.push({ text: m.perimetro, color: GRIGIO, fontSize: 8.5, italics: true });
-  }
-  if (m.area) {
-    // area in evidenza; se è una stima (prospettiva non corretta) lo si dice
-    linee.push({
-      text: [
-        { text: 'Area  ', color: GRIGIO_CHIARO, fontSize: 8 },
-        { text: m.area, color: BLU_FORMA, bold: true, fontSize: 9.5 },
-        ...(m.areaAffidabile === false
-          ? [{ text: '  (stima — calibra un piano)', color: ARANCIO_STIMATA, fontSize: 7.5, italics: true }]
-          : [])
-      ],
-      margin: [0, 1, 0, 0]
-    });
-  }
-  return { stack: linee };
-}
-
 /** Cella "stato" del riepilogo: pallino colorato + etichetta */
 function cellaStato(stato: StatoMisura): Content {
   const reale = stato === 'reale';
@@ -1190,8 +1122,10 @@ function tabellaRiassuntiva(
       righe.push([
         cellaCodice(m, `${indice + 1}.${i + 1}`),
         { text: f.didascalia || `Foto ${indice + 1}`, fontSize: 8.5, color: GRIGIO_CHIARO },
-        { text: m.forma, style: 'tdForma' },
-        cellaDettaglio(m),
+        cellaElemento(m),
+        cellaReale(m),
+        cellaTaglio(m),
+        cellaSuperficie(m),
         cellaStato(m.stato)
       ]);
     });
@@ -1205,9 +1139,11 @@ function tabellaRiassuntiva(
           {
             text: `${formattaNumero(sommaU)} ${c.unita}${c.completa ? '' : ' (parziale)'}`,
             bold: true,
-            fontSize: 10.5
+            fontSize: 10
           },
-          { text: '', style: 'td' }
+          { text: '' },
+          { text: '' },
+          { text: '' }
         ]);
       }
     }
@@ -1225,13 +1161,15 @@ function tabellaRiassuntiva(
       table: {
         headerRows: 1,
         dontBreakRows: true,
-        widths: [42, 'auto', 'auto', '*', 'auto'],
+        widths: [34, 'auto', 'auto', '*', 'auto', 'auto', 'auto'],
         body: [
           [
             { text: 'Cod.', style: 'th' },
             { text: 'Foto', style: 'th' },
             { text: 'Elemento', style: 'th' },
             { text: 'Misure', style: 'th' },
+            { text: 'Taglio', style: 'th' },
+            { text: 'Superficie', style: 'th' },
             { text: 'Stato', style: 'th' }
           ],
           ...righe
