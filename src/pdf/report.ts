@@ -161,10 +161,54 @@ function codiciCopie(ctx: ContestoGlobale, famKey: string, percorso: string[]): 
     .map(({ m }) => codiceCompletoForma(percorso, codiceLocaleForma(m, ctx.numeri)));
 }
 
+/**
+ * Immagini annotate (data URL) di tutte le foto di un progetto, pronte per il
+ * PDF. Si calcolano una volta e si riusano per l'ANTEPRIMA: cambiando le opzioni
+ * di impaginazione basta ricomporre il documento (veloce), senza ri-renderizzare.
+ */
+/** Lato delle immagini per la sola ANTEPRIMA: più piccolo = preparazione più
+ *  veloce (la qualità piena resta nel PDF finale, che non usa questa cache). */
+const LATO_ANTEPRIMA = 900;
+
+export async function preparaImmaginiProgetto(progettoId: string): Promise<Record<string, string>> {
+  const fotoList = (await db.foto.where('progettoId').equals(progettoId).toArray()).filter(
+    (f) => !fotoIllegibile(f)
+  );
+  const ctx = await caricaContestoGlobale();
+  const out: Record<string, string> = {};
+  for (const f of fotoList) {
+    const ann = await db.annotazioni.where('fotoId').equals(f.id).toArray();
+    const blob = await renderFotoAnnotata(f, ann, 'image/jpeg', 0.85, (a) => codiceLocaleCtx(ctx, a));
+    out[`foto_${f.id}`] = await blobInDataUrlRidotto(blob, LATO_ANTEPRIMA);
+  }
+  return out;
+}
+
+/** Come sopra, ma per tutte le foto dell'albero di una cartella (per l'anteprima) */
+export async function preparaImmaginiCartella(cartellaId: string): Promise<Record<string, string>> {
+  const [tutteCartelle, tuttiProgetti] = await Promise.all([db.cartelle.toArray(), db.progetti.toArray()]);
+  const ctx = await caricaContestoGlobale();
+  const out: Record<string, string> = {};
+  const visita = async (id: string) => {
+    for (const p of tuttiProgetti.filter((x) => x.cartellaId === id)) {
+      const lista = (await db.foto.where('progettoId').equals(p.id).toArray()).filter((f) => !fotoIllegibile(f));
+      for (const f of lista) {
+        const ann = await db.annotazioni.where('fotoId').equals(f.id).toArray();
+        const blob = await renderFotoAnnotata(f, ann, 'image/jpeg', 0.85, (a) => codiceLocaleCtx(ctx, a));
+        out[`foto_${f.id}`] = await blobInDataUrlRidotto(blob, LATO_ANTEPRIMA);
+      }
+    }
+    for (const c of tutteCartelle.filter((x) => x.parentId === id)) await visita(c.id);
+  };
+  await visita(cartellaId);
+  return out;
+}
+
 export async function generaReportPdf(
   progetto: Progetto,
   avanzamento?: (msg: string) => void,
-  opzioni: OpzioniReport = OPZIONI_REPORT_DEFAULT
+  opzioni: OpzioniReport = OPZIONI_REPORT_DEFAULT,
+  immaginiCache?: Record<string, string>
 ): Promise<Blob> {
   avanzamento?.('Lettura dati…');
   const impostazioni = await leggiImpostazioni();
@@ -187,12 +231,17 @@ export async function generaReportPdf(
 
   const immagini: Record<string, string> = {};
   for (let i = 0; i < fotoList.length; i++) {
-    avanzamento?.(`Preparazione immagine ${i + 1} di ${fotoList.length}…`);
     const f = fotoList[i];
+    const key = `foto_${f.id}`;
+    if (immaginiCache && immaginiCache[key]) {
+      immagini[key] = immaginiCache[key];
+      continue;
+    }
+    avanzamento?.(`Preparazione immagine ${i + 1} di ${fotoList.length}…`);
     const blob = await renderFotoAnnotata(f, annotazioniPerFoto.get(f.id) ?? [], 'image/jpeg', 0.92, (a) =>
       codiceLocaleCtx(ctx, a)
     );
-    immagini[`foto_${f.id}`] = await blobInDataUrlRidotto(blob, LATO_MAX_PDF);
+    immagini[key] = await blobInDataUrlRidotto(blob, LATO_MAX_PDF);
   }
 
   avanzamento?.('Composizione del documento…');
@@ -361,7 +410,8 @@ function creaBlobPdf(def: TDocumentDefinitions): Promise<Blob> {
 export async function generaReportCartella(
   cartellaId: string,
   avanzamento?: (msg: string) => void,
-  opzioni: OpzioniReport = OPZIONI_REPORT_DEFAULT
+  opzioni: OpzioniReport = OPZIONI_REPORT_DEFAULT,
+  immaginiCache?: Record<string, string>
 ): Promise<Blob> {
   avanzamento?.('Lettura dati…');
   const impostazioni = await leggiImpostazioni();
@@ -407,12 +457,17 @@ export async function generaReportCartella(
 
   const immagini: Record<string, string> = {};
   for (let i = 0; i < tutteFoto.length; i++) {
-    avanzamento?.(`Preparazione immagine ${i + 1} di ${tutteFoto.length}…`);
     const f = tutteFoto[i];
+    const key = `foto_${f.id}`;
+    if (immaginiCache && immaginiCache[key]) {
+      immagini[key] = immaginiCache[key];
+      continue;
+    }
+    avanzamento?.(`Preparazione immagine ${i + 1} di ${tutteFoto.length}…`);
     const blob = await renderFotoAnnotata(f, annotPerFoto.get(f.id) ?? [], 'image/jpeg', 0.92, (a) =>
       codiceLocaleCtx(ctx, a)
     );
-    immagini[`foto_${f.id}`] = await blobInDataUrlRidotto(blob, LATO_MAX_PDF);
+    immagini[key] = await blobInDataUrlRidotto(blob, LATO_MAX_PDF);
   }
 
   avanzamento?.('Composizione del documento…');

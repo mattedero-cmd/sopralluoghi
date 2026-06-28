@@ -308,6 +308,10 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
       {reportCartella && (
         <PannelloOpzioniPdf
           titolo={`Report — ${reportCartella.nome}`}
+          preparaImmagini={async () => (await import('../pdf/report')).preparaImmaginiCartella(reportCartella.id)}
+          generaAnteprima={async (opz, img) =>
+            (await import('../pdf/report')).generaReportCartella(reportCartella.id, undefined, opz, img)
+          }
           onChiudi={() => setReportCartella(null)}
           onGenera={(opzioni) => {
             const c = reportCartella;

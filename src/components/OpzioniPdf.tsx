@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Foto } from '../db/types';
 import type { OpzioniReport } from '../pdf/report';
 import { Modale, ImmagineBlob } from './comuni';
@@ -13,6 +13,8 @@ import { Icona } from './Icona';
 export function PannelloOpzioniPdf({
   titolo,
   foto,
+  preparaImmagini,
+  generaAnteprima,
   onChiudi,
   onGenera,
   onGeneraZip
@@ -20,6 +22,10 @@ export function PannelloOpzioniPdf({
   titolo: string;
   /** foto del progetto da poter selezionare; assente nel report di cartella */
   foto?: Foto[];
+  /** rende una volta le immagini annotate (riusate per l'anteprima dal vivo) */
+  preparaImmagini?: () => Promise<Record<string, string>>;
+  /** compone il PDF vero usando le immagini già pronte (veloce) */
+  generaAnteprima?: (opzioni: OpzioniReport, immagini: Record<string, string>) => Promise<Blob>;
   onChiudi: () => void;
   onGenera: (opzioni: OpzioniReport) => void;
   onGeneraZip: (opzioni: OpzioniReport) => void;
@@ -59,15 +65,100 @@ export function PannelloOpzioniPdf({
   const nFoto = foto ? selezione.size : null;
   const vuotoSelezione = foto ? selezione.size === 0 : false;
 
+  // --- Anteprima del PDF VERO: immagini renderizzate una volta, documento
+  //     ricomposto (veloce) a ogni cambio di opzione, con debounce ----------
+  const live = !!(preparaImmagini && generaAnteprima);
+  const [immagini, setImmagini] = useState<Record<string, string> | null>(null);
+  const [urlPdf, setUrlPdf] = useState<string | null>(null);
+  const [generando, setGenerando] = useState(false);
+  const [erroreAnteprima, setErroreAnteprima] = useState(false);
+  const urlRef = useRef<string | null>(null);
+
+  // prepara le immagini una sola volta all'apertura
+  useEffect(() => {
+    if (!preparaImmagini) return;
+    let vivo = true;
+    preparaImmagini()
+      .then((im) => vivo && setImmagini(im))
+      .catch(() => vivo && setErroreAnteprima(true));
+    return () => {
+      vivo = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const chiaveOpzioni = `${fotoPerPagina}|${orizzontale}|${includiIndice}|${includiRiepilogo}|${includiNoteDato}|${includiTabellaMisure}|${includiDistinta}|${Array.from(selezione).sort().join(',')}`;
+
+  // ricompone il PDF quando cambiano le opzioni (debounce)
+  useEffect(() => {
+    if (!generaAnteprima || !immagini) return;
+    let vivo = true;
+    setGenerando(true);
+    const t = setTimeout(() => {
+      generaAnteprima(opzioni(), immagini)
+        .then((blob) => {
+          if (!vivo) return;
+          const u = URL.createObjectURL(blob);
+          if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+          urlRef.current = u;
+          setUrlPdf(u);
+          setGenerando(false);
+        })
+        .catch(() => {
+          if (!vivo) return;
+          setErroreAnteprima(true);
+          setGenerando(false);
+        });
+    }, 450);
+    return () => {
+      vivo = false;
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chiaveOpzioni, immagini]);
+
+  // libera l'ultimo blob alla chiusura
+  useEffect(
+    () => () => {
+      if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+    },
+    []
+  );
+
   return (
     <Modale titolo={titolo} onChiudi={onChiudi}>
-      {/* Anteprima dell'impaginazione */}
-      <AnteprimaPagina
-        fotoPerPagina={fotoPerPagina}
-        orizzontale={orizzontale}
-        conTabella={!griglia && includiTabellaMisure}
-        conNote={!griglia && includiNoteDato}
-      />
+      {/* Anteprima: il PDF vero se disponibile, altrimenti il mock dell'impaginazione */}
+      {live && !erroreAnteprima ? (
+        <div className="anteprima-pdf">
+          <div className="anteprima-pdf-frame-wrap">
+            {urlPdf ? (
+              <iframe src={`${urlPdf}#toolbar=0&view=FitH`} title="Anteprima PDF" className="anteprima-pdf-frame" />
+            ) : (
+              <AnteprimaPagina
+                fotoPerPagina={fotoPerPagina}
+                orizzontale={orizzontale}
+                conTabella={!griglia && includiTabellaMisure}
+                conNote={!griglia && includiNoteDato}
+              />
+            )}
+            {(generando || !immagini) && (
+              <div className="anteprima-pdf-stato">{immagini ? 'Aggiorno anteprima…' : 'Preparazione anteprima…'}</div>
+            )}
+          </div>
+          {urlPdf && (
+            <a className="link" href={urlPdf} target="_blank" rel="noreferrer" style={{ marginTop: 6 }}>
+              Apri l’anteprima a schermo intero
+            </a>
+          )}
+        </div>
+      ) : (
+        <AnteprimaPagina
+          fotoPerPagina={fotoPerPagina}
+          orizzontale={orizzontale}
+          conTabella={!griglia && includiTabellaMisure}
+          conNote={!griglia && includiNoteDato}
+        />
+      )}
 
       {/* Foto per pagina */}
       <div className="campo">

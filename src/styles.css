@@ -1162,6 +1162,35 @@ h2 {
   opacity: 0.6;
 }
 
+/* Anteprima del PDF vero (iframe) */
+.anteprima-pdf-frame-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.anteprima-pdf-frame {
+  width: 100%;
+  height: 360px;
+  border: 1px solid var(--bordo);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.anteprima-pdf-stato {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(16, 20, 26, 0.9);
+  color: var(--testo);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--bordo);
+  backdrop-filter: blur(6px);
+}
+
 /* Riga che apre/chiude una sezione di opzioni (compatta, poche cose a vista) */
 .riga-espandi {
   display: flex;

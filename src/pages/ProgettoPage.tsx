@@ -437,6 +437,10 @@ export function ProgettoPage({ id }: { id: string }) {
         <PannelloOpzioniPdf
           titolo="Esporta PDF o pacchetto ZIP"
           foto={foto}
+          preparaImmagini={async () => (await import('../pdf/report')).preparaImmaginiProgetto(progetto.id)}
+          generaAnteprima={async (opz, img) =>
+            (await import('../pdf/report')).generaReportPdf(progetto, undefined, opz, img)
+          }
           onChiudi={() => setOpzioniPdfAperte(false)}
           onGenera={(opzioni) => {
             setOpzioniPdfAperte(false);
