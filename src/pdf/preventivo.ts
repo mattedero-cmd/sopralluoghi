@@ -1,7 +1,8 @@
 import type { Content, TableCell, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { pdfMake, COLORI_PDF } from './engine';
 import type { Cliente, Preventivo, Progetto } from '../db/types';
-import { leggiImpostazioni, totaliPreventivo } from '../db/repository';
+import { leggiImpostazioni } from '../db/repository';
+import { calcolaTotali, importoVoce, nomeRegime } from '../fiscale/calcolo';
 import { formattaData, formattaNumero } from '../utils/format';
 
 const euro = (v: number) =>
@@ -14,45 +15,43 @@ export async function generaPdfPreventivo(
 ): Promise<Blob> {
   const imp = await leggiImpostazioni();
   const prof = imp.professionista;
-  const totali = totaliPreventivo(preventivo);
+  const totali = calcolaTotali(preventivo);
+  const conIva = totali.conIva;
+  const regime = preventivo.regime ?? 'forfettario';
 
+  // colonne voci: l'IVA per voce compare solo nei regimi con IVA
   const righeVoci: TableCell[][] = preventivo.voci.map((v, i) => [
     { text: String(i + 1), style: 'td' },
     { text: v.descrizione || '—', style: 'td' },
     { text: formattaNumero(v.quantita), style: 'td', alignment: 'right' },
     { text: v.unita, style: 'td' },
     { text: euro(v.prezzoUnitario), style: 'td', alignment: 'right' },
-    { text: euro(v.quantita * v.prezzoUnitario), style: 'td', alignment: 'right', bold: true }
+    ...(conIva
+      ? [{ text: `${formattaNumero(v.aliquotaIva ?? preventivo.ivaPercento)}%`, style: 'td', alignment: 'right' } as TableCell]
+      : []),
+    { text: euro(importoVoce(v)), style: 'td', alignment: 'right', bold: true }
   ]);
 
   const righeTotali: Content[] = [];
-  if (preventivo.scontoPercento > 0) {
-    righeTotali.push(
-      { columns: [{ text: 'Imponibile', style: 'tot' }, { text: euro(totali.imponibile), style: 'tot', alignment: 'right' }] },
-      {
-        columns: [
-          { text: `Sconto ${formattaNumero(preventivo.scontoPercento)}%`, style: 'tot' },
-          { text: `− ${euro(totali.sconto)}`, style: 'tot', alignment: 'right' }
-        ]
-      }
-    );
-  }
-  righeTotali.push(
-    { columns: [{ text: 'Imponibile netto', style: 'tot' }, { text: euro(totali.scontato), style: 'tot', alignment: 'right' }] },
-    {
+  const rigaTot = (k: string, v: string, grande = false) =>
+    righeTotali.push({
       columns: [
-        { text: `IVA ${formattaNumero(preventivo.ivaPercento)}%`, style: 'tot' },
-        { text: euro(totali.iva), style: 'tot', alignment: 'right' }
-      ]
-    },
-    {
-      columns: [
-        { text: 'TOTALE', style: 'totGrande' },
-        { text: euro(totali.totale), style: 'totGrande', alignment: 'right' }
+        { text: k, style: grande ? 'totGrande' : 'tot' },
+        { text: v, style: grande ? 'totGrande' : 'tot', alignment: 'right' }
       ],
-      margin: [0, 6, 0, 0]
-    }
-  );
+      margin: grande ? [0, 6, 0, 0] : undefined
+    } as Content);
+
+  rigaTot('Imponibile', euro(totali.imponibile));
+  if (totali.sconto > 0) rigaTot('Sconto', `− ${euro(totali.sconto)}`);
+  if (totali.cassa > 0) rigaTot(`Cassa ${formattaNumero(preventivo.cassaPercento ?? 0)}%`, euro(totali.cassa));
+  if (conIva) rigaTot(`IVA ${formattaNumero(preventivo.ivaPercento)}%`, euro(totali.iva));
+  if (totali.bollo > 0) rigaTot('Marca da bollo', euro(totali.bollo));
+  rigaTot('TOTALE', euro(totali.totale), true);
+  if (totali.ritenuta > 0) {
+    rigaTot(`Ritenuta ${formattaNumero(preventivo.ritenutaPercento ?? 0)}%`, `− ${euro(totali.ritenuta)}`);
+    rigaTot('Netto a incassare', euro(totali.netto), true);
+  }
 
   const def: TDocumentDefinitions = {
     pageSize: 'A4',
@@ -92,6 +91,7 @@ export async function generaPdfPreventivo(
         text: `PREVENTIVO N. ${preventivo.numero} del ${formattaData(preventivo.data)}`,
         style: 'titolo'
       },
+      { text: `Regime fiscale: ${nomeRegime(regime)}`, style: 'riferimento' },
       progetto
         ? {
             text: `Riferimento sopralluogo: ${progetto.nome}${progetto.luogo ? ` — ${progetto.luogo}` : ''}`,
@@ -101,7 +101,9 @@ export async function generaPdfPreventivo(
       {
         table: {
           headerRows: 1,
-          widths: ['auto', '*', 'auto', 'auto', 'auto', 'auto'],
+          widths: conIva
+            ? ['auto', '*', 'auto', 'auto', 'auto', 'auto', 'auto']
+            : ['auto', '*', 'auto', 'auto', 'auto', 'auto'],
           body: [
             [
               { text: 'N.', style: 'th' },
@@ -109,6 +111,7 @@ export async function generaPdfPreventivo(
               { text: 'Q.tà', style: 'th', alignment: 'right' },
               { text: 'U.M.', style: 'th' },
               { text: 'Prezzo unit.', style: 'th', alignment: 'right' },
+              ...(conIva ? [{ text: 'IVA', style: 'th', alignment: 'right' } as TableCell] : []),
               { text: 'Importo', style: 'th', alignment: 'right' }
             ],
             ...righeVoci
@@ -118,10 +121,13 @@ export async function generaPdfPreventivo(
         margin: [0, 14, 0, 10]
       },
       {
-        columns: [{ width: '*', text: '' }, { width: 220, stack: righeTotali }]
+        columns: [{ width: '*', text: '' }, { width: 230, stack: righeTotali }]
       },
       preventivo.note.trim()
         ? { text: `Note e condizioni:\n${preventivo.note.trim()}`, style: 'note', margin: [0, 20, 0, 0] }
+        : { text: '' },
+      preventivo.dicituraFiscale?.trim()
+        ? { text: preventivo.dicituraFiscale.trim(), style: 'dicitura', margin: [0, 18, 0, 0] }
         : { text: '' }
     ],
     styles: {
@@ -133,6 +139,7 @@ export async function generaPdfPreventivo(
       tot: { fontSize: 10 },
       totGrande: { fontSize: 13, bold: true, color: COLORI_PDF.blu },
       note: { fontSize: 10, lineHeight: 1.25, color: '#222222' },
+      dicitura: { fontSize: 8.5, italics: true, color: COLORI_PDF.grigio, lineHeight: 1.2 },
       pie: { fontSize: 9, color: COLORI_PDF.grigio }
     },
     defaultStyle: { fontSize: 11 }

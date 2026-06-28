@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ConfigCloud, Impostazioni, Unita } from '../db/types';
+import type { ConfigCloud, Fiscale, Impostazioni, Unita } from '../db/types';
+import { nomeRegime } from '../fiscale/calcolo';
 import {
   accediCloud,
   backupSuCloud,
@@ -209,20 +210,8 @@ export function ImpostazioniPage() {
           </span>
         </div>
 
-        <h2>Preventivi</h2>
-        <div className="campo">
-          <label>IVA predefinita (%)</label>
-          <input
-            type="number"
-            min={0}
-            max={100}
-            value={imp.ivaDefault}
-            onChange={(e) => {
-              const v = Number(e.target.value);
-              if (Number.isFinite(v) && v >= 0 && v <= 100) aggiorna({ ivaDefault: v });
-            }}
-          />
-        </div>
+        <h2>Regime fiscale e preventivi</h2>
+        <SezioneFiscale imp={imp} aggiorna={aggiorna} />
 
         <h2>Backup e sicurezza dei dati</h2>
         <p style={{ color: 'var(--testo-2)' }}>
@@ -457,6 +446,132 @@ function SezioneCloud({
         </>
       )}
       {operazione && <p style={{ color: 'var(--testo-2)' }}>{operazione}</p>}
+    </>
+  );
+}
+
+function SezioneFiscale({ imp, aggiorna }: { imp: Impostazioni; aggiorna: (m: Partial<Impostazioni>) => void }) {
+  const f = imp.fiscale;
+  const set = (m: Partial<Fiscale>) => aggiorna({ fiscale: { ...f, ...m }, ivaDefault: m.ivaDefault ?? imp.ivaDefault });
+  const num = (v: string, fallback: number) => {
+    const n = Number(v.replace(',', '.'));
+    return Number.isFinite(n) ? n : fallback;
+  };
+  const conIva = f.regime !== 'forfettario';
+  return (
+    <>
+      <div className="campo">
+        <label>Regime fiscale</label>
+        <span className="segmenti" role="group">
+          {(['forfettario', 'semplificato', 'ordinario'] as const).map((r) => (
+            <button key={r} className={f.regime === r ? 'attivo' : ''} onClick={() => set({ regime: r })}>
+              {nomeRegime(r)}
+            </button>
+          ))}
+        </span>
+        <p className="aiuto">Determina la struttura del preventivo e del PDF (con o senza IVA, ritenuta, ecc.).</p>
+      </div>
+
+      {conIva && (
+        <>
+          <div className="campo">
+            <label>IVA predefinita (%)</label>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={f.ivaDefault}
+              onChange={(e) => set({ ivaDefault: num(e.target.value, f.ivaDefault) })}
+            />
+          </div>
+          <div className="campo">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <input
+                type="checkbox"
+                checked={f.ritenutaAttiva}
+                onChange={() => set({ ritenutaAttiva: !f.ritenutaAttiva })}
+              />
+              Ritenuta d’acconto attiva di default
+            </label>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={f.ritenutaPercento}
+              onChange={(e) => set({ ritenutaPercento: num(e.target.value, f.ritenutaPercento) })}
+              style={{ width: 120 }}
+            />
+            <span className="aiuto">Percentuale ritenuta (es. 20%).</span>
+          </div>
+          <div className="campo">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <input type="checkbox" checked={f.cassaAttiva} onChange={() => set({ cassaAttiva: !f.cassaAttiva })} />
+              Cassa previdenziale / rivalsa attiva di default
+            </label>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={f.cassaPercento}
+              onChange={(e) => set({ cassaPercento: num(e.target.value, f.cassaPercento) })}
+              style={{ width: 120 }}
+            />
+            <span className="aiuto">Percentuale cassa/contributo (es. 4%); di norma concorre alla base IVA.</span>
+          </div>
+        </>
+      )}
+
+      <div className="campo">
+        <label>Marca da bollo</label>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            value={f.bolloImporto}
+            onChange={(e) => set({ bolloImporto: num(e.target.value, f.bolloImporto) })}
+            style={{ width: 110 }}
+            aria-label="Importo bollo in euro"
+          />
+          <span className="aiuto">€ importo</span>
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            value={f.bolloSoglia}
+            onChange={(e) => set({ bolloSoglia: num(e.target.value, f.bolloSoglia) })}
+            style={{ width: 120 }}
+            aria-label="Soglia bollo in euro"
+          />
+          <span className="aiuto">€ soglia</span>
+        </div>
+        <p className="aiuto">Suggerita oltre la soglia sui documenti senza IVA (di norma € 77,47 → € 2,00).</p>
+      </div>
+
+      {f.regime === 'forfettario' && (
+        <>
+          <div className="campo">
+            <label>Coefficiente di redditività (%)</label>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={f.coefficienteForfettario}
+              onChange={(e) => set({ coefficienteForfettario: num(e.target.value, f.coefficienteForfettario) })}
+              style={{ width: 120 }}
+            />
+            <p className="aiuto">Collegato al codice ATECO/attività; uso indicativo nel preventivo.</p>
+          </div>
+          <div className="campo">
+            <label>Dicitura fiscale forfettario (stampata nel PDF)</label>
+            <textarea
+              value={f.dicituraForfettario}
+              rows={3}
+              onChange={(e) => set({ dicituraForfettario: e.target.value })}
+            />
+          </div>
+        </>
+      )}
     </>
   );
 }

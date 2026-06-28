@@ -5,11 +5,9 @@ import type { Annotazione, Foto, Preventivo, StatoPreventivo, VocePreventivo } f
 import { areaReale, perimetroReale } from '../geometry/calibrazione';
 import { nomeFormaPoligono } from '../geometry/primitive';
 import { famigliaDi } from '../geometry/nomenclatura';
-import {
-  aggiornaPreventivo,
-  eliminaPreventivo,
-  totaliPreventivo
-} from '../db/repository';
+import { aggiornaPreventivo, eliminaPreventivo } from '../db/repository';
+import { calcolaTotali, nomeRegime } from '../fiscale/calcolo';
+import type { RegimeFiscale } from '../db/types';
 import { nuovoId } from '../utils/id';
 import { naviga } from '../router';
 import { ConfermaDialog, StatoApp, type RichiestaConferma } from '../components/comuni';
@@ -28,24 +26,19 @@ import {
 const euro = (v: number) =>
   `€ ${v.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+const STATI_PREVENTIVO: { v: StatoPreventivo; testo: string; classe: string }[] = [
+  { v: 'bozza', testo: 'Bozza', classe: 'bozza' },
+  { v: 'pronto', testo: 'Pronto', classe: 'in_corso' },
+  { v: 'inviato', testo: 'Inviato', classe: 'in_corso' },
+  { v: 'accettato', testo: 'Accettato', classe: 'completato' },
+  { v: 'rifiutato', testo: 'Rifiutato', classe: 'rifiutato' },
+  { v: 'annullato', testo: 'Annullato', classe: 'rifiutato' },
+  { v: 'lavoro', testo: 'In lavorazione', classe: 'completato' }
+];
+
 export function EtichettaStatoPreventivo({ stato }: { stato: StatoPreventivo }) {
-  const testo =
-    stato === 'bozza'
-      ? 'Bozza'
-      : stato === 'inviato'
-        ? 'Inviato'
-        : stato === 'accettato'
-          ? 'Accettato'
-          : 'Rifiutato';
-  const classe =
-    stato === 'bozza'
-      ? 'bozza'
-      : stato === 'inviato'
-        ? 'in_corso'
-        : stato === 'accettato'
-          ? 'completato'
-          : 'rifiutato';
-  return <span className={`badge ${classe}`}>{testo}</span>;
+  const s = STATI_PREVENTIVO.find((x) => x.v === stato) ?? STATI_PREVENTIVO[0];
+  return <span className={`badge ${s.classe}`}>{s.testo}</span>;
 }
 
 export function PreventivoPage({ id }: { id: string }) {
@@ -109,7 +102,8 @@ export function PreventivoPage({ id }: { id: string }) {
     );
   }
 
-  const totali = totaliPreventivo(preventivo);
+  const totali = calcolaTotali(preventivo);
+  const regime: RegimeFiscale = preventivo.regime ?? 'forfettario';
 
   const aggiornaVoce = (voceId: string, modifiche: Partial<VocePreventivo>) => {
     applica({
@@ -211,7 +205,10 @@ export function PreventivoPage({ id }: { id: string }) {
       }
     }
     if (nuove.length === 0) {
-      mostraToast('info', 'Nessuna misura con valore trovata nel sopralluogo.');
+      mostraToast(
+        'info',
+        'Nessuna misura utilizzabile trovata nel sopralluogo collegato. Verifica che le quote abbiano un valore e una calibrazione.'
+      );
       return;
     }
     applica({ voci: [...preventivo.voci, ...nuove] });
@@ -275,10 +272,11 @@ export function PreventivoPage({ id }: { id: string }) {
               value={preventivo.stato}
               onChange={(e) => applica({ stato: e.target.value as StatoPreventivo })}
             >
-              <option value="bozza">Bozza</option>
-              <option value="inviato">Inviato</option>
-              <option value="accettato">Accettato</option>
-              <option value="rifiutato">Rifiutato</option>
+              {STATI_PREVENTIVO.map((s) => (
+                <option key={s.v} value={s.v}>
+                  {s.testo}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -360,32 +358,67 @@ export function PreventivoPage({ id }: { id: string }) {
           )}
         </div>
 
+        {/* Regime fiscale del documento */}
+        <div className="campo">
+          <label>Regime fiscale</label>
+          <span className="segmenti" role="group">
+            {(['forfettario', 'semplificato', 'ordinario'] as const).map((r) => (
+              <button key={r} className={regime === r ? 'attivo' : ''} onClick={() => applica({ regime: r })}>
+                {nomeRegime(r)}
+              </button>
+            ))}
+          </span>
+        </div>
+
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
           <CampoNumero etichetta="Sconto %" valore={preventivo.scontoPercento} onCambia={(n) => applica({ scontoPercento: n })} />
-          <CampoNumero etichetta="IVA %" valore={preventivo.ivaPercento} onCambia={(n) => applica({ ivaPercento: n })} />
+          {totali.conIva && (
+            <CampoNumero etichetta="IVA % doc." valore={preventivo.ivaPercento} onCambia={(n) => applica({ ivaPercento: n })} />
+          )}
         </div>
-        <table className="tabella" style={{ maxWidth: 420 }}>
-          <tbody>
-            <tr>
-              <td>Imponibile</td>
-              <td style={{ textAlign: 'right' }}>{euro(totali.imponibile)}</td>
-            </tr>
-            {preventivo.scontoPercento > 0 && (
-              <tr>
-                <td>Sconto {formattaNumero(preventivo.scontoPercento)}%</td>
-                <td style={{ textAlign: 'right' }}>− {euro(totali.sconto)}</td>
-              </tr>
-            )}
-            <tr>
-              <td>IVA {formattaNumero(preventivo.ivaPercento)}%</td>
-              <td style={{ textAlign: 'right' }}>{euro(totali.iva)}</td>
-            </tr>
-            <tr style={{ fontWeight: 700, fontSize: 18 }}>
-              <td>TOTALE</td>
-              <td style={{ textAlign: 'right' }}>{euro(totali.totale)}</td>
-            </tr>
-          </tbody>
-        </table>
+
+        {totali.conIva && (
+          <div className="fisc-toggle-riga">
+            <ToggleFisc
+              testo="Ritenuta d’acconto"
+              attiva={!!preventivo.ritenutaAttiva}
+              perc={preventivo.ritenutaPercento ?? 20}
+              onToggle={() => applica({ ritenutaAttiva: !preventivo.ritenutaAttiva })}
+              onPerc={(n) => applica({ ritenutaPercento: n })}
+            />
+            <ToggleFisc
+              testo="Cassa / rivalsa"
+              attiva={!!preventivo.cassaAttiva}
+              perc={preventivo.cassaPercento ?? 4}
+              onToggle={() => applica({ cassaAttiva: !preventivo.cassaAttiva })}
+              onPerc={(n) => applica({ cassaPercento: n })}
+            />
+          </div>
+        )}
+
+        <label className="fisc-check">
+          <input type="checkbox" checked={!!preventivo.bolloAttiva} onChange={() => applica({ bolloAttiva: !preventivo.bolloAttiva })} />
+          Marca da bollo ({euro(preventivo.bolloImporto ?? 2)})
+        </label>
+
+        {/* Totali, adattati al regime */}
+        <div className="totali-card">
+          <RigaTot k="Imponibile" v={euro(totali.imponibile)} />
+          {totali.sconto > 0 && <RigaTot k={`Sconto`} v={`− ${euro(totali.sconto)}`} />}
+          {totali.cassa > 0 && (
+            <RigaTot k={`Cassa ${formattaNumero(preventivo.cassaPercento ?? 0)}%`} v={euro(totali.cassa)} />
+          )}
+          {totali.conIva && <RigaTot k="IVA" v={euro(totali.iva)} />}
+          {totali.bollo > 0 && <RigaTot k="Marca da bollo" v={euro(totali.bollo)} />}
+          <RigaTot k="Totale" v={euro(totali.totale)} forte />
+          {totali.ritenuta > 0 && (
+            <>
+              <RigaTot k={`Ritenuta ${formattaNumero(preventivo.ritenutaPercento ?? 0)}%`} v={`− ${euro(totali.ritenuta)}`} />
+              <RigaTot k="Netto a incassare" v={euro(totali.netto)} forte />
+            </>
+          )}
+          {!totali.conIva && <div className="fisc-nota">IVA non applicata — regime forfettario</div>}
+        </div>
 
         <div className="campo" style={{ marginTop: 16 }}>
           <label>Note e condizioni (compaiono nel PDF)</label>
@@ -427,6 +460,41 @@ export function PreventivoPage({ id }: { id: string }) {
 }
 
 /** Input numerico tollerante (virgola o punto), salva solo valori validi */
+/** Riga del riepilogo totali (chiave a sx, valore a dx) */
+function RigaTot({ k, v, forte }: { k: string; v: string; forte?: boolean }) {
+  return (
+    <div className={`riga-tot${forte ? ' forte' : ''}`}>
+      <span>{k}</span>
+      <span>{v}</span>
+    </div>
+  );
+}
+
+/** Interruttore fiscale con percentuale (ritenuta, cassa…) */
+function ToggleFisc({
+  testo,
+  attiva,
+  perc,
+  onToggle,
+  onPerc
+}: {
+  testo: string;
+  attiva: boolean;
+  perc: number;
+  onToggle: () => void;
+  onPerc: (n: number) => void;
+}) {
+  return (
+    <div className={`fisc-toggle${attiva ? ' on' : ''}`}>
+      <label>
+        <input type="checkbox" checked={attiva} onChange={onToggle} />
+        {testo}
+      </label>
+      {attiva && <CampoNumero etichetta="%" valore={perc} onCambia={onPerc} />}
+    </div>
+  );
+}
+
 function CampoNumero({
   etichetta,
   valore,

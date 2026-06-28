@@ -1162,6 +1162,84 @@ h2 {
   opacity: 0.6;
 }
 
+/* Preventivo: riepilogo fiscale e totali */
+.totali-card {
+  margin-top: 14px;
+  background: var(--sfondo-2);
+  border: 1px solid var(--bordo);
+  border-radius: 14px;
+  padding: 6px 14px;
+  max-width: 460px;
+}
+
+.riga-tot {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--bordo) 55%, transparent);
+  font-size: 15px;
+}
+
+.riga-tot:last-child {
+  border-bottom: none;
+}
+
+.riga-tot.forte {
+  font-weight: 800;
+  font-size: 18px;
+}
+
+.riga-tot.forte span:last-child {
+  color: var(--accento-2);
+}
+
+.fisc-nota {
+  padding: 10px 0 6px;
+  color: var(--testo-2);
+  font-size: 13px;
+  font-style: italic;
+}
+
+.fisc-toggle-riga {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.fisc-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 200px;
+  padding: 8px 12px;
+  border: 1px solid var(--bordo);
+  border-radius: 12px;
+  background: var(--sfondo-2);
+}
+
+.fisc-toggle.on {
+  border-color: color-mix(in srgb, var(--accento) 55%, var(--bordo));
+}
+
+.fisc-toggle label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.fisc-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  margin: 4px 0 2px;
+  cursor: pointer;
+}
+
 /* Anteprima del PDF vero, sfogliabile pagina per pagina */
 .anteprima-pdf-frame-wrap {
   position: relative;

@@ -75,15 +75,31 @@ export interface Cliente {
   modificatoIl: number;
 }
 
-export type StatoPreventivo = 'bozza' | 'inviato' | 'accettato' | 'rifiutato';
+export type StatoPreventivo =
+  | 'bozza'
+  | 'pronto'
+  | 'inviato'
+  | 'accettato'
+  | 'rifiutato'
+  | 'annullato'
+  | 'lavoro';
+
+/** Regime fiscale dell'utente: determina la struttura del preventivo e del PDF */
+export type RegimeFiscale = 'forfettario' | 'semplificato' | 'ordinario';
 
 export interface VocePreventivo {
   id: ID;
   descrizione: string;
   quantita: number;
-  /** unità libera: m, m², cm, ore, corpo… */
+  /** unità libera: pz, m, m², ora, giornata, corpo, forfait… */
   unita: string;
   prezzoUnitario: number;
+  /** aliquota IVA della voce (%) — solo regimi con IVA; assente = aliquota documento */
+  aliquotaIva?: number;
+  /** sconto sulla singola voce (%) */
+  scontoPercento?: number;
+  /** categoria di lavoro (es. "Pellicole", "Pulizie") */
+  categoria?: string;
 }
 
 export interface Preventivo {
@@ -95,9 +111,26 @@ export interface Preventivo {
   numero: string;
   data: number;
   stato: StatoPreventivo;
+  /** regime fiscale del documento (istantanea dalle impostazioni alla creazione) */
+  regime?: RegimeFiscale;
   voci: VocePreventivo[];
+  /** sconto generale sul documento (%) */
   scontoPercento: number;
+  /** aliquota IVA predefinita del documento (%) — regimi con IVA */
   ivaPercento: number;
+  /** cassa/contributo previdenziale o rivalsa (%) e attivazione */
+  cassaAttiva?: boolean;
+  cassaPercento?: number;
+  /** ritenuta d'acconto (%) e attivazione */
+  ritenutaAttiva?: boolean;
+  ritenutaPercento?: number;
+  /** marca da bollo: attivazione e importo (€) */
+  bolloAttiva?: boolean;
+  bolloImporto?: number;
+  /** coefficiente di redditività (%) — solo forfettario, uso interno/indicativo */
+  coefficiente?: number;
+  /** dicitura fiscale stampata nel PDF (es. testo forfettario) */
+  dicituraFiscale?: string;
   note: string;
   creatoIl: number;
   modificatoIl: number;
@@ -529,8 +562,10 @@ export interface Impostazioni {
   stileDefault: Stile;
   /** Lato massimo delle foto archiviate, in px (qualità vs spazio) */
   fotoLatoMax: number;
-  /** IVA predefinita per i nuovi preventivi */
+  /** IVA predefinita per i nuovi preventivi (LEGACY; vedi `fiscale.ivaDefault`) */
   ivaDefault: number;
+  /** Impostazioni fiscali per i preventivi (regime, IVA, ritenuta, cassa, bollo) */
+  fiscale: Fiscale;
   /** Personalizzazione del report PDF */
   pdf: {
     /** colore di intestazioni e titoli */
@@ -542,6 +577,28 @@ export interface Impostazioni {
   };
   /** Configurazione del backup cloud (Supabase), opzionale */
   cloud?: ConfigCloud | null;
+}
+
+/** Configurazione fiscale dell'utente, usata per costruire i preventivi */
+export interface Fiscale {
+  regime: RegimeFiscale;
+  /** aliquota IVA predefinita (%) per semplificato/ordinario */
+  ivaDefault: number;
+  /** ritenuta d'acconto: valore (%) e se attiva di default sui nuovi documenti */
+  ritenutaPercento: number;
+  ritenutaAttiva: boolean;
+  /** cassa previdenziale / rivalsa: valore (%) e attivazione di default */
+  cassaPercento: number;
+  cassaAttiva: boolean;
+  /** se la cassa concorre alla base imponibile IVA (di norma sì) */
+  cassaInImponibileIva: boolean;
+  /** marca da bollo: importo (€) e soglia (€) oltre cui va applicata */
+  bolloImporto: number;
+  bolloSoglia: number;
+  /** coefficiente di redditività (%) per il forfettario (uso indicativo) */
+  coefficienteForfettario: number;
+  /** dicitura fiscale stampata nel PDF forfettario (modificabile) */
+  dicituraForfettario: string;
 }
 
 export interface ConfigCloud {
@@ -566,6 +623,20 @@ export const IMPOSTAZIONI_DEFAULT: Impostazioni = {
   stileDefault: { colore: '#ff3b30', spessore: 3, dimensioneTesto: 28 },
   fotoLatoMax: 2560,
   ivaDefault: 22,
+  fiscale: {
+    regime: 'forfettario',
+    ivaDefault: 22,
+    ritenutaPercento: 20,
+    ritenutaAttiva: false,
+    cassaPercento: 4,
+    cassaAttiva: false,
+    cassaInImponibileIva: true,
+    bolloImporto: 2,
+    bolloSoglia: 77.47,
+    coefficienteForfettario: 67,
+    dicituraForfettario:
+      'Operazione effettuata ai sensi dell’art. 1, commi 54-89, L. 190/2014 - regime forfettario. Importo non soggetto a ritenuta d’acconto.'
+  },
   pdf: { colore: '#1a4f8b', pieDiPagina: '', mostraGeotag: true, mostraDataScatto: true }
 };
 

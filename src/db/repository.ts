@@ -430,6 +430,7 @@ export async function creaPreventivo(
 ): Promise<Preventivo> {
   const numero = await prossimoNumeroPreventivo();
   const impostazioni = await leggiImpostazioni();
+  const fisc = impostazioni.fiscale;
   const p: Preventivo = {
     id: nuovoId(),
     progettoId,
@@ -437,9 +438,18 @@ export async function creaPreventivo(
     numero,
     data: ora(),
     stato: 'bozza',
+    regime: fisc.regime,
     voci: [],
     scontoPercento: 0,
-    ivaPercento: impostazioni.ivaDefault,
+    ivaPercento: fisc.ivaDefault,
+    cassaAttiva: fisc.cassaAttiva,
+    cassaPercento: fisc.cassaPercento,
+    ritenutaAttiva: fisc.ritenutaAttiva,
+    ritenutaPercento: fisc.ritenutaPercento,
+    bolloAttiva: false,
+    bolloImporto: fisc.bolloImporto,
+    coefficiente: fisc.coefficienteForfettario,
+    dicituraFiscale: fisc.regime === 'forfettario' ? fisc.dicituraForfettario : '',
     note: '',
     creatoIl: ora(),
     modificatoIl: ora()
@@ -490,6 +500,7 @@ export async function leggiImpostazioni(): Promise<Impostazioni> {
     ...i,
     professionista: { ...IMPOSTAZIONI_DEFAULT.professionista, ...i.professionista },
     stileDefault: { ...IMPOSTAZIONI_DEFAULT.stileDefault, ...i.stileDefault },
+    fiscale: { ...IMPOSTAZIONI_DEFAULT.fiscale, ...i.fiscale },
     pdf: { ...IMPOSTAZIONI_DEFAULT.pdf, ...i.pdf }
   };
 }
