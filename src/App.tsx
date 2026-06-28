@@ -6,6 +6,7 @@ import { ClientiPage, ClientePage } from './pages/ClientiPage';
 import { PreventivoPage } from './pages/PreventivoPage';
 import { EditorFoto } from './editor/EditorFoto';
 import { Toasts } from './components/comuni';
+import { PromemoriaSync } from './components/PromemoriaSync';
 
 export function App() {
   const rotta = useRotta();
@@ -18,6 +19,7 @@ export function App() {
       {rotta.nome === 'cliente' && <ClientePage id={rotta.id} key={rotta.id} />}
       {rotta.nome === 'preventivo' && <PreventivoPage id={rotta.id} key={rotta.id} />}
       {rotta.nome === 'impostazioni' && <ImpostazioniPage />}
+      <PromemoriaSync />
       <Toasts />
     </>
   );

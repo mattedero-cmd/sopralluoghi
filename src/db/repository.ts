@@ -14,6 +14,7 @@ import {
 import { nuovoId } from '../utils/id';
 import { inizioSalvataggio, fineSalvataggio } from '../state/saveStatus';
 import { mostraToast } from '../state/toast';
+import { segnaModifica } from '../cloud/promemoria';
 
 /**
  * Tutte le scritture dell'applicazione passano da `scrivi()`:
@@ -26,6 +27,7 @@ async function scrivi<T>(descrizione: string, op: () => Promise<T>): Promise<T> 
   try {
     const esito = await op();
     fineSalvataggio(true);
+    segnaModifica(); // c'è lavoro nuovo da sincronizzare sul cloud
     return esito;
   } catch (err) {
     fineSalvataggio(false);

@@ -1,15 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ConfigCloud, Fiscale, Impostazioni, Unita } from '../db/types';
 import { nomeRegime } from '../fiscale/calcolo';
-import {
-  accediCloud,
-  backupSuCloud,
-  disconnettiCloud,
-  elencaBackupCloud,
-  ripristinaDaCloud,
-  type FileCloud
-} from '../cloud/supabaseBackup';
-import { avviaPianificatoreSync, sincronizzaGiornaliera } from '../cloud/sincronizzazione';
+import { accediCloud, disconnettiCloud } from '../cloud/supabaseBackup';
+import { sincronizza } from '../cloud/sincronizzazione';
 import { formattaDataOra } from '../utils/format';
 import {
   leggiImpostazioni,
@@ -285,7 +278,6 @@ function SezioneCloud({
   const [password, setPassword] = useState('');
   const [operazione, setOperazione] = useState<string | null>(null);
   const [progresso, setProgresso] = useState<number | null>(null);
-  const [lista, setLista] = useState<FileCloud[] | null>(null);
 
   const connesso = Boolean(cloud?.refreshToken);
 
@@ -303,32 +295,22 @@ function SezioneCloud({
       refreshToken: cloud?.refreshToken ?? null,
       userId: cloud?.userId ?? null,
       ultimoBackup: cloud?.ultimoBackup ?? null,
-      sincronizzaAuto: cloud?.sincronizzaAuto ?? false,
-      oraSync: cloud?.oraSync ?? 2,
       ultimaSync: cloud?.ultimaSync ?? null
     };
     aggiorna({ cloud: nuova });
-  };
-
-  /** Aggiorna i campi della sync notturna e riprogramma il pianificatore. */
-  const impostaSync = async (modifica: Partial<ConfigCloud>) => {
-    if (!cloud) return;
-    await salvaImpostazioni({ ...imp, cloud: { ...cloud, ...modifica } });
-    ricaricaImpostazioni();
-    avviaPianificatoreSync();
   };
 
   const sincronizzaOra = async () => {
     setOperazione('Sincronizzazione in corso…');
     setProgresso(0);
     try {
-      const r = await sincronizzaGiornaliera(riporta);
-      const dett = r.importato
-        ? `Unite dal cloud ${r.importato.progetti} progetti e ${r.importato.foto} foto (${r.filesCloud} backup presenti).`
-        : `Nessun backup remoto da unire: caricato il primo (${r.filesCloud} presenti).`;
-      mostraToast('successo', `Sincronizzazione completata. ${dett}`);
+      const r = await sincronizza(riporta);
+      mostraToast(
+        'successo',
+        `Sincronizzazione completata. Scaricate ${r.scaricate} foto, caricate ${r.caricate}. ` +
+          `In archivio: ${r.progetti} progetti, ${r.fotoCloud} foto sul cloud.`
+      );
       ricaricaImpostazioni();
-      setLista(null);
     } catch (e) {
       mostraToast('errore', e instanceof Error ? e.message : 'Sincronizzazione non riuscita.');
     } finally {
@@ -352,61 +334,13 @@ function SezioneCloud({
     }
   };
 
-  const backupCloud = async () => {
-    setOperazione('Backup sul cloud…');
-    try {
-      const nome = await backupSuCloud(riporta);
-      mostraToast('successo', `Backup caricato sul cloud: ${nome}`);
-      ricaricaImpostazioni();
-      setLista(null);
-    } catch (e) {
-      mostraToast('errore', e instanceof Error ? e.message : 'Backup cloud non riuscito.');
-    } finally {
-      setOperazione(null);
-      setProgresso(null);
-    }
-  };
-
-  const mostraElenco = async () => {
-    setOperazione('Lettura elenco backup…');
-    try {
-      setLista(await elencaBackupCloud());
-    } catch (e) {
-      mostraToast('errore', e instanceof Error ? e.message : 'Elenco non disponibile.');
-    } finally {
-      setOperazione(null);
-    }
-  };
-
-  const ripristina = async (nome: string) => {
-    if (
-      !window.confirm(
-        `Ripristinare "${nome}" dal cloud? Il contenuto verrà unito all'archivio attuale (gli elementi con lo stesso id vengono sovrascritti).`
-      )
-    ) {
-      return;
-    }
-    setOperazione('Ripristino dal cloud…');
-    try {
-      const esito = await ripristinaDaCloud(nome, setOperazione);
-      mostraToast(
-        'successo',
-        `Ripristino completato: ${esito.progetti} progetti, ${esito.foto} foto.`
-      );
-    } catch (e) {
-      mostraToast('errore', e instanceof Error ? e.message : 'Ripristino non riuscito.');
-    } finally {
-      setOperazione(null);
-    }
-  };
-
   return (
     <>
       <p style={{ color: 'var(--testo-2)' }}>
-        Backup e sincronizzazione tra i tuoi dispositivi su un progetto Supabase gratuito. Setup
-        una tantum: crea il progetto su supabase.com, un utente (Authentication), un bucket privato
-        chiamato «backup» con le policy per gli utenti autenticati, poi incolla qui URL e chiave
-        anon. Usa lo stesso account su ogni dispositivo per sincronizzare.
+        Sincronizzazione tra i tuoi dispositivi su un progetto Supabase gratuito. Setup una tantum:
+        crea il progetto su supabase.com, un utente (Authentication), un bucket privato chiamato
+        «backup» con le policy per gli utenti autenticati, poi incolla qui URL e chiave anon. Usa lo
+        stesso account su ogni dispositivo per sincronizzare.
       </p>
       <div className="campo">
         <label>URL del progetto (https://xxx.supabase.co)</label>
@@ -441,17 +375,19 @@ function SezioneCloud({
           <p style={{ fontWeight: 700 }}>
             ✅ Connesso come {cloud?.email}.{' '}
             <span style={{ color: 'var(--testo-2)', fontWeight: 400 }}>
-              {cloud?.ultimoBackup
-                ? `Ultimo backup cloud: ${formattaDataOra(cloud.ultimoBackup)}.`
-                : 'Nessun backup cloud ancora eseguito.'}
+              {cloud?.ultimaSync
+                ? `Ultima sincronizzazione: ${formattaDataOra(cloud.ultimaSync)}.`
+                : 'Mai sincronizzato.'}
             </span>
           </p>
+          <p className="sotto" style={{ color: 'var(--testo-2)', marginTop: -4 }}>
+            La sincronizzazione è incrementale: carica solo le foto nuove e scarica quelle che
+            mancano su questo dispositivo. Si avvia con «Sincronizza adesso» e dal promemoria di
+            fine sessione; usa lo stesso account su tutti i dispositivi.
+          </p>
           <div className="riga-pulsanti">
-            <button className="btn primario" disabled={operazione !== null} onClick={() => void backupCloud()}>
-              ☁️ Backup adesso
-            </button>
-            <button className="btn" disabled={operazione !== null} onClick={() => void mostraElenco()}>
-              📋 Elenco backup
+            <button className="btn primario" disabled={operazione !== null} onClick={() => void sincronizzaOra()}>
+              🔄 Sincronizza adesso
             </button>
             <button
               className="btn"
@@ -463,74 +399,6 @@ function SezioneCloud({
               Disconnetti
             </button>
           </div>
-
-          <div className="scheda" style={{ cursor: 'default', alignItems: 'flex-start', marginTop: 12 }}>
-            <span className="corpo">
-              <div className="titolo" style={{ fontSize: 16 }}>Sincronizzazione tra dispositivi</div>
-              <div className="sotto" style={{ marginBottom: 10 }}>
-                Una volta al giorno l'app scarica e unisce lo stato del cloud, poi ripubblica
-                l'archivio aggiornato: i dispositivi convergono sugli stessi dati. La sync parte
-                all'ora prevista se l'app è aperta, altrimenti alla prima apertura successiva
-                (su iPhone un'app chiusa non può girare di notte).
-              </div>
-              <label className="fisc-check">
-                <input
-                  type="checkbox"
-                  checked={!!cloud?.sincronizzaAuto}
-                  disabled={operazione !== null}
-                  onChange={(e) => void impostaSync({ sincronizzaAuto: e.target.checked })}
-                />
-                Sincronizza automaticamente ogni notte
-              </label>
-              {cloud?.sincronizzaAuto && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                  <label htmlFor="ora-sync" style={{ color: 'var(--testo-2)' }}>Ora:</label>
-                  <select
-                    id="ora-sync"
-                    value={cloud?.oraSync ?? 2}
-                    disabled={operazione !== null}
-                    onChange={(e) => void impostaSync({ oraSync: Number(e.target.value) })}
-                    style={{ width: 'auto', minWidth: 90 }}
-                  >
-                    {Array.from({ length: 24 }, (_, h) => (
-                      <option key={h} value={h}>
-                        {String(h).padStart(2, '0')}:00
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              <div className="sotto" style={{ marginTop: 8 }}>
-                {cloud?.ultimaSync
-                  ? `Ultima sincronizzazione: ${formattaDataOra(cloud.ultimaSync)}.`
-                  : 'Mai sincronizzato.'}
-              </div>
-              <div className="riga-pulsanti" style={{ marginTop: 10 }}>
-                <button className="btn" disabled={operazione !== null} onClick={() => void sincronizzaOra()}>
-                  🔄 Sincronizza adesso
-                </button>
-              </div>
-            </span>
-          </div>
-          {lista && (
-            <div style={{ marginTop: 12 }}>
-              {lista.length === 0 && <p style={{ color: 'var(--testo-2)' }}>Nessun backup sul cloud.</p>}
-              {lista.map((f) => (
-                <div key={f.name} className="scheda" style={{ cursor: 'default' }}>
-                  <span className="corpo">
-                    <div className="titolo" style={{ fontSize: 15 }}>{f.name}</div>
-                    <div className="sotto">
-                      {f.size !== null ? formattaByte(f.size) : ''}{' '}
-                      {f.updatedAt ? `· ${formattaDataOra(new Date(f.updatedAt).getTime())}` : ''}
-                    </div>
-                  </span>
-                  <button className="btn" disabled={operazione !== null} onClick={() => void ripristina(f.name)}>
-                    Ripristina
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
         </>
       )}
       {operazione && (

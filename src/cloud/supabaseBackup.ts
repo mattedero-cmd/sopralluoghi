@@ -1,25 +1,21 @@
 import type { ConfigCloud } from '../db/types';
-import {
-  esportaBackup,
-  frazionaAvanzamento,
-  importaBackup,
-  type Avanzamento,
-  type EsitoRipristino
-} from '../db/backup';
 import { leggiImpostazioni, salvaImpostazioni } from '../db/repository';
 
 /**
- * Backup cloud unidirezionale (locale → cloud) su Supabase Storage,
- * implementato via REST senza SDK per tenere leggera l'app.
- * Offline-first: il cloud è solo una copia di sicurezza; l'app non ne
- * dipende mai per funzionare.
+ * Accesso e archiviazione su Supabase Storage via REST (senza SDK, per tenere
+ * leggera l'app). Offline-first: il cloud serve a sincronizzare e a fare da
+ * copia di sicurezza, l'app non ne dipende mai per funzionare.
+ *
+ * La sincronizzazione (vedi sincronizzazione.ts) è incrementale: ogni foto è un
+ * oggetto singolo caricato una volta sola, più un piccolo indice JSON con i
+ * metadati. Niente più mega-zip che superano i limiti di dimensione/timeout.
  *
  * Setup richiesto (una tantum, su supabase.com, piano gratuito):
  * 1. crea un progetto;
  * 2. Authentication → crea un utente email+password;
  * 3. Storage → crea un bucket privato chiamato "backup";
- * 4. aggiungi le policy del bucket per consentire agli utenti
- *    autenticati lettura/scrittura su "backup";
+ * 4. aggiungi le policy del bucket per consentire agli utenti autenticati
+ *    lettura/scrittura sulla propria cartella;
  * 5. incolla URL del progetto e chiave anon nelle Impostazioni dell'app.
  */
 
@@ -118,17 +114,24 @@ async function sessioneCorrente(): Promise<{ cfg: ConfigCloud; sessione: Session
   return { cfg: imp.cloud, sessione };
 }
 
-function nomeFileBackup(): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `backup_${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}.zip`;
+// ---------------------------------------------------------------------------
+// Contesto cloud: sessione aperta UNA volta per sincronizzazione, così non si
+// rinnova il token a ogni singolo oggetto caricato/scaricato.
+// ---------------------------------------------------------------------------
+
+export interface ContestoCloud {
+  cfg: ConfigCloud;
+  accessToken: string;
+  userId: string;
 }
 
-export interface FileCloud {
-  name: string;
-  /** dimensione in byte se nota */
-  size: number | null;
-  updatedAt: string | null;
+export async function apriContesto(): Promise<ContestoCloud> {
+  const { cfg, sessione } = await sessioneCorrente();
+  return { cfg, accessToken: sessione.accessToken, userId: sessione.userId };
+}
+
+function intestazioni(ctx: ContestoCloud): Record<string, string> {
+  return { apikey: ctx.cfg.anonKey, Authorization: `Bearer ${ctx.accessToken}` };
 }
 
 interface RispostaCaricamento {
@@ -159,26 +162,21 @@ function caricaConProgresso(
   });
 }
 
-/** Esegue il backup completo e lo carica nel bucket privato dell'utente */
-export async function backupSuCloud(avanzamento?: Avanzamento): Promise<string> {
-  const { cfg, sessione } = await sessioneCorrente();
-  // compressione = prima metà della barra, caricamento = seconda metà
-  const blob = await esportaBackup(frazionaAvanzamento(avanzamento, 0, 0.6));
-  const nome = nomeFileBackup();
-  const percorso = `${sessione.userId}/${nome}`;
-  avanzamento?.('Caricamento sul cloud…', 0.6);
+/** Carica (upsert) un oggetto nella cartella dell'utente; percorso relativo a userId. */
+export async function caricaOggetto(
+  ctx: ContestoCloud,
+  percorso: string,
+  corpo: Blob,
+  tipo: string,
+  onProgresso?: (frazione: number) => void
+): Promise<void> {
   let risposta: RispostaCaricamento;
   try {
     risposta = await caricaConProgresso(
-      `${baseUrl(cfg)}/storage/v1/object/${BUCKET}/${percorso}`,
-      {
-        apikey: cfg.anonKey,
-        Authorization: `Bearer ${sessione.accessToken}`,
-        'Content-Type': 'application/zip',
-        'x-upsert': 'true'
-      },
-      blob,
-      (fr) => avanzamento?.('Caricamento sul cloud…', 0.6 + fr * 0.4)
+      `${baseUrl(ctx.cfg)}/storage/v1/object/${BUCKET}/${ctx.userId}/${percorso}`,
+      { ...intestazioni(ctx), 'Content-Type': tipo, 'x-upsert': 'true' },
+      corpo,
+      onProgresso
     );
   } catch {
     throw new Error('Caricamento interrotto: connessione assente o instabile. Riprova.');
@@ -191,94 +189,59 @@ export async function backupSuCloud(avanzamento?: Avanzamento): Promise<string> 
       /* corpo non JSON: si usa lo status */
     }
     throw new Error(
-      `Il cloud ha rifiutato il backup: ${dettaglio}. Verifica che il bucket "backup" esista e abbia le policy per gli utenti autenticati.`
+      `Il cloud ha rifiutato il caricamento: ${dettaglio}. Verifica che il bucket "backup" esista e abbia le policy per gli utenti autenticati.`
     );
   }
-  avanzamento?.('Caricato', 1);
-  const imp = await leggiImpostazioni();
-  if (imp.cloud) {
-    await salvaImpostazioni({ ...imp, cloud: { ...imp.cloud, ultimoBackup: Date.now() } });
-  }
-  return nome;
 }
 
-/** Elenco dei backup presenti sul cloud, dal più recente */
-export async function elencaBackupCloud(): Promise<FileCloud[]> {
-  const { cfg, sessione } = await sessioneCorrente();
-  const risposta = await fetch(`${baseUrl(cfg)}/storage/v1/object/list/${BUCKET}`, {
-    method: 'POST',
-    headers: {
-      apikey: cfg.anonKey,
-      Authorization: `Bearer ${sessione.accessToken}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      prefix: `${sessione.userId}/`,
-      sortBy: { column: 'created_at', order: 'desc' },
-      limit: 50
-    })
-  });
-  if (!risposta.ok) {
-    throw new Error('Impossibile leggere l’elenco dei backup dal cloud.');
-  }
-  const lista = (await risposta.json()) as Array<{
-    name: string;
-    updated_at?: string;
-    metadata?: { size?: number };
-  }>;
-  return lista
-    .filter((f) => f.name.endsWith('.zip'))
-    .map((f) => ({
-      name: f.name,
-      size: f.metadata?.size ?? null,
-      updatedAt: f.updated_at ?? null
-    }));
-}
-
-/** Scarica leggendo lo stream, così la barra avanza in base ai byte ricevuti. */
-async function scaricaConProgresso(risposta: Response, avanzamento?: Avanzamento): Promise<Blob> {
-  const lunghezza = Number(risposta.headers.get('content-length') || 0);
-  const tipo = risposta.headers.get('content-type') || 'application/zip';
-  if (!risposta.body || !lunghezza) {
-    // niente stream o lunghezza ignota: scarico in un colpo (barra indeterminata)
-    return risposta.blob();
-  }
-  const reader = risposta.body.getReader();
-  const pezzi: BlobPart[] = [];
-  let ricevuti = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (value) {
-      pezzi.push(value);
-      ricevuti += value.length;
-      avanzamento?.('Scaricamento dal cloud…', Math.min(1, ricevuti / lunghezza));
-    }
-  }
-  return new Blob(pezzi, { type: tipo });
-}
-
-/** Scarica un backup dal cloud e lo ripristina (unione per id, come da file) */
-export async function ripristinaDaCloud(
-  nomeFile: string,
-  avanzamento?: Avanzamento,
-  opzioni?: { preservaSessioneCloud?: boolean }
-): Promise<EsitoRipristino> {
-  const { cfg, sessione } = await sessioneCorrente();
-  avanzamento?.('Scaricamento dal cloud…', 0);
+/** Scarica un oggetto come Blob, o null se non esiste. */
+export async function scaricaOggetto(ctx: ContestoCloud, percorso: string): Promise<Blob | null> {
   let risposta: Response;
   try {
-    risposta = await fetch(
-      `${baseUrl(cfg)}/storage/v1/object/${BUCKET}/${sessione.userId}/${nomeFile}`,
-      {
-        headers: { apikey: cfg.anonKey, Authorization: `Bearer ${sessione.accessToken}` }
-      }
-    );
+    risposta = await fetch(`${baseUrl(ctx.cfg)}/storage/v1/object/${BUCKET}/${ctx.userId}/${percorso}`, {
+      headers: intestazioni(ctx)
+    });
   } catch {
     throw new Error('Scaricamento interrotto: connessione assente o instabile.');
   }
-  if (!risposta.ok) throw new Error('Backup non trovato sul cloud.');
-  // scaricamento = prima parte della barra, scrittura nel DB = seconda parte
-  const blob = await scaricaConProgresso(risposta, frazionaAvanzamento(avanzamento, 0, 0.6));
-  return importaBackup(blob, frazionaAvanzamento(avanzamento, 0.6, 0.4), opzioni);
+  if (risposta.status === 404 || risposta.status === 400) return null;
+  if (!risposta.ok) throw new Error('Scaricamento non riuscito dal cloud.');
+  return risposta.blob();
+}
+
+/** Scarica un oggetto di testo (es. l'indice JSON), o null se non esiste. */
+export async function scaricaTesto(ctx: ContestoCloud, percorso: string): Promise<string | null> {
+  const blob = await scaricaOggetto(ctx, percorso);
+  return blob ? blob.text() : null;
+}
+
+/**
+ * Elenca i nomi degli oggetti sotto una sotto-cartella dell'utente (relativi
+ * alla sotto-cartella). Pagina automaticamente oltre i 1000 risultati.
+ */
+export async function elencaNomi(ctx: ContestoCloud, sottocartella: string): Promise<string[]> {
+  const nomi: string[] = [];
+  const limite = 1000;
+  for (let offset = 0; ; offset += limite) {
+    let risposta: Response;
+    try {
+      risposta = await fetch(`${baseUrl(ctx.cfg)}/storage/v1/object/list/${BUCKET}`, {
+        method: 'POST',
+        headers: { ...intestazioni(ctx), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prefix: `${ctx.userId}/${sottocartella}`,
+          limit: limite,
+          offset,
+          sortBy: { column: 'name', order: 'asc' }
+        })
+      });
+    } catch {
+      throw new Error('Impossibile leggere l’elenco dal cloud: connessione assente o instabile.');
+    }
+    if (!risposta.ok) throw new Error('Impossibile leggere l’elenco dal cloud.');
+    const lista = (await risposta.json()) as Array<{ name: string }>;
+    for (const f of lista) nomi.push(f.name);
+    if (lista.length < limite) break;
+  }
+  return nomi;
 }

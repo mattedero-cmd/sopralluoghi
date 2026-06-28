@@ -618,11 +618,7 @@ export interface ConfigCloud {
   userId: string | null;
   /** ultimo backup riuscito (timestamp), per lo stato sempre visibile */
   ultimoBackup: number | null;
-  /** sincronizzazione notturna automatica tra dispositivi (pull + push) */
-  sincronizzaAuto?: boolean;
-  /** ora del giorno (0-23) a cui ancorare la sync giornaliera; default 2 */
-  oraSync?: number;
-  /** ultima sincronizzazione giornaliera riuscita (timestamp) */
+  /** ultima sincronizzazione riuscita (timestamp) */
   ultimaSync?: number | null;
 }
 

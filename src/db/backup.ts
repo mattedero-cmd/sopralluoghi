@@ -19,15 +19,6 @@ const VERSIONE_BACKUP = 2;
  */
 export type Avanzamento = (messaggio: string, frazione?: number) => void;
 
-/**
- * Rimappa una callback di avanzamento su un sotto-intervallo [base, base+span]
- * della barra complessiva: così una fase locale (0..1) contribuisce solo alla
- * sua porzione del totale.
- */
-export function frazionaAvanzamento(av: Avanzamento | undefined, base: number, span: number): Avanzamento {
-  return (messaggio, frazione) => av?.(messaggio, base + (frazione ?? 0) * span);
-}
-
 interface ManifestBackup {
   app: 'sopralluoghi';
   versione: number;
@@ -183,4 +174,74 @@ export async function importaBackup(
     foto: fotoComplete.length,
     annotazioni: manifest.annotazioni.length
   };
+}
+
+// ---------------------------------------------------------------------------
+// Indice per la sincronizzazione incrementale (metadati senza i binari).
+// I binari delle foto viaggiano come oggetti singoli sul cloud, caricati una
+// volta sola; l'indice tiene insieme struttura, quote, clienti e preventivi.
+// ---------------------------------------------------------------------------
+
+export interface IndiceArchivio {
+  app: 'sopralluoghi';
+  versione: number;
+  aggiornatoIl: number;
+  cartelle: Cartella[];
+  progetti: Progetto[];
+  /** metadati foto senza i dati binari (origine/miniatura sono oggetti separati) */
+  foto: Array<Omit<Foto, 'origine' | 'miniatura'>>;
+  annotazioni: Annotazione[];
+  clienti: Cliente[];
+  preventivi: Preventivo[];
+  impostazioni: Impostazioni | null;
+}
+
+/** Costruisce l'indice dell'archivio locale (metadati, niente binari) da pubblicare sul cloud. */
+export async function costruisciIndice(): Promise<IndiceArchivio> {
+  const [cartelle, progetti, foto, annotazioni, impostazioni, clienti, preventivi] =
+    await Promise.all([
+      db.cartelle.toArray(),
+      db.progetti.toArray(),
+      db.foto.toArray(),
+      db.annotazioni.toArray(),
+      db.impostazioni.get('app'),
+      db.clienti.toArray(),
+      db.preventivi.toArray()
+    ]);
+  return {
+    app: 'sopralluoghi',
+    versione: VERSIONE_BACKUP,
+    aggiornatoIl: Date.now(),
+    cartelle,
+    progetti,
+    foto: foto.map(({ origine: _o, miniatura: _m, ...resto }) => resto),
+    annotazioni,
+    clienti,
+    preventivi,
+    // mai pubblicare la sessione cloud (token) nell'indice condiviso
+    impostazioni: impostazioni ? { ...impostazioni, cloud: null } : null
+  };
+}
+
+/**
+ * Unisce i metadati dell'indice remoto nell'archivio locale (per id, senza
+ * cancellare), preservando la sessione cloud locale. I binari e i metadati
+ * delle nuove foto sono gestiti dal chiamante (vedi sincronizzazione).
+ */
+export async function applicaMetadati(indice: IndiceArchivio): Promise<void> {
+  const cloudLocale = (await db.impostazioni.get('app'))?.cloud ?? null;
+  await db.transaction(
+    'rw',
+    [db.cartelle, db.progetti, db.annotazioni, db.impostazioni, db.clienti, db.preventivi],
+    async () => {
+      await db.cartelle.bulkPut(indice.cartelle);
+      await db.progetti.bulkPut(indice.progetti);
+      await db.annotazioni.bulkPut(indice.annotazioni);
+      if (indice.clienti) await db.clienti.bulkPut(indice.clienti);
+      if (indice.preventivi) await db.preventivi.bulkPut(indice.preventivi);
+      if (indice.impostazioni) {
+        await db.impostazioni.put({ ...indice.impostazioni, cloud: cloudLocale });
+      }
+    }
+  );
 }
