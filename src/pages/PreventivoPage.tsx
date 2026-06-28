@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import type { Annotazione, Foto, Preventivo, StatoPreventivo, VocePreventivo } from '../db/types';
+import { segmentiPoligono, segmentoELato } from '../db/types';
 import { areaReale, perimetroReale } from '../geometry/calibrazione';
 import { nomeFormaPoligono } from '../geometry/primitive';
-import { famigliaDi } from '../geometry/nomenclatura';
+import { famigliaDi, numeriProgetto } from '../geometry/nomenclatura';
 import { aggiornaPreventivo, eliminaPreventivo } from '../db/repository';
 import { calcolaTotali, nomeRegime } from '../fiscale/calcolo';
 import type { RegimeFiscale } from '../db/types';
@@ -144,6 +145,14 @@ export function PreventivoPage({ id }: { id: string }) {
       }
     }
 
+    // numerazione del progetto: per dare a ogni voce il codice della misura (A1…)
+    const annPerFoto = new Map<string, Annotazione[]>();
+    for (const { a, foto } of voci) {
+      if (!annPerFoto.has(foto.id)) annPerFoto.set(foto.id, []);
+      annPerFoto.get(foto.id)!.push(a);
+    }
+    const numeri = numeriProgetto(fotoList, (id) => annPerFoto.get(id) ?? []);
+
     const nuove: VocePreventivo[] = [];
     const arr2 = (x: number) => Math.round(x * 100) / 100;
     for (const { a, foto, nomeFoto } of voci) {
@@ -169,12 +178,23 @@ export function PreventivoPage({ id }: { id: string }) {
         // si conta quante volte è presente (× pezzi)
         if (a.soloEtichetta) continue;
         const n = contaFamiglia.get(famigliaDi(a)) ?? 1;
-        const pezzi = n > 1 ? ` (${n} pz)` : '';
+        // codice della misura (A1…) e dimensione del SINGOLO elemento, così la
+        // voce indica chiaramente a quale elemento della facciata si riferisce
+        const info = numeri.get(a.id);
+        const codice = info ? ` ${info.etichettaFoto}${info.numero}` : '';
+        const nVert = a.punti.length;
+        const dim = segmentiPoligono(a)
+          .filter((s) => segmentoELato(s, nVert))
+          .map((s) => (s.valore === null ? '?' : formattaNumero(s.valore)))
+          .join(' × ');
+        const dimTxt = dim ? ` · ${dim} ${a.unita}/cad.` : '';
+        const pezzi = n > 1 ? ` · ${n} pz` : '';
+        const etichetta = `${nomeFoto} —${codice} ${nomeFormaPoligono(a)}${dimTxt}${pezzi}`.replace(/\s+/g, ' ');
         const area = areaReale(a, foto);
         if (area) {
           nuove.push({
             id: nuovoId(),
-            descrizione: `${nomeFoto} — ${nomeFormaPoligono(a)}${pezzi}`,
+            descrizione: etichetta,
             quantita: arr2(area.m2 * n),
             unita: 'm²',
             prezzoUnitario: 0
@@ -185,7 +205,7 @@ export function PreventivoPage({ id }: { id: string }) {
           if (perim !== null) {
             nuove.push({
               id: nuovoId(),
-              descrizione: `${nomeFoto} — ${nomeFormaPoligono(a)} (perimetro)${pezzi}`,
+              descrizione: `${etichetta} (perimetro)`,
               quantita: arr2((inMillimetri(perim, a.unita) / 1000) * n),
               unita: 'm',
               prezzoUnitario: 0
@@ -397,19 +417,32 @@ export function PreventivoPage({ id }: { id: string }) {
         )}
 
         <label className="fisc-check">
-          <input type="checkbox" checked={!!preventivo.bolloAttiva} onChange={() => applica({ bolloAttiva: !preventivo.bolloAttiva })} />
+          <input
+            type="checkbox"
+            checked={!!preventivo.bolloAttiva}
+            onChange={() =>
+              applica({ bolloAttiva: !preventivo.bolloAttiva, bolloImporto: preventivo.bolloImporto || 2 })
+            }
+          />
           Marca da bollo ({euro(preventivo.bolloImporto ?? 2)})
         </label>
 
         {/* Totali, adattati al regime */}
         <div className="totali-card">
-          <RigaTot k="Imponibile" v={euro(totali.imponibile)} />
-          {totali.sconto > 0 && <RigaTot k={`Sconto`} v={`− ${euro(totali.sconto)}`} />}
+          {totali.sconto > 0 ? (
+            <>
+              <RigaTot k="Subtotale" v={euro(totali.lordo)} />
+              <RigaTot k={`Sconto`} v={`− ${euro(totali.sconto)}`} />
+              <RigaTot k="Imponibile" v={euro(totali.imponibile)} />
+            </>
+          ) : (
+            <RigaTot k="Imponibile" v={euro(totali.imponibile)} />
+          )}
           {totali.cassa > 0 && (
             <RigaTot k={`Cassa ${formattaNumero(preventivo.cassaPercento ?? 0)}%`} v={euro(totali.cassa)} />
           )}
-          {totali.conIva && <RigaTot k="IVA" v={euro(totali.iva)} />}
-          {totali.bollo > 0 && <RigaTot k="Marca da bollo" v={euro(totali.bollo)} />}
+          {totali.conIva && <RigaTot k={`IVA ${formattaNumero(preventivo.ivaPercento)}%`} v={euro(totali.iva)} />}
+          {totali.bollo > 0 && <RigaTot k="Marca da bollo" v={`+ ${euro(totali.bollo)}`} bollo />}
           <RigaTot k="Totale" v={euro(totali.totale)} forte />
           {totali.ritenuta > 0 && (
             <>
@@ -461,9 +494,9 @@ export function PreventivoPage({ id }: { id: string }) {
 
 /** Input numerico tollerante (virgola o punto), salva solo valori validi */
 /** Riga del riepilogo totali (chiave a sx, valore a dx) */
-function RigaTot({ k, v, forte }: { k: string; v: string; forte?: boolean }) {
+function RigaTot({ k, v, forte, bollo }: { k: string; v: string; forte?: boolean; bollo?: boolean }) {
   return (
-    <div className={`riga-tot${forte ? ' forte' : ''}`}>
+    <div className={`riga-tot${forte ? ' forte' : ''}${bollo ? ' bollo' : ''}`}>
       <span>{k}</span>
       <span>{v}</span>
     </div>

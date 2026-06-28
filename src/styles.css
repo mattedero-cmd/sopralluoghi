@@ -1194,6 +1194,15 @@ h2 {
   color: var(--accento-2);
 }
 
+.riga-tot.bollo {
+  font-weight: 700;
+  color: var(--avviso);
+}
+
+.riga-tot.bollo span:last-child {
+  color: var(--avviso);
+}
+
 .fisc-nota {
   padding: 10px 0 6px;
   color: var(--testo-2);

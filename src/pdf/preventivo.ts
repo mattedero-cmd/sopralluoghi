@@ -42,11 +42,14 @@ export async function generaPdfPreventivo(
       margin: grande ? [0, 6, 0, 0] : undefined
     } as Content);
 
+  if (totali.sconto > 0) {
+    rigaTot('Subtotale', euro(totali.lordo));
+    rigaTot('Sconto', `− ${euro(totali.sconto)}`);
+  }
   rigaTot('Imponibile', euro(totali.imponibile));
-  if (totali.sconto > 0) rigaTot('Sconto', `− ${euro(totali.sconto)}`);
   if (totali.cassa > 0) rigaTot(`Cassa ${formattaNumero(preventivo.cassaPercento ?? 0)}%`, euro(totali.cassa));
   if (conIva) rigaTot(`IVA ${formattaNumero(preventivo.ivaPercento)}%`, euro(totali.iva));
-  if (totali.bollo > 0) rigaTot('Marca da bollo', euro(totali.bollo));
+  if (totali.bollo > 0) rigaTot('Marca da bollo', `+ ${euro(totali.bollo)}`);
   rigaTot('TOTALE', euro(totali.totale), true);
   if (totali.ritenuta > 0) {
     rigaTot(`Ritenuta ${formattaNumero(preventivo.ritenutaPercento ?? 0)}%`, `− ${euro(totali.ritenuta)}`);
