@@ -62,8 +62,14 @@ const righeRiepilogo = {
 export interface OpzioniReport {
   /** id delle foto da includere; null = tutte */
   fotoIds: string[] | null;
-  /** 1 = foto grande per pagina; 2 = compatto, due foto per pagina */
-  fotoPerPagina: 1 | 2;
+  /**
+   * Foto per pagina: 1 = grande con tabella misure; 2 = compatto con tabella;
+   * 4 / 6 = "report fotografico" a griglia (provino), senza tabella sotto ogni
+   * foto (le misure restano nel riepilogo finale).
+   */
+  fotoPerPagina: 1 | 2 | 4 | 6;
+  /** pagina in orizzontale (utile per i report fotografici a griglia) */
+  orizzontale?: boolean;
   includiIndice: boolean;
   includiRiepilogo: boolean;
   includiNoteDato: boolean;
@@ -232,6 +238,15 @@ export async function generaReportPdf(
   // --- Una sezione per foto ---------------------------------------------------
   // raggruppa le foto per SEZIONE del progetto (piani), con un'intestazione
   const sezioni = [...(progetto.sezioni ?? [])].sort((a, b) => a.ordine - b.ordine);
+  if (opzioni.fotoPerPagina >= 4) {
+    // report fotografico a griglia (provino): niente tabella sotto le foto
+    const gruppi = raggruppaPerSezione(fotoList, sezioni);
+    gruppi.forEach((g, gi) => {
+      if (g.titolo) contenuto.push({ text: g.titolo, style: 'h2', tocItem: true, pageBreak: 'before' } as Content);
+      else if (gi === 0) contenuto.push({ text: 'Foto', style: 'h1', tocItem: true, pageBreak: 'before' } as Content);
+      contenuto.push(...grigliaContatti(g.foto, opzioni, impostazioni.pdf));
+    });
+  } else {
   const rankSez = (f: Foto) => {
     const i = sezioni.findIndex((s) => s.id === f.sezioneId);
     return i < 0 ? 1e9 : i;
@@ -249,7 +264,8 @@ export async function generaReportPdf(
     }
     sezPrec = sid;
     contenuto.push(...sezioneFoto(f, indice, annotazioni, opzioni, impostazioni.pdf, ctx, perc, undefined, titoloSez));
-  });
+    });
+  }
 
   // ogni foto usa il proprio percorso (cartelle + progetto + sezione)
   const info: InfoFoto = (f) => ({ ctx, percorso: ctx.percorsoFoto.get(f.id) ?? percorso });
@@ -271,7 +287,8 @@ export async function generaReportPdf(
     autore: prof.nome || 'Sopralluoghi',
     pieDiPagina,
     contenuto,
-    immagini
+    immagini,
+    orizzontale: opzioni.orizzontale
   });
 
   avanzamento?.('Generazione PDF…');
@@ -286,10 +303,12 @@ function documentoReport(args: {
   pieDiPagina: string;
   contenuto: Content[];
   immagini: Record<string, string>;
+  orizzontale?: boolean;
 }): TDocumentDefinitions {
   const { BLU } = args;
   return {
     pageSize: 'A4',
+    pageOrientation: args.orizzontale ? 'landscape' : 'portrait',
     pageMargins: [40, 50, 40, 50],
     info: { title: args.titoloInfo, author: args.autore },
     footer: (pagina, totale) => ({
@@ -409,6 +428,14 @@ export async function generaReportCartella(
       if (p.note.trim()) out.push({ text: p.note.trim(), style: 'corpo', italics: true });
       // foto raggruppate per sezione del progetto, con una riga d'intestazione
       const sezioni = [...(p.sezioni ?? [])].sort((a, b) => a.ordine - b.ordine);
+      if (opzioni.fotoPerPagina >= 4) {
+        // report fotografico a griglia: niente tabella sotto le foto
+        for (const g of raggruppaPerSezione(lista, sezioni)) {
+          if (g.titolo) out.push({ text: g.titolo, style: 'corpo', bold: true, margin: [0, 6, 0, 2] } as Content);
+          out.push(...grigliaContatti(g.foto, opzioni, impostazioni.pdf));
+        }
+        continue;
+      }
       const rankSez = (f: Foto) => {
         const i = sezioni.findIndex((s) => s.id === f.sezioneId);
         return i < 0 ? 1e9 : i;
@@ -499,7 +526,8 @@ export async function generaReportCartella(
     autore: prof.nome || 'Sopralluoghi',
     pieDiPagina,
     contenuto,
-    immagini
+    immagini,
+    orizzontale: opzioni.orizzontale
   });
   avanzamento?.('Generazione PDF…');
   return creaBlobPdf(def);
@@ -881,6 +909,76 @@ function cellaSuperficie(m: RigaMisura): Content {
   ];
   if (stima) linee.push({ text: 'stima', color: ARANCIO_STIMATA, fontSize: 7.5, italics: true, alignment: 'right' });
   return { stack: linee };
+}
+
+/** Raggruppa le foto per SEZIONE del progetto, in ordine, con il titolo pronto */
+function raggruppaPerSezione(
+  fotoList: Foto[],
+  sezioni: { id: string; nome: string; etichetta?: string; ordine: number }[]
+): { titolo?: string; foto: Foto[] }[] {
+  const ordinate = [...sezioni].sort((a, b) => a.ordine - b.ordine);
+  const rank = (f: Foto) => {
+    const i = ordinate.findIndex((s) => s.id === f.sezioneId);
+    return i < 0 ? 1e9 : i;
+  };
+  const ordinata = [...fotoList].sort((a, b) => rank(a) - rank(b) || a.ordine - b.ordine);
+  const gruppi: { sid: string | null; titolo?: string; foto: Foto[] }[] = [];
+  for (const f of ordinata) {
+    const sid = f.sezioneId && ordinate.some((s) => s.id === f.sezioneId) ? f.sezioneId : null;
+    let cur = gruppi[gruppi.length - 1];
+    if (!cur || cur.sid !== sid) {
+      const s = ordinate.find((x) => x.id === sid);
+      cur = {
+        sid,
+        titolo:
+          ordinate.length > 0 ? (s ? `${s.nome}${s.etichetta ? ` — ${s.etichetta}` : ''}` : 'Senza sezione') : undefined,
+        foto: []
+      };
+      gruppi.push(cur);
+    }
+    cur.foto.push(f);
+  }
+  return gruppi.map(({ titolo, foto }) => ({ titolo, foto }));
+}
+
+/**
+ * "Report fotografico" a griglia (provino): più foto per pagina (4 o 6),
+ * eventualmente in orizzontale, con piccola didascalia. Niente tabella misure
+ * sotto le foto (le misure restano nel riepilogo/distinta finali).
+ */
+function grigliaContatti(
+  fotoSezione: Foto[],
+  opzioni: OpzioniReport,
+  pdfImp: { mostraDataScatto: boolean }
+): Content[] {
+  const orizz = !!opzioni.orizzontale;
+  const cols = orizz ? (opzioni.fotoPerPagina >= 6 ? 3 : 2) : 2;
+  const rows = Math.max(1, Math.round(opzioni.fotoPerPagina / cols));
+  const usableW = orizz ? 762 : 515;
+  const usableH = orizz ? 470 : 715;
+  const gutter = 12;
+  const cellW = (usableW - gutter * (cols - 1)) / cols;
+  const rowH = Math.max(80, usableH / rows - 30);
+  const out: Content[] = [];
+  for (let i = 0; i < fotoSezione.length; i += cols) {
+    const riga = fotoSezione.slice(i, i + cols);
+    out.push({
+      columns: riga.map((f) => ({
+        width: cellW,
+        stack: [
+          { image: `foto_${f.id}`, fit: [cellW, rowH], alignment: 'center' },
+          { text: f.didascalia || ' ', style: 'didascalia', alignment: 'center', margin: [0, 4, 0, 0] },
+          ...(pdfImp.mostraDataScatto
+            ? [{ text: formattaData(f.dataScatto), fontSize: 8, color: GRIGIO, alignment: 'center' } as Content]
+            : [])
+        ]
+      })),
+      columnGap: gutter,
+      margin: [0, 0, 0, 14],
+      unbreakable: true
+    } as Content);
+  }
+  return out;
 }
 
 function sezioneFoto(

@@ -419,7 +419,8 @@ function FormOpzioniCartella({
   onGenera: (opzioni: OpzioniReport) => void;
   onGeneraZip: (opzioni: OpzioniReport) => void;
 }) {
-  const [fotoPerPagina, setFotoPerPagina] = useState<1 | 2>(1);
+  const [fotoPerPagina, setFotoPerPagina] = useState<1 | 2 | 4 | 6>(1);
+  const [orizzontale, setOrizzontale] = useState(false);
   const [includiIndice, setIncludiIndice] = useState(true);
   const [includiNoteDato, setIncludiNoteDato] = useState(true);
   const [includiTabellaMisure, setIncludiTabellaMisure] = useState(true);
@@ -440,13 +441,28 @@ function FormOpzioniCartella({
         foto della sezione.
       </p>
       <div className="campo">
-        <label>Impaginazione foto</label>
+        <label>Foto per pagina</label>
         <span className="segmenti" role="group">
-          <button className={fotoPerPagina === 1 ? 'attivo' : ''} onClick={() => setFotoPerPagina(1)}>
-            1 per pagina
+          {([1, 2, 4, 6] as const).map((n) => (
+            <button key={n} className={fotoPerPagina === n ? 'attivo' : ''} onClick={() => setFotoPerPagina(n)}>
+              {n}
+            </button>
+          ))}
+        </span>
+        <p className="aiuto" style={{ marginTop: 4 }}>
+          {fotoPerPagina >= 4
+            ? 'Report fotografico a griglia: solo foto e didascalie.'
+            : 'Con tabella misure sotto ogni foto.'}
+        </p>
+      </div>
+      <div className="campo">
+        <label>Orientamento pagina</label>
+        <span className="segmenti" role="group">
+          <button className={!orizzontale ? 'attivo' : ''} onClick={() => setOrizzontale(false)}>
+            Verticale
           </button>
-          <button className={fotoPerPagina === 2 ? 'attivo' : ''} onClick={() => setFotoPerPagina(2)}>
-            2 per pagina
+          <button className={orizzontale ? 'attivo' : ''} onClick={() => setOrizzontale(true)}>
+            Orizzontale
           </button>
         </span>
       </div>
@@ -467,6 +483,7 @@ function FormOpzioniCartella({
             onGeneraZip({
               fotoIds: null,
               fotoPerPagina,
+              orizzontale,
               includiIndice,
               includiRiepilogo,
               includiNoteDato,
@@ -484,6 +501,7 @@ function FormOpzioniCartella({
             onGenera({
               fotoIds: null,
               fotoPerPagina,
+              orizzontale,
               includiIndice,
               includiRiepilogo,
               includiNoteDato,

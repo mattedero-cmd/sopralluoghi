@@ -698,7 +698,8 @@ function FormOpzioniReport({
   onGeneraZip: (opzioni: OpzioniReport) => void;
 }) {
   const [selezione, setSelezione] = useState<Set<string>>(new Set(foto.map((f) => f.id)));
-  const [fotoPerPagina, setFotoPerPagina] = useState<1 | 2>(1);
+  const [fotoPerPagina, setFotoPerPagina] = useState<1 | 2 | 4 | 6>(1);
+  const [orizzontale, setOrizzontale] = useState(false);
   const [includiIndice, setIncludiIndice] = useState(true);
   const [includiRiepilogo, setIncludiRiepilogo] = useState(true);
   const [includiNoteDato, setIncludiNoteDato] = useState(true);
@@ -784,13 +785,28 @@ function FormOpzioniReport({
         </div>
       </div>
       <div className="campo">
-        <label>Layout delle foto</label>
+        <label>Foto per pagina</label>
         <span className="segmenti" role="group">
-          <button className={fotoPerPagina === 1 ? 'attivo' : ''} onClick={() => setFotoPerPagina(1)}>
-            1 per pagina (grande)
+          {([1, 2, 4, 6] as const).map((n) => (
+            <button key={n} className={fotoPerPagina === n ? 'attivo' : ''} onClick={() => setFotoPerPagina(n)}>
+              {n}
+            </button>
+          ))}
+        </span>
+        <p className="aiuto" style={{ marginTop: 4 }}>
+          {fotoPerPagina >= 4
+            ? 'Report fotografico a griglia: solo foto e didascalie (le misure restano nel riepilogo finale).'
+            : '1 = foto grande con tabella misure; 2 = compatto con tabella.'}
+        </p>
+      </div>
+      <div className="campo">
+        <label>Orientamento pagina</label>
+        <span className="segmenti" role="group">
+          <button className={!orizzontale ? 'attivo' : ''} onClick={() => setOrizzontale(false)}>
+            Verticale
           </button>
-          <button className={fotoPerPagina === 2 ? 'attivo' : ''} onClick={() => setFotoPerPagina(2)}>
-            2 per pagina (compatto)
+          <button className={orizzontale ? 'attivo' : ''} onClick={() => setOrizzontale(true)}>
+            Orizzontale
           </button>
         </span>
       </div>
@@ -814,6 +830,7 @@ function FormOpzioniReport({
             onGeneraZip({
               fotoIds: selezione.size === foto.length ? null : Array.from(selezione),
               fotoPerPagina,
+              orizzontale,
               includiIndice,
               includiRiepilogo,
               includiNoteDato,
@@ -831,6 +848,7 @@ function FormOpzioniReport({
             onGenera({
               fotoIds: selezione.size === foto.length ? null : Array.from(selezione),
               fotoPerPagina,
+              orizzontale,
               includiIndice,
               includiRiepilogo,
               includiNoteDato,
