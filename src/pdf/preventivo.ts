@@ -80,7 +80,15 @@ export async function generaPdfPreventivo(
           {
             width: 'auto',
             text: cliente
-              ? `Spett.le\n${cliente.nome}\n${[cliente.indirizzo, cliente.telefono, cliente.email]
+              ? `Spett.le\n${cliente.nome}\n${[
+                  cliente.indirizzo,
+                  cliente.partitaIva && `P.IVA ${cliente.partitaIva}`,
+                  cliente.codiceFiscale && `C.F. ${cliente.codiceFiscale}`,
+                  cliente.pec,
+                  cliente.sdi && `SDI ${cliente.sdi}`,
+                  cliente.telefono,
+                  cliente.email
+                ]
                   .filter(Boolean)
                   .join('\n')}`
               : 'Spett.le cliente',

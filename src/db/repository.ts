@@ -365,6 +365,10 @@ export async function creaCliente(
     telefono: dati.telefono ?? '',
     email: dati.email ?? '',
     indirizzo: dati.indirizzo ?? '',
+    partitaIva: dati.partitaIva,
+    codiceFiscale: dati.codiceFiscale,
+    pec: dati.pec,
+    sdi: dati.sdi,
     note: dati.note ?? '',
     creatoIl: ora(),
     modificatoIl: ora()

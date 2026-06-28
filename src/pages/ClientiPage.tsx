@@ -12,6 +12,7 @@ import {
 } from '../components/comuni';
 import { EtichettaStato } from './Archivio';
 import { EtichettaStatoPreventivo } from './PreventivoPage';
+import { Icona } from '../components/Icona';
 import { formattaData } from '../utils/format';
 
 // ---------------------------------------------------------------------------
@@ -137,16 +138,31 @@ export function ClientePage({ id }: { id: string }) {
       </header>
       <main className="contenuto">
         <button className="scheda" onClick={() => setModifica(true)}>
+          <span className="glifo neutro">
+            <Icona nome="persona" dimensione={20} />
+          </span>
           <span className="corpo">
-            {cliente.telefono && <div className="sotto">📞 {cliente.telefono}</div>}
-            {cliente.email && <div className="sotto">✉️ {cliente.email}</div>}
-            {cliente.indirizzo && <div className="sotto">📍 {cliente.indirizzo}</div>}
+            {cliente.indirizzo && <div className="sotto">{cliente.indirizzo}</div>}
+            {cliente.telefono && <div className="sotto">{cliente.telefono}</div>}
+            {cliente.email && <div className="sotto">{cliente.email}</div>}
+            {(cliente.partitaIva || cliente.codiceFiscale) && (
+              <div className="sotto">
+                {[cliente.partitaIva && `P.IVA ${cliente.partitaIva}`, cliente.codiceFiscale && `CF ${cliente.codiceFiscale}`]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </div>
+            )}
+            {(cliente.pec || cliente.sdi) && (
+              <div className="sotto">
+                {[cliente.pec, cliente.sdi && `SDI ${cliente.sdi}`].filter(Boolean).join(' · ')}
+              </div>
+            )}
             {cliente.note && <div className="sotto">{cliente.note.slice(0, 140)}</div>}
-            {!cliente.telefono && !cliente.email && !cliente.indirizzo && !cliente.note && (
+            {!cliente.telefono && !cliente.email && !cliente.indirizzo && !cliente.partitaIva && !cliente.note && (
               <div className="sotto">Tocca per completare i dati del cliente</div>
             )}
           </span>
-          <span style={{ fontSize: 20 }}>✏️</span>
+          <Icona nome="matita" dimensione={18} className="vai" />
         </button>
 
         <h2>Sopralluoghi ({progetti?.length ?? 0})</h2>
@@ -232,6 +248,10 @@ export function FormCliente({
     telefono: string;
     email: string;
     indirizzo: string;
+    partitaIva: string;
+    codiceFiscale: string;
+    pec: string;
+    sdi: string;
     note: string;
   }) => Promise<void>;
 }) {
@@ -239,6 +259,10 @@ export function FormCliente({
   const [telefono, setTelefono] = useState(iniziale?.telefono ?? '');
   const [email, setEmail] = useState(iniziale?.email ?? '');
   const [indirizzo, setIndirizzo] = useState(iniziale?.indirizzo ?? '');
+  const [partitaIva, setPartitaIva] = useState(iniziale?.partitaIva ?? '');
+  const [codiceFiscale, setCodiceFiscale] = useState(iniziale?.codiceFiscale ?? '');
+  const [pec, setPec] = useState(iniziale?.pec ?? '');
+  const [sdi, setSdi] = useState(iniziale?.sdi ?? '');
   const [note, setNote] = useState(iniziale?.note ?? '');
 
   return (
@@ -248,16 +272,38 @@ export function FormCliente({
         <input autoFocus value={nome} onChange={(e) => setNome(e.target.value)} />
       </div>
       <div className="campo">
-        <label>Telefono</label>
-        <input type="tel" value={telefono} onChange={(e) => setTelefono(e.target.value)} />
-      </div>
-      <div className="campo">
-        <label>Email</label>
-        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-      </div>
-      <div className="campo">
         <label>Indirizzo</label>
         <input value={indirizzo} onChange={(e) => setIndirizzo(e.target.value)} />
+      </div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <div className="campo" style={{ flex: '1 1 160px' }}>
+          <label>Telefono</label>
+          <input type="tel" value={telefono} onChange={(e) => setTelefono(e.target.value)} />
+        </div>
+        <div className="campo" style={{ flex: '1 1 200px' }}>
+          <label>Email</label>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <div className="campo" style={{ flex: '1 1 160px' }}>
+          <label>Partita IVA</label>
+          <input inputMode="numeric" value={partitaIva} onChange={(e) => setPartitaIva(e.target.value)} />
+        </div>
+        <div className="campo" style={{ flex: '1 1 160px' }}>
+          <label>Codice fiscale</label>
+          <input value={codiceFiscale} onChange={(e) => setCodiceFiscale(e.target.value.toUpperCase())} />
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <div className="campo" style={{ flex: '1 1 200px' }}>
+          <label>PEC</label>
+          <input type="email" value={pec} onChange={(e) => setPec(e.target.value)} />
+        </div>
+        <div className="campo" style={{ flex: '1 1 140px' }}>
+          <label>Codice SDI</label>
+          <input value={sdi} onChange={(e) => setSdi(e.target.value.toUpperCase())} maxLength={7} />
+        </div>
       </div>
       <div className="campo">
         <label>Note</label>
@@ -271,7 +317,17 @@ export function FormCliente({
           className="btn primario"
           disabled={!nome.trim()}
           onClick={async () => {
-            await onSalva({ nome: nome.trim(), telefono, email, indirizzo, note });
+            await onSalva({
+              nome: nome.trim(),
+              telefono,
+              email,
+              indirizzo,
+              partitaIva: partitaIva.trim(),
+              codiceFiscale: codiceFiscale.trim(),
+              pec: pec.trim(),
+              sdi: sdi.trim(),
+              note
+            });
             onChiudi();
           }}
         >

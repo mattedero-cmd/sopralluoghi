@@ -174,12 +174,11 @@ export function PreventivoPage({ id }: { id: string }) {
         });
       } else if (a.tipo === 'quotaPoligono') {
         // elementi/poligoni (rettangoli, vetrine…): si tiene l'ORIGINALE della
-        // famiglia (le copie richiamate sono solo etichette, senza geometria) e
-        // si conta quante volte è presente (× pezzi)
+        // famiglia (le copie richiamate sono solo etichette, senza geometria).
+        // PREZZO A CORPO: quantità = numero di pezzi, prezzo per pezzo; nella
+        // descrizione la dimensione e la superficie del SINGOLO elemento.
         if (a.soloEtichetta) continue;
         const n = contaFamiglia.get(famigliaDi(a)) ?? 1;
-        // codice della misura (A1…) e dimensione del SINGOLO elemento, così la
-        // voce indica chiaramente a quale elemento della facciata si riferisce
         const info = numeri.get(a.id);
         const codice = info ? ` ${info.etichettaFoto}${info.numero}` : '';
         const nVert = a.punti.length;
@@ -187,31 +186,19 @@ export function PreventivoPage({ id }: { id: string }) {
           .filter((s) => segmentoELato(s, nVert))
           .map((s) => (s.valore === null ? '?' : formattaNumero(s.valore)))
           .join(' × ');
-        const dimTxt = dim ? ` · ${dim} ${a.unita}/cad.` : '';
-        const pezzi = n > 1 ? ` · ${n} pz` : '';
-        const etichetta = `${nomeFoto} —${codice} ${nomeFormaPoligono(a)}${dimTxt}${pezzi}`.replace(/\s+/g, ' ');
         const area = areaReale(a, foto);
-        if (area) {
-          nuove.push({
-            id: nuovoId(),
-            descrizione: etichetta,
-            quantita: arr2(area.m2 * n),
-            unita: 'm²',
-            prezzoUnitario: 0
-          });
-        } else {
-          // niente calibrazione di superficie: si importa il perimetro in metri
-          const perim = perimetroReale(a);
-          if (perim !== null) {
-            nuove.push({
-              id: nuovoId(),
-              descrizione: `${etichetta} (perimetro)`,
-              quantita: arr2((inMillimetri(perim, a.unita) / 1000) * n),
-              unita: 'm',
-              prezzoUnitario: 0
-            });
-          }
-        }
+        const perim = perimetroReale(a);
+        const mis = area
+          ? `${formattaNumero(area.m2)} m²/cad.`
+          : perim !== null
+            ? `perim. ${formattaNumero(perim)} ${a.unita}`
+            : '';
+        const dettaglio = [dim ? `${dim} ${a.unita}` : '', mis].filter(Boolean).join(' · ');
+        const descr = `${nomeFoto} —${codice} ${nomeFormaPoligono(a)}${dettaglio ? ` · ${dettaglio}` : ''}`.replace(
+          /\s+/g,
+          ' '
+        );
+        nuove.push({ id: nuovoId(), descrizione: descr, quantita: n, unita: 'pz', prezzoUnitario: 0 });
       } else if (a.tipo === 'quotaRett' && a.valoreBase !== null && a.valoreAltezza !== null) {
         const areaMq =
           (inMillimetri(a.valoreBase, a.unita) / 1000) * (inMillimetri(a.valoreAltezza, a.unita) / 1000);

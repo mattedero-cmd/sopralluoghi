@@ -70,6 +70,12 @@ export interface Cliente {
   telefono: string;
   email: string;
   indirizzo: string;
+  /** dati fiscali, utili per preventivi/fatture */
+  partitaIva?: string;
+  codiceFiscale?: string;
+  /** PEC o codice destinatario (SDI) per la fatturazione elettronica */
+  pec?: string;
+  sdi?: string;
   note: string;
   creatoIl: number;
   modificatoIl: number;
