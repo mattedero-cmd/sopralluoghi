@@ -1,3 +1,4 @@
+import type { EsitoRipristino } from '../db/backup';
 import { leggiImpostazioni, salvaImpostazioni } from '../db/repository';
 import { backupSuCloud, elencaBackupCloud, ripristinaDaCloud } from './supabaseBackup';
 
@@ -19,33 +20,58 @@ import { backupSuCloud, elencaBackupCloud, ripristinaDaCloud } from './supabaseB
 
 const ORA_DEFAULT = 2;
 
-let inCorso = false;
 let avviato = false;
 let timer: ReturnType<typeof setTimeout> | null = null;
+/** Promessa della sync in corso: nuove chiamate vi si agganciano invece di partirne un'altra. */
+let promessaInCorso: Promise<RisultatoSync> | null = null;
 
-/** Esegue una sincronizzazione completa (pull + push). Usata anche dal pulsante manuale. */
-export async function sincronizzaGiornaliera(avanzamento?: (msg: string) => void): Promise<void> {
-  if (inCorso) return;
-  inCorso = true;
-  try {
-    // 1) PULL: prendi il backup più recente dal cloud e fondilo nell'archivio
-    //    locale, senza toccare la sessione cloud di questo dispositivo.
-    avanzamento?.('Sincronizzazione: lettura dal cloud…');
-    const lista = await elencaBackupCloud(); // già ordinati dal più recente
-    if (lista.length > 0) {
-      await ripristinaDaCloud(lista[0].name, avanzamento, { preservaSessioneCloud: true });
-    }
-    // 2) PUSH: ripubblica lo stato unito perché lo vedano gli altri dispositivi.
-    avanzamento?.('Sincronizzazione: invio al cloud…');
-    await backupSuCloud(avanzamento);
-    // 3) segna l'orario dell'ultima sincronizzazione riuscita
-    const imp = await leggiImpostazioni();
-    if (imp.cloud) {
-      await salvaImpostazioni({ ...imp, cloud: { ...imp.cloud, ultimaSync: Date.now() } });
-    }
-  } finally {
-    inCorso = false;
+export interface RisultatoSync {
+  /** quanti backup erano presenti sul cloud (nella cartella di questo utente) */
+  filesCloud: number;
+  /** nome del backup scaricato e unito, se presente */
+  scaricato: string | null;
+  /** conteggi del backup unito (totali contenuti, non solo i nuovi) */
+  importato: EsitoRipristino | null;
+  /** nome del backup caricato sul cloud */
+  caricato: string;
+}
+
+/**
+ * Sincronizzazione completa (pull + push). Usata sia dal pianificatore sia dal
+ * pulsante manuale. Se una sync è già in corso, restituisce la STESSA promessa:
+ * così il pulsante manuale attende il lavoro reale e ne riporta l'esito vero,
+ * invece di dichiarare "successo" su un'operazione mai eseguita.
+ */
+export function sincronizzaGiornaliera(avanzamento?: (msg: string) => void): Promise<RisultatoSync> {
+  if (promessaInCorso) return promessaInCorso;
+  const p = eseguiSync(avanzamento);
+  promessaInCorso = p;
+  void p.catch(() => undefined).finally(() => {
+    if (promessaInCorso === p) promessaInCorso = null;
+  });
+  return p;
+}
+
+async function eseguiSync(avanzamento?: (msg: string) => void): Promise<RisultatoSync> {
+  // 1) PULL: prendi il backup più recente dal cloud e fondilo nell'archivio
+  //    locale, senza toccare la sessione cloud di questo dispositivo.
+  avanzamento?.('Sincronizzazione: lettura dal cloud…');
+  const lista = await elencaBackupCloud(); // già ordinati dal più recente
+  let scaricato: string | null = null;
+  let importato: EsitoRipristino | null = null;
+  if (lista.length > 0) {
+    scaricato = lista[0].name;
+    importato = await ripristinaDaCloud(scaricato, avanzamento, { preservaSessioneCloud: true });
   }
+  // 2) PUSH: ripubblica lo stato unito perché lo vedano gli altri dispositivi.
+  avanzamento?.('Sincronizzazione: invio al cloud…');
+  const caricato = await backupSuCloud(avanzamento);
+  // 3) segna l'orario dell'ultima sincronizzazione riuscita
+  const imp = await leggiImpostazioni();
+  if (imp.cloud) {
+    await salvaImpostazioni({ ...imp, cloud: { ...imp.cloud, ultimaSync: Date.now() } });
+  }
+  return { filesCloud: lista.length, scaricato, importato, caricato };
 }
 
 /** Timestamp dell'ultima scadenza (ora:00) già passata: oggi se è passata, altrimenti ieri. */
@@ -60,7 +86,7 @@ function scadenzaGiornalieraPassata(ora: number): number {
 
 /** Sincronizza solo se è abilitata, c'è rete e non è già stato fatto dopo l'ultima scadenza. */
 export async function forseSincronizza(): Promise<void> {
-  if (inCorso) return;
+  if (promessaInCorso) return;
   let imp;
   try {
     imp = await leggiImpostazioni();

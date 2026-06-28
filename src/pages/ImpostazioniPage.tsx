@@ -314,8 +314,11 @@ function SezioneCloud({
   const sincronizzaOra = async () => {
     setOperazione('Sincronizzazione in corso…');
     try {
-      await sincronizzaGiornaliera(setOperazione);
-      mostraToast('successo', 'Sincronizzazione completata.');
+      const r = await sincronizzaGiornaliera(setOperazione);
+      const dett = r.importato
+        ? `Unite dal cloud ${r.importato.progetti} progetti e ${r.importato.foto} foto (${r.filesCloud} backup presenti).`
+        : `Nessun backup remoto da unire: caricato il primo (${r.filesCloud} presenti).`;
+      mostraToast('successo', `Sincronizzazione completata. ${dett}`);
       ricaricaImpostazioni();
       setLista(null);
     } catch (e) {
