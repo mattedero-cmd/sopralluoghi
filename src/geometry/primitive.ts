@@ -3,6 +3,7 @@ import type {
   Callout,
   DisegnoLibero,
   Etichetta,
+  Legenda,
   Freccia,
   Punto,
   Quota,
@@ -53,7 +54,7 @@ export type Primitiva =
   | {
       kind: 'testo';
       testo: string;
-      /** punto di ancoraggio (centro del testo) */
+      /** punto di ancoraggio (centro del testo, o sinistra se allineamento='left') */
       posizione: Punto;
       rotazioneDeg: number;
       dimensione: number;
@@ -61,8 +62,18 @@ export type Primitiva =
       sfondo: string | null;
       /** alone/contorno scuro per la leggibilità senza riquadro (stile quote) */
       alone?: string;
+      /** allineamento orizzontale del testo rispetto alla posizione (default centro) */
+      allineamento?: 'left' | 'center';
     }
-  | { kind: 'rettangolo'; rect: Rettangolo; colore: string; spessore: number; riempimento?: string }
+  | {
+      kind: 'rettangolo';
+      rect: Rettangolo;
+      colore: string;
+      spessore: number;
+      riempimento?: string;
+      /** raggio degli angoli (riquadro arrotondato) */
+      raggio?: number;
+    }
   | {
       kind: 'cerchio';
       centro: Punto;
@@ -701,7 +712,23 @@ function badgePoligono(q: QuotaPoligono, badge: string, colore: string, pos: Pun
   ];
 }
 
-/** Etichetta alfabetica: badge circolare pieno con la lettera bianca al centro. */
+/**
+ * Bianco o nero in base alla luminanza dello sfondo: la lettera dell'etichetta
+ * resta sempre leggibile a prescindere dal colore scelto (es. su giallo → nero).
+ */
+export function coloreContrasto(sfondo: string): string {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(sfondo.trim());
+  if (!m) return '#ffffff';
+  let h = m[1];
+  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255; // luminanza percepita
+  return lum > 0.6 ? '#111111' : '#ffffff';
+}
+
+/** Etichetta alfabetica: badge circolare pieno con la lettera (colore automatico). */
 export function primitiveEtichetta(a: Etichetta): Primitiva[] {
   const dim = a.stile.dimensioneTesto;
   const raggio = Math.max(dim * 0.95, misuraLarghezzaTesto(a.lettera, dim) / 2 + dim * 0.45);
@@ -722,10 +749,88 @@ export function primitiveEtichetta(a: Etichetta): Primitiva[] {
       posizione: a.posizione,
       rotazioneDeg: 0,
       dimensione: dim,
-      colore: '#ffffff',
+      colore: coloreContrasto(colore),
       sfondo: null
     }
   ];
+}
+
+/** Tronca un testo con ellissi se supera la larghezza massima (px immagine). */
+function troncaTesto(testo: string, dim: number, maxLarghezza: number): string {
+  if (maxLarghezza <= 0 || misuraLarghezzaTesto(testo, dim) <= maxLarghezza) return testo;
+  let t = testo;
+  while (t.length > 1 && misuraLarghezzaTesto(t + '…', dim) > maxLarghezza) t = t.slice(0, -1);
+  return t + '…';
+}
+
+/**
+ * Legenda: riquadro con le voci (badge lettera + descrizione) che rifluiscono a
+ * una o più colonne in base alla dimensione del riquadro, sempre in ordine
+ * alfabetico. Usata SOLO nell'editor (nel PDF la legenda è trascritta a parte).
+ */
+export function primitiveLegenda(
+  l: Legenda,
+  voci: Array<{ lettera: string; descrizione: string }>
+): Primitiva[] {
+  if (voci.length === 0) return [];
+  const dim = l.stile.dimensioneTesto;
+  const pad = dim * 0.6;
+  const rowH = dim * 1.7;
+  const W = l.larghezza;
+  const H = l.altezza;
+  const x0 = l.posizione.x;
+  const y0 = l.posizione.y;
+  const usableH = Math.max(rowH, H - 2 * pad);
+  const righePerColonna = Math.max(1, Math.floor(usableH / rowH));
+  const colonne = Math.max(1, Math.ceil(voci.length / righePerColonna));
+  const colW = (W - 2 * pad) / colonne;
+  const badgeR = dim * 0.6;
+  const prim: Primitiva[] = [
+    {
+      kind: 'rettangolo',
+      rect: { x: x0, y: y0, width: W, height: H },
+      colore: 'rgba(20,24,33,0.85)',
+      spessore: Math.max(2, dim * 0.08),
+      riempimento: 'rgba(255,255,255,0.94)',
+      raggio: l.forma === 'arrotondato' ? Math.min(dim, W / 2, H / 2) : 0
+    }
+  ];
+  voci.forEach((v, i) => {
+    const col = Math.floor(i / righePerColonna);
+    const row = i % righePerColonna;
+    const cx = x0 + pad + col * colW + badgeR;
+    const cy = y0 + pad + row * rowH + rowH / 2;
+    prim.push({
+      kind: 'cerchio',
+      centro: { x: cx, y: cy },
+      raggio: badgeR,
+      colore: l.stile.colore,
+      spessore: 0,
+      riempimento: l.stile.colore
+    });
+    prim.push({
+      kind: 'testo',
+      testo: v.lettera,
+      posizione: { x: cx, y: cy },
+      rotazioneDeg: 0,
+      dimensione: dim * 0.82,
+      colore: coloreContrasto(l.stile.colore),
+      sfondo: null
+    });
+    const tx = cx + badgeR + dim * 0.45;
+    const maxW = colW - (badgeR * 2 + dim * 0.6);
+    prim.push({
+      kind: 'testo',
+      testo: troncaTesto(v.descrizione || '—', dim * 0.92, maxW),
+      posizione: { x: tx, y: cy },
+      rotazioneDeg: 0,
+      dimensione: dim * 0.92,
+      colore: '#14181f',
+      sfondo: null,
+      allineamento: 'left'
+    });
+  });
+  return prim;
 }
 
 export function etichettaRaggio(q: Pick<QuotaRaggio, 'valore' | 'unita' | 'stato' | 'modo'>): string {
@@ -939,7 +1044,9 @@ export function primitiveAnnotazione(
   /** risolve la foto-dettaglio di un callout (già caricata) */
   risolviDettaglio?: (c: Callout) => CanvasImageSource | null,
   /** codice/etichetta calcolato della forma (nomenclatura strutturata) */
-  etichettaForma?: (a: Annotazione) => string | undefined
+  etichettaForma?: (a: Annotazione) => string | undefined,
+  /** voci della legenda della foto (lettera = descrizione), in ordine */
+  vociLegenda?: () => Array<{ lettera: string; descrizione: string }>
 ): Primitiva[] {
   switch (a.tipo) {
     case 'quota':
@@ -963,8 +1070,8 @@ export function primitiveAnnotazione(
     case 'etichetta':
       return primitiveEtichetta(a);
     case 'legenda':
-      // la legenda non è disegnata sull'immagine: è un oggetto interattivo
-      // nell'editor e nel PDF viene trascritta come elenco separato
-      return [];
+      // disegnata nell'editor (riquadro con le voci); nel PDF viene esclusa e
+      // trascritta come elenco separato
+      return primitiveLegenda(a, vociLegenda?.() ?? []);
   }
 }

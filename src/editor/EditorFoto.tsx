@@ -1226,11 +1226,11 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       />
 
       {strumento === 'etichetta' && !menuEtichetta && (
-        <div className="indicatore-etichetta" role="status">
-          Etichetta <strong>{letteraAttiva}</strong>
-          <span className="sotto">Tap per posare · tieni premuto per scegliere</span>
-          <button className="btn-legenda" onClick={() => setLegendaAperta(true)}>
-            Legenda
+        <div className="barra-etichetta" role="status">
+          <span className="lettera">{letteraAttiva}</span>
+          <span className="hint">Tap per posare · tieni premuto per cambiare lettera</span>
+          <button className="btn primario" onClick={() => setLegendaAperta(true)}>
+            <Icona nome="documento" dimensione={18} /> Legenda
           </button>
         </div>
       )}

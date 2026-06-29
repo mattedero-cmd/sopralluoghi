@@ -140,14 +140,35 @@ export function disegnaPrimitiva(
       break;
     }
     case 'rettangolo': {
-      if (p.riempimento) {
-        ctx.fillStyle = p.riempimento;
-        ctx.fillRect(p.rect.x, p.rect.y, p.rect.width, p.rect.height);
-      }
-      if (p.spessore > 0) {
-        ctx.strokeStyle = p.colore;
-        ctx.lineWidth = p.spessore;
-        ctx.strokeRect(p.rect.x, p.rect.y, p.rect.width, p.rect.height);
+      const r = p.raggio ?? 0;
+      if (r > 0) {
+        const rr = Math.min(r, p.rect.width / 2, p.rect.height / 2);
+        ctx.beginPath();
+        ctx.moveTo(p.rect.x + rr, p.rect.y);
+        ctx.arcTo(p.rect.x + p.rect.width, p.rect.y, p.rect.x + p.rect.width, p.rect.y + p.rect.height, rr);
+        ctx.arcTo(p.rect.x + p.rect.width, p.rect.y + p.rect.height, p.rect.x, p.rect.y + p.rect.height, rr);
+        ctx.arcTo(p.rect.x, p.rect.y + p.rect.height, p.rect.x, p.rect.y, rr);
+        ctx.arcTo(p.rect.x, p.rect.y, p.rect.x + p.rect.width, p.rect.y, rr);
+        ctx.closePath();
+        if (p.riempimento) {
+          ctx.fillStyle = p.riempimento;
+          ctx.fill();
+        }
+        if (p.spessore > 0) {
+          ctx.strokeStyle = p.colore;
+          ctx.lineWidth = p.spessore;
+          ctx.stroke();
+        }
+      } else {
+        if (p.riempimento) {
+          ctx.fillStyle = p.riempimento;
+          ctx.fillRect(p.rect.x, p.rect.y, p.rect.width, p.rect.height);
+        }
+        if (p.spessore > 0) {
+          ctx.strokeStyle = p.colore;
+          ctx.lineWidth = p.spessore;
+          ctx.strokeRect(p.rect.x, p.rect.y, p.rect.width, p.rect.height);
+        }
       }
       break;
     }
@@ -193,7 +214,7 @@ export function disegnaPrimitiva(
     case 'testo': {
       const font = `bold ${p.dimensione}px system-ui, sans-serif`;
       ctx.font = font;
-      ctx.textAlign = 'center';
+      ctx.textAlign = p.allineamento === 'left' ? 'left' : 'center';
       ctx.textBaseline = 'middle';
       ctx.translate(p.posizione.x, p.posizione.y);
       ctx.rotate((p.rotazioneDeg * Math.PI) / 180);

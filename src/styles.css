@@ -2028,43 +2028,54 @@ a {
   border-color: color-mix(in srgb, var(--accento) 60%, var(--bordo));
 }
 
-/* indicatore della lettera attiva in modalità etichetta */
-.indicatore-etichetta {
-  position: absolute;
-  top: 12px;
+/* barra della modalità etichetta: lettera attiva + accesso alla legenda,
+   ancorata in basso sopra la toolbar (lontano da status bar e header) */
+.barra-etichetta {
+  position: fixed;
   left: 50%;
+  bottom: calc(88px + env(safe-area-inset-bottom));
   transform: translateX(-50%);
-  z-index: 30;
-  background: color-mix(in srgb, var(--accento) 16%, var(--sfondo-2));
-  border: 1px solid color-mix(in srgb, var(--accento) 50%, var(--bordo));
-  border-radius: 999px;
-  padding: 6px 14px;
-  font-weight: 700;
+  z-index: 40;
   display: flex;
   align-items: center;
-  gap: 8px;
-  pointer-events: none;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  gap: 10px;
+  max-width: 94%;
+  background: rgba(16, 20, 26, 0.94);
+  border: 1px solid var(--accento);
+  border-radius: 999px;
+  padding: 6px 8px 6px 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
-.indicatore-etichetta strong {
-  font-size: 18px;
-  color: var(--accento);
+.barra-etichetta .lettera {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--accento);
+  color: #fff;
+  font-weight: 800;
+  font-size: 19px;
 }
-.indicatore-etichetta .sotto {
-  font-weight: 500;
+.barra-etichetta .hint {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 12px;
   color: var(--testo-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.indicatore-etichetta .btn-legenda {
-  pointer-events: auto;
-  border: 1px solid color-mix(in srgb, var(--accento) 55%, var(--bordo));
-  background: var(--sfondo-2);
-  color: var(--testo);
-  border-radius: 999px;
-  padding: 4px 12px;
-  font-weight: 700;
-  font-size: 13px;
-  cursor: pointer;
+.barra-etichetta .btn {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 8px 14px;
+}
+@media (max-width: 380px) {
+  .barra-etichetta .hint {
+    display: none;
+  }
 }
 
 /* ambiente di lavoro della legenda */
