@@ -929,15 +929,31 @@ export function primitiveTesto(t: TestoFoto): Primitiva[] {
       prim.push(freccette(t.ancora, dir, t.stile.spessore * 4 + 6, colore));
     }
   }
+  // nota in stile legenda: riquadro chiaro arrotondato con bordo del colore
+  // scelto e testo scuro a contrasto, così resta sempre leggibile.
+  const dim = t.stile.dimensioneTesto;
+  const righe = (t.testo || ' ').split('\n');
+  const altRiga = dim * 1.25;
+  const larghezza = Math.max(...righe.map((r) => misuraLarghezzaTesto(r, dim)));
+  const pad = dim * 0.5;
+  const w = larghezza + pad * 2;
+  const h = (righe.length - 1) * altRiga + dim + pad * 2;
+  prim.push({
+    kind: 'rettangolo',
+    rect: { x: t.posizione.x - w / 2, y: t.posizione.y - h / 2, width: w, height: h },
+    colore,
+    spessore: Math.max(2, dim * 0.1),
+    riempimento: 'rgba(255,255,255,0.95)',
+    raggio: dim * 0.4
+  });
   prim.push({
     kind: 'testo',
     testo: t.testo || ' ',
     posizione: t.posizione,
     rotazioneDeg: 0,
-    dimensione: t.stile.dimensioneTesto,
-    // sfondo = colore scelto, testo automatico (bianco/nero) per leggerlo sempre
-    colore: coloreContrasto(t.stile.colore),
-    sfondo: t.stile.colore
+    dimensione: dim,
+    colore: coloreContrasto('#ffffff'), // testo scuro sul riquadro chiaro
+    sfondo: null
   });
   return prim;
 }
