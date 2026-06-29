@@ -985,8 +985,13 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     if (!foto || !annotazioni) return;
     salvaOra();
     try {
-      const blob = await renderFotoAnnotata(foto, annotazioni, 'image/jpeg', 0.92, (a) =>
-        codiceLocaleForma(a, numeriForme)
+      const blob = await renderFotoAnnotata(
+        foto,
+        annotazioni,
+        'image/jpeg',
+        0.92,
+        (a) => codiceLocaleForma(a, numeriForme),
+        { legenda: true }
       );
       await condividiOScarica(
         blob,

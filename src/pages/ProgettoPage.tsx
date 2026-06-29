@@ -144,8 +144,13 @@ export function ProgettoPage({ id }: { id: string }) {
               const numeri = numeriProgetto(fotoProgetto, (fid) =>
                 annProgetto.filter((a) => a.fotoId === fid)
               );
-              const blob = await renderFotoAnnotata(f, annotazioni, 'image/jpeg', 0.92, (a) =>
-                codiceLocaleForma(a, numeri)
+              const blob = await renderFotoAnnotata(
+                f,
+                annotazioni,
+                'image/jpeg',
+                0.92,
+                (a) => codiceLocaleForma(a, numeri),
+                { legenda: true }
               );
               await condividiOScarica(
                 blob,

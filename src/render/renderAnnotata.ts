@@ -1,5 +1,6 @@
 import type { Annotazione, Callout, Foto } from '../db/types';
 import { primitiveAnnotazione, type Primitiva } from '../geometry/primitive';
+import { vociLegenda } from '../geometry/nomenclatura';
 import { blobOrigine, canvasInBlob, caricaImmagine } from '../utils/image';
 import { caricaDettaglio } from './../utils/immaginiCallout';
 
@@ -16,7 +17,11 @@ export async function renderFotoAnnotata(
   qualita = 0.92,
   /** codice/etichetta strutturato della forma (nomenclatura): se assente si usa
    *  l'etichetta grezza salvata. Serve perché la foto del PDF mostri A1, A1.1… */
-  codiceForma?: (a: Annotazione) => string | undefined
+  codiceForma?: (a: Annotazione) => string | undefined,
+  /** disegna ANCHE la legenda dentro l'immagine. Per il PDF resta false (la
+   *  legenda è trascritta a parte); per la condivisione come immagine è true
+   *  così l'immagine contiene tutto, legenda compresa. */
+  opzioni?: { legenda?: boolean }
 ): Promise<Blob> {
   const img = await caricaImmagine(blobOrigine(foto));
   const canvas = document.createElement('canvas');
@@ -40,9 +45,13 @@ export async function renderFotoAnnotata(
   }
   const risolvi = (c: Callout) => dettagli.get(c.id) ?? null;
 
+  // voci della legenda: vuote per il PDF (legenda esclusa dall'immagine),
+  // valorizzate per la condivisione come immagine (legenda disegnata)
+  const voci = opzioni?.legenda ? vociLegenda(annotazioni) : [];
+
   const ordinate = [...annotazioni].sort((a, b) => a.zIndex - b.zIndex);
   for (const ann of ordinate) {
-    for (const p of primitiveAnnotazione(ann, risolvi, codiceForma)) {
+    for (const p of primitiveAnnotazione(ann, risolvi, codiceForma, () => voci)) {
       disegnaPrimitiva(ctx, p, img);
     }
   }
