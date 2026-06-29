@@ -2078,6 +2078,54 @@ a {
   }
 }
 
+/* badge "foto di dettaglio" nell'header dell'editor */
+.badge-dettaglio {
+  flex: 0 0 auto;
+  background: #1a73e8;
+  color: #fff;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.badge-dettaglio strong {
+  font-weight: 800;
+}
+
+/* griglia delle foto di dettaglio nel modale dell'etichetta */
+.griglia-dettagli {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.cella-dettaglio {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0;
+  border: 1px solid var(--bordo);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--sfondo-2);
+  cursor: pointer;
+}
+.cella-dettaglio img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  display: block;
+}
+.cella-dettaglio-titolo {
+  font-size: 11px;
+  padding: 2px 4px 4px;
+  color: var(--testo-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ambiente di lavoro della legenda */
 .lista-legenda {
   display: flex;

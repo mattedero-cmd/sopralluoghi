@@ -196,8 +196,25 @@ export interface Foto {
    * nello stesso progetto CONDIVIDONO la sequenza numerica delle forme.
    */
   etichetta?: string;
+  /**
+   * Se valorizzato, questa foto è un DETTAGLIO collegato a un'etichetta di
+   * un'altra foto del progetto (la foto principale). Resta una foto autonoma,
+   * modificabile come tutte le altre, ma nasce marcata e nel PDF compare subito
+   * dopo la foto principale, raggruppata sotto la sua etichetta.
+   */
+  dettaglioDi?: DettaglioEtichetta;
   creataIl: number;
   modificataIl: number;
+}
+
+/** Collegamento di una foto di dettaglio all'etichetta di origine. */
+export interface DettaglioEtichetta {
+  /** foto principale che contiene l'etichetta */
+  fotoId: ID;
+  /** id dell'etichetta di origine */
+  etichettaId: ID;
+  /** lettera/numero dell'etichetta, per il badge e il PDF */
+  lettera: string;
 }
 
 // ---------------------------------------------------------------------------

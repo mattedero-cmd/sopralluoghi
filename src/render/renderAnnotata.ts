@@ -55,7 +55,58 @@ export async function renderFotoAnnotata(
       disegnaPrimitiva(ctx, p, img);
     }
   }
+
+  // foto di dettaglio: sigla in alto a destra che richiama l'etichetta di origine
+  if (foto.dettaglioDi) {
+    disegnaBadgeDettaglio(ctx, canvas.width, canvas.height, foto.dettaglioDi.lettera, img);
+  }
+
   return canvasInBlob(canvas, formato, qualita);
+}
+
+/** Sigla "▣ lettera" in alto a destra, per marcare una foto di dettaglio. */
+function disegnaBadgeDettaglio(
+  ctx: CanvasRenderingContext2D,
+  larghezza: number,
+  altezza: number,
+  lettera: string,
+  img: CanvasImageSource
+): void {
+  const lato = Math.max(larghezza, altezza);
+  const dim = Math.max(18, Math.round(lato / 34));
+  const testo = `▣ ${lettera}`;
+  ctx.save();
+  ctx.font = `bold ${dim}px system-ui, sans-serif`;
+  const w = ctx.measureText(testo).width + dim * 1.1;
+  const h = dim * 1.7;
+  const margine = dim * 0.7;
+  const rect = { x: larghezza - margine - w, y: margine, width: w, height: h };
+  ctx.restore();
+  disegnaPrimitiva(
+    ctx,
+    {
+      kind: 'rettangolo',
+      rect,
+      colore: '#1a73e8',
+      spessore: 0,
+      riempimento: '#1a73e8',
+      raggio: h / 2
+    },
+    img
+  );
+  disegnaPrimitiva(
+    ctx,
+    {
+      kind: 'testo',
+      testo,
+      posizione: { x: rect.x + w / 2, y: rect.y + h / 2 },
+      rotazioneDeg: 0,
+      dimensione: dim,
+      colore: '#ffffff',
+      sfondo: null
+    },
+    img
+  );
 }
 
 export function disegnaPrimitiva(

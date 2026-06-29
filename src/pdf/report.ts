@@ -7,6 +7,7 @@ import { nomeFormaPoligono, simboliPoligono, versiSegmento } from '../geometry/p
 import {
   codiceCompletoForma,
   codiceLocaleForma,
+  confrontaEtichetta,
   eCopiaEtichetta,
   eFormaEtichettabile,
   famigliaDi,
@@ -300,9 +301,25 @@ export async function generaReportPdf(
     const i = sezioni.findIndex((s) => s.id === f.sezioneId);
     return i < 0 ? 1e9 : i;
   };
-  fotoList.sort((a, b) => rankSez(a) - rankSez(b) || a.ordine - b.ordine);
+  const dettagliDi = new Map<string, Foto[]>();
+  for (const ph of fotoList) {
+    if (ph.dettaglioDi) {
+      const arr = dettagliDi.get(ph.dettaglioDi.fotoId) ?? [];
+      arr.push(ph);
+      dettagliDi.set(ph.dettaglioDi.fotoId, arr);
+    }
+  }
+  for (const arr of dettagliDi.values()) {
+    arr.sort(
+      (a, b) =>
+        confrontaEtichetta(a.dettaglioDi!.lettera, b.dettaglioDi!.lettera) || a.ordine - b.ordine
+    );
+  }
+  const principali = fotoList.filter((ph) => !ph.dettaglioDi);
+  principali.sort((a, b) => rankSez(a) - rankSez(b) || a.ordine - b.ordine);
   let sezPrec: string | null | undefined = ' ';
-  fotoList.forEach((f, indice) => {
+  let indice = 0;
+  principali.forEach((f) => {
     const annotazioni = annotazioniPerFoto.get(f.id) ?? [];
     const perc = ctx.percorsoFoto.get(f.id) ?? percorso;
     const sid = f.sezioneId && sezioni.some((s) => s.id === f.sezioneId) ? f.sezioneId : null;
@@ -312,7 +329,21 @@ export async function generaReportPdf(
       titoloSez = s ? `${s.nome}${s.etichetta ? ` — ${s.etichetta}` : ''}` : 'Senza sezione';
     }
     sezPrec = sid;
-    contenuto.push(...sezioneFoto(f, indice, annotazioni, opzioni, impostazioni.pdf, ctx, perc, undefined, titoloSez));
+    contenuto.push(
+      ...sezioneFoto(f, indice++, annotazioni, opzioni, impostazioni.pdf, ctx, perc, undefined, titoloSez)
+    );
+    // foto di dettaglio collegate alle etichette di questa foto, subito dopo
+    for (const dett of dettagliDi.get(f.id) ?? []) {
+      const annD = annotazioniPerFoto.get(dett.id) ?? [];
+      const percD = ctx.percorsoFoto.get(dett.id) ?? percorso;
+      contenuto.push(
+        ...sezioneFoto(dett, indice++, annD, opzioni, impostazioni.pdf, ctx, percD, {
+          style: 'h3',
+          toc: false,
+          etichetta: `Dettaglio ${dett.dettaglioDi!.lettera} · `
+        })
+      );
+    }
     });
   }
 

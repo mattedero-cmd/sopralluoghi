@@ -28,7 +28,7 @@ import {
   segmentiPoligono,
   segmentoELato
 } from '../db/types';
-import { aggiornaFoto, eliminaFoto, leggiImpostazioni, salvaAnnotazione, salvaAnnotazioniFoto } from '../db/repository';
+import { aggiornaFoto, aggiungiFoto, eliminaFoto, leggiImpostazioni, salvaAnnotazione, salvaAnnotazioniFoto } from '../db/repository';
 import { blobOrigine, caricaImmagine, fotoIllegibile, importaFoto } from '../utils/image';
 import { caricaDettaglio } from '../utils/immaginiCallout';
 import { naviga } from '../router';
@@ -820,6 +820,29 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     );
   };
 
+  /** Crea una foto di DETTAGLIO collegata a un'etichetta: importa il file,
+   *  la salva nello stesso progetto/sezione della foto principale e la marca. */
+  const creaFotoDettaglio = async (et: Etichetta, file: File): Promise<string | null> => {
+    if (!foto) return null;
+    try {
+      const { fotoLatoMax } = await leggiImpostazioni();
+      const dati = await importaFoto(file, fotoLatoMax);
+      const nuova = await aggiungiFoto(foto.progettoId, {
+        ...dati,
+        didascalia: `Dettaglio ${et.lettera}`,
+        noteDato: '',
+        scala: null,
+        sezioneId: foto.sezioneId,
+        dettaglioDi: { fotoId: foto.id, etichettaId: et.id, lettera: et.lettera }
+      });
+      mostraToast('successo', `Foto di dettaglio ${et.lettera} aggiunta.`);
+      return nuova.id;
+    } catch (e) {
+      mostraToast('errore', e instanceof Error ? e.message : 'Foto di dettaglio non aggiunta.');
+      return null;
+    }
+  };
+
   /** Modifica una singola etichetta: cambia lettera e propaga la descrizione
    *  a tutte le etichette con la nuova lettera (collegamento con la legenda). */
   const modificaEtichetta = (id: string, m: { lettera: string; descrizione: string }) => {
@@ -1162,6 +1185,11 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           <Icona nome="indietro" />
         </button>
         <h1>{foto.didascalia || 'Foto'}</h1>
+        {foto.dettaglioDi && (
+          <span className="badge-dettaglio" title="Foto di dettaglio collegata a un'etichetta">
+            Dettaglio <strong>{foto.dettaglioDi.lettera}</strong>
+          </span>
+        )}
         <StatoApp />
         <button className="btn icona" aria-label="Annulla" disabled={passato.current.length === 0} onClick={undo}>
           <Icona nome="annulla" />
@@ -1274,11 +1302,19 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             vociLegenda(annotazioni ?? []).find((v) => v.lettera === et.lettera)?.descrizione ??
             et.descrizione ??
             '';
+          const dettagli = (fotoProgetto ?? []).filter((f) => f.dettaglioDi?.etichettaId === et.id);
           return (
             <ModificaEtichetta
               lettera={et.lettera}
               descrizione={desc}
+              dettagli={dettagli}
               onApplica={(m) => modificaEtichetta(et.id, m)}
+              onAggiungiDettaglio={(file) => void creaFotoDettaglio(et, file)}
+              onApriDettaglio={(idDett) => {
+                salvaOra();
+                setEtichettaInModifica(null);
+                naviga({ nome: 'foto', id: idDett });
+              }}
               onChiudi={() => setEtichettaInModifica(null)}
             />
           );
