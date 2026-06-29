@@ -2093,7 +2093,17 @@ a {
 }
 .riga-legenda input {
   flex: 1;
+  min-width: 0;
   min-height: 42px;
+  padding: 8px 12px;
+  border-radius: var(--raggio);
+  border: 1px solid var(--bordo);
+  background: var(--sfondo-2);
+  color: var(--testo);
+}
+.riga-legenda input:focus {
+  outline: 2px solid var(--accento);
+  outline-offset: -1px;
 }
 .badge-legenda {
   flex: 0 0 auto;

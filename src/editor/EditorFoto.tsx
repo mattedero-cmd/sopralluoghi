@@ -38,6 +38,7 @@ import { StageEditor, type ModalitaVincolo, type Strumento } from './StageEditor
 import { FabbricaAnnotazioni } from './fabbrica';
 import { MenuCircolareEtichette } from './MenuCircolareEtichette';
 import { AmbienteLegenda } from './AmbienteLegenda';
+import { ModificaEtichetta } from './ModificaEtichetta';
 import { calcolaCatene, sommaCatenaInUnita } from '../geometry/catene';
 import {
   applicaValoriAuto,
@@ -231,6 +232,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   );
   /** ambiente di lavoro della legenda aperto */
   const [legendaAperta, setLegendaAperta] = useState(false);
+  /** id dell'etichetta in modifica (modale lettera + descrizione) */
+  const [etichettaInModifica, setEtichettaInModifica] = useState<string | null>(null);
   const [snapAttivo, setSnapAttivo] = useState(true);
   const [vincolo, setVincolo] = useState<ModalitaVincolo>('off');
   const [bordiAttivo, setBordiAttivo] = useState(false);
@@ -408,17 +411,6 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [strumento]);
 
-  // uscendo dalla modalità etichetta (→ seleziona) si apre l'ambiente legenda,
-  // così appena finito di posizionare le etichette si compilano le descrizioni
-  const strumentoPrecedente = useRef<Strumento>('seleziona');
-  useEffect(() => {
-    const prima = strumentoPrecedente.current;
-    strumentoPrecedente.current = strumento;
-    if (prima === 'etichetta' && strumento === 'seleziona') {
-      if ((annotazioni ?? []).some((a) => a.tipo === 'etichetta')) setLegendaAperta(true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [strumento]);
 
   const commit = useCallback(
     (nuove: Annotazione[]) => {
@@ -825,6 +817,22 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       annotazioni.map((a) =>
         a.tipo === 'etichetta' && a.lettera === lettera ? { ...a, descrizione } : a
       )
+    );
+  };
+
+  /** Modifica una singola etichetta: cambia lettera e propaga la descrizione
+   *  a tutte le etichette con la nuova lettera (collegamento con la legenda). */
+  const modificaEtichetta = (id: string, m: { lettera: string; descrizione: string }) => {
+    if (!annotazioni) return;
+    const nuovaLettera = m.lettera;
+    commit(
+      annotazioni.map((a) => {
+        if (a.tipo !== 'etichetta') return a;
+        if (a.id === id) return { ...a, lettera: nuovaLettera, descrizione: m.descrizione };
+        // mantieni allineate le descrizioni delle etichette con la stessa lettera
+        if (a.lettera === nuovaLettera) return { ...a, descrizione: m.descrizione };
+        return a;
+      })
     );
   };
 
@@ -1237,6 +1245,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           <button className="btn primario" onClick={() => setLegendaAperta(true)}>
             <Icona nome="documento" dimensione={18} /> Legenda
           </button>
+          <button className="btn" onClick={() => setStrumento('seleziona')}>
+            <Icona nome="check" dimensione={18} /> Fine
+          </button>
         </div>
       )}
 
@@ -1247,6 +1258,26 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           onChiudi={() => setLegendaAperta(false)}
         />
       )}
+
+      {etichettaInModifica &&
+        (() => {
+          const et = (annotazioni ?? []).find(
+            (a): a is Etichetta => a.tipo === 'etichetta' && a.id === etichettaInModifica
+          );
+          if (!et) return null;
+          const desc =
+            vociLegenda(annotazioni ?? []).find((v) => v.lettera === et.lettera)?.descrizione ??
+            et.descrizione ??
+            '';
+          return (
+            <ModificaEtichetta
+              lettera={et.lettera}
+              descrizione={desc}
+              onApplica={(m) => modificaEtichetta(et.id, m)}
+              onChiudi={() => setEtichettaInModifica(null)}
+            />
+          );
+        })()}
 
       {menuEtichetta && (
         <MenuCircolareEtichette
@@ -1299,6 +1330,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             onElimina={eliminaSelezionata}
             onModificaTesto={() => setTestoInModifica(selezionata.id)}
             onModificaLegenda={() => setLegendaAperta(true)}
+            onModificaEtichetta={() => setEtichettaInModifica(selezionata.id)}
             onModificaQuota={() => setQuotaInModifica({ tipo: 'quota', id: selezionata.id })}
             onModificaSegmento={(indice) =>
               setQuotaInModifica({ tipo: 'segmento', id: selezionata.id, indice })
@@ -3192,6 +3224,7 @@ function PannelloProprieta({
   onElimina,
   onModificaTesto,
   onModificaLegenda,
+  onModificaEtichetta,
   onModificaQuota,
   onModificaSegmento,
   onCalibraDaQuota
@@ -3204,6 +3237,7 @@ function PannelloProprieta({
   onElimina: () => void;
   onModificaTesto: () => void;
   onModificaLegenda: () => void;
+  onModificaEtichetta: () => void;
   onModificaQuota: () => void;
   onModificaSegmento: (indice: number) => void;
   onCalibraDaQuota: (q: Quota) => void;
@@ -3263,6 +3297,14 @@ function PannelloProprieta({
           <button className="btn" onClick={onModificaTesto}>
             <Icona nome="matita" dimensione={18} /> Modifica testo
           </button>
+        )}
+        {ann.tipo === 'etichetta' && (
+          <>
+            <span className="badge-legenda" aria-label={`Etichetta ${ann.lettera}`}>{ann.lettera}</span>
+            <button className="btn primario" onClick={onModificaEtichetta}>
+              <Icona nome="matita" dimensione={18} /> Modifica
+            </button>
+          </>
         )}
         {ann.tipo === 'legenda' && (
           <>
