@@ -13,6 +13,7 @@ import {
   numeriProgetto,
   percorsoDellaFoto,
   percorsoEtichette,
+  vociLegenda,
   type NumeroForma
 } from '../geometry/nomenclatura';
 import { leggiImpostazioni } from '../db/repository';
@@ -1042,6 +1043,25 @@ function sezioneFoto(
     unbreakable: true,
     ...(interrompi && !sezioneTitolo ? { pageBreak: 'before' } : {})
   } as Content);
+
+  // Legenda: trascritta come elenco separato (lettera = descrizione), PRIMA
+  // delle forme. Sulla foto restano disegnate solo le etichette.
+  const legenda = vociLegenda(annotazioni);
+  if (legenda.length > 0) {
+    out.push({ text: 'Legenda', style: 'th', margin: [0, 10, 0, 3] } as Content);
+    out.push({
+      table: {
+        widths: ['auto', '*'],
+        dontBreakRows: true,
+        body: legenda.map((v) => [
+          { text: v.lettera, style: 'td', bold: true, alignment: 'center', noWrap: true },
+          { text: v.descrizione || '—', style: 'td' }
+        ])
+      },
+      layout: righeRiepilogo,
+      margin: [0, 0, 0, 4]
+    } as Content);
+  }
 
   if (opzioni.includiTabellaMisure && misure.length > 0) {
     const corpoTabella = misure.map((m, i) => [

@@ -37,6 +37,7 @@ import { mostraToast } from '../state/toast';
 import { StageEditor, type ModalitaVincolo, type Strumento } from './StageEditor';
 import { FabbricaAnnotazioni } from './fabbrica';
 import { MenuCircolareEtichette } from './MenuCircolareEtichette';
+import { AmbienteLegenda } from './AmbienteLegenda';
 import { calcolaCatene, sommaCatenaInUnita } from '../geometry/catene';
 import {
   applicaValoriAuto,
@@ -54,7 +55,8 @@ import {
   numeriProgetto,
   ordinePerNumero,
   percorsoDellaFoto,
-  prossimaLetteraLibera
+  prossimaLetteraLibera,
+  vociLegenda
 } from '../geometry/nomenclatura';
 import { applicaOmografia, omografiaPiano, omografiaPianoInversa } from '../geometry/omografia';
 import { lunghezzaPxQuota } from '../geometry/punti';
@@ -227,6 +229,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [menuEtichetta, setMenuEtichetta] = useState<{ x: number; y: number; indice: number } | null>(
     null
   );
+  /** ambiente di lavoro della legenda aperto */
+  const [legendaAperta, setLegendaAperta] = useState(false);
   const [snapAttivo, setSnapAttivo] = useState(true);
   const [vincolo, setVincolo] = useState<ModalitaVincolo>('off');
   const [bordiAttivo, setBordiAttivo] = useState(false);
@@ -401,6 +405,18 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       .map((a) => a.lettera);
     setLetteraAttiva(prossimaLetteraLibera(usate));
     // solo all'ingresso nello strumento, non a ogni modifica delle annotazioni
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [strumento]);
+
+  // uscendo dalla modalità etichetta (→ seleziona) si apre l'ambiente legenda,
+  // così appena finito di posizionare le etichette si compilano le descrizioni
+  const strumentoPrecedente = useRef<Strumento>('seleziona');
+  useEffect(() => {
+    const prima = strumentoPrecedente.current;
+    strumentoPrecedente.current = strumento;
+    if (prima === 'etichetta' && strumento === 'seleziona') {
+      if ((annotazioni ?? []).some((a) => a.tipo === 'etichetta')) setLegendaAperta(true);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [strumento]);
 
@@ -795,6 +811,16 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       y: schermo.y,
       indice: idx >= 0 ? idx : Math.max(0, SEQUENZA_ETICHETTE.indexOf(letteraAttiva))
     });
+  };
+
+  /** Scrive la descrizione di una lettera su TUTTE le etichette con quella lettera. */
+  const cambiaDescrizioneLegenda = (lettera: string, descrizione: string) => {
+    if (!annotazioni) return;
+    commit(
+      annotazioni.map((a) =>
+        a.tipo === 'etichetta' && a.lettera === lettera ? { ...a, descrizione } : a
+      )
+    );
   };
 
   const creaDisegno = (punti: number[]) => {
@@ -1203,7 +1229,18 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         <div className="indicatore-etichetta" role="status">
           Etichetta <strong>{letteraAttiva}</strong>
           <span className="sotto">Tap per posare · tieni premuto per scegliere</span>
+          <button className="btn-legenda" onClick={() => setLegendaAperta(true)}>
+            Legenda
+          </button>
         </div>
+      )}
+
+      {legendaAperta && (
+        <AmbienteLegenda
+          voci={vociLegenda(annotazioni ?? [])}
+          onCambia={cambiaDescrizioneLegenda}
+          onChiudi={() => setLegendaAperta(false)}
+        />
       )}
 
       {menuEtichetta && (

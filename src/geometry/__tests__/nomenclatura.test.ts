@@ -8,7 +8,8 @@ import {
   numeriProgetto,
   ordinePerNumero,
   percorsoEtichette,
-  prossimaLetteraLibera
+  prossimaLetteraLibera,
+  vociLegenda
 } from '../nomenclatura';
 
 const stile = { colore: '#ffc400', spessore: 3, dimensioneTesto: 28 };
@@ -48,6 +49,15 @@ describe('lettere e etichette foto', () => {
     expect(prossimaLetteraLibera(['A', 'B', 'C'])).toBe('D');
     expect(prossimaLetteraLibera(['A', 'C'])).toBe('B'); // riempie i buchi
     expect(prossimaLetteraLibera(['B', 'C'])).toBe('A');
+  });
+
+  it('vociLegenda: una riga per lettera, ordinata, lettere prima dei numeri', () => {
+    const et = (lettera: string, descrizione = ''): Annotazione =>
+      ({ id: lettera + Math.random(), fotoId: 'f', tipo: 'etichetta', posizione: { x: 0, y: 0 }, lettera, descrizione, zIndex: 1, stile }) as Annotazione;
+    const voci = vociLegenda([et('B', 'insegna'), et('A', 'vetrofania'), et('A'), et('1', 'monitor')]);
+    expect(voci.map((v) => v.lettera)).toEqual(['A', 'B', '1']);
+    // più etichette con la stessa lettera condividono la descrizione non vuota
+    expect(voci.find((v) => v.lettera === 'A')?.descrizione).toBe('vetrofania');
   });
   it('etichetta automatica per ordine, manuale se impostata', () => {
     const lista = [foto('x', 20), foto('y', 10, 'PT'), foto('z', 30)];

@@ -2055,6 +2055,46 @@ a {
   font-size: 12px;
   color: var(--testo-2);
 }
+.indicatore-etichetta .btn-legenda {
+  pointer-events: auto;
+  border: 1px solid color-mix(in srgb, var(--accento) 55%, var(--bordo));
+  background: var(--sfondo-2);
+  color: var(--testo);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* ambiente di lavoro della legenda */
+.lista-legenda {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: min(56vh, 460px);
+  overflow: auto;
+}
+.riga-legenda {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.riga-legenda input {
+  flex: 1;
+  min-height: 42px;
+}
+.badge-legenda {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--accento);
+  color: #fff;
+  font-weight: 800;
+}
 
 /* barra di avanzamento (sincronizzazione, backup/ripristino) */
 .barra-avanzamento {
