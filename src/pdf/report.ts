@@ -330,17 +330,24 @@ export async function generaReportPdf(
     }
     sezPrec = sid;
     contenuto.push(
-      ...sezioneFoto(f, indice++, annotazioni, opzioni, impostazioni.pdf, ctx, perc, undefined, titoloSez)
+      ...sezioneFoto(f, indice, annotazioni, opzioni, impostazioni.pdf, ctx, perc, undefined, titoloSez)
     );
-    // foto di dettaglio collegate alle etichette di questa foto, subito dopo
+    indice++; // numerazione progressiva SOLO delle foto principali
+    // foto di dettaglio collegate alle etichette di questa foto, subito dopo:
+    // ogni dettaglio inizia in cima a una nuova pagina, come blocco a sé
     for (const dett of dettagliDi.get(f.id) ?? []) {
       const annD = annotazioniPerFoto.get(dett.id) ?? [];
       const percD = ctx.percorsoFoto.get(dett.id) ?? percorso;
+      const lettera = dett.dettaglioDi!.lettera;
+      const nome =
+        dett.didascalia && dett.didascalia !== `Dettaglio ${lettera}` ? ` · ${dett.didascalia}` : '';
       contenuto.push(
-        ...sezioneFoto(dett, indice++, annD, opzioni, impostazioni.pdf, ctx, percD, {
+        ...sezioneFoto(dett, indice, annD, opzioni, impostazioni.pdf, ctx, percD, {
           style: 'h3',
           toc: false,
-          etichetta: `Dettaglio ${dett.dettaglioDi!.lettera} · `
+          etichetta: '',
+          titolo: `Dettaglio ${lettera}${nome}`,
+          nuovaPagina: true
         })
       );
     }
@@ -1015,7 +1022,15 @@ function sezioneFoto(
   percorso: string[],
   /** stile del titolo della foto e voce indice: nel report di cartella le foto
    *  sono "contenuto" dei capitoli, quindi titolo più piccolo e fuori indice */
-  titoloFoto: { style: string; toc: boolean; etichetta: string } = {
+  titoloFoto: {
+    style: string;
+    toc: boolean;
+    etichetta: string;
+    /** titolo completo, se va costruito a parte (es. foto di dettaglio) */
+    titolo?: string;
+    /** forza l'inizio del blocco in cima a una nuova pagina */
+    nuovaPagina?: boolean;
+  } = {
     style: 'h2',
     toc: true,
     etichetta: `${indice + 1}. `
@@ -1024,7 +1039,7 @@ function sezioneFoto(
    *  presente solo sulla PRIMA foto di ogni sezione del progetto */
   sezioneTitolo?: string
 ): Content[] {
-  const titolo = `${titoloFoto.etichetta}${f.didascalia || `Foto ${indice + 1}`}`;
+  const titolo = titoloFoto.titolo ?? `${titoloFoto.etichetta}${f.didascalia || `Foto ${indice + 1}`}`;
   // sotto la foto: SOLO gli elementi realmente presenti in questa foto (le copie
   // richiamate compaiono qui, non sotto la foto della misura originale)
   const misure = righeMisureFoto(annotazioni, f, ctx, percorso, 'perFoto');
@@ -1072,7 +1087,7 @@ function sezioneFoto(
   out.push({
     stack: blocco,
     unbreakable: true,
-    ...(interrompi && !sezioneTitolo ? { pageBreak: 'before' } : {})
+    ...((titoloFoto.nuovaPagina || interrompi) && !sezioneTitolo ? { pageBreak: 'before' } : {})
   } as Content);
 
   // Legenda: trascritta come elenco separato (lettera = descrizione), PRIMA

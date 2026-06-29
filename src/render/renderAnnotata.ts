@@ -1,5 +1,5 @@
 import type { Annotazione, Callout, Foto } from '../db/types';
-import { primitiveAnnotazione, type Primitiva } from '../geometry/primitive';
+import { primitiveAnnotazione, primitiveCatene, type Primitiva } from '../geometry/primitive';
 import { vociLegenda } from '../geometry/nomenclatura';
 import { blobOrigine, canvasInBlob, caricaImmagine } from '../utils/image';
 import { caricaDettaglio } from './../utils/immaginiCallout';
@@ -55,6 +55,9 @@ export async function renderFotoAnnotata(
       disegnaPrimitiva(ctx, p, img);
     }
   }
+
+  // evidenziazione delle misure concatenate, sopra le quote
+  for (const p of primitiveCatene(annotazioni)) disegnaPrimitiva(ctx, p, img);
 
   // foto di dettaglio: sigla in alto a destra che richiama l'etichetta di origine
   if (foto.dettaglioDi) {

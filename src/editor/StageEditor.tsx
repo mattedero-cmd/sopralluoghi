@@ -15,7 +15,7 @@ import {
   type Rettangolo,
   type SottotipoQuota
 } from '../db/types';
-import { primitiveAnnotazione, latiQuotaRett } from '../geometry/primitive';
+import { primitiveAnnotazione, primitiveCatene, latiQuotaRett } from '../geometry/primitive';
 import { geometriaQuota, posizioneEtichettaBase, posizioneEtichettaPoligono } from '../geometry/primitive';
 import { disegnaPrimitiva } from '../render/renderAnnotata';
 import { puntiAggancio, snapPunto } from '../geometry/snap';
@@ -1011,6 +1011,16 @@ export function StageEditor(p: Props) {
               }}
             />
           ))}
+          {/* evidenziazione delle misure concatenate, sopra le quote */}
+          <Shape
+            listening={false}
+            sceneFunc={(ctx) => {
+              const c = (ctx as unknown as { _context: CanvasRenderingContext2D })._context;
+              for (const prim of primitiveCatene(annotazioniVisibili)) {
+                disegnaPrimitiva(c, prim, p.immagine);
+              }
+            }}
+          />
           {bozzaAnnotazione && (
             <AnnotazioneShape
               ann={bozzaAnnotazione}

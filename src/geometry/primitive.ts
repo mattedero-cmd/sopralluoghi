@@ -21,6 +21,7 @@ import {
   segmentoELato
 } from '../db/types';
 import { misureElemento, nomePoligono } from './calibrazione';
+import { calcolaCatene, sommaCatenaInUnita } from './catene';
 import { formattaMisura, formattaNumero } from '../utils/format';
 import {
   direzioneQuota,
@@ -835,6 +836,67 @@ export function primitiveLegenda(
       allineamento: 'left'
     });
   });
+  return prim;
+}
+
+/** Colore dedicato alle catene di misure (turchese), distinto dal giallo quote. */
+const COLORE_CATENA = '#13b8cc';
+const COLORE_CATENA_BANDA = 'rgba(19,184,204,0.42)';
+
+/**
+ * Evidenziazione grafica delle MISURE CONCATENATE: una banda turchese lungo
+ * ogni quota della catena (così il gruppo si riconosce a colpo d'occhio) e un
+ * badge "Σ totale" al centro della catena. Disegnata SOPRA le quote.
+ */
+export function primitiveCatene(annotazioni: Annotazione[]): Primitiva[] {
+  const catene = calcolaCatene(annotazioni);
+  const prim: Primitiva[] = [];
+  for (const c of catene) {
+    let sx = 0;
+    let sy = 0;
+    let dim = 24;
+    const g0 = geometriaQuota(c.quote[0]);
+    for (const q of c.quote) {
+      const g = geometriaQuota(q);
+      dim = q.stile.dimensioneTesto;
+      prim.push({
+        kind: 'linea',
+        punti: [g.q1.x, g.q1.y, g.q2.x, g.q2.y],
+        colore: COLORE_CATENA_BANDA,
+        spessore: q.stile.spessore * 3 + 10
+      });
+      sx += g.centro.x;
+      sy += g.centro.y;
+    }
+    const n = c.quote.length;
+    const tot = sommaCatenaInUnita(c);
+    if (n > 0 && tot !== null) {
+      const off = dim * 2.2;
+      const cx = sx / n + g0.n.x * off;
+      const cy = sy / n + g0.n.y * off;
+      const testo = `Σ ${formattaMisura(tot, c.unita)}`;
+      const w = misuraLarghezzaTesto(testo, dim) + dim * 0.9;
+      const h = dim * 1.6;
+      prim.push({
+        kind: 'rettangolo',
+        rect: { x: cx - w / 2, y: cy - h / 2, width: w, height: h },
+        colore: COLORE_CATENA,
+        spessore: 0,
+        riempimento: COLORE_CATENA,
+        raggio: h / 2
+      });
+      prim.push({
+        kind: 'testo',
+        testo,
+        posizione: { x: cx, y: cy },
+        rotazioneDeg: 0,
+        dimensione: dim * 0.85,
+        colore: coloreContrasto(COLORE_CATENA),
+        sfondo: null,
+        alone: ALONE
+      });
+    }
+  }
   return prim;
 }
 

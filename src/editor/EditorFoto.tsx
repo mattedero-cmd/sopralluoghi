@@ -829,7 +829,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       const dati = await importaFoto(file, fotoLatoMax);
       const nuova = await aggiungiFoto(foto.progettoId, {
         ...dati,
-        didascalia: `Dettaglio ${et.lettera}`,
+        // nessuna didascalia automatica: il titolo "Dettaglio X" nel PDF è
+        // gestito a parte, così non si duplica ("Dettaglio A · Dettaglio A")
+        didascalia: '',
         noteDato: '',
         scala: null,
         sezioneId: foto.sezioneId,
