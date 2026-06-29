@@ -2,20 +2,21 @@ import { useEffect, useRef, useState } from 'react';
 import { Modale } from './comuni';
 import { leggiImpostazioni } from '../db/repository';
 import { sincronizza } from '../cloud/sincronizzazione';
-import { modificheInSospeso } from '../cloud/promemoria';
+import { modificheInSospeso, segnaPromemoriaMostrato, ultimoPromemoria } from '../cloud/promemoria';
 import { mostraToast } from '../state/toast';
 
 /**
- * Promemoria di fine sessione. Un browser non può mostrare nulla mentre la
- * pagina è chiusa, quindi il promemoria appare alla PRIMA occasione utile dopo
- * la fine di una sessione: alla riapertura dell'app, o quando torna in primo
- * piano dopo essere stata in background per un po'. Compare solo se si è
- * connessi al cloud e ci sono modifiche non ancora sincronizzate, e offre la
- * scorciatoia diretta alla sincronizzazione forzata.
+ * Promemoria di sincronizzazione. Un browser non può mostrare nulla mentre la
+ * pagina è chiusa, quindi appare alla PRIMA occasione utile: alla riapertura
+ * dell'app o quando torna in primo piano dopo una pausa. Compare solo se si è
+ * connessi al cloud, ci sono modifiche non sincronizzate, e AL MASSIMO una
+ * volta al giorno (così aprendo/chiudendo l'app spesso non insiste).
  */
 
 // solo dopo una pausa "vera" in background, per non insistere a ogni cambio app
 const SOGLIA_BACKGROUND_MS = 60_000;
+// frequenza massima del promemoria: una volta ogni 24 ore
+const INTERVALLO_MIN_MS = 24 * 60 * 60 * 1000;
 
 export function PromemoriaSync() {
   const [visibile, setVisibile] = useState(false);
@@ -28,10 +29,13 @@ export function PromemoriaSync() {
     let vivo = true;
     const forseMostra = async () => {
       if (giaMostrato.current || !modificheInSospeso()) return;
+      // non più di una volta al giorno
+      if (Date.now() - ultimoPromemoria() < INTERVALLO_MIN_MS) return;
       try {
         const imp = await leggiImpostazioni();
         if (vivo && imp.cloud?.refreshToken) {
           giaMostrato.current = true;
+          segnaPromemoriaMostrato();
           setVisibile(true);
         }
       } catch {

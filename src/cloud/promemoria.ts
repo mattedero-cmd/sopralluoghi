@@ -35,3 +35,25 @@ export function modificheInSospeso(): boolean {
     return false;
   }
 }
+
+// Frequenza del promemoria: al massimo una volta ogni 24 ore, così aprendo e
+// chiudendo l'app più volte non viene riproposto di continuo.
+const CHIAVE_PROMEMORIA = 'sopralluoghi:ultimoPromemoria';
+
+/** Timestamp dell'ultimo promemoria mostrato. */
+export function ultimoPromemoria(): number {
+  try {
+    return Number(localStorage.getItem(CHIAVE_PROMEMORIA) || 0);
+  } catch {
+    return 0;
+  }
+}
+
+/** Segna che il promemoria è stato mostrato adesso (per diradarlo). */
+export function segnaPromemoriaMostrato(): void {
+  try {
+    localStorage.setItem(CHIAVE_PROMEMORIA, String(Date.now()));
+  } catch {
+    /* ignora */
+  }
+}
