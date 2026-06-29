@@ -1298,13 +1298,31 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         </div>
       )}
 
-      {legendaAperta && (
-        <AmbienteLegenda
-          voci={vociLegenda(annotazioni ?? [])}
-          onCambia={cambiaDescrizioneLegenda}
-          onChiudi={() => setLegendaAperta(false)}
-        />
-      )}
+      {legendaAperta &&
+        (() => {
+          const conta: Record<string, number> = {};
+          for (const f of fotoProgetto ?? []) {
+            if (foto && f.dettaglioDi?.fotoId === foto.id) {
+              conta[f.dettaglioDi.lettera] = (conta[f.dettaglioDi.lettera] ?? 0) + 1;
+            }
+          }
+          return (
+            <AmbienteLegenda
+              voci={vociLegenda(annotazioni ?? [])}
+              dettagliPerLettera={conta}
+              onCambia={cambiaDescrizioneLegenda}
+              onGestisciFoto={(lettera) => {
+                const rep = (annotazioni ?? []).find(
+                  (a): a is Etichetta => a.tipo === 'etichetta' && a.lettera === lettera
+                );
+                if (!rep) return;
+                setLegendaAperta(false);
+                setEtichettaInModifica(rep.id);
+              }}
+              onChiudi={() => setLegendaAperta(false)}
+            />
+          );
+        })()}
 
       {etichettaInModifica &&
         (() => {
@@ -1316,9 +1334,15 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             vociLegenda(annotazioni ?? []).find((v) => v.lettera === et.lettera)?.descrizione ??
             et.descrizione ??
             '';
-          const dettagli = (fotoProgetto ?? []).filter((f) => f.dettaglioDi?.etichettaId === et.id);
+          // i dettagli sono collegati per LETTERA (di questa foto), non al
+          // singolo badge: così valgono per tutte le etichette uguali
+          const dettagli = (fotoProgetto ?? []).filter(
+            (f) => f.dettaglioDi?.fotoId === foto.id && f.dettaglioDi?.lettera === et.lettera
+          );
           const candidati = (fotoProgetto ?? []).filter(
-            (f) => f.id !== foto.id && f.dettaglioDi?.etichettaId !== et.id
+            (f) =>
+              f.id !== foto.id &&
+              !(f.dettaglioDi?.fotoId === foto.id && f.dettaglioDi?.lettera === et.lettera)
           );
           return (
             <ModificaEtichetta

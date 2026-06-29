@@ -2170,6 +2170,25 @@ a {
   color: var(--testo-2);
   min-width: 28px;
 }
+.riga-legenda .btn.icona {
+  flex: 0 0 auto;
+  position: relative;
+}
+.pallino-conta {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #1a73e8;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+}
 
 /* barra di avanzamento (sincronizzazione, backup/ripristino) */
 .barra-avanzamento {

@@ -1,17 +1,23 @@
 import { Modale } from '../components/comuni';
+import { Icona } from '../components/Icona';
 
 /**
  * Ambiente di lavoro della legenda: propone automaticamente tutte le etichette
  * presenti sulla foto (in ordine alfabetico) e per ciascuna fa scrivere la
- * descrizione. Le etichette con la stessa lettera condividono la descrizione.
+ * descrizione e collegare foto di dettaglio. Le etichette con la stessa lettera
+ * condividono descrizione e foto di dettaglio.
  */
 export function AmbienteLegenda({
   voci,
+  dettagliPerLettera,
   onCambia,
+  onGestisciFoto,
   onChiudi
 }: {
   voci: Array<{ lettera: string; descrizione: string; quantita?: number }>;
+  dettagliPerLettera: Record<string, number>;
   onCambia: (lettera: string, descrizione: string) => void;
+  onGestisciFoto: (lettera: string) => void;
   onChiudi: () => void;
 }) {
   return (
@@ -38,6 +44,17 @@ export function AmbienteLegenda({
                   aria-label={`Descrizione etichetta ${v.lettera}`}
                   onChange={(e) => onCambia(v.lettera, e.target.value)}
                 />
+                <button
+                  className="btn icona"
+                  title={`Foto di dettaglio di ${v.lettera}`}
+                  aria-label={`Foto di dettaglio di ${v.lettera}`}
+                  onClick={() => onGestisciFoto(v.lettera)}
+                >
+                  <Icona nome="fotocamera" dimensione={18} />
+                  {(dettagliPerLettera[v.lettera] ?? 0) > 0 && (
+                    <span className="pallino-conta">{dettagliPerLettera[v.lettera]}</span>
+                  )}
+                </button>
               </div>
             ))}
           </div>
