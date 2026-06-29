@@ -2164,6 +2164,12 @@ a {
   color: #fff;
   font-weight: 800;
 }
+.conta-legenda {
+  flex: 0 0 auto;
+  font-weight: 700;
+  color: var(--testo-2);
+  min-width: 28px;
+}
 
 /* barra di avanzamento (sincronizzazione, backup/ripristino) */
 .barra-avanzamento {

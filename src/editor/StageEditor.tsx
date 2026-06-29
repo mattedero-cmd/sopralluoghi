@@ -1551,7 +1551,7 @@ function AnnotazioneShape({
   /** codice/etichetta calcolato della forma (nomenclatura strutturata) */
   etichetta?: string;
   /** voci della legenda (solo per l'annotazione legenda) */
-  voci?: Array<{ lettera: string; descrizione: string }>;
+  voci?: Array<{ lettera: string; descrizione: string; quantita?: number }>;
   selezionata: boolean;
   interattiva: boolean;
   hitWidth: number;

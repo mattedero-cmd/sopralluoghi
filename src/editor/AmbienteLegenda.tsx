@@ -10,7 +10,7 @@ export function AmbienteLegenda({
   onCambia,
   onChiudi
 }: {
-  voci: Array<{ lettera: string; descrizione: string }>;
+  voci: Array<{ lettera: string; descrizione: string; quantita?: number }>;
   onCambia: (lettera: string, descrizione: string) => void;
   onChiudi: () => void;
 }) {
@@ -31,6 +31,7 @@ export function AmbienteLegenda({
             {voci.map((v) => (
               <div key={v.lettera} className="riga-legenda">
                 <span className="badge-legenda">{v.lettera}</span>
+                {(v.quantita ?? 1) > 1 && <span className="conta-legenda">×{v.quantita}</span>}
                 <input
                   value={v.descrizione}
                   placeholder="Descrizione"

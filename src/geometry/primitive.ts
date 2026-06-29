@@ -770,7 +770,7 @@ function troncaTesto(testo: string, dim: number, maxLarghezza: number): string {
  */
 export function primitiveLegenda(
   l: Legenda,
-  voci: Array<{ lettera: string; descrizione: string }>
+  voci: Array<{ lettera: string; descrizione: string; quantita?: number }>
 ): Primitiva[] {
   if (voci.length === 0) return [];
   const dim = l.stile.dimensioneTesto;
@@ -819,9 +819,14 @@ export function primitiveLegenda(
     });
     const tx = cx + badgeR + dim * 0.45;
     const maxW = colW - (badgeR * 2 + dim * 0.6);
+    // mostra la quantità quando l'elemento è ripetuto (es. "×3")
+    const testoRiga =
+      (v.quantita ?? 1) > 1
+        ? `${v.descrizione || '—'}  ×${v.quantita}`
+        : v.descrizione || '—';
     prim.push({
       kind: 'testo',
-      testo: troncaTesto(v.descrizione || '—', dim * 0.92, maxW),
+      testo: troncaTesto(testoRiga, dim * 0.92, maxW),
       posizione: { x: tx, y: cy },
       rotazioneDeg: 0,
       dimensione: dim * 0.92,
@@ -1062,8 +1067,8 @@ export function primitiveAnnotazione(
   risolviDettaglio?: (c: Callout) => CanvasImageSource | null,
   /** codice/etichetta calcolato della forma (nomenclatura strutturata) */
   etichettaForma?: (a: Annotazione) => string | undefined,
-  /** voci della legenda della foto (lettera = descrizione), in ordine */
-  vociLegenda?: () => Array<{ lettera: string; descrizione: string }>
+  /** voci della legenda della foto (lettera = descrizione = quantità), in ordine */
+  vociLegenda?: () => Array<{ lettera: string; descrizione: string; quantita?: number }>
 ): Primitiva[] {
   switch (a.tipo) {
     case 'quota':

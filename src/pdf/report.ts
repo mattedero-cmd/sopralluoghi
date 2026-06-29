@@ -1082,12 +1082,21 @@ function sezioneFoto(
     out.push({ text: 'Legenda', style: 'th', margin: [0, 10, 0, 3] } as Content);
     out.push({
       table: {
-        widths: ['auto', '*'],
+        headerRows: 1,
         dontBreakRows: true,
-        body: legenda.map((v) => [
-          { text: v.lettera, style: 'td', bold: true, alignment: 'center', noWrap: true },
-          { text: v.descrizione || '—', style: 'td' }
-        ])
+        widths: ['auto', '*', 'auto'],
+        body: [
+          [
+            { text: 'Cod.', style: 'th' },
+            { text: 'Descrizione', style: 'th' },
+            { text: 'Q.tà', style: 'th', alignment: 'center' }
+          ],
+          ...legenda.map((v) => [
+            { text: v.lettera, style: 'td', bold: true, alignment: 'center', noWrap: true },
+            { text: v.descrizione || '—', style: 'td' },
+            { text: String(v.quantita), style: 'td', alignment: 'center', noWrap: true }
+          ])
+        ]
       },
       layout: righeRiepilogo,
       margin: [0, 0, 0, 4]

@@ -58,6 +58,9 @@ describe('lettere e etichette foto', () => {
     expect(voci.map((v) => v.lettera)).toEqual(['A', 'B', '1']);
     // più etichette con la stessa lettera condividono la descrizione non vuota
     expect(voci.find((v) => v.lettera === 'A')?.descrizione).toBe('vetrofania');
+    // e ne viene contata la quantità (2 × A, 1 × B, 1 × «1»)
+    expect(voci.find((v) => v.lettera === 'A')?.quantita).toBe(2);
+    expect(voci.find((v) => v.lettera === 'B')?.quantita).toBe(1);
   });
   it('etichetta automatica per ordine, manuale se impostata', () => {
     const lista = [foto('x', 20), foto('y', 10, 'PT'), foto('z', 30)];
