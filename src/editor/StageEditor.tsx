@@ -34,7 +34,7 @@ import {
 import type { RicercaBordi } from '../geometry/bordi';
 import { traslaAnnotazione } from './fabbrica';
 import { immagineDettaglio } from '../utils/immaginiCallout';
-import { eFormaEtichettabile } from '../geometry/nomenclatura';
+import { eFormaEtichettabile, vociLegenda } from '../geometry/nomenclatura';
 import { omografiaPianoInversa } from '../geometry/omografia';
 
 export type Strumento =
@@ -845,6 +845,10 @@ export function StageEditor(p: Props) {
     return lista.filter(p.filtroVisibile).sort((a, b) => a.zIndex - b.zIndex);
   }, [p.annotazioni, annLive, p.filtroVisibile]);
 
+  // voci della legenda (lettera = descrizione), derivate dalle etichette: la
+  // legenda le mostra nel riquadro. Includono l'eventuale modifica live.
+  const vociLeg = useMemo(() => vociLegenda(annotazioniVisibili), [annotazioniVisibili]);
+
   const stileBozza = useMemo(
     () => ({
       colore: '#2f81f7',
@@ -992,6 +996,7 @@ export function StageEditor(p: Props) {
                   : null
               }
               etichetta={eFormaEtichettabile(a) ? p.codiceForma(a) : undefined}
+              voci={a.tipo === 'legenda' ? vociLeg : undefined}
               selezionata={a.id === p.selezioneId}
               interattiva={p.strumento === 'seleziona'}
               hitWidth={Math.max(28 / vista.scala, 12)}
@@ -1529,6 +1534,7 @@ function AnnotazioneShape({
   immagine,
   immagineDettaglio,
   etichetta,
+  voci,
   selezionata,
   interattiva,
   hitWidth,
@@ -1544,6 +1550,8 @@ function AnnotazioneShape({
   immagineDettaglio?: CanvasImageSource | null;
   /** codice/etichetta calcolato della forma (nomenclatura strutturata) */
   etichetta?: string;
+  /** voci della legenda (solo per l'annotazione legenda) */
+  voci?: Array<{ lettera: string; descrizione: string }>;
   selezionata: boolean;
   interattiva: boolean;
   hitWidth: number;
@@ -1556,8 +1564,8 @@ function AnnotazioneShape({
   onTrascinata: (dx: number, dy: number) => void;
 }) {
   const prims = useMemo(
-    () => primitiveAnnotazione(ann, () => immagineDettaglio ?? null, () => etichetta),
-    [ann, immagineDettaglio, etichetta]
+    () => primitiveAnnotazione(ann, () => immagineDettaglio ?? null, () => etichetta, () => voci ?? []),
+    [ann, immagineDettaglio, etichetta, voci]
   );
   // ricorda se l'oggetto era già selezionato all'inizio del tocco: un tocco
   // "secco" su un oggetto già selezionato apre la modifica (secondo tap)
@@ -1595,7 +1603,9 @@ function AnnotazioneShape({
             for (let i = 2; i < prim.punti.length; i += 2) c.lineTo(prim.punti[i], prim.punti[i + 1]);
             c.stroke();
           } else if (prim.kind === 'rettangolo') {
-            c.strokeRect(prim.rect.x, prim.rect.y, prim.rect.width, prim.rect.height);
+            // un riquadro pieno (es. legenda) è selezionabile su tutta l'area
+            if (prim.riempimento) c.fillRect(prim.rect.x, prim.rect.y, prim.rect.width, prim.rect.height);
+            else c.strokeRect(prim.rect.x, prim.rect.y, prim.rect.width, prim.rect.height);
           } else if (prim.kind === 'ritaglio' || prim.kind === 'immagine') {
             // l'inserto del callout è selezionabile/trascinabile in tutta l'area
             c.fillRect(
@@ -2093,6 +2103,34 @@ function ManiglieAnnotazione({
       return ann.ancora ? (
         maniglia('ancora', ann.ancora, (n) => ({ ...ann, ancora: n }), { snap: true, escludi: [ann.ancora] })
       ) : null;
+    case 'legenda': {
+      // riquadro spostabile (trascinando) e ridimensionabile dall'angolo in
+      // basso a destra; il contenuto rifluisce da sé a una o più colonne
+      const min = ann.stile.dimensioneTesto * 4;
+      return (
+        <>
+          <Rect
+            x={ann.posizione.x}
+            y={ann.posizione.y}
+            width={ann.larghezza}
+            height={ann.altezza}
+            stroke="#58a6ff"
+            strokeWidth={2 / scala}
+            dash={[8 / scala, 6 / scala]}
+            listening={false}
+          />
+          {maniglia(
+            'legenda-dim',
+            { x: ann.posizione.x + ann.larghezza, y: ann.posizione.y + ann.altezza },
+            (n) => ({
+              ...ann,
+              larghezza: Math.max(min, n.x - ann.posizione.x),
+              altezza: Math.max(min, n.y - ann.posizione.y)
+            })
+          )}
+        </>
+      );
+    }
     default:
       return null;
   }

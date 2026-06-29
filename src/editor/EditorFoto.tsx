@@ -796,7 +796,12 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const creaEtichetta = (pos: Punto) => {
     if (!fabbrica || !annotazioni) return;
     const et = fabbrica.etichetta(pos, letteraAttiva, annotazioni);
-    commit([...annotazioni, et]);
+    let nuove = [...annotazioni, et];
+    // una sola legenda per foto: la creo alla prima etichetta
+    if (!nuove.some((a) => a.tipo === 'legenda')) {
+      nuove = [...nuove, fabbrica.legenda(nuove)];
+    }
+    commit(nuove);
   };
 
   /** Apre il menu circolare proponendo la prima lettera libera dopo le usate. */
@@ -1293,6 +1298,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             onModifica={aggiornaSelezionata}
             onElimina={eliminaSelezionata}
             onModificaTesto={() => setTestoInModifica(selezionata.id)}
+            onModificaLegenda={() => setLegendaAperta(true)}
             onModificaQuota={() => setQuotaInModifica({ tipo: 'quota', id: selezionata.id })}
             onModificaSegmento={(indice) =>
               setQuotaInModifica({ tipo: 'segmento', id: selezionata.id, indice })
@@ -3185,6 +3191,7 @@ function PannelloProprieta({
   onModifica,
   onElimina,
   onModificaTesto,
+  onModificaLegenda,
   onModificaQuota,
   onModificaSegmento,
   onCalibraDaQuota
@@ -3196,6 +3203,7 @@ function PannelloProprieta({
   onModifica: (m: Partial<Annotazione>) => void;
   onElimina: () => void;
   onModificaTesto: () => void;
+  onModificaLegenda: () => void;
   onModificaQuota: () => void;
   onModificaSegmento: (indice: number) => void;
   onCalibraDaQuota: (q: Quota) => void;
@@ -3255,6 +3263,21 @@ function PannelloProprieta({
           <button className="btn" onClick={onModificaTesto}>
             <Icona nome="matita" dimensione={18} /> Modifica testo
           </button>
+        )}
+        {ann.tipo === 'legenda' && (
+          <>
+            <button className="btn primario" onClick={onModificaLegenda}>
+              <Icona nome="documento" dimensione={18} /> Modifica
+            </button>
+            <button
+              className="btn"
+              onClick={() =>
+                onModifica({ forma: ann.forma === 'rettangolo' ? 'arrotondato' : 'rettangolo' })
+              }
+            >
+              {ann.forma === 'rettangolo' ? '▭ Squadrato' : '▢ Arrotondato'}
+            </button>
+          </>
         )}
         {ann.tipo === 'callout' && (
           <>
