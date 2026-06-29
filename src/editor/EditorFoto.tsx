@@ -843,6 +843,20 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     }
   };
 
+  /** Collega una foto ESISTENTE del progetto a un'etichetta, marcandola come
+   *  foto di dettaglio di quell'elemento. */
+  const collegaFotoDettaglio = async (et: Etichetta, idDaCollegare: string) => {
+    if (!foto) return;
+    try {
+      await aggiornaFoto(idDaCollegare, {
+        dettaglioDi: { fotoId: foto.id, etichettaId: et.id, lettera: et.lettera }
+      });
+      mostraToast('successo', `Foto collegata all'etichetta ${et.lettera}.`);
+    } catch (e) {
+      mostraToast('errore', e instanceof Error ? e.message : 'Collegamento non riuscito.');
+    }
+  };
+
   /** Modifica una singola etichetta: cambia lettera e propaga la descrizione
    *  a tutte le etichette con la nuova lettera (collegamento con la legenda). */
   const modificaEtichetta = (id: string, m: { lettera: string; descrizione: string }) => {
@@ -1303,13 +1317,18 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             et.descrizione ??
             '';
           const dettagli = (fotoProgetto ?? []).filter((f) => f.dettaglioDi?.etichettaId === et.id);
+          const candidati = (fotoProgetto ?? []).filter(
+            (f) => f.id !== foto.id && f.dettaglioDi?.etichettaId !== et.id
+          );
           return (
             <ModificaEtichetta
               lettera={et.lettera}
               descrizione={desc}
               dettagli={dettagli}
+              candidati={candidati}
               onApplica={(m) => modificaEtichetta(et.id, m)}
               onAggiungiDettaglio={(file) => void creaFotoDettaglio(et, file)}
+              onCollega={(idDett) => void collegaFotoDettaglio(et, idDett)}
               onApriDettaglio={(idDett) => {
                 salvaOra();
                 setEtichettaInModifica(null);

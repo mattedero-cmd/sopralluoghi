@@ -12,21 +12,26 @@ export function ModificaEtichetta({
   lettera,
   descrizione,
   dettagli,
+  candidati,
   onApplica,
   onAggiungiDettaglio,
+  onCollega,
   onApriDettaglio,
   onChiudi
 }: {
   lettera: string;
   descrizione: string;
   dettagli: Foto[];
+  candidati: Foto[];
   onApplica: (m: { lettera: string; descrizione: string }) => void;
   onAggiungiDettaglio: (file: File) => void;
+  onCollega: (id: string) => void;
   onApriDettaglio: (id: string) => void;
   onChiudi: () => void;
 }) {
   const [l, setL] = useState(lettera);
   const [d, setD] = useState(descrizione);
+  const [collega, setCollega] = useState(false);
   const inputCamera = useRef<HTMLInputElement>(null);
   const inputGalleria = useRef<HTMLInputElement>(null);
 
@@ -76,14 +81,38 @@ export function ModificaEtichetta({
             ))}
           </div>
         )}
-        <div className="riga-pulsanti" style={{ marginTop: 8 }}>
+        <div className="riga-pulsanti" style={{ marginTop: 8, flexWrap: 'wrap' }}>
           <button className="btn" onClick={() => inputCamera.current?.click()}>
             <Icona nome="fotocamera" dimensione={18} /> Scatta
           </button>
           <button className="btn" onClick={() => inputGalleria.current?.click()}>
             <Icona nome="immagine" dimensione={18} /> Da galleria
           </button>
+          <button
+            className={`btn${collega ? ' primario' : ''}`}
+            disabled={candidati.length === 0}
+            onClick={() => setCollega((v) => !v)}
+          >
+            <Icona nome="dettaglio" dimensione={18} /> Collega esistente
+          </button>
         </div>
+        {collega && (
+          <div className="griglia-dettagli" style={{ marginTop: 8 }}>
+            {candidati.map((f) => (
+              <button
+                key={f.id}
+                className="cella-dettaglio"
+                onClick={() => {
+                  onCollega(f.id);
+                  setCollega(false);
+                }}
+              >
+                <ImmagineBlob dati={f.miniatura} tipo={f.miniaturaTipo} alt={f.didascalia || 'Foto'} />
+                <span className="cella-dettaglio-titolo">{f.didascalia || 'Foto'}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <input
           ref={inputCamera}
           type="file"
