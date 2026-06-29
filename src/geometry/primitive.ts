@@ -471,7 +471,7 @@ export function primitiveQuotaRettangolo(q: QuotaRettangolo, etichetta?: string)
         posizione: centro,
         rotazioneDeg: 0,
         dimensione: dim,
-        colore: '#ffffff',
+        colore: coloreContrasto(colore),
         sfondo: null
       }
     );
@@ -706,7 +706,7 @@ function badgePoligono(q: QuotaPoligono, badge: string, colore: string, pos: Pun
       posizione: pos,
       rotazioneDeg: 0,
       dimensione: dim,
-      colore: '#ffffff',
+      colore: coloreContrasto(colore),
       sfondo: null
     }
   ];
@@ -935,8 +935,9 @@ export function primitiveTesto(t: TestoFoto): Primitiva[] {
     posizione: t.posizione,
     rotazioneDeg: 0,
     dimensione: t.stile.dimensioneTesto,
-    colore: t.stile.colore,
-    sfondo: 'rgba(255,255,255,0.82)'
+    // sfondo = colore scelto, testo automatico (bianco/nero) per leggerlo sempre
+    colore: coloreContrasto(t.stile.colore),
+    sfondo: t.stile.colore
   });
   return prim;
 }
@@ -1020,7 +1021,7 @@ export function primitiveCallout(
       posizione: { x: c.inserto.x + larg / 2, y: c.inserto.y + dim * 0.7 },
       rotazioneDeg: 0,
       dimensione: dim,
-      colore: '#ffffff',
+      colore: coloreContrasto(colore),
       sfondo: null
     });
   }
