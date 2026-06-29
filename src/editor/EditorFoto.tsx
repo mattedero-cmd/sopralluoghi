@@ -36,6 +36,7 @@ import { ConfermaDialog, Modale, StatoApp, type RichiestaConferma } from '../com
 import { mostraToast } from '../state/toast';
 import { StageEditor, type ModalitaVincolo, type Strumento } from './StageEditor';
 import { FabbricaAnnotazioni } from './fabbrica';
+import { MenuCircolareEtichette } from './MenuCircolareEtichette';
 import { calcolaCatene, sommaCatenaInUnita } from '../geometry/catene';
 import {
   applicaValoriAuto,
@@ -168,6 +169,12 @@ const GRUPPI_STRUMENTI: Array<{
   }
 ];
 
+/** Sequenza del menu circolare: prima le lettere A…Z, poi i numeri 1…10. */
+const SEQUENZA_ETICHETTE = [
+  ...Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i)),
+  ...Array.from({ length: 10 }, (_, i) => String(i + 1))
+];
+
 type CategoriaLayer = 'quote' | 'note' | 'callout';
 
 function categoriaAnnotazione(a: Annotazione): CategoriaLayer {
@@ -216,6 +223,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [strumento, setStrumento] = useState<Strumento>('seleziona');
   /** lettera attiva per la posa rapida delle etichette (modalità Note) */
   const [letteraAttiva, setLetteraAttiva] = useState('A');
+  /** menu circolare aperto (coord schermo + indice della voce proposta) */
+  const [menuEtichetta, setMenuEtichetta] = useState<{ x: number; y: number; indice: number } | null>(
+    null
+  );
   const [snapAttivo, setSnapAttivo] = useState(true);
   const [vincolo, setVincolo] = useState<ModalitaVincolo>('off');
   const [bordiAttivo, setBordiAttivo] = useState(false);
@@ -763,17 +774,27 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     setStrumento('seleziona');
   };
 
-  /** Posa rapida di un'etichetta: usa la lettera attiva e avanza alla prossima
-   *  libera, restando in modalità Note per i tap successivi (A → B → C…). */
+  /** Posa rapida di un'etichetta: usa SEMPRE la lettera attiva e la lascia
+   *  attiva per i tap successivi (più elementi uguali = stessa lettera). Per
+   *  cambiare lettera si usa il menu circolare (tap prolungato). */
   const creaEtichetta = (pos: Punto) => {
     if (!fabbrica || !annotazioni) return;
-    const usate = annotazioni
+    const et = fabbrica.etichetta(pos, letteraAttiva, annotazioni);
+    commit([...annotazioni, et]);
+  };
+
+  /** Apre il menu circolare proponendo la prima lettera libera dopo le usate. */
+  const apriMenuEtichetta = (schermo: Punto) => {
+    const usate = (annotazioni ?? [])
       .filter((a): a is Etichetta => a.tipo === 'etichetta')
       .map((a) => a.lettera);
-    const lettera = usate.includes(letteraAttiva) ? prossimaLetteraLibera(usate) : letteraAttiva;
-    const et = fabbrica.etichetta(pos, lettera, annotazioni);
-    commit([...annotazioni, et]);
-    setLetteraAttiva(prossimaLetteraLibera([...usate, lettera]));
+    const proposta = prossimaLetteraLibera(usate);
+    const idx = SEQUENZA_ETICHETTE.indexOf(proposta);
+    setMenuEtichetta({
+      x: schermo.x,
+      y: schermo.y,
+      indice: idx >= 0 ? idx : Math.max(0, SEQUENZA_ETICHETTE.indexOf(letteraAttiva))
+    });
   };
 
   const creaDisegno = (punti: number[]) => {
@@ -1169,6 +1190,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         onErrore={(msg) => mostraToast('errore', msg)}
         onNuovoTesto={creaTesto}
         onNuovaEtichetta={creaEtichetta}
+        onMenuEtichetta={apriMenuEtichetta}
         onNuovaFreccia={creaFreccia}
         onNuovoDisegno={creaDisegno}
         onNuovoCallout={creaCallout}
@@ -1176,6 +1198,26 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         onPiano={(punti) => setSchedaPiano({ punti })}
         onDuplica={duplicaMaster ? duplicaTocco : null}
       />
+
+      {strumento === 'etichetta' && !menuEtichetta && (
+        <div className="indicatore-etichetta" role="status">
+          Etichetta <strong>{letteraAttiva}</strong>
+          <span className="sotto">Tap per posare · tieni premuto per scegliere</span>
+        </div>
+      )}
+
+      {menuEtichetta && (
+        <MenuCircolareEtichette
+          centro={{ x: menuEtichetta.x, y: menuEtichetta.y }}
+          sequenza={SEQUENZA_ETICHETTE}
+          indiceIniziale={menuEtichetta.indice}
+          onScegli={(l) => {
+            setLetteraAttiva(l);
+            setMenuEtichetta(null);
+          }}
+          onChiudi={() => setMenuEtichetta(null)}
+        />
+      )}
 
       {proposta ? (
         <div className="pannello-proprieta" role="group" aria-label="Quota proposta">

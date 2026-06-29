@@ -137,6 +137,8 @@ interface Props {
   onNuovoTesto: (posizione: Punto, ancora?: Punto) => void;
   /** nuova etichetta alfabetica posata con un tap (modalità Note) */
   onNuovaEtichetta: (posizione: Punto) => void;
+  /** tap prolungato in modalità etichetta: apre il menu circolare (coord schermo) */
+  onMenuEtichetta: (schermo: Punto) => void;
   onNuovaFreccia: (p1: Punto, p2: Punto) => void;
   onNuovoDisegno: (punti: number[]) => void;
   onNuovoCallout: (sorgente: Rettangolo) => void;
@@ -234,6 +236,16 @@ export function StageEditor(p: Props) {
   /** versione "stato" del gesto a due dita: disattiva il pan a un dito dello
    *  Stage, che altrimenti combatte con lo zoom pinch e fa "scappare" la foto */
   const [zoomInCorso, setZoomInCorso] = useState(false);
+  /** tap prolungato in modalità etichetta → apre il menu circolare delle lettere */
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pressFired = useRef(false);
+  const pressStart = useRef<Punto | null>(null);
+  const annullaLongPress = () => {
+    if (pressTimer.current) {
+      clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  };
 
   // I drafting multi-tocco (angolo, piano) si azzerano al cambio strumento
   useEffect(() => {
@@ -242,6 +254,9 @@ export function StageEditor(p: Props) {
     setPuntoLente(null);
     setTracciaAuto(null);
     disegnoAttivo.current = false;
+    annullaLongPress();
+    pressFired.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.strumento]);
 
   // Adatta la vista al contenitore (e al cambio orientamento del telefono)
@@ -395,6 +410,7 @@ export function StageEditor(p: Props) {
       setPuntoLente(null);
       setTracciaAuto(null);
       disegnoAttivo.current = false;
+      annullaLongPress();
     }
   };
 
@@ -517,11 +533,25 @@ export function StageEditor(p: Props) {
         disegnoAttivo.current = true;
         break;
       }
-      // etichetta: tocco singolo → posa la lettera attiva nel punto
+      // etichetta: tocco singolo → posa la lettera attiva; tap prolungato →
+      // apre il menu circolare delle lettere SENZA posare nulla
       case 'etichetta': {
         setPuntoPendente(pos);
         setPuntoLente(pos);
         disegnoAttivo.current = true;
+        pressFired.current = false;
+        pressStart.current = pos;
+        const cx = e.evt.clientX;
+        const cy = e.evt.clientY;
+        annullaLongPress();
+        pressTimer.current = setTimeout(() => {
+          pressTimer.current = null;
+          pressFired.current = true;
+          disegnoAttivo.current = false;
+          setPuntoPendente(null);
+          setPuntoLente(null);
+          p.onMenuEtichetta({ x: cx, y: cy });
+        }, 450);
         break;
       }
       case 'angolo':
@@ -721,6 +751,11 @@ export function StageEditor(p: Props) {
     const pos = posImmagine();
     if (!pos) return;
 
+    // un movimento netto annulla il tap prolungato (è un trascinamento)
+    if (pressTimer.current && pressStart.current && distanza(pos, pressStart.current) * vista.scala > 10) {
+      annullaLongPress();
+    }
+
     // punto pendente: segue il dito finché non viene rilasciato
     if (puntoPendente !== null) {
       let punto: Punto;
@@ -758,6 +793,15 @@ export function StageEditor(p: Props) {
   };
 
   const suPointerUp = () => {
+    // il menu circolare si è già aperto sul tap prolungato: non posare nulla
+    const longPressScattato = pressFired.current;
+    pressFired.current = false;
+    annullaLongPress();
+    if (longPressScattato) {
+      setPuntoLente(null);
+      disegnoAttivo.current = false;
+      return;
+    }
     setPuntoLente(null);
     if (!disegnoAttivo.current) return;
     disegnoAttivo.current = false;

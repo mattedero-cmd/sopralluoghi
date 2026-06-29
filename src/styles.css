@@ -1983,6 +1983,79 @@ a {
   }
 }
 
+/* Menu circolare delle etichette (tap prolungato in modalità Note) */
+.menu-circolare-velo {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(0, 0, 0, 0.28);
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.menu-circolare-centro,
+.menu-circolare-voce {
+  position: fixed;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  font-weight: 800;
+  border: 1px solid var(--bordo);
+  cursor: pointer;
+  padding: 0;
+}
+.menu-circolare-voce {
+  width: 46px;
+  height: 46px;
+  font-size: 19px;
+  background: var(--sfondo-2);
+  color: var(--testo);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+.menu-circolare-voce.attiva {
+  background: var(--accento);
+  border-color: var(--accento);
+  color: #fff;
+  transform: translate(-50%, -50%) scale(1.12);
+}
+.menu-circolare-centro {
+  width: 62px;
+  height: 62px;
+  font-size: 24px;
+  background: color-mix(in srgb, var(--accento) 22%, var(--sfondo-2));
+  color: var(--testo);
+  border-color: color-mix(in srgb, var(--accento) 60%, var(--bordo));
+}
+
+/* indicatore della lettera attiva in modalità etichetta */
+.indicatore-etichetta {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  background: color-mix(in srgb, var(--accento) 16%, var(--sfondo-2));
+  border: 1px solid color-mix(in srgb, var(--accento) 50%, var(--bordo));
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+.indicatore-etichetta strong {
+  font-size: 18px;
+  color: var(--accento);
+}
+.indicatore-etichetta .sotto {
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--testo-2);
+}
+
 /* barra di avanzamento (sincronizzazione, backup/ripristino) */
 .barra-avanzamento {
   width: 100%;
