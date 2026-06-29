@@ -245,7 +245,9 @@ export type TipoAnnotazione =
   | 'testo'
   | 'disegno'
   | 'freccia'
-  | 'callout';
+  | 'callout'
+  | 'etichetta'
+  | 'legenda';
 
 interface AnnotazioneBase {
   id: ID;
@@ -534,6 +536,40 @@ export interface Callout extends AnnotazioneBase {
   fotoDettaglio?: ArrayBuffer;
 }
 
+/**
+ * Etichetta alfabetica (A, B, C…) posata con un tap nella modalità Note.
+ * La descrizione associata è mostrata nella legenda della foto. Le lettere
+ * sono uniche all'interno della singola foto.
+ */
+export interface Etichetta extends AnnotazioneBase {
+  tipo: 'etichetta';
+  posizione: Punto;
+  /** lettera (o, in futuro, numero) mostrata nel badge */
+  lettera: string;
+  /** descrizione associata, compilata nell'ambiente della legenda */
+  descrizione?: string;
+}
+
+/**
+ * Legenda della foto: ne esiste UNA SOLA per foto. Le righe (lettera =
+ * descrizione) sono DERIVATE dalle etichette presenti, sempre in ordine
+ * alfabetico, così aggiungere/togliere etichette aggiorna la legenda da sé.
+ * È un riquadro spostabile/ridimensionabile con riflusso del contenuto a una
+ * o più colonne; nel PDF non viene disegnata sulla foto ma trascritta come
+ * elenco separato.
+ */
+export interface Legenda extends AnnotazioneBase {
+  tipo: 'legenda';
+  /** angolo alto-sinistro del riquadro, in px immagine */
+  posizione: Punto;
+  larghezza: number;
+  altezza: number;
+  /** moltiplicatore globale di testo e badge interni (dimensione testo globale) */
+  scalaTesto?: number;
+  /** forma del riquadro */
+  forma?: 'rettangolo' | 'arrotondato';
+}
+
 export type Annotazione =
   | Quota
   | QuotaAngolare
@@ -543,7 +579,9 @@ export type Annotazione =
   | TestoFoto
   | DisegnoLibero
   | Freccia
-  | Callout;
+  | Callout
+  | Etichetta
+  | Legenda;
 
 // ---------------------------------------------------------------------------
 // Impostazioni utente (dati professionali per il PDF + preferenze editor)

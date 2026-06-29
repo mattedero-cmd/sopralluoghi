@@ -2,6 +2,7 @@ import type {
   Annotazione,
   Callout,
   DisegnoLibero,
+  Etichetta,
   Freccia,
   Punto,
   Quota,
@@ -70,6 +71,8 @@ export type Primitiva =
       spessore: number;
       tratteggio?: number[];
       alone?: string;
+      /** riempimento pieno (es. badge etichetta) */
+      riempimento?: string;
     }
   | {
       kind: 'arco';
@@ -698,6 +701,33 @@ function badgePoligono(q: QuotaPoligono, badge: string, colore: string, pos: Pun
   ];
 }
 
+/** Etichetta alfabetica: badge circolare pieno con la lettera bianca al centro. */
+export function primitiveEtichetta(a: Etichetta): Primitiva[] {
+  const dim = a.stile.dimensioneTesto;
+  const raggio = Math.max(dim * 0.95, misuraLarghezzaTesto(a.lettera, dim) / 2 + dim * 0.45);
+  const colore = a.stile.colore;
+  return [
+    {
+      kind: 'cerchio',
+      centro: a.posizione,
+      raggio,
+      colore,
+      spessore: 0,
+      riempimento: colore,
+      alone: ALONE
+    },
+    {
+      kind: 'testo',
+      testo: a.lettera,
+      posizione: a.posizione,
+      rotazioneDeg: 0,
+      dimensione: dim,
+      colore: '#ffffff',
+      sfondo: null
+    }
+  ];
+}
+
 export function etichettaRaggio(q: Pick<QuotaRaggio, 'valore' | 'unita' | 'stato' | 'modo'>): string {
   const prefisso = q.modo === 'diametro' ? '⌀ ' : 'R ';
   const base = q.valore === null ? `${prefisso}?` : `${prefisso}${formattaMisura(q.valore, q.unita)}`;
@@ -930,5 +960,11 @@ export function primitiveAnnotazione(
       return primitiveDisegno(a);
     case 'callout':
       return primitiveCallout(a, risolviDettaglio?.(a) ?? null, etichettaForma?.(a));
+    case 'etichetta':
+      return primitiveEtichetta(a);
+    case 'legenda':
+      // la legenda non è disegnata sull'immagine: è un oggetto interattivo
+      // nell'editor e nel PDF viene trascritta come elenco separato
+      return [];
   }
 }

@@ -4,6 +4,7 @@ import { db } from '../db/db';
 import type {
   Annotazione,
   Callout,
+  Etichetta,
   Foto,
   Impostazioni,
   PosizioneTesto,
@@ -51,7 +52,8 @@ import {
   famigliaDi,
   numeriProgetto,
   ordinePerNumero,
-  percorsoDellaFoto
+  percorsoDellaFoto,
+  prossimaLetteraLibera
 } from '../geometry/nomenclatura';
 import { applicaOmografia, omografiaPiano, omografiaPianoInversa } from '../geometry/omografia';
 import { lunghezzaPxQuota } from '../geometry/punti';
@@ -148,6 +150,7 @@ const GRUPPI_STRUMENTI: Array<{
     icona: 'matita',
     testo: 'Note',
     voci: [
+      { s: 'etichetta', icona: 'testo', testo: 'Etichette e legenda' },
       { s: 'testo', icona: 'testo', testo: 'Testo' },
       { s: 'freccia', icona: 'freccia', testo: 'Freccia' },
       { s: 'disegno', icona: 'disegno', testo: 'Disegno' },
@@ -211,6 +214,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [annotazioni, setAnnotazioni] = useState<Annotazione[] | null>(null);
   const [selezioneId, setSelezioneId] = useState<string | null>(null);
   const [strumento, setStrumento] = useState<Strumento>('seleziona');
+  /** lettera attiva per la posa rapida delle etichette (modalità Note) */
+  const [letteraAttiva, setLetteraAttiva] = useState('A');
   const [snapAttivo, setSnapAttivo] = useState(true);
   const [vincolo, setVincolo] = useState<ModalitaVincolo>('off');
   const [bordiAttivo, setBordiAttivo] = useState(false);
@@ -376,6 +381,17 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       salvaOra(); // flush all'uscita dall'editor
     };
   }, [salvaOra]);
+
+  // entrando in modalità Note, parte dalla prima lettera ancora libera
+  useEffect(() => {
+    if (strumento !== 'etichetta') return;
+    const usate = (annotazioni ?? [])
+      .filter((a): a is Etichetta => a.tipo === 'etichetta')
+      .map((a) => a.lettera);
+    setLetteraAttiva(prossimaLetteraLibera(usate));
+    // solo all'ingresso nello strumento, non a ogni modifica delle annotazioni
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [strumento]);
 
   const commit = useCallback(
     (nuove: Annotazione[]) => {
@@ -745,6 +761,19 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     commit([...annotazioni, f]);
     setSelezioneId(f.id);
     setStrumento('seleziona');
+  };
+
+  /** Posa rapida di un'etichetta: usa la lettera attiva e avanza alla prossima
+   *  libera, restando in modalità Note per i tap successivi (A → B → C…). */
+  const creaEtichetta = (pos: Punto) => {
+    if (!fabbrica || !annotazioni) return;
+    const usate = annotazioni
+      .filter((a): a is Etichetta => a.tipo === 'etichetta')
+      .map((a) => a.lettera);
+    const lettera = usate.includes(letteraAttiva) ? prossimaLetteraLibera(usate) : letteraAttiva;
+    const et = fabbrica.etichetta(pos, lettera, annotazioni);
+    commit([...annotazioni, et]);
+    setLetteraAttiva(prossimaLetteraLibera([...usate, lettera]));
   };
 
   const creaDisegno = (punti: number[]) => {
@@ -1139,6 +1168,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         onNuovoCerchio3p={creaCerchio3p}
         onErrore={(msg) => mostraToast('errore', msg)}
         onNuovoTesto={creaTesto}
+        onNuovaEtichetta={creaEtichetta}
         onNuovaFreccia={creaFreccia}
         onNuovoDisegno={creaDisegno}
         onNuovoCallout={creaCallout}

@@ -30,7 +30,6 @@ import {
 import {
   formattaData,
   formattaDataOra,
-  formattaMisura,
   formattaNumero,
   inMillimetri
 } from '../utils/format';
@@ -710,16 +709,10 @@ function righeMisureFoto(
     codiceCompletoForma(percorso, codiceLocaleForma(a, numeri));
   const righe: RigaMisura[] = [];
   for (const a of [...annotazioni].sort((x, y) => x.zIndex - y.zIndex)) {
-    if (a.tipo === 'quota') {
-      const abb = abbondanzaTotale(a);
-      const reale = formattaMisura(a.valore, a.unita);
-      const riga: RigaMisura = { forma: descrizioneSottotipo(a.sottotipo), reale, stato: a.stato };
-      if (abb > 0 && a.valore !== null) {
-        riga.taglio = formattaMisura(a.valore + abb, a.unita);
-        riga.abbondanze = dettaglioAbb('misura', a.abbInizio, a.abbFine, a.p1, a.p2);
-      }
-      righe.push(riga);
-    } else if (a.tipo === 'quotaAngolo') {
+    // Le misure lineari semplici (quota) restano disegnate sulla foto ma non
+    // vengono mai trascritte nel PDF come voci separate (scelta di progetto).
+    if (a.tipo === 'quota') continue;
+    if (a.tipo === 'quotaAngolo') {
       righe.push({
         forma: a.nota ? `Angolo (${a.nota})` : 'Angolo',
         reale: a.valore === null ? '—' : `${formattaNumero(a.valore)}°`,
@@ -1295,16 +1288,6 @@ function distintaTaglio(
   ];
 }
 
-function descrizioneSottotipo(s: Quota['sottotipo']): string {
-  switch (s) {
-    case 'orizzontale':
-      return 'Lineare orizzontale';
-    case 'verticale':
-      return 'Lineare verticale';
-    case 'allineata':
-      return 'Lineare allineata';
-  }
-}
 
 /** Converte il blob in dataURL JPEG ridimensionato per contenere il peso del PDF */
 async function blobInDataUrlRidotto(blob: Blob, latoMax: number): Promise<string> {

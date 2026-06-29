@@ -7,7 +7,8 @@ import {
   letteraDaIndice,
   numeriProgetto,
   ordinePerNumero,
-  percorsoEtichette
+  percorsoEtichette,
+  prossimaLetteraLibera
 } from '../nomenclatura';
 
 const stile = { colore: '#ffc400', spessore: 3, dimensioneTesto: 28 };
@@ -40,6 +41,13 @@ describe('lettere e etichette foto', () => {
     expect(letteraDaIndice(0)).toBe('A');
     expect(letteraDaIndice(25)).toBe('Z');
     expect(letteraDaIndice(26)).toBe('AA');
+  });
+
+  it('prossimaLetteraLibera salta le lettere già usate', () => {
+    expect(prossimaLetteraLibera([])).toBe('A');
+    expect(prossimaLetteraLibera(['A', 'B', 'C'])).toBe('D');
+    expect(prossimaLetteraLibera(['A', 'C'])).toBe('B'); // riempie i buchi
+    expect(prossimaLetteraLibera(['B', 'C'])).toBe('A');
   });
   it('etichetta automatica per ordine, manuale se impostata', () => {
     const lista = [foto('x', 20), foto('y', 10, 'PT'), foto('z', 30)];

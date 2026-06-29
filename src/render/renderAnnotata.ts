@@ -110,14 +110,20 @@ export function disegnaPrimitiva(
       if (p.tratteggio) ctx.setLineDash(p.tratteggio);
       ctx.beginPath();
       ctx.arc(p.centro.x, p.centro.y, p.raggio, 0, Math.PI * 2);
+      if (p.riempimento) {
+        ctx.fillStyle = p.riempimento;
+        ctx.fill();
+      }
       if (p.alone) {
         ctx.strokeStyle = p.alone;
         ctx.lineWidth = p.spessore + Math.max(2, p.spessore * 0.9);
         ctx.stroke();
       }
-      ctx.strokeStyle = p.colore;
-      ctx.lineWidth = p.spessore;
-      ctx.stroke();
+      if (p.spessore > 0) {
+        ctx.strokeStyle = p.colore;
+        ctx.lineWidth = p.spessore;
+        ctx.stroke();
+      }
       break;
     }
     case 'arco': {

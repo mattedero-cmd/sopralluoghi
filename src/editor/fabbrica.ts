@@ -2,9 +2,11 @@ import type {
   Annotazione,
   Callout,
   DisegnoLibero,
+  Etichetta,
   Foto,
   Freccia,
   Impostazioni,
+  Legenda,
   Punto,
   Quota,
   QuotaAngolare,
@@ -249,6 +251,43 @@ export class FabbricaAnnotazioni {
       stile: this.stileBase()
     };
   }
+
+  /** Etichetta alfabetica posata con un tap; la lettera è scelta dal chiamante. */
+  etichetta(posizione: Punto, lettera: string, esistenti: Annotazione[]): Etichetta {
+    return {
+      id: nuovoId(),
+      fotoId: this.foto.id,
+      tipo: 'etichetta',
+      posizione,
+      lettera,
+      descrizione: '',
+      zIndex: this.prossimoZ(esistenti),
+      creatoIl: Date.now(),
+      stile: this.stileBase()
+    };
+  }
+
+  /** Legenda della foto (una sola): riquadro in basso a sinistra per default. */
+  legenda(esistenti: Annotazione[]): Legenda {
+    const W = this.foto.larghezzaPx;
+    const H = this.foto.altezzaPx;
+    const larghezza = Math.round(W * 0.32);
+    const altezza = Math.round(H * 0.28);
+    const margine = Math.round(W * 0.025);
+    return {
+      id: nuovoId(),
+      fotoId: this.foto.id,
+      tipo: 'legenda',
+      posizione: { x: margine, y: Math.max(margine, H - margine - altezza) },
+      larghezza,
+      altezza,
+      scalaTesto: 1,
+      forma: 'arrotondato',
+      zIndex: this.prossimoZ(esistenti),
+      creatoIl: Date.now(),
+      stile: this.stileBase()
+    };
+  }
 }
 
 /** Trasla un'annotazione di (dx, dy); per i callout si sposta solo l'inserto */
@@ -298,5 +337,8 @@ export function traslaAnnotazione(a: Annotazione, dx: number, dy: number): Annot
     }
     case 'callout':
       return { ...a, inserto: { ...a.inserto, x: a.inserto.x + dx, y: a.inserto.y + dy } };
+    case 'etichetta':
+    case 'legenda':
+      return { ...a, posizione: { x: a.posizione.x + dx, y: a.posizione.y + dy } };
   }
 }

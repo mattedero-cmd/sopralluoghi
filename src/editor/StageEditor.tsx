@@ -56,7 +56,8 @@ export type Strumento =
   | 'callout'
   | 'calibra'
   | 'piano'
-  | 'riferimento';
+  | 'riferimento'
+  | 'etichetta';
 
 /**
  * Strumenti a due punti: ciascun punto viene fissato SOLO al rilascio
@@ -134,6 +135,8 @@ interface Props {
   onNuovoCerchio3p: (centro: Punto, bordo: Punto) => void;
   /** posizione del riquadro; se `ancora` è presente è una nota con freccia */
   onNuovoTesto: (posizione: Punto, ancora?: Punto) => void;
+  /** nuova etichetta alfabetica posata con un tap (modalità Note) */
+  onNuovaEtichetta: (posizione: Punto) => void;
   onNuovaFreccia: (p1: Punto, p2: Punto) => void;
   onNuovoDisegno: (punti: number[]) => void;
   onNuovoCallout: (sorgente: Rettangolo) => void;
@@ -514,6 +517,13 @@ export function StageEditor(p: Props) {
         disegnoAttivo.current = true;
         break;
       }
+      // etichetta: tocco singolo → posa la lettera attiva nel punto
+      case 'etichetta': {
+        setPuntoPendente(pos);
+        setPuntoLente(pos);
+        disegnoAttivo.current = true;
+        break;
+      }
       case 'angolo':
       case 'quad':
       case 'tri':
@@ -574,6 +584,10 @@ export function StageEditor(p: Props) {
     }
     if (p.strumento === 'riferimento') {
       p.onRiferimento(punto);
+      return;
+    }
+    if (p.strumento === 'etichetta') {
+      p.onNuovaEtichetta(punto);
       return;
     }
     if (strumentoDuePunti(p.strumento)) {
@@ -1549,6 +1563,8 @@ function AnnotazioneShape({
           } else if (prim.kind === 'cerchio') {
             c.beginPath();
             c.arc(prim.centro.x, prim.centro.y, prim.raggio, 0, Math.PI * 2);
+            // un badge pieno (etichetta) è selezionabile su tutta l'area
+            if (prim.riempimento) c.fill();
             c.stroke();
           } else if (prim.kind === 'arco') {
             c.beginPath();
@@ -1726,6 +1742,20 @@ function boxAnnotazione(a: Annotazione): Rettangolo {
         { x: a.inserto.x, y: a.inserto.y },
         { x: a.inserto.x + a.inserto.width, y: a.inserto.y + a.inserto.height }
       );
+      break;
+    case 'etichetta': {
+      const r = a.stile.dimensioneTesto * 1.2;
+      punti.push(
+        { x: a.posizione.x - r, y: a.posizione.y - r },
+        { x: a.posizione.x + r, y: a.posizione.y + r }
+      );
+      break;
+    }
+    case 'legenda':
+      punti.push(a.posizione, {
+        x: a.posizione.x + a.larghezza,
+        y: a.posizione.y + a.altezza
+      });
       break;
   }
   const xs = punti.map((p) => p.x);
