@@ -96,6 +96,23 @@ describe('snap e auto-aggancio', () => {
     expect(sonoInCatena(a, b)).toBe(true);
     expect(sonoInCatena(a, c)).toBe(false); // direzione diversa: non è una catena
   });
+
+  it('tollera piccole differenze di inclinazione tra quote in catena', () => {
+    const a = quota({ id: 'a', sottotipo: 'allineata', p1: { x: 0, y: 0 }, p2: { x: 100, y: 0 } });
+    // ~5.7° di scarto, estremo condiviso → resta una catena
+    const b = quota({ id: 'b', sottotipo: 'allineata', p1: { x: 100, y: 0 }, p2: { x: 200, y: 10 } });
+    expect(sonoInCatena(a, b)).toBe(true);
+    // ~39° di scarto → non è la stessa direzione
+    const c = quota({ id: 'c', sottotipo: 'allineata', p1: { x: 100, y: 0 }, p2: { x: 200, y: 80 } });
+    expect(sonoInCatena(a, c)).toBe(false);
+  });
+
+  it('tollera un piccolo scarto sull’estremo condiviso (snap non perfetto)', () => {
+    const a = quota({ id: 'a', p1: { x: 0, y: 0 }, p2: { x: 100, y: 0 } });
+    // estremo a ~4.5 px (spessore 3+3 = soglia 6) → catena
+    const b = quota({ id: 'b', p1: { x: 104, y: 2 }, p2: { x: 200, y: 0 } });
+    expect(sonoInCatena(a, b)).toBe(true);
+  });
 });
 
 describe('catene di quote', () => {

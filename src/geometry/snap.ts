@@ -50,25 +50,30 @@ export function snapPunto(p: Punto, candidati: Punto[], soglia: number): EsitoSn
  * Quote adiacenti in catena: stessa direzione di misura e un estremo
  * in comune (entro epsilon — dopo lo snap i punti coincidono).
  */
-export function sonoInCatena(a: Quota, b: Quota, epsilon = 0.5): boolean {
+export function sonoInCatena(a: Quota, b: Quota): boolean {
   if (!stessaDirezione(a, b)) return false;
+  // tolleranza sull'estremo condiviso proporzionata allo spessore del disegno:
+  // lo snap dovrebbe far coincidere i punti, ma piccoli scarti (anche da uno
+  // snap mancato) non devono spezzare la catena
+  const eps = Math.max(1, a.stile.spessore + b.stile.spessore);
   return (
-    distanza(a.p1, b.p1) <= epsilon ||
-    distanza(a.p1, b.p2) <= epsilon ||
-    distanza(a.p2, b.p1) <= epsilon ||
-    distanza(a.p2, b.p2) <= epsilon
+    distanza(a.p1, b.p1) <= eps ||
+    distanza(a.p1, b.p2) <= eps ||
+    distanza(a.p2, b.p1) <= eps ||
+    distanza(a.p2, b.p2) <= eps
   );
 }
 
 function stessaDirezione(a: Quota, b: Quota): boolean {
   if (a.sottotipo !== 'allineata' && a.sottotipo === b.sottotipo) return true;
-  // per le allineate confronta l'angolo delle due direzioni
+  // confronta l'angolo delle due direzioni; tolleranza ampia perché le quote
+  // disegnate a mano su foto non sono mai perfettamente parallele
   const angolo = (q: Quota) => {
     if (q.sottotipo === 'orizzontale') return 0;
     if (q.sottotipo === 'verticale') return Math.PI / 2;
     return Math.atan2(q.p2.y - q.p1.y, q.p2.x - q.p1.x);
   };
   const diff = Math.abs(angolo(a) - angolo(b)) % Math.PI;
-  const tol = 0.035; // ~2 gradi
+  const tol = 0.2; // ~11 gradi
   return diff < tol || Math.PI - diff < tol;
 }

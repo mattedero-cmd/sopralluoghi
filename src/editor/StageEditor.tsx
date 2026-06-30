@@ -246,6 +246,9 @@ export function StageEditor(p: Props) {
       pressTimer.current = null;
     }
   };
+  /** punto attualmente agganciato: dà isteresi allo snap (resta agganciato
+   *  finché il dito non si allontana oltre la soglia di rilascio) */
+  const snapCorrente = useRef<Punto | null>(null);
 
   // I drafting multi-tocco (angolo, piano) si azzerano al cambio strumento
   useEffect(() => {
@@ -335,17 +338,28 @@ export function StageEditor(p: Props) {
         : candidatiSnap;
       const esito = snapPunto(punto, candidati, soglia);
       if (esito.agganciato) {
+        snapCorrente.current = esito.punto;
         setIndicatoreSnap(esito.punto);
         return esito.punto;
+      }
+      // ISTERESI: una volta agganciato, resta sul punto finché il dito non si
+      // allontana oltre una soglia di RILASCIO più ampia. Evita il tremolio
+      // "prende/lascia a ogni pixel" sul bordo della soglia o quando il punto
+      // agganciato viene escluso dai candidati perché coincide col dito.
+      if (snapCorrente.current && distanza(punto, snapCorrente.current) <= soglia * 1.8) {
+        setIndicatoreSnap(snapCorrente.current);
+        return snapCorrente.current;
       }
     }
     if (p.ricercaBordi) {
       const bordo = p.ricercaBordi.cerca(punto, soglia);
       if (bordo) {
+        snapCorrente.current = bordo;
         setIndicatoreSnap(bordo);
         return bordo;
       }
     }
+    snapCorrente.current = null;
     setIndicatoreSnap(null);
     return punto;
   };
@@ -475,6 +489,9 @@ export function StageEditor(p: Props) {
     const stage = stageRef.current;
     if (!stage) return;
     if (e.evt instanceof PointerEvent && e.evt.isPrimary === false) return;
+    // nuovo gesto: azzera l'isteresi dello snap (incluso l'inizio del trascinamento
+    // di una maniglia, così il secondo punto di una bozza non resta agganciato al primo)
+    snapCorrente.current = null;
     const pos = posImmagine();
     if (!pos) return;
 
