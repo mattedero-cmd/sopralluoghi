@@ -264,7 +264,9 @@ export type TipoAnnotazione =
   | 'freccia'
   | 'callout'
   | 'etichetta'
-  | 'legenda';
+  | 'legenda'
+  | 'forma'
+  | 'quotaTecnica';
 
 interface AnnotazioneBase {
   id: ID;
@@ -587,6 +589,130 @@ export interface Legenda extends AnnotazioneBase {
   forma?: 'rettangolo' | 'arrotondato';
 }
 
+// ---------------------------------------------------------------------------
+// Quotatura TECNICA (modalità professionale, additiva). Modello: ogni quotatura
+// tecnica è UNA sola annotazione contenitore (resta fuori da catene/snap/
+// numerazione base, che filtrano su tipo==='quota'). Forme = disegno generico.
+// ---------------------------------------------------------------------------
+
+/** Forma di disegno/annotazione libera (menu generico). */
+export type TipoForma = 'linea' | 'rettangolo' | 'cerchio' | 'poligono' | 'manoLibera';
+
+export interface Forma extends AnnotazioneBase {
+  tipo: 'forma';
+  forma: TipoForma;
+  /** linea/poligono/manoLibera: vertici; rettangolo: 2 angoli opposti;
+   *  cerchio: [centro, puntoSulRaggio] */
+  punti: Punto[];
+  chiusa: boolean;
+  /** riempimento (assente = nessuno) e sua opacità */
+  riempimento?: string;
+  opacitaRiempimento?: number;
+  /** pattern tratteggio (assente = tratto continuo) */
+  tratteggio?: number[];
+  etichetta?: string;
+  /** true ⇒ misura strutturata → entra nel riepilogo PDF */
+  partePerimetro: boolean;
+}
+
+export type SottotipoQuotaTecnica =
+  | 'serie'
+  | 'parallelo'
+  | 'progressiva'
+  | 'foro'
+  | 'smusso'
+  | 'filettatura'
+  | 'datum';
+
+export type VersoQuota = 'sinistra' | 'destra' | 'inizioGuida' | 'fineGuida';
+
+export type RiferimentoTipo =
+  | 'bordoSinistro'
+  | 'bordoDestro'
+  | 'baseInferiore'
+  | 'bordoSuperiore'
+  | 'asseCentrale'
+  | 'puntoZero'
+  | 'lineaGuida'
+  | 'riferimentoPrecedente';
+
+export interface RiferimentoTecnico {
+  riferimentoTipo: RiferimentoTipo;
+  /** puntoZero: 1 punto; assi/linee: 2 punti */
+  punti: Punto[];
+}
+
+export interface LineaEstensione {
+  daPunto: Punto; // punto reale sulla foto
+  aPunto: Punto; // arrivo sulla linea di quota
+  gapOggetto: number; // distacco dall'oggetto (px)
+  sporgenza: number; // sporgenza oltre la linea di quota (px)
+  visibile: boolean;
+}
+
+export interface QuotaSingolaTecnica {
+  p1: Punto;
+  p2: Punto;
+  /** valore REALE via omografia; null finché non calcolabile */
+  valore: number | null;
+  orientamento: 'allineata' | 'orizzontale' | 'verticale';
+  /** distanza della linea di quota dalla guida (px, segno = lato) */
+  offset: number;
+  etichetta?: string;
+  estensioni?: LineaEstensione[];
+}
+
+export interface ForoTecnico {
+  centro: Punto;
+  raggioPx: number;
+  raggioReale: number | null;
+  diametroReale: number | null;
+  modo: 'diametro' | 'raggio';
+  etichetta?: string;
+}
+
+export interface SmussoTecnico {
+  a: Punto;
+  b: Punto;
+  catetoReale: number | null;
+  angoloGradi: number | null;
+  modo: 'C' | 'lunghezzaAngolo';
+  designazione: string; // es. "C2" oppure "3 × 30°"
+  leader?: { da: Punto; a: Punto };
+}
+
+export interface FilettaturaTecnica {
+  filettatura: 'interna' | 'esterna';
+  ancora: Punto;
+  diametroNominale: number;
+  passo?: number;
+  classeTolleranza?: string;
+  lunghezza?: number;
+  designazione: string; // es. "M8 × 1.25 - 6H"
+  leader?: { da: Punto; a: Punto };
+}
+
+/**
+ * Quotatura tecnica: un solo tipo con discriminante `sottotipo`. Contiene al
+ * suo interno guida, riferimento, punti e le quote generate.
+ */
+export interface QuotaTecnica extends AnnotazioneBase {
+  tipo: 'quotaTecnica';
+  sottotipo: SottotipoQuotaTecnica;
+  lineaGuida?: { a: Punto; b: Punto };
+  riferimento?: RiferimentoTecnico;
+  verso: VersoQuota;
+  /** tap dell'utente (punti reali) */
+  puntiOriginali: Punto[];
+  /** quote generate (rieditabili) — serie/parallelo/progressiva */
+  quote: QuotaSingolaTecnica[];
+  foro?: ForoTecnico; // sottotipo 'foro'
+  smusso?: SmussoTecnico; // sottotipo 'smusso'
+  filettatura?: FilettaturaTecnica; // sottotipo 'filettatura'
+  /** true ⇒ misura strutturata → entra nel riepilogo PDF */
+  partePerimetro: boolean;
+}
+
 export type Annotazione =
   | Quota
   | QuotaAngolare
@@ -598,7 +724,9 @@ export type Annotazione =
   | Freccia
   | Callout
   | Etichetta
-  | Legenda;
+  | Legenda
+  | Forma
+  | QuotaTecnica;
 
 // ---------------------------------------------------------------------------
 // Impostazioni utente (dati professionali per il PDF + preferenze editor)
@@ -720,3 +848,6 @@ export const COLORE_STIMATA = '#ff9500';
  * questo stile: l'aspetto non dipende dal modo di creazione.
  */
 export const COLORE_QUOTA = '#ffc400';
+
+/** Colore dedicato alla QUOTATURA TECNICA, distinto dal giallo delle quote base. */
+export const COLORE_QUOTA_TECNICA = '#1a73e8';

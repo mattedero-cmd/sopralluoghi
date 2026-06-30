@@ -340,5 +340,42 @@ export function traslaAnnotazione(a: Annotazione, dx: number, dy: number): Annot
     case 'etichetta':
     case 'legenda':
       return { ...a, posizione: { x: a.posizione.x + dx, y: a.posizione.y + dy } };
+    case 'forma':
+      return { ...a, punti: a.punti.map((p) => ({ x: p.x + dx, y: p.y + dy })) };
+    case 'quotaTecnica': {
+      const t = (p: Punto): Punto => ({ x: p.x + dx, y: p.y + dy });
+      return {
+        ...a,
+        lineaGuida: a.lineaGuida ? { a: t(a.lineaGuida.a), b: t(a.lineaGuida.b) } : undefined,
+        riferimento: a.riferimento
+          ? { ...a.riferimento, punti: a.riferimento.punti.map(t) }
+          : undefined,
+        puntiOriginali: a.puntiOriginali.map(t),
+        quote: a.quote.map((q) => ({
+          ...q,
+          p1: t(q.p1),
+          p2: t(q.p2),
+          estensioni: q.estensioni?.map((e) => ({ ...e, daPunto: t(e.daPunto), aPunto: t(e.aPunto) }))
+        })),
+        foro: a.foro ? { ...a.foro, centro: t(a.foro.centro) } : undefined,
+        smusso: a.smusso
+          ? {
+              ...a.smusso,
+              a: t(a.smusso.a),
+              b: t(a.smusso.b),
+              leader: a.smusso.leader ? { da: t(a.smusso.leader.da), a: t(a.smusso.leader.a) } : undefined
+            }
+          : undefined,
+        filettatura: a.filettatura
+          ? {
+              ...a.filettatura,
+              ancora: t(a.filettatura.ancora),
+              leader: a.filettatura.leader
+                ? { da: t(a.filettatura.leader.da), a: t(a.filettatura.leader.a) }
+                : undefined
+            }
+          : undefined
+      };
+    }
   }
 }

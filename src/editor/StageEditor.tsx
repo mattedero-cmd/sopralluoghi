@@ -57,7 +57,20 @@ export type Strumento =
   | 'calibra'
   | 'piano'
   | 'riferimento'
-  | 'etichetta';
+  | 'etichetta'
+  // forme di disegno generiche (menu generico, Fase 1b)
+  | 'forLinea'
+  | 'forRett'
+  | 'forCerchio'
+  | 'forPoligono'
+  // quotatura tecnica (menu tecnico, Fasi 2+)
+  | 'tecSerie'
+  | 'tecParallelo'
+  | 'tecProgressiva'
+  | 'tecForo'
+  | 'tecSmusso'
+  | 'tecFilettatura'
+  | 'tecDatum';
 
 /**
  * Strumenti a due punti: ciascun punto viene fissato SOLO al rilascio
@@ -1840,6 +1853,16 @@ function boxAnnotazione(a: Annotazione): Rettangolo {
         x: a.posizione.x + a.larghezza,
         y: a.posizione.y + a.altezza
       });
+      break;
+    case 'forma':
+      punti.push(...a.punti);
+      break;
+    case 'quotaTecnica':
+      punti.push(...a.puntiOriginali);
+      for (const q of a.quote) punti.push(q.p1, q.p2);
+      if (a.foro) punti.push(a.foro.centro);
+      if (a.smusso) punti.push(a.smusso.a, a.smusso.b);
+      if (a.filettatura) punti.push(a.filettatura.ancora);
       break;
   }
   const xs = punti.map((p) => p.x);

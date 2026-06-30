@@ -39,6 +39,7 @@ import { FabbricaAnnotazioni } from './fabbrica';
 import { MenuCircolareEtichette } from './MenuCircolareEtichette';
 import { AmbienteLegenda } from './AmbienteLegenda';
 import { ModificaEtichetta } from './ModificaEtichetta';
+import { AmbienteQuotaturaTecnica } from './AmbienteQuotaturaTecnica';
 import { calcolaCatene, sommaCatenaInUnita } from '../geometry/catene';
 import {
   applicaValoriAuto,
@@ -172,6 +173,51 @@ const GRUPPI_STRUMENTI: Array<{
   }
 ];
 
+/**
+ * Toolbar della MODALITÀ TECNICA: sostituisce quella base quando si attiva il
+ * toggle. Fase 1: gli strumenti aprono l'ambiente dedicato (shell); la posa
+ * guidata dei punti arriva nelle fasi successive.
+ */
+const GRUPPI_STRUMENTI_TECNICA: typeof GRUPPI_STRUMENTI = [
+  {
+    id: 'tecQuote',
+    icona: 'quota-allin',
+    testo: 'Quote',
+    voci: [
+      { s: 'tecSerie', icona: 'quota-orizz', testo: 'In serie' },
+      { s: 'tecParallelo', icona: 'quota-vert', testo: 'In parallelo' },
+      { s: 'tecProgressiva', icona: 'quota-allin', testo: 'Progressiva' }
+    ]
+  },
+  {
+    id: 'tecElementi',
+    icona: 'cerchio',
+    testo: 'Elementi',
+    voci: [
+      { s: 'tecForo', icona: 'cerchio', testo: 'Foro ⌀/R' },
+      { s: 'tecSmusso', icona: 'angolo', testo: 'Smusso' },
+      { s: 'tecFilettatura', icona: 'righello', testo: 'Filettatura' }
+    ]
+  },
+  {
+    id: 'tecRiferimento',
+    icona: 'riferimento',
+    testo: 'Riferimento',
+    voci: [{ s: 'tecDatum', icona: 'riferimento', testo: 'Datum' }]
+  }
+];
+
+/** Strumenti che, una volta scelti, aprono l'ambiente di quotatura tecnica. */
+const STRUMENTI_TECNICI = new Set<Strumento>([
+  'tecSerie',
+  'tecParallelo',
+  'tecProgressiva',
+  'tecForo',
+  'tecSmusso',
+  'tecFilettatura',
+  'tecDatum'
+]);
+
 /** Sequenza del menu circolare: prima le lettere A…Z, poi i numeri 1…10. */
 const SEQUENZA_ETICHETTE = [
   ...Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i)),
@@ -187,10 +233,12 @@ function categoriaAnnotazione(a: Annotazione): CategoriaLayer {
     case 'quotaRaggio':
     case 'quotaRett':
     case 'quotaPoligono':
+    case 'quotaTecnica':
       return 'quote';
     case 'callout':
       return 'callout';
     default:
+      // testo, disegno, freccia, etichetta, legenda, forma
       return 'note';
   }
 }
@@ -224,6 +272,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [annotazioni, setAnnotazioni] = useState<Annotazione[] | null>(null);
   const [selezioneId, setSelezioneId] = useState<string | null>(null);
   const [strumento, setStrumento] = useState<Strumento>('seleziona');
+  /** modalità quotatura: base ↔ tecnica (sostituisce la toolbar) */
+  const [modalitaTecnica, setModalitaTecnica] = useState(false);
+  /** ambiente dedicato della quotatura tecnica aperto su uno strumento */
+  const [ambienteTecnico, setAmbienteTecnico] = useState<Strumento | null>(null);
   /** lettera attiva per la posa rapida delle etichette (modalità Note) */
   const [letteraAttiva, setLetteraAttiva] = useState('A');
   /** menu circolare aperto (coord schermo + indice della voce proposta) */
@@ -1379,6 +1431,16 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           );
         })()}
 
+      {ambienteTecnico && (
+        <AmbienteQuotaturaTecnica
+          strumento={ambienteTecnico}
+          onChiudi={() => {
+            setAmbienteTecnico(null);
+            setStrumento('seleziona');
+          }}
+        />
+      )}
+
       {menuEtichetta && (
         <MenuCircolareEtichette
           centro={{ x: menuEtichetta.x, y: menuEtichetta.y }}
@@ -1655,7 +1717,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         )}
         {menuAperto &&
           (() => {
-            const g = GRUPPI_STRUMENTI.find((x) => x.id === menuAperto);
+            const set = modalitaTecnica ? GRUPPI_STRUMENTI_TECNICA : GRUPPI_STRUMENTI;
+            const g = set.find((x) => x.id === menuAperto);
             if (!g) return null;
             return (
               <div className="pannello-strumenti" role="menu" aria-label={g.testo}>
@@ -1666,6 +1729,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                     onClick={() => {
                       setStrumento(v.s);
                       setMenuAperto(null);
+                      // gli strumenti tecnici aprono l'ambiente dedicato
+                      if (STRUMENTI_TECNICI.has(v.s)) setAmbienteTecnico(v.s);
                     }}
                   >
                     <span className="ico">
@@ -1707,7 +1772,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             icona="duplica"
             testo="Richiama"
           />
-          {GRUPPI_STRUMENTI.map((g) => {
+          {(modalitaTecnica ? GRUPPI_STRUMENTI_TECNICA : GRUPPI_STRUMENTI).map((g) => {
             const voceAtt = g.voci.find((v) => v.s === strumento);
             return (
               <BtnStrumento
@@ -1720,6 +1785,17 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               />
             );
           })}
+          {/* toggle base ↔ tecnica: sostituisce il set di strumenti */}
+          <BtnStrumento
+            attivo={modalitaTecnica}
+            onClick={() => {
+              setMenuAperto(null);
+              setStrumento('seleziona');
+              setModalitaTecnica((v) => !v);
+            }}
+            icona="righello"
+            testo={modalitaTecnica ? 'Base' : 'Tecnica'}
+          />
         </nav>
       </div>
 

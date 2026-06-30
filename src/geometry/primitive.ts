@@ -1157,5 +1157,10 @@ export function primitiveAnnotazione(
       // disegnata nell'editor (riquadro con le voci); nel PDF viene esclusa e
       // trascritta come elenco separato
       return primitiveLegenda(a, vociLegenda?.() ?? []);
+    case 'forma':
+    case 'quotaTecnica':
+      // Fase 1 (infrastruttura): il rendering dedicato arriva nelle fasi
+      // successive (forme in 1b, quotature tecniche in 2+/7).
+      return [];
   }
 }
