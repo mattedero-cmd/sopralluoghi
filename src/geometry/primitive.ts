@@ -949,7 +949,7 @@ function disegnaTerminatori(
   prim: Primitiva[],
   f1: Punto,
   f2: Punto,
-  terminatore: 'freccia' | 'tacca' | 'pallino' | undefined,
+  terminatore: 'freccia' | 'tacca' | undefined,
   dimFreccia: number,
   colore: string,
   sp: number
@@ -970,12 +970,6 @@ function disegnaTerminatori(
   if (terminatore === 'tacca') {
     tacca(f1);
     tacca(f2);
-    return;
-  }
-  if (terminatore === 'pallino') {
-    for (const f of [f1, f2]) {
-      prim.push({ kind: 'cerchio', centro: f, raggio: dimFreccia * 0.32, colore, spessore: 0, riempimento: colore });
-    }
     return;
   }
   // freccia (default): interne se c'è spazio, oblique se il tratto è corto
@@ -1220,15 +1214,15 @@ function primitiveProgressiva(q: QuotaTecnica): Primitiva[] {
       spessore: sp,
       alone: ALONE
     });
+    // fondino chiaro: la quota interrompe nettamente le linee di proiezione
     prim.push({
       kind: 'testo',
       testo: etichettaQuotaTecnica(seg.valore, q.unita),
-      posizione: somma(piede, scala(sopra, dimTesto * 0.9)),
+      posizione: somma(piede, scala(sopra, dimTesto * 0.95)),
       rotazioneDeg: angolo,
       dimensione: dimTesto,
       colore,
-      sfondo: null,
-      alone: ALONE
+      sfondo: 'rgba(255,255,255,0.92)'
     });
   }
   return prim;

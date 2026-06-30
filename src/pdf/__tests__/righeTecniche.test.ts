@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { rigaMisuraTecnica } from '../righeTecniche';
-import type { QuotaTecnica } from '../../db/types';
+import { rigaMisuraForma, rigaMisuraTecnica } from '../righeTecniche';
+import type { Forma, QuotaTecnica } from '../../db/types';
 
-const stile = { colore: '#1a73e8', spessore: 3, dimensioneTesto: 24 };
+const stile = { colore: '#00A896', spessore: 3, dimensioneTesto: 24 };
+const fotoScala = { scala: { px: 100, reale: 50, unita: 'cm' as const }, piano: null };
 
 function base(parz: Partial<QuotaTecnica>): QuotaTecnica {
   return {
@@ -129,5 +130,69 @@ describe('rigaMisuraTecnica — riepilogo PDF delle quote tecniche', () => {
     );
     expect(auto!.stato).toBe('stimata');
     expect(manuale!.stato).toBe('reale');
+  });
+});
+
+function forma(parz: Partial<Forma>): Forma {
+  return {
+    id: 'f',
+    fotoId: 'foto',
+    tipo: 'forma',
+    forma: 'linea',
+    punti: [],
+    chiusa: false,
+    partePerimetro: true,
+    zIndex: 1,
+    stile,
+    ...parz
+  };
+}
+
+describe('rigaMisuraForma — forme nel riepilogo PDF', () => {
+  it('non trascrive le forme senza la spunta nel PDF', () => {
+    expect(
+      rigaMisuraForma(forma({ partePerimetro: false, punti: [{ x: 0, y: 0 }, { x: 100, y: 0 }] }), fotoScala)
+    ).toBeNull();
+  });
+
+  it('linea: nome + lunghezza reale', () => {
+    const r = rigaMisuraForma(forma({ forma: 'linea', punti: [{ x: 0, y: 0 }, { x: 100, y: 0 }] }), fotoScala);
+    expect(r!.forma).toBe('Linea');
+    expect(r!.reale).toBe('50 cm'); // 100 px → 50 cm
+  });
+
+  it('rettangolo: base × altezza', () => {
+    const r = rigaMisuraForma(
+      forma({ forma: 'rettangolo', chiusa: true, punti: [{ x: 0, y: 0 }, { x: 100, y: 60 }] }),
+      fotoScala
+    );
+    expect(r!.forma).toBe('Rettangolo');
+    expect(r!.reale).toBe('b 50 · h 30 cm');
+  });
+
+  it('cerchio: Ø (renderizzabile nel PDF)', () => {
+    const r = rigaMisuraForma(
+      forma({ forma: 'cerchio', chiusa: true, punti: [{ x: 0, y: 0 }, { x: 0, y: 100 }] }),
+      fotoScala
+    );
+    expect(r!.reale).toBe('Ø 100 cm'); // raggio 100px=50cm → ⌀ 100cm
+  });
+
+  it('senza calibrazione: solo il nome, misura —', () => {
+    const r = rigaMisuraForma(forma({ forma: 'linea', punti: [{ x: 0, y: 0 }, { x: 100, y: 0 }] }), {
+      scala: null,
+      piano: null
+    });
+    expect(r!.forma).toBe('Linea');
+    expect(r!.reale).toBe('—');
+    expect(r!.stato).toBe('reale');
+  });
+
+  it('usa l’etichetta nel nome se presente', () => {
+    const r = rigaMisuraForma(
+      forma({ forma: 'linea', etichetta: 'asse', punti: [{ x: 0, y: 0 }, { x: 100, y: 0 }] }),
+      fotoScala
+    );
+    expect(r!.forma).toBe('Linea (asse)');
   });
 });

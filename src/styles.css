@@ -587,22 +587,24 @@ h2 {
 
 .editor-toolbar {
   display: flex;
-  gap: 6px;
-  padding: 8px;
-  padding-bottom: calc(8px + env(safe-area-inset-bottom));
+  gap: 8px;
+  padding: 10px 8px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
   background: var(--sfondo-2);
   border-top: 1px solid var(--bordo);
   flex-shrink: 0;
+  align-items: stretch;
 }
 
 .editor-toolbar .btn {
   flex: 1 1 0;
   min-width: 0;
   flex-direction: column;
-  gap: 3px;
-  font-size: 11px;
-  padding: 6px 4px;
-  min-height: 56px;
+  gap: 5px;
+  font-size: 12px;
+  padding: 8px 5px;
+  min-height: 60px;
+  border-radius: 12px;
   overflow: hidden;
   white-space: nowrap;
 }
@@ -627,11 +629,11 @@ h2 {
 /* Gruppi di strumenti: ordine visivo per categorie */
 .gruppo-strumenti {
   display: inline-flex;
-  gap: 4px;
-  padding: 4px;
+  gap: 6px;
+  padding: 6px;
   background: var(--sfondo);
   border: 1px solid var(--bordo);
-  border-radius: 14px;
+  border-radius: 16px;
   flex-shrink: 0;
 }
 
@@ -675,8 +677,9 @@ h2 {
   left: 0;
   right: 0;
   z-index: 49;
-  display: flex;
-  flex-wrap: wrap;
+  /* griglia auto-fit: le voci vanno a capo da sole, niente scroll orizzontale */
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
   gap: 8px;
   padding: 12px;
   padding-bottom: 16px;
@@ -686,7 +689,7 @@ h2 {
 }
 
 .btn-strumento-grande {
-  flex: 1 1 92px;
+  width: 100%;
   min-height: 66px;
   display: flex;
   flex-direction: column;
@@ -995,6 +998,17 @@ h2 {
 }
 
 .azione-flottante.duplica:active {
+  background: var(--accento, #2f81f7);
+  opacity: 1;
+}
+
+.azione-flottante.dimensione {
+  font-weight: 800;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.azione-flottante.dimensione:active {
   background: var(--accento, #2f81f7);
   opacity: 1;
 }
@@ -1875,9 +1889,7 @@ a {
   .pannello-strumenti {
     max-width: 940px;
     margin-inline: auto;
-  }
-  .btn-strumento-grande {
-    flex: 0 1 110px;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
   }
 
   /* ambiente di modifica dedicato: pannello controlli contenuto e centrato */

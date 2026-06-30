@@ -124,32 +124,25 @@ const GRUPPI_STRUMENTI: Array<{
   {
     id: 'quote',
     icona: 'quota-orizz',
-    testo: 'Quota',
+    testo: 'Quote',
     voci: [
       { s: 'quotaO', icona: 'quota-orizz', testo: 'Orizzontale' },
       { s: 'quotaV', icona: 'quota-vert', testo: 'Verticale' },
-      { s: 'quotaA', icona: 'quota-allin', testo: 'Allineata' }
+      { s: 'quotaA', icona: 'quota-allin', testo: 'Allineata' },
+      { s: 'raggio', icona: 'cerchio', testo: 'Raggio' },
+      { s: 'cerchio3p', icona: 'cerchio-3p', testo: 'Cerchio 3 punti' },
+      { s: 'angolo', icona: 'angolo', testo: 'Angolo' }
     ]
   },
   {
     id: 'forme',
     icona: 'rettangolo',
-    testo: 'Poligono',
+    testo: 'Elementi',
     voci: [
       { s: 'rettangolo', icona: 'rettangolo', testo: 'Rettangolo' },
       { s: 'quad', icona: 'quad', testo: '4 angoli' },
       { s: 'tri', icona: 'triangolo', testo: 'Triangolo' },
       { s: 'polilinea', icona: 'polilinea', testo: 'Polilinea' }
-    ]
-  },
-  {
-    id: 'curve',
-    icona: 'cerchio',
-    testo: 'Cerchi',
-    voci: [
-      { s: 'raggio', icona: 'cerchio', testo: 'Raggio' },
-      { s: 'cerchio3p', icona: 'cerchio-3p', testo: 'Cerchio 3 punti' },
-      { s: 'angolo', icona: 'angolo', testo: 'Angolo' }
     ]
   },
   {
@@ -211,13 +204,9 @@ const GRUPPI_STRUMENTI_TECNICA: typeof GRUPPI_STRUMENTI = [
       { s: 'tecSmusso', icona: 'angolo', testo: 'Smusso' },
       { s: 'tecFilettatura', icona: 'righello', testo: 'Filettatura' }
     ]
-  },
-  {
-    id: 'tecRiferimento',
-    icona: 'riferimento',
-    testo: 'Riferimento',
-    voci: [{ s: 'tecDatum', icona: 'riferimento', testo: 'Datum' }]
   }
+  // Datum/riferimento rimosso dal menu: poco utile finché non è collegabile
+  // come origine (resta nel modello e nei renderer, riattivabile in futuro).
 ];
 
 /** Strumenti tecnici (tutti). */
@@ -1133,6 +1122,25 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     setSelezioneId(null);
   };
 
+  /** scala spessore + testo della quota selezionata (pulsanti A−/A＋ flottanti) */
+  const scalaStileSelezionata = (f: number) => {
+    if (!annotazioni || !selezioneId) return;
+    commit(
+      annotazioni.map((a) =>
+        a.id === selezioneId
+          ? ({
+              ...a,
+              stile: {
+                ...a.stile,
+                spessore: Math.max(1, Math.round(a.stile.spessore * f)),
+                dimensioneTesto: Math.max(8, Math.round(a.stile.dimensioneTesto * f))
+              }
+            } as Annotazione)
+          : a
+      )
+    );
+  };
+
   // ---------------------------------------------------------------------------
   // Calibrazione: scala lineare e piano prospettico
   // ---------------------------------------------------------------------------
@@ -1698,6 +1706,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           discreti — Modifica ed Elimina — senza dover azzeccare il secondo tap */}
       {!proposta &&
         !duplicaMaster &&
+        strumento === 'seleziona' &&
         selezionata &&
         haAmbienteDedicato(selezionata) &&
         quotaInModifica === null &&
@@ -1712,6 +1721,26 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               >
                 <Icona nome="matita" dimensione={20} />
               </button>
+            )}
+            {selezionata.tipo === 'quotaTecnica' && (
+              <>
+                <button
+                  className="azione-flottante dimensione"
+                  aria-label="Riduci dimensione"
+                  title="Riduci dimensione"
+                  onClick={() => scalaStileSelezionata(1 / 1.25)}
+                >
+                  A−
+                </button>
+                <button
+                  className="azione-flottante dimensione"
+                  aria-label="Aumenta dimensione"
+                  title="Aumenta dimensione"
+                  onClick={() => scalaStileSelezionata(1.25)}
+                >
+                  A＋
+                </button>
+              </>
             )}
             {selezionata.tipo === 'quotaPoligono' && (
               <button
@@ -3711,30 +3740,62 @@ function PannelloProprieta({
         )}
         {ann.tipo === 'forma' && (
           <>
-            <button
-              className={`btn${ann.riempimento ? ' attivo' : ''}`}
-              onClick={() =>
-                onModifica(
-                  ann.riempimento
-                    ? { riempimento: undefined }
-                    : { riempimento: ann.stile.colore, opacitaRiempimento: ann.opacitaRiempimento ?? 0.3 }
-                )
-              }
-            >
-              {ann.riempimento ? '■ Riempito' : '▢ Vuoto'}
-            </button>
-            <button
-              className={`btn${ann.tratteggio ? ' attivo' : ''}`}
-              onClick={() =>
-                onModifica({
-                  tratteggio: ann.tratteggio
-                    ? undefined
-                    : [ann.stile.spessore * 4, ann.stile.spessore * 3]
-                })
-              }
-            >
-              {ann.tratteggio ? '┄ Tratteggio' : '── Continuo'}
-            </button>
+            {/* riempimento: solo per le forme chiuse, non per la linea */}
+            {ann.forma !== 'linea' && (
+              <button
+                className={`btn${ann.riempimento ? ' attivo' : ''}`}
+                onClick={() =>
+                  onModifica(
+                    ann.riempimento
+                      ? { riempimento: undefined }
+                      : { riempimento: ann.stile.colore, opacitaRiempimento: ann.opacitaRiempimento ?? 0.3 }
+                  )
+                }
+              >
+                {ann.riempimento ? '■ Riempito' : '▢ Vuoto'}
+              </button>
+            )}
+            {ann.forma === 'linea'
+              ? (() => {
+                  // ciclo: continua → tratteggio → tratto-punto (asse) → continua
+                  const sp = ann.stile.spessore;
+                  const stile = !ann.tratteggio
+                    ? 'continua'
+                    : ann.tratteggio.length >= 4
+                      ? 'asse'
+                      : 'tratteggio';
+                  const prossimo =
+                    stile === 'continua'
+                      ? [sp * 4, sp * 3]
+                      : stile === 'tratteggio'
+                        ? [sp * 6, sp * 3, sp, sp * 3]
+                        : undefined;
+                  const etichetta =
+                    stile === 'continua'
+                      ? '── Continua'
+                      : stile === 'tratteggio'
+                        ? '┄ Tratteggio'
+                        : '─·─ Asse';
+                  return (
+                    <button className="btn" onClick={() => onModifica({ tratteggio: prossimo })}>
+                      {etichetta}
+                    </button>
+                  );
+                })()
+              : (
+                <button
+                  className={`btn${ann.tratteggio ? ' attivo' : ''}`}
+                  onClick={() =>
+                    onModifica({
+                      tratteggio: ann.tratteggio
+                        ? undefined
+                        : [ann.stile.spessore * 4, ann.stile.spessore * 3]
+                    })
+                  }
+                >
+                  {ann.tratteggio ? '┄ Tratteggio' : '── Continuo'}
+                </button>
+              )}
             <label className="fisc-check" style={{ marginLeft: 4 }}>
               <input
                 type="checkbox"

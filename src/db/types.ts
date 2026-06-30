@@ -712,8 +712,8 @@ export interface QuotaTecnica extends AnnotazioneBase {
   origineEstremo?: 'inizio' | 'fine';
   /** etichetta/lettera (es. datum "A", o nota della catena) */
   etichetta?: string;
-  /** terminatore della linea di quota: freccia (default), tacca obliqua o pallino */
-  terminatore?: 'freccia' | 'tacca' | 'pallino';
+  /** terminatore della linea di quota: freccia (default) o tacca obliqua */
+  terminatore?: 'freccia' | 'tacca';
   /** linee di estensione visibili (default true) */
   estensioniVisibili?: boolean;
   /** distacco delle estensioni dall'oggetto (px); assente = default dallo spessore */
@@ -868,4 +868,4 @@ export const COLORE_STIMATA = '#ff9500';
 export const COLORE_QUOTA = '#ffc400';
 
 /** Colore dedicato alla QUOTATURA TECNICA, distinto dal giallo delle quote base. */
-export const COLORE_QUOTA_TECNICA = '#1a73e8';
+export const COLORE_QUOTA_TECNICA = '#00A896';

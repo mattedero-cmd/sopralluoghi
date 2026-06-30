@@ -6,6 +6,7 @@ import type Konva from 'konva';
  *  col dito che copre il punto, non serve e viene nascosta */
 const PUNTATORE_FINE = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: fine)').matches;
 import {
+  COLORE_QUOTA_TECNICA,
   quadrilateroQuotaRett,
   segmentiPoligono,
   type Annotazione,
@@ -1396,7 +1397,7 @@ export function StageEditor(p: Props) {
               {p.puntiTecnici.length > 1 && (
                 <Line
                   points={p.puntiTecnici.flatMap((pt) => [pt.x, pt.y])}
-                  stroke="#1a73e8"
+                  stroke={COLORE_QUOTA_TECNICA}
                   strokeWidth={2 / vista.scala}
                   dash={[8 / vista.scala, 6 / vista.scala]}
                   listening={false}
@@ -1408,7 +1409,7 @@ export function StageEditor(p: Props) {
                   x={pt.x}
                   y={pt.y}
                   radius={raggioManiglia * 0.55}
-                  fill="#1a73e8"
+                  fill={COLORE_QUOTA_TECNICA}
                   stroke="#ffffff"
                   strokeWidth={1.5 / vista.scala}
                   listening={false}

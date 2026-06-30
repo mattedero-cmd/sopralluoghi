@@ -108,10 +108,6 @@ export function AmbienteQuotaturaTecnica({
   const foro = quota.foro;
   const smusso = quota.smusso;
   const filettatura = quota.filettatura;
-  const sp = quota.stile.spessore;
-  const estMax = Math.max(20, Math.round(sp * 12));
-  const gapCorrente = quota.gapEstensione ?? sp * 1.5;
-  const sporgenzaCorrente = quota.sporgenzaEstensione ?? sp * 2.5;
   const offsetCorrente = Math.abs(quota.quote[0]?.offset ?? 0);
   const passoCorrente =
     quota.passo ??
@@ -172,19 +168,8 @@ export function AmbienteQuotaturaTecnica({
     onModifica({ ...quota, stile: { ...quota.stile, colore } });
   };
 
-  const cambiaTerminatore = (terminatore: 'freccia' | 'tacca' | 'pallino') => {
+  const cambiaTerminatore = (terminatore: 'freccia' | 'tacca') => {
     onModifica({ ...quota, terminatore });
-  };
-
-  const scalaStile = (f: number) => {
-    onModifica({
-      ...quota,
-      stile: {
-        ...quota.stile,
-        spessore: Math.max(1, Math.round(quota.stile.spessore * f)),
-        dimensioneTesto: Math.max(8, Math.round(quota.stile.dimensioneTesto * f))
-      }
-    });
   };
 
   const cambiaValore = (indice: number, v: number | null) => {
@@ -505,28 +490,9 @@ export function AmbienteQuotaturaTecnica({
               >
                 ╱ Tacche
               </button>
-              <button
-                className={quota.terminatore === 'pallino' ? 'attivo' : ''}
-                onClick={() => cambiaTerminatore('pallino')}
-              >
-                ● Pallini
-              </button>
             </div>
           </div>
         )}
-
-        {/* Dimensione (spessore + testo) */}
-        <div className="qt-riga">
-          <label className="qt-label">Dimensione</label>
-          <span className="segmenti" role="group" aria-label="Dimensione della quota">
-            <button aria-label="Riduci dimensione" onClick={() => scalaStile(1 / 1.25)}>
-              A−
-            </button>
-            <button aria-label="Aumenta dimensione" onClick={() => scalaStile(1.25)}>
-              A＋
-            </button>
-          </span>
-        </div>
 
         {/* Colore */}
         <div className="qt-riga">
@@ -585,38 +551,6 @@ export function AmbienteQuotaturaTecnica({
                 {quota.estensioniVisibili === false ? 'Nascoste' : 'Visibili'}
               </button>
             </div>
-            {quota.estensioniVisibili !== false && (
-              <>
-                <div className="qt-riga">
-                  <label className="qt-label">Distacco est.</label>
-                  <input
-                    type="range"
-                    min={0}
-                    max={estMax}
-                    step={1}
-                    value={Math.min(gapCorrente, estMax)}
-                    onChange={(e) => onModifica({ ...quota, gapEstensione: Number(e.target.value) })}
-                    style={{ flex: 1 }}
-                    aria-label="Distacco delle estensioni dall'oggetto"
-                  />
-                </div>
-                <div className="qt-riga">
-                  <label className="qt-label">Sporgenza</label>
-                  <input
-                    type="range"
-                    min={0}
-                    max={estMax}
-                    step={1}
-                    value={Math.min(sporgenzaCorrente, estMax)}
-                    onChange={(e) =>
-                      onModifica({ ...quota, sporgenzaEstensione: Number(e.target.value) })
-                    }
-                    style={{ flex: 1 }}
-                    aria-label="Sporgenza delle estensioni oltre la linea"
-                  />
-                </div>
-              </>
-            )}
           </>
         )}
 
