@@ -54,6 +54,7 @@ export type Strumento =
   | 'cerchio3p'
   | 'testo'
   | 'disegno'
+  | 'schizzo'
   | 'freccia'
   | 'callout'
   | 'calibra'
@@ -160,6 +161,8 @@ interface Props {
   onMenuEtichetta: (schermo: Punto) => void;
   onNuovaFreccia: (p1: Punto, p2: Punto) => void;
   onNuovoDisegno: (punti: number[]) => void;
+  /** schizzo a mano libera della pianta: viene raddrizzato in un poligono */
+  onNuovoSchizzo: (punti: number[]) => void;
   /** nuova forma di disegno generica (linea/rettangolo/cerchio/poligono) */
   onNuovaForma: (forma: TipoForma, punti: Punto[]) => void;
   /** punto posato in modalità quotatura tecnica (catena in serie) */
@@ -561,7 +564,8 @@ export function StageEditor(p: Props) {
     }
 
     switch (p.strumento) {
-      case 'disegno': {
+      case 'disegno':
+      case 'schizzo': {
         setBozza({ tipo: 'disegno', punti: [pos.x, pos.y] });
         setPuntoLente(pos);
         disegnoAttivo.current = true;
@@ -964,7 +968,11 @@ export function StageEditor(p: Props) {
     const minimo = 8 / vista.scala;
     switch (b.tipo) {
       case 'disegno':
-        if (b.punti.length >= 6) p.onNuovoDisegno(b.punti);
+        // lo stesso tracciato a mano libera alimenta disegno o schizzo pianta
+        if (b.punti.length >= 6) {
+          if (p.strumento === 'schizzo') p.onNuovoSchizzo(b.punti);
+          else p.onNuovoDisegno(b.punti);
+        }
         break;
       case 'callout': {
         const r = normalizzaRect(b.inizio, b.corrente);
@@ -1701,6 +1709,8 @@ function testoSuggerimento(strumento: Strumento, bozza: Bozza): string | null {
   }
   if (strumento === 'calibra') return 'Trascina tra due punti a distanza nota';
   if (strumento === 'raggio') return 'Trascina dal centro al bordo';
+  if (strumento === 'schizzo')
+    return 'Disegna a mano libera il contorno chiuso della stanza: l’app lo raddrizza in un poligono quotabile';
   return null;
 }
 

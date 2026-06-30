@@ -307,6 +307,48 @@ export async function aggiungiFoto(
   );
 }
 
+/** Tela bianca PNG (per le piante, che non hanno una vera foto). */
+async function immagineBianca(w: number, h: number): Promise<ArrayBuffer> {
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+  }
+  const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/png'));
+  return blob ? blob.arrayBuffer() : new ArrayBuffer(0);
+}
+
+/**
+ * Crea una PIANTA stanza (§12): una "foto" con tela bianca, su cui si
+ * disegna lo schizzo della stanza. Riusa interamente l'editor e il PDF.
+ */
+export async function creaPianta(
+  progettoId: ID,
+  opzioni?: { larghezza?: number; altezza?: number }
+): Promise<Foto> {
+  const larghezzaPx = opzioni?.larghezza ?? 2000;
+  const altezzaPx = opzioni?.altezza ?? 1500;
+  const origine = await immagineBianca(larghezzaPx, altezzaPx);
+  const miniatura = await immagineBianca(240, 180);
+  return aggiungiFoto(progettoId, {
+    origine,
+    origineTipo: 'image/png',
+    miniatura,
+    miniaturaTipo: 'image/png',
+    larghezzaPx,
+    altezzaPx,
+    dataScatto: ora(),
+    geotag: null,
+    didascalia: 'Pianta stanza',
+    noteDato: '',
+    scala: null,
+    ePianta: true
+  });
+}
+
 export async function aggiornaFoto(
   id: ID,
   modifiche: Partial<Omit<Foto, 'id' | 'progettoId' | 'origine' | 'origineTipo' | 'creataIl'>>

@@ -203,6 +203,12 @@ export interface Foto {
    * dopo la foto principale, raggruppata sotto la sua etichetta.
    */
   dettaglioDi?: DettaglioEtichetta;
+  /**
+   * true se questa "foto" è in realtà una PIANTA stanza (§12): tela bianca su
+   * cui si disegna lo schizzo della stanza. Riusa interamente l'editor, le
+   * quote, l'area e l'export PDF; cambia solo lo sfondo (bianco) e l'elenco.
+   */
+  ePianta?: boolean;
   creataIl: number;
   modificataIl: number;
 }

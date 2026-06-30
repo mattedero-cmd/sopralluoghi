@@ -52,6 +52,7 @@ import {
 } from '../geometry/calibrazione';
 import { etichettaPoligono, nomeFormaPoligono, simboliPoligono, versiSegmento } from '../geometry/primitive';
 import { ricalcolaTecniche } from '../geometry/quotaTecnica';
+import { raddrizzaStanza } from '../geometry/schizzo';
 import {
   codiceCompletoForma,
   codiceLocaleForma,
@@ -142,7 +143,8 @@ const GRUPPI_STRUMENTI: Array<{
       { s: 'rettangolo', icona: 'rettangolo', testo: 'Rettangolo' },
       { s: 'quad', icona: 'quad', testo: '4 angoli' },
       { s: 'tri', icona: 'triangolo', testo: 'Triangolo' },
-      { s: 'polilinea', icona: 'polilinea', testo: 'Polilinea' }
+      { s: 'polilinea', icona: 'polilinea', testo: 'Polilinea' },
+      { s: 'schizzo', icona: 'disegno', testo: 'Schizzo stanza' }
     ]
   },
   {
@@ -970,6 +972,22 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     commit([...annotazioni, d]);
   };
 
+  /** schizzo a mano libera → raddrizzato nel poligono quotato della stanza */
+  const creaSchizzo = (puntiFlat: number[]) => {
+    if (!fabbrica || !annotazioni) return;
+    const punti: Punto[] = [];
+    for (let i = 0; i + 1 < puntiFlat.length; i += 2) {
+      punti.push({ x: puntiFlat[i], y: puntiFlat[i + 1] });
+    }
+    const vertici = raddrizzaStanza(punti);
+    if (!vertici) {
+      mostraToast('info', 'Schizzo non riconosciuto: traccia il contorno chiuso della stanza.');
+      return;
+    }
+    creaEseleziona(fabbrica.poligonoLati(vertici, annotazioni));
+    setStrumento('seleziona');
+  };
+
   const creaForma = (forma: TipoForma, punti: Punto[]) => {
     if (!fabbrica || !annotazioni) return;
     const f = fabbrica.forma(forma, punti, annotazioni);
@@ -1458,6 +1476,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         onMenuEtichetta={apriMenuEtichetta}
         onNuovaFreccia={creaFreccia}
         onNuovoDisegno={creaDisegno}
+        onNuovoSchizzo={creaSchizzo}
         onNuovaForma={creaForma}
         onPuntoTecnico={(pt) => setPuntiTecnici((punti) => [...punti, pt])}
         puntiTecnici={STRUMENTI_POSA_TECNICA.has(strumento) ? puntiTecnici : null}

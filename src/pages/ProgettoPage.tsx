@@ -7,6 +7,7 @@ import {
   aggiornaProgetto,
   aggiornaSezione,
   assegnaFotoSezione,
+  creaPianta,
   creaPreventivo,
   creaSezione,
   eliminaFoto,
@@ -208,8 +209,19 @@ export function ProgettoPage({ id }: { id: string }) {
 
   const sezioni = [...(progetto.sezioni ?? [])].sort((a, b) => a.ordine - b.ordine);
   const idsSezioni = new Set(sezioni.map((s) => s.id));
+  // le piante (tele bianche) sono elencate a parte, non tra le foto
+  const piante = foto.filter((f) => f.ePianta);
   const fotoDi = (sid: string | null) =>
-    foto.filter((f) => (sid === null ? !f.sezioneId || !idsSezioni.has(f.sezioneId) : f.sezioneId === sid));
+    foto.filter(
+      (f) =>
+        !f.ePianta &&
+        (sid === null ? !f.sezioneId || !idsSezioni.has(f.sezioneId) : f.sezioneId === sid)
+    );
+
+  const nuovaPianta = async () => {
+    const p = await creaPianta(progetto.id);
+    naviga({ nome: 'foto', id: p.id });
+  };
 
   /** importa foto direttamente in una sezione (null = nessuna sezione) */
   const aggiungiA = (sid: string | null, fonte: 'camera' | 'galleria') => {
@@ -325,6 +337,9 @@ export function ProgettoPage({ id }: { id: string }) {
           <button className="btn" onClick={() => setSezioneInModifica('nuova')}>
             <Icona nome="cartella-piu" dimensione={20} /> Nuova sezione
           </button>
+          <button className="btn" onClick={() => void nuovaPianta()}>
+            <Icona nome="rettangolo" dimensione={20} /> Nuova pianta
+          </button>
           <button
             className="btn"
             disabled={pdfInCorso !== null}
@@ -410,6 +425,18 @@ export function ProgettoPage({ id }: { id: string }) {
               </section>
             )}
           </>
+        )}
+
+        {piante.length > 0 && (
+          <section className="gruppo-sezione">
+            <div className="intestazione-sezione">
+              <h3>
+                Piante stanza
+                <span className="conta-sezione">{piante.length}</span>
+              </h3>
+            </div>
+            {grigliaFoto(piante)}
+          </section>
         )}
 
         <h2>Preventivi ({preventivi?.length ?? 0})</h2>
