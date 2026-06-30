@@ -2365,8 +2365,10 @@ function ManiglieAnnotazione({
       );
     }
     case 'quotaTecnica': {
-      const eps = 0.5;
-      const uguale = (x: Punto, y: Punto) => Math.abs(x.x - y.x) < eps && Math.abs(x.y - y.y) < eps;
+      // confronto ESATTO: gli estremi delle quote condividono le coordinate
+      // dei punti originali (derivati dagli stessi oggetti), così trascinando
+      // un punto non si trascina per sbaglio un altro punto quasi coincidente.
+      const uguale = (x: Punto, y: Punto) => x.x === y.x && x.y === y.y;
 
       // datum: una maniglia sul punto di riferimento
       if (ann.sottotipo === 'datum') {
@@ -2415,6 +2417,9 @@ function ManiglieAnnotazione({
       // smusso: maniglie sugli estremi del segmento + sulla callout (leader)
       if (ann.sottotipo === 'smusso' && ann.smusso) {
         const s = ann.smusso;
+        // la callout (leader) resta ancorata al punto medio del segmento
+        const ancoraLeader = (a: Punto, b: Punto) =>
+          s.leader ? { da: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, a: s.leader.a } : s.leader;
         return (
           <>
             {maniglia(
@@ -2423,7 +2428,7 @@ function ManiglieAnnotazione({
               (n) => ({
                 ...ann,
                 puntiOriginali: ann.puntiOriginali.map((pt) => (uguale(pt, s.a) ? n : pt)),
-                smusso: { ...s, a: n }
+                smusso: { ...s, a: n, leader: ancoraLeader(n, s.b) }
               }),
               { snap: true, escludi: [s.a] }
             )}
@@ -2433,7 +2438,7 @@ function ManiglieAnnotazione({
               (n) => ({
                 ...ann,
                 puntiOriginali: ann.puntiOriginali.map((pt) => (uguale(pt, s.b) ? n : pt)),
-                smusso: { ...s, b: n }
+                smusso: { ...s, b: n, leader: ancoraLeader(s.a, n) }
               }),
               { snap: true, escludi: [s.b] }
             )}
