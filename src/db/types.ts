@@ -204,11 +204,17 @@ export interface Foto {
    */
   dettaglioDi?: DettaglioEtichetta;
   /**
-   * true se questa "foto" è in realtà una PIANTA stanza (§12): tela bianca su
-   * cui si disegna lo schizzo della stanza. Riusa interamente l'editor, le
-   * quote, l'area e l'export PDF; cambia solo lo sfondo (bianco) e l'elenco.
+   * true se questa "foto" è in realtà una PIANTA stanza (§12): tela su cui si
+   * disegna lo schizzo della stanza. Riusa interamente l'editor, le quote,
+   * l'area e l'export PDF; cambia solo l'elenco e (di default) lo sfondo.
    */
   ePianta?: boolean;
+  /**
+   * Pianta tracciata su una foto reale: se true lo sfondo (la foto) è
+   * nascosto e si vede solo lo schizzo su bianco. Si può mostrare/nascondere
+   * a piacere dopo aver tracciato la geometria.
+   */
+  sfondoNascosto?: boolean;
   creataIl: number;
   modificataIl: number;
 }

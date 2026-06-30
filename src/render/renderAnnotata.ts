@@ -30,7 +30,13 @@ export async function renderFotoAnnotata(
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvas non disponibile su questo dispositivo.');
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  if (foto.sfondoNascosto) {
+    // pianta con sfondo nascosto: solo lo schizzo su bianco, niente foto
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  } else {
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  }
 
   // foto-dettaglio dei callout: precaricate, così l'export le disegna
   const dettagli = new Map<string, HTMLImageElement>();

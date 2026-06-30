@@ -349,6 +349,31 @@ export async function creaPianta(
   });
 }
 
+/**
+ * Crea una PIANTA tracciata su una FOTO reale: copia l'immagine (e la
+ * calibrazione, scala/piano) della foto sorgente in una nuova pianta. Così lo
+ * schizzo nasce ben proporzionato e, se la foto è calibrata, i lati si
+ * misurano già in reale. Lo sfondo è mostrato e si può nascondere a piacere.
+ */
+export async function creaPiantaDaFoto(progettoId: ID, sorgente: Foto): Promise<Foto> {
+  return aggiungiFoto(progettoId, {
+    origine: sorgente.origine.slice(0),
+    origineTipo: sorgente.origineTipo,
+    miniatura: sorgente.miniatura.slice(0),
+    miniaturaTipo: sorgente.miniaturaTipo,
+    larghezzaPx: sorgente.larghezzaPx,
+    altezzaPx: sorgente.altezzaPx,
+    dataScatto: ora(),
+    geotag: null,
+    didascalia: 'Pianta su foto',
+    noteDato: '',
+    scala: sorgente.scala ? { ...sorgente.scala } : null,
+    piano: sorgente.piano ?? null,
+    ePianta: true,
+    sfondoNascosto: false
+  });
+}
+
 export async function aggiornaFoto(
   id: ID,
   modifiche: Partial<Omit<Foto, 'id' | 'progettoId' | 'origine' | 'origineTipo' | 'creataIl'>>

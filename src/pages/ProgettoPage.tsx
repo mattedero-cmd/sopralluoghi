@@ -8,6 +8,7 @@ import {
   aggiornaSezione,
   assegnaFotoSezione,
   creaPianta,
+  creaPiantaDaFoto,
   creaPreventivo,
   creaSezione,
   eliminaFoto,
@@ -163,6 +164,26 @@ export function ProgettoPage({ id }: { id: string }) {
             }
           }
         },
+        ...(f.ePianta
+          ? []
+          : [
+              {
+                testo: 'Crea pianta da questa foto',
+                icona: 'rettangolo' as const,
+                onClick: async () => {
+                  if (fotoIllegibile(f)) {
+                    mostraToast('errore', 'Questa foto non è leggibile: impossibile usarla come base.');
+                    return;
+                  }
+                  try {
+                    const p = await creaPiantaDaFoto(f.progettoId, f);
+                    naviga({ nome: 'foto', id: p.id });
+                  } catch (e) {
+                    mostraToast('errore', e instanceof Error ? e.message : 'Pianta non creata.');
+                  }
+                }
+              }
+            ]),
         { testo: 'Sposta in sezione…', icona: 'sposta', onClick: () => setAssegnaFoto(f) },
         {
           testo: 'Elimina foto…',

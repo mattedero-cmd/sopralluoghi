@@ -1148,6 +1148,18 @@ export function StageEditor(p: Props) {
               if (p.onDuplica && pos) p.onDuplica(pos);
             }}
           />
+          {p.foto.sfondoNascosto && (
+            // pianta su foto con sfondo nascosto: copre la foto col bianco,
+            // resta solo lo schizzo (la foto-sfondo è ancora cliccabile sotto)
+            <Rect
+              x={0}
+              y={0}
+              width={p.foto.larghezzaPx}
+              height={p.foto.altezzaPx}
+              fill="#ffffff"
+              listening={false}
+            />
+          )}
           {annotazioniVisibili.map((a) => (
             <AnnotazioneShape
               key={a.id}

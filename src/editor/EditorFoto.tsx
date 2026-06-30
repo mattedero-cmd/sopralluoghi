@@ -1421,6 +1421,16 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             <Icona nome="griglia" />
           </button>
         )}
+        {foto.ePianta && (
+          <button
+            className={`btn icona${foto.sfondoNascosto ? ' attivo' : ''}`}
+            aria-label={foto.sfondoNascosto ? 'Mostra la foto di sfondo' : 'Nascondi la foto di sfondo'}
+            title={foto.sfondoNascosto ? 'Mostra la foto di sfondo' : 'Nascondi la foto di sfondo'}
+            onClick={() => void aggiornaFoto(foto.id, { sfondoNascosto: !foto.sfondoNascosto })}
+          >
+            <Icona nome="immagine" />
+          </button>
+        )}
         <button
           className={`btn icona${snapAttivo || vincolo !== 'off' || bordiAttivo ? ' attivo' : ''}`}
           aria-label="Opzioni di disegno"
