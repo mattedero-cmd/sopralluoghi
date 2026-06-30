@@ -60,7 +60,7 @@ describe('rigaMisuraTecnica — riepilogo PDF delle quote tecniche', () => {
       })
     );
     expect(r!.forma).toBe('Foro A');
-    expect(r!.reale).toBe('⌀ 50 cm');
+    expect(r!.reale).toBe('Ø 50 cm'); // Ø (U+00D8), reso correttamente dal font del PDF
   });
 
   it('foro in modo raggio usa R', () => {

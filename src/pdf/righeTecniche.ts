@@ -38,7 +38,8 @@ export function rigaMisuraTecnica(a: QuotaTecnica): RigaTecnica | null {
     case 'foro': {
       if (!a.foro) return null;
       const val = a.foro.modo === 'diametro' ? a.foro.diametroReale : a.foro.raggioReale;
-      const pre = a.foro.modo === 'diametro' ? '⌀' : 'R';
+      // 'Ø' (U+00D8) e non '⌀' (U+2300): solo il primo è nel font del PDF (Roboto)
+      const pre = a.foro.modo === 'diametro' ? 'Ø' : 'R';
       const nome = a.foro.etichetta ? `Foro ${a.foro.etichetta}` : 'Foro';
       return { forma: nome, reale: `${pre} ${f(val)} ${a.unita}`, stato };
     }
