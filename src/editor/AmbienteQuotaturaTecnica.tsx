@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modale } from '../components/comuni';
 import { Icona } from '../components/Icona';
 import type { Foto, QuotaTecnica, Unita, VersoQuota } from '../db/types';
@@ -7,6 +7,49 @@ import { applicaOffsetSerie, ricalcolaValoriSerie } from '../geometry/quotaTecni
 import { distanza } from '../geometry/punti';
 
 type CalibFoto = Pick<Foto, 'scala' | 'piano'>;
+
+/**
+ * Campo del valore di un singolo tratto: controllato, ma con un buffer di testo
+ * locale così la virgola e i decimali si possono digitare liberamente. Si
+ * risincronizza quando il valore cambia dall'esterno (cambio unità, ricalcolo),
+ * evitando il numero "fantasma" di un input non controllato.
+ */
+function CampoValoreTecnico({
+  valore,
+  onCambia
+}: {
+  valore: number | null;
+  onCambia: (v: number | null) => void;
+}) {
+  const testoDi = (v: number | null) => (v === null ? '' : String(v).replace('.', ','));
+  const [testo, setTesto] = useState(() => testoDi(valore));
+  const ultimo = useRef(valore);
+  useEffect(() => {
+    if (valore !== ultimo.current) {
+      ultimo.current = valore;
+      setTesto(testoDi(valore));
+    }
+  }, [valore]);
+  const conferma = () => {
+    const pulito = testo.trim().replace(',', '.');
+    const v = pulito === '' ? null : Number(pulito);
+    if (v !== null && Number.isNaN(v)) {
+      setTesto(testoDi(valore)); // ripristina l'ultimo valore valido
+      return;
+    }
+    ultimo.current = v;
+    onCambia(v);
+  };
+  return (
+    <input
+      className="input-misura"
+      inputMode="decimal"
+      value={testo}
+      onChange={(e) => setTesto(e.target.value)}
+      onBlur={conferma}
+    />
+  );
+}
 
 const UNITA: Unita[] = ['mm', 'cm', 'm'];
 const COLORI_TECNICI = [COLORE_QUOTA_TECNICA, '#ff3b30', '#34c759', '#111111', '#ffffff'];
@@ -57,10 +100,7 @@ export function AmbienteQuotaturaTecnica({
     onModifica({ ...quota, stile: { ...quota.stile, colore } });
   };
 
-  const cambiaValore = (indice: number, testo: string) => {
-    const pulito = testo.trim().replace(',', '.');
-    const v = pulito === '' ? null : Number(pulito);
-    if (v !== null && Number.isNaN(v)) return;
+  const cambiaValore = (indice: number, v: number | null) => {
     const quote = quota.quote.map((q, i) => (i === indice ? { ...q, valore: v } : q));
     onModifica({ ...quota, valoreAuto: false, quote });
   };
@@ -153,13 +193,7 @@ export function AmbienteQuotaturaTecnica({
           {quota.quote.map((q, i) => (
             <div key={i} className="qt-misura-riga">
               <span className="qt-misura-num">{i + 1}</span>
-              <input
-                className="input-misura"
-                inputMode="decimal"
-                defaultValue={q.valore === null ? '' : String(q.valore).replace('.', ',')}
-                onBlur={(e) => cambiaValore(i, e.target.value)}
-                aria-label={`Misura ${i + 1}`}
-              />
+              <CampoValoreTecnico valore={q.valore} onCambia={(v) => cambiaValore(i, v)} />
               <span className="qt-misura-unita">{quota.unita}</span>
             </div>
           ))}
