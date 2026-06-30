@@ -939,6 +939,37 @@ function etichettaQuotaTecnica(valore: number | null, unita: Unita): string {
   return valore === null ? '—' : formattaMisura(valore, unita);
 }
 
+/** Orientamento del testo allineato alla guida, mai capovolto, + versore "sopra". */
+function orientamentoTesto(d: Punto): { angolo: number; sopra: Punto } {
+  let angolo = (Math.atan2(d.y, d.x) * 180) / Math.PI;
+  let dirTesto = d;
+  if (angolo > 90 || angolo <= -90) {
+    angolo += 180;
+    if (angolo > 180) angolo -= 360;
+    dirTesto = scala(d, -1);
+  }
+  const su = normale(dirTesto);
+  return { angolo, sopra: su.y > 0 ? scala(su, -1) : su };
+}
+
+/** Linea di estensione da un punto reale fino al suo piede sulla linea di quota. */
+function lineaEstensione(
+  p: Punto,
+  piede: Punto,
+  gap: number,
+  oltre: number,
+  colore: string,
+  sp: number
+): Primitiva | null {
+  const v = sottrai(piede, p);
+  const lung = Math.hypot(v.x, v.y);
+  if (lung <= 1e-6) return null;
+  const vn = normalizza(v);
+  const inizio = somma(p, scala(vn, Math.min(gap, lung)));
+  const fine = somma(piede, scala(vn, oltre));
+  return { kind: 'linea', punti: [inizio.x, inizio.y, fine.x, fine.y], colore, spessore: sp * 0.75, alone: ALONE };
+}
+
 /**
  * Quotatura IN SERIE: un'unica linea di quota a offset costante dalla guida,
  * linee di estensione da ciascun punto reale e, per ogni segmento, frecce
@@ -1050,13 +1081,145 @@ function primitiveSerie(q: QuotaTecnica): Primitiva[] {
   return prim;
 }
 
-/** Dispatcher della quotatura tecnica per sottotipo (serie in Fase 2). */
+/**
+ * Quotatura IN PARALLELO: ogni punto è quotato dall'origine su una propria
+ * linea di quota parallela alla guida, impilata a offset crescente.
+ */
+function primitiveParallelo(q: QuotaTecnica): Primitiva[] {
+  const prim: Primitiva[] = [];
+  const guida = q.lineaGuida;
+  if (!guida || q.quote.length === 0) return prim;
+
+  const colore = q.stile.colore || COLORE_QUOTA_TECNICA;
+  const sp = q.stile.spessore;
+  const dimTesto = q.stile.dimensioneTesto;
+  const dimFreccia = sp * 3 + 5;
+  const gap = sp * 1.5;
+  const oltre = sp * 2.5;
+  const d = normalizza(sottrai(guida.b, guida.a));
+  const n = normale(d);
+  const a = guida.a;
+  const { angolo, sopra } = orientamentoTesto(d);
+
+  // marcatore dell'origine (comune a tutte le quote)
+  const origine = q.quote[0].p1;
+  prim.push({ kind: 'cerchio', centro: origine, raggio: dimFreccia * 0.5, colore, spessore: sp, alone: ALONE });
+
+  for (const seg of q.quote) {
+    const f1 = piedeQuotaTecnica(seg.p1, a, d, n, seg.offset); // piede dell'origine
+    const f2 = piedeQuotaTecnica(seg.p2, a, d, n, seg.offset); // piede del punto
+    const lungSeg = distanza(f1, f2);
+    if (lungSeg < 1e-6) continue;
+
+    const e1 = lineaEstensione(seg.p1, f1, gap, oltre, colore, sp);
+    const e2 = lineaEstensione(seg.p2, f2, gap, oltre, colore, sp);
+    if (e1) prim.push(e1);
+    if (e2) prim.push(e2);
+
+    prim.push({ kind: 'linea', punti: [f1.x, f1.y, f2.x, f2.y], colore, spessore: sp, alone: ALONE });
+
+    const verso12 = normalizza(sottrai(f2, f1));
+    if (lungSeg > dimFreccia * 2.2) {
+      prim.push(freccette(f1, verso12, dimFreccia, colore), freccette(f2, scala(verso12, -1), dimFreccia, colore));
+    } else {
+      prim.push(freccette(f1, scala(verso12, -1), dimFreccia, colore), freccette(f2, verso12, dimFreccia, colore));
+    }
+
+    const centro = scala(somma(f1, f2), 0.5);
+    prim.push({
+      kind: 'testo',
+      testo: etichettaQuotaTecnica(seg.valore, q.unita),
+      posizione: somma(centro, scala(sopra, dimTesto * 0.75)),
+      rotazioneDeg: angolo,
+      dimensione: dimTesto,
+      colore,
+      sfondo: null,
+      alone: ALONE
+    });
+  }
+  return prim;
+}
+
+/**
+ * Quotatura PROGRESSIVA (ordinate): un'unica linea di riferimento dallo zero;
+ * ogni punto ha una breve estensione e il solo valore con segno, senza
+ * doppia freccia.
+ */
+function primitiveProgressiva(q: QuotaTecnica): Primitiva[] {
+  const prim: Primitiva[] = [];
+  const guida = q.lineaGuida;
+  if (!guida || q.quote.length === 0) return prim;
+
+  const colore = q.stile.colore || COLORE_QUOTA_TECNICA;
+  const sp = q.stile.spessore;
+  const dimTesto = q.stile.dimensioneTesto;
+  const dimFreccia = sp * 3 + 5;
+  const gap = sp * 1.5;
+  const oltre = sp * 2.5;
+  const d = normalizza(sottrai(guida.b, guida.a));
+  const n = normale(d);
+  const a = guida.a;
+  const offset = q.quote[0].offset;
+  const { angolo, sopra } = orientamentoTesto(d);
+
+  const zero = q.quote[0].p1; // tutte le quote partono dallo zero
+  const zeroFoot = piedeQuotaTecnica(zero, a, d, n, offset);
+
+  // linea di riferimento: dallo zero fino al piede più lontano lungo la guida
+  let tMin = 0;
+  let tMax = 0;
+  for (const seg of q.quote) {
+    const t = dot(sottrai(seg.p2, zero), d);
+    tMin = Math.min(tMin, t);
+    tMax = Math.max(tMax, t);
+  }
+  const rifA = somma(zeroFoot, scala(d, tMin));
+  const rifB = somma(zeroFoot, scala(d, tMax));
+  prim.push({ kind: 'linea', punti: [rifA.x, rifA.y, rifB.x, rifB.y], colore, spessore: sp, alone: ALONE });
+
+  // marcatore dello zero + etichetta "0"
+  prim.push({ kind: 'cerchio', centro: zeroFoot, raggio: dimFreccia * 0.45, colore, spessore: sp, alone: ALONE });
+  const e0 = lineaEstensione(zero, zeroFoot, gap, oltre, colore, sp);
+  if (e0) prim.push(e0);
+
+  for (const seg of q.quote) {
+    const piede = piedeQuotaTecnica(seg.p2, a, d, n, offset);
+    const e = lineaEstensione(seg.p2, piede, gap, oltre, colore, sp);
+    if (e) prim.push(e);
+    // tacca corta sulla linea di riferimento (niente doppia freccia)
+    const tk = dimFreccia * 0.6;
+    prim.push({
+      kind: 'linea',
+      punti: [piede.x - n.x * tk, piede.y - n.y * tk, piede.x + n.x * tk, piede.y + n.y * tk],
+      colore,
+      spessore: sp,
+      alone: ALONE
+    });
+    prim.push({
+      kind: 'testo',
+      testo: etichettaQuotaTecnica(seg.valore, q.unita),
+      posizione: somma(piede, scala(sopra, dimTesto * 0.9)),
+      rotazioneDeg: angolo,
+      dimensione: dimTesto,
+      colore,
+      sfondo: null,
+      alone: ALONE
+    });
+  }
+  return prim;
+}
+
+/** Dispatcher della quotatura tecnica per sottotipo. */
 export function primitiveQuotaTecnica(q: QuotaTecnica): Primitiva[] {
   switch (q.sottotipo) {
     case 'serie':
       return primitiveSerie(q);
+    case 'parallelo':
+      return primitiveParallelo(q);
+    case 'progressiva':
+      return primitiveProgressiva(q);
     default:
-      // parallelo/progressiva/foro/smusso/filettatura/datum: fasi successive
+      // foro/smusso/filettatura/datum: fasi successive
       return [];
   }
 }

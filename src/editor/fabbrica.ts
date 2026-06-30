@@ -26,7 +26,7 @@ import type {
 import { COLORE_QUOTA, COLORE_QUOTA_TECNICA, quadrilateroQuotaRett } from '../db/types';
 import { nuovoId } from '../utils/id';
 import { haCalibrazione, misuraSegmento, valoreAutomatico } from '../geometry/calibrazione';
-import { generaSerie } from '../geometry/quotaTecnica';
+import { generaParallelo, generaProgressiva, generaSerie } from '../geometry/quotaTecnica';
 
 /**
  * Creazione delle annotazioni con valori predefiniti proporzionati
@@ -299,6 +299,38 @@ export class FabbricaAnnotazioni {
     return Math.max(30, Math.round(this.stileBase().dimensioneTesto * 2.5));
   }
 
+  /** Passo di impilamento di default delle quote in parallelo (px immagine). */
+  private passoTecnicoDefault(): number {
+    return Math.max(18, Math.round(this.stileBase().dimensioneTesto * 1.6));
+  }
+
+  private baseQuotaTecnica(
+    sottotipo: 'serie' | 'parallelo' | 'progressiva',
+    puntiOriginali: Punto[],
+    unita: Unita,
+    verso: VersoQuota,
+    lineaGuida: { a: Punto; b: Punto },
+    quote: QuotaTecnica['quote'],
+    esistenti: Annotazione[]
+  ): QuotaTecnica {
+    return {
+      id: nuovoId(),
+      fotoId: this.foto.id,
+      tipo: 'quotaTecnica',
+      sottotipo,
+      lineaGuida,
+      verso,
+      unita,
+      valoreAuto: haCalibrazione(this.foto),
+      puntiOriginali,
+      quote,
+      partePerimetro: false,
+      zIndex: this.prossimoZ(esistenti),
+      creatoIl: Date.now(),
+      stile: this.stileQuotaTecnica()
+    };
+  }
+
   /**
    * Quotatura tecnica IN SERIE da N punti posati: ordina i punti lungo la
    * guida e genera la catena di quote allineate su un'unica linea di quota.
@@ -312,22 +344,49 @@ export class FabbricaAnnotazioni {
     const verso: VersoQuota = opts.verso ?? 'sinistra';
     const offset = opts.offset ?? this.offsetTecnicoDefault();
     const { lineaGuida, quote } = generaSerie(puntiOriginali, this.foto, { unita, offset, verso });
-    return {
-      id: nuovoId(),
-      fotoId: this.foto.id,
-      tipo: 'quotaTecnica',
-      sottotipo: 'serie',
-      lineaGuida,
-      verso,
+    return this.baseQuotaTecnica('serie', puntiOriginali, unita, verso, lineaGuida, quote, esistenti);
+  }
+
+  /** Quotatura tecnica IN PARALLELO: ogni punto quotato dall'origine, linee impilate. */
+  quotaTecnicaParallelo(
+    puntiOriginali: Punto[],
+    opts: { unita?: Unita; offset?: number; passo?: number; verso?: VersoQuota; origineEstremo?: 'inizio' | 'fine' },
+    esistenti: Annotazione[]
+  ): QuotaTecnica {
+    const unita = opts.unita ?? this.impostazioni.unitaDefault;
+    const verso: VersoQuota = opts.verso ?? 'sinistra';
+    const offset = opts.offset ?? this.offsetTecnicoDefault();
+    const passo = opts.passo ?? this.passoTecnicoDefault();
+    const origineEstremo = opts.origineEstremo ?? 'inizio';
+    const { lineaGuida, quote } = generaParallelo(puntiOriginali, this.foto, {
       unita,
-      valoreAuto: haCalibrazione(this.foto),
-      puntiOriginali,
-      quote,
-      partePerimetro: false,
-      zIndex: this.prossimoZ(esistenti),
-      creatoIl: Date.now(),
-      stile: this.stileQuotaTecnica()
-    };
+      offset,
+      passo,
+      verso,
+      origineEstremo
+    });
+    const q = this.baseQuotaTecnica('parallelo', puntiOriginali, unita, verso, lineaGuida, quote, esistenti);
+    return { ...q, passo, origineEstremo };
+  }
+
+  /** Quotatura tecnica PROGRESSIVA (ordinate da punto zero). */
+  quotaTecnicaProgressiva(
+    puntiOriginali: Punto[],
+    opts: { unita?: Unita; offset?: number; verso?: VersoQuota; origineEstremo?: 'inizio' | 'fine' },
+    esistenti: Annotazione[]
+  ): QuotaTecnica {
+    const unita = opts.unita ?? this.impostazioni.unitaDefault;
+    const verso: VersoQuota = opts.verso ?? 'sinistra';
+    const offset = opts.offset ?? this.offsetTecnicoDefault();
+    const origineEstremo = opts.origineEstremo ?? 'inizio';
+    const { lineaGuida, quote } = generaProgressiva(puntiOriginali, this.foto, {
+      unita,
+      offset,
+      verso,
+      origineEstremo
+    });
+    const q = this.baseQuotaTecnica('progressiva', puntiOriginali, unita, verso, lineaGuida, quote, esistenti);
+    return { ...q, origineEstremo };
   }
 
   /** Legenda della foto (una sola): riquadro in basso a sinistra per default. */

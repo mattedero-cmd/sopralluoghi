@@ -1,4 +1,4 @@
-import type { Foto, Punto, QuotaSingolaTecnica, Unita, VersoQuota } from '../db/types';
+import type { Foto, Punto, QuotaSingolaTecnica, QuotaTecnica, Unita, VersoQuota } from '../db/types';
 import { haCalibrazione, misuraSegmento } from './calibrazione';
 import { dot, normalizza, sottrai } from './punti';
 
@@ -108,4 +108,142 @@ export function applicaOffsetSerie(
 ): QuotaSingolaTecnica[] {
   const segnato = Math.abs(offset) * segnoVerso(verso);
   return quote.map((q) => ({ ...q, offset: segnato }));
+}
+
+/** Ordina i punti lungo la guida (primo→ultimo). */
+function ordinaLungoGuida(punti: Punto[]): { ordinati: Punto[]; d: Punto } {
+  const origine = punti[0] ?? { x: 0, y: 0 };
+  const d = direzioneSerie(punti);
+  const ordinati = punti
+    .map((p, i) => ({ p, i, t: ascissaSuGuida(p, origine, d) }))
+    .sort((a, b) => a.t - b.t || a.i - b.i)
+    .map((e) => e.p);
+  return { ordinati, d };
+}
+
+export interface OpzioniParallelo {
+  unita: Unita;
+  /** distacco della prima linea di quota (px immagine) */
+  offset: number;
+  /** incremento di distacco per ogni linea successiva (px immagine) */
+  passo: number;
+  verso: VersoQuota;
+  /** estremo della guida usato come origine */
+  origineEstremo: 'inizio' | 'fine';
+}
+
+/**
+ * Quotatura IN PARALLELO (§5.2): ogni punto è quotato DALL'ORIGINE (un estremo
+ * della guida); le linee di quota sono parallele alla guida e impilate a
+ * `offset = base + i·passo`, così non si sovrappongono.
+ */
+export function generaParallelo(
+  puntiOriginali: Punto[],
+  foto: CalibFoto,
+  opts: OpzioniParallelo
+): RisultatoSerie {
+  const { ordinati, d } = ordinaLungoGuida(puntiOriginali);
+  const inizio = ordinati[0] ?? { x: 0, y: 0 };
+  const fine = ordinati[ordinati.length - 1] ?? inizio;
+  const origine = opts.origineEstremo === 'fine' ? fine : inizio;
+  // gli altri punti, ordinati per distanza crescente dall'origine
+  const altri = ordinati
+    .filter((p) => p !== origine)
+    .map((p) => ({ p, dist: Math.abs(ascissaSuGuida(p, origine, d)) }))
+    .sort((a, b) => a.dist - b.dist)
+    .map((e) => e.p);
+  const segno = segnoVerso(opts.verso);
+  const base = Math.abs(opts.offset);
+  const passo = Math.abs(opts.passo);
+  const calibrata = haCalibrazione(foto);
+  const quote: QuotaSingolaTecnica[] = altri.map((p, i) => ({
+    p1: origine,
+    p2: p,
+    valore: calibrata ? misuraSegmento(origine, p, foto, opts.unita) : null,
+    orientamento: 'allineata',
+    offset: segno * (base + i * passo)
+  }));
+  return { lineaGuida: { a: inizio, b: fine }, quote, puntiOrdinati: ordinati };
+}
+
+export interface OpzioniProgressiva {
+  unita: Unita;
+  offset: number;
+  verso: VersoQuota;
+  /** estremo della guida usato come zero */
+  origineEstremo: 'inizio' | 'fine';
+}
+
+/**
+ * Quotatura PROGRESSIVA (§5.3, ordinate da punto zero): ogni punto riporta la
+ * distanza CON SEGNO dallo zero lungo la guida, su un'unica linea di
+ * riferimento. Lo zero non genera una quota (è il marcatore d'origine).
+ */
+export function generaProgressiva(
+  puntiOriginali: Punto[],
+  foto: CalibFoto,
+  opts: OpzioniProgressiva
+): RisultatoSerie {
+  const { ordinati, d } = ordinaLungoGuida(puntiOriginali);
+  const inizio = ordinati[0] ?? { x: 0, y: 0 };
+  const fine = ordinati[ordinati.length - 1] ?? inizio;
+  const zero = opts.origineEstremo === 'fine' ? fine : inizio;
+  const segno = segnoVerso(opts.verso);
+  const offset = segno * Math.abs(opts.offset);
+  const calibrata = haCalibrazione(foto);
+  const quote: QuotaSingolaTecnica[] = ordinati
+    .filter((p) => p !== zero)
+    .map((p) => {
+      const t = ascissaSuGuida(p, zero, d);
+      const mag = calibrata ? misuraSegmento(zero, p, foto, opts.unita) : null;
+      return {
+        p1: zero,
+        p2: p,
+        valore: mag === null ? null : t < 0 ? -mag : mag,
+        orientamento: 'allineata' as const,
+        offset
+      };
+    });
+  return { lineaGuida: { a: inizio, b: fine }, quote, puntiOrdinati: ordinati };
+}
+
+/**
+ * Ricalcola i valori (es. al cambio di unità) tenendo conto del sottotipo:
+ * la progressiva conserva il segno (ordinata dallo zero lungo la guida).
+ */
+export function ricalcolaValori(
+  quota: Pick<QuotaTecnica, 'sottotipo' | 'quote' | 'lineaGuida'>,
+  foto: CalibFoto,
+  unita: Unita
+): QuotaSingolaTecnica[] {
+  if (!haCalibrazione(foto)) return quota.quote;
+  const g = quota.lineaGuida;
+  const d = g ? normalizza(sottrai(g.b, g.a)) : { x: 1, y: 0 };
+  return quota.quote.map((q) => {
+    const mag = misuraSegmento(q.p1, q.p2, foto, unita);
+    if (mag === null) return { ...q, valore: null };
+    if (quota.sottotipo === 'progressiva') {
+      const t = ascissaSuGuida(q.p2, q.p1, d);
+      return { ...q, valore: t < 0 ? -mag : mag };
+    }
+    return { ...q, valore: mag };
+  });
+}
+
+/**
+ * Riassegna l'offset di tutte le quote secondo il sottotipo: la serie e la
+ * progressiva condividono un'unica linea (offset costante); il parallelo
+ * impila le linee a `base + i·passo`.
+ */
+export function applicaGeometria(
+  quota: Pick<QuotaTecnica, 'sottotipo' | 'quote'>,
+  opts: { offset: number; passo: number; verso: VersoQuota }
+): QuotaSingolaTecnica[] {
+  const segno = segnoVerso(opts.verso);
+  const base = Math.abs(opts.offset);
+  const passo = Math.abs(opts.passo);
+  return quota.quote.map((q, i) => ({
+    ...q,
+    offset: quota.sottotipo === 'parallelo' ? segno * (base + i * passo) : segno * base
+  }));
 }

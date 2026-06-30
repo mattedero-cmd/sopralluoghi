@@ -3,7 +3,12 @@ import { Modale } from '../components/comuni';
 import { Icona } from '../components/Icona';
 import type { Foto, QuotaTecnica, Unita, VersoQuota } from '../db/types';
 import { COLORE_QUOTA_TECNICA } from '../db/types';
-import { applicaOffsetSerie, ricalcolaValoriSerie } from '../geometry/quotaTecnica';
+import {
+  applicaGeometria,
+  generaParallelo,
+  generaProgressiva,
+  ricalcolaValori
+} from '../geometry/quotaTecnica';
 import { distanza } from '../geometry/punti';
 
 type CalibFoto = Pick<Foto, 'scala' | 'piano'>;
@@ -55,7 +60,9 @@ const UNITA: Unita[] = ['mm', 'cm', 'm'];
 const COLORI_TECNICI = [COLORE_QUOTA_TECNICA, '#ff3b30', '#34c759', '#111111', '#ffffff'];
 
 const TITOLI: Record<string, string> = {
-  serie: 'Quotatura in serie'
+  serie: 'Quotatura in serie',
+  parallelo: 'Quotatura in parallelo',
+  progressiva: 'Quotatura progressiva'
 };
 
 /**
@@ -77,23 +84,54 @@ export function AmbienteQuotaturaTecnica({
   onElimina: () => void;
   onChiudi: () => void;
 }) {
+  const isParallelo = quota.sottotipo === 'parallelo';
+  const isProgressiva = quota.sottotipo === 'progressiva';
   const offsetCorrente = Math.abs(quota.quote[0]?.offset ?? 0);
+  const passoCorrente =
+    quota.passo ??
+    (quota.quote.length >= 2
+      ? Math.abs(Math.abs(quota.quote[1].offset) - Math.abs(quota.quote[0].offset))
+      : 0);
+  const origineCorrente = quota.origineEstremo ?? 'inizio';
   const offsetMax = useMemo(() => {
     const g = quota.lineaGuida;
     const lung = g ? distanza(g.a, g.b) : 0;
     return Math.max(200, Math.round(lung * 0.6));
   }, [quota.lineaGuida]);
 
+  const conGeometria = (offset: number, passo: number, verso: VersoQuota): QuotaTecnica => ({
+    ...quota,
+    verso,
+    passo: isParallelo ? passo : quota.passo,
+    quote: applicaGeometria(quota, { offset, passo, verso })
+  });
+
   const cambiaUnita = (unita: Unita) => {
-    onModifica({ ...quota, unita, quote: ricalcolaValoriSerie(quota.quote, foto, unita) });
+    onModifica({ ...quota, unita, quote: ricalcolaValori(quota, foto, unita) });
   };
 
   const cambiaVerso = (verso: VersoQuota) => {
-    onModifica({ ...quota, verso, quote: applicaOffsetSerie(quota.quote, offsetCorrente, verso) });
+    onModifica(conGeometria(offsetCorrente, passoCorrente, verso));
   };
 
   const cambiaOffset = (offset: number) => {
-    onModifica({ ...quota, quote: applicaOffsetSerie(quota.quote, offset, quota.verso) });
+    onModifica(conGeometria(offset, passoCorrente, quota.verso));
+  };
+
+  const cambiaPasso = (passo: number) => {
+    onModifica(conGeometria(offsetCorrente, passo, quota.verso));
+  };
+
+  const cambiaOrigine = (origineEstremo: 'inizio' | 'fine') => {
+    const base = { unita: quota.unita, verso: quota.verso, origineEstremo };
+    const r = isParallelo
+      ? generaParallelo(quota.puntiOriginali, foto, {
+          ...base,
+          offset: offsetCorrente,
+          passo: passoCorrente
+        })
+      : generaProgressiva(quota.puntiOriginali, foto, { ...base, offset: offsetCorrente });
+    onModifica({ ...quota, origineEstremo, lineaGuida: r.lineaGuida, quote: r.quote });
   };
 
   const cambiaColore = (colore: string) => {
@@ -157,6 +195,44 @@ export function AmbienteQuotaturaTecnica({
             aria-label="Distacco della linea di quota"
           />
         </div>
+
+        {/* Passo di impilamento (solo parallelo) */}
+        {isParallelo && (
+          <div className="qt-riga">
+            <label className="qt-label">Passo</label>
+            <input
+              type="range"
+              min={0}
+              max={Math.max(40, Math.round(offsetMax / 2))}
+              step={Math.max(1, Math.round(offsetMax / 200))}
+              value={Math.min(passoCorrente, Math.max(40, Math.round(offsetMax / 2)))}
+              onChange={(e) => cambiaPasso(Number(e.target.value))}
+              style={{ flex: 1 }}
+              aria-label="Passo tra le linee di quota"
+            />
+          </div>
+        )}
+
+        {/* Origine / zero (parallelo e progressiva) */}
+        {(isParallelo || isProgressiva) && (
+          <div className="qt-riga">
+            <label className="qt-label">{isProgressiva ? 'Zero' : 'Origine'}</label>
+            <div className="segmenti" role="group" aria-label={isProgressiva ? 'Punto zero' : 'Origine'}>
+              <button
+                className={origineCorrente === 'inizio' ? 'attivo' : ''}
+                onClick={() => cambiaOrigine('inizio')}
+              >
+                Inizio
+              </button>
+              <button
+                className={origineCorrente === 'fine' ? 'attivo' : ''}
+                onClick={() => cambiaOrigine('fine')}
+              >
+                Fine
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Colore */}
         <div className="qt-riga">

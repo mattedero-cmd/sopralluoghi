@@ -219,7 +219,7 @@ const GRUPPI_STRUMENTI_TECNICA: typeof GRUPPI_STRUMENTI = [
   }
 ];
 
-/** Strumenti che, una volta scelti, aprono l'ambiente di quotatura tecnica. */
+/** Strumenti tecnici (tutti). */
 const STRUMENTI_TECNICI = new Set<Strumento>([
   'tecSerie',
   'tecParallelo',
@@ -229,6 +229,16 @@ const STRUMENTI_TECNICI = new Set<Strumento>([
   'tecFilettatura',
   'tecDatum'
 ]);
+
+/** Strumenti tecnici con posa guidata sulla foto già implementata. */
+const STRUMENTI_POSA_TECNICA = new Set<Strumento>(['tecSerie', 'tecParallelo', 'tecProgressiva']);
+
+/** Etichetta della catena tecnica in posa, per la barra guida. */
+const ETICHETTA_POSA_TECNICA: Partial<Record<Strumento, string>> = {
+  tecSerie: 'Tocca i punti della catena, in sequenza',
+  tecParallelo: 'Tocca i punti: il primo è l’origine, gli altri si quotano da lì',
+  tecProgressiva: 'Tocca i punti: il primo è lo zero, gli altri sono le ordinate'
+};
 
 /** Sequenza del menu circolare: prima le lettere A…Z, poi i numeri 1…10. */
 const SEQUENZA_ETICHETTE = [
@@ -478,7 +488,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
 
   // uscendo dalla posa della quotatura tecnica, scarta i punti non confermati
   useEffect(() => {
-    if (strumento !== 'tecSerie') setPuntiTecnici((punti) => (punti.length ? [] : punti));
+    if (!STRUMENTI_POSA_TECNICA.has(strumento)) {
+      setPuntiTecnici((punti) => (punti.length ? [] : punti));
+    }
   }, [strumento]);
 
 
@@ -975,14 +987,16 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     setStrumento('seleziona');
   };
 
-  /** genera la quotatura tecnica in serie dai punti posati e ne apre l'editor */
-  const creaQuotaTecnicaSerie = () => {
+  /** genera la quotatura tecnica (serie/parallelo/progressiva) dai punti posati */
+  const creaQuotaTecnica = () => {
     if (!fabbrica || !annotazioni || !foto || puntiTecnici.length < 2) return;
-    const q = fabbrica.quotaTecnicaSerie(
-      puntiTecnici,
-      { unita: impostazioni.unitaDefault },
-      annotazioni
-    );
+    const opts = { unita: impostazioni.unitaDefault };
+    const q =
+      strumento === 'tecParallelo'
+        ? fabbrica.quotaTecnicaParallelo(puntiTecnici, opts, annotazioni)
+        : strumento === 'tecProgressiva'
+          ? fabbrica.quotaTecnicaProgressiva(puntiTecnici, opts, annotazioni)
+          : fabbrica.quotaTecnicaSerie(puntiTecnici, opts, annotazioni);
     commit([...annotazioni, q]);
     setPuntiTecnici([]);
     setSelezioneId(q.id);
@@ -1396,7 +1410,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         onNuovoDisegno={creaDisegno}
         onNuovaForma={creaForma}
         onPuntoTecnico={(pt) => setPuntiTecnici((punti) => [...punti, pt])}
-        puntiTecnici={strumento === 'tecSerie' ? puntiTecnici : null}
+        puntiTecnici={STRUMENTI_POSA_TECNICA.has(strumento) ? puntiTecnici : null}
         onNuovoCallout={creaCallout}
         onCalibra={(p1, p2) => setSchedaScala({ px: distanza(p1, p2) })}
         onPiano={(punti) => setSchedaPiano({ punti })}
@@ -1416,11 +1430,11 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         </div>
       )}
 
-      {strumento === 'tecSerie' && (
+      {STRUMENTI_POSA_TECNICA.has(strumento) && (
         <div className="barra-etichetta" role="status">
           <span className="hint">
             {puntiTecnici.length === 0
-              ? 'Tocca i punti della catena, in sequenza'
+              ? ETICHETTA_POSA_TECNICA[strumento]
               : `${puntiTecnici.length} ${puntiTecnici.length === 1 ? 'punto' : 'punti'} · tocca per aggiungere`}
           </span>
           {puntiTecnici.length > 0 && (
@@ -1435,7 +1449,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           <button
             className="btn primario"
             disabled={puntiTecnici.length < 2}
-            onClick={creaQuotaTecnicaSerie}
+            onClick={creaQuotaTecnica}
           >
             <Icona nome="check" dimensione={18} /> Genera
           </button>
@@ -1824,10 +1838,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                     className={`btn-strumento-grande${strumento === v.s ? ' attivo' : ''}`}
                     onClick={() => {
                       setMenuAperto(null);
-                      if (v.s === 'tecSerie') {
-                        // posa guidata della catena sulla foto (no modale)
+                      if (STRUMENTI_POSA_TECNICA.has(v.s)) {
+                        // posa guidata sulla foto (no modale)
                         setPuntiTecnici([]);
-                        setStrumento('tecSerie');
+                        setStrumento(v.s);
                         return;
                       }
                       if (STRUMENTI_TECNICI.has(v.s)) {

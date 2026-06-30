@@ -2,10 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { traslaAnnotazione } from '../fabbrica';
 import { primitiveForma, primitiveQuotaTecnica } from '../../geometry/primitive';
 import {
+  applicaGeometria,
   applicaOffsetSerie,
   ascissaSuGuida,
   direzioneSerie,
+  generaParallelo,
+  generaProgressiva,
   generaSerie,
+  ricalcolaValori,
   ricalcolaValoriSerie
 } from '../../geometry/quotaTecnica';
 import type { Forma, Punto, QuotaTecnica } from '../../db/types';
@@ -220,7 +224,185 @@ describe('primitiveQuotaTecnica — rendering serie', () => {
   });
 
   it('le sottotipologie non ancora implementate non disegnano nulla', () => {
-    const q = { ...serie(), sottotipo: 'parallelo' as const };
+    const q = { ...serie(), sottotipo: 'foro' as const };
     expect(primitiveQuotaTecnica(q)).toHaveLength(0);
+  });
+});
+
+describe('generaParallelo — quote da un’origine comune', () => {
+  const punti: Punto[] = [
+    { x: 0, y: 0 },
+    { x: 100, y: 0 },
+    { x: 250, y: 0 }
+  ];
+
+  it('quota ogni punto dall’origine e impila gli offset a base + i·passo', () => {
+    const r = generaParallelo(punti, fotoScala, {
+      unita: 'cm',
+      offset: 40,
+      passo: 20,
+      verso: 'sinistra',
+      origineEstremo: 'inizio'
+    });
+    // origine = primo punto; altri due punti → 2 quote
+    expect(r.quote).toHaveLength(2);
+    expect(r.quote.every((q) => q.p1.x === 0)).toBe(true);
+    // offset impilati: 40, 60
+    expect(r.quote[0].offset).toBeCloseTo(40);
+    expect(r.quote[1].offset).toBeCloseTo(60);
+    // valori = distanza dall’origine: 100px→50cm, 250px→125cm
+    expect(r.quote[0].valore).toBeCloseTo(50);
+    expect(r.quote[1].valore).toBeCloseTo(125);
+  });
+
+  it('origine = fine usa l’ultimo punto come origine', () => {
+    const r = generaParallelo(punti, fotoScala, {
+      unita: 'cm',
+      offset: 40,
+      passo: 20,
+      verso: 'sinistra',
+      origineEstremo: 'fine'
+    });
+    expect(r.quote.every((q) => q.p1.x === 250)).toBe(true);
+  });
+});
+
+describe('generaProgressiva — ordinate con segno dallo zero', () => {
+  it('lo zero non genera quota; i valori sono la distanza con segno', () => {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 250, y: 0 }
+    ];
+    const r = generaProgressiva(punti, fotoScala, {
+      unita: 'cm',
+      offset: 40,
+      verso: 'sinistra',
+      origineEstremo: 'inizio'
+    });
+    // 3 punti, zero escluso → 2 ordinate
+    expect(r.quote).toHaveLength(2);
+    expect(r.quote.every((q) => q.p1.x === 0)).toBe(true);
+    expect(r.quote[0].valore).toBeCloseTo(50);
+    expect(r.quote[1].valore).toBeCloseTo(125);
+  });
+
+  it('con zero = fine le ordinate diventano negative (a monte dello zero)', () => {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 }
+    ];
+    const r = generaProgressiva(punti, fotoScala, {
+      unita: 'cm',
+      offset: 40,
+      verso: 'sinistra',
+      origineEstremo: 'fine'
+    });
+    // zero = punto a x=100; l’altro punto è a sinistra → valore negativo
+    expect(r.quote).toHaveLength(1);
+    expect(r.quote[0].valore).toBeCloseTo(-50);
+  });
+
+  it('ricalcolaValori conserva il segno della progressiva al cambio unità', () => {
+    const punti: Punto[] = [
+      { x: 100, y: 0 },
+      { x: 0, y: 0 }
+    ];
+    const q = generaProgressiva(punti, fotoScala, {
+      unita: 'cm',
+      offset: 40,
+      verso: 'sinistra',
+      origineEstremo: 'fine'
+    });
+    const quota = { sottotipo: 'progressiva' as const, quote: q.quote, lineaGuida: q.lineaGuida };
+    const inMm = ricalcolaValori(quota, fotoScala, 'mm');
+    // 50 cm con segno negativo → -500 mm
+    expect(inMm[0].valore).toBeCloseTo(-500);
+  });
+});
+
+describe('applicaGeometria — offset per sottotipo', () => {
+  it('parallelo impila, serie/progressiva mantengono offset costante', () => {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 250, y: 0 }
+    ];
+    const par = generaParallelo(punti, fotoScala, {
+      unita: 'cm',
+      offset: 40,
+      passo: 20,
+      verso: 'sinistra',
+      origineEstremo: 'inizio'
+    });
+    const ri = applicaGeometria({ sottotipo: 'parallelo', quote: par.quote }, {
+      offset: 30,
+      passo: 15,
+      verso: 'destra'
+    });
+    // destra → segno negativo; impilati: -(30), -(45)
+    expect(ri[0].offset).toBeCloseTo(-30);
+    expect(ri[1].offset).toBeCloseTo(-45);
+
+    const ser = generaSerie(punti, fotoScala, { unita: 'cm', offset: 40, verso: 'sinistra' });
+    const ris = applicaGeometria({ sottotipo: 'serie', quote: ser.quote }, {
+      offset: 30,
+      passo: 15,
+      verso: 'sinistra'
+    });
+    expect(ris.every((q) => Math.abs(q.offset) === 30)).toBe(true);
+  });
+});
+
+describe('primitiveQuotaTecnica — parallelo e progressiva', () => {
+  const punti: Punto[] = [
+    { x: 0, y: 0 },
+    { x: 100, y: 0 },
+    { x: 250, y: 0 }
+  ];
+  function quotaDa(sottotipo: 'parallelo' | 'progressiva'): QuotaTecnica {
+    const r =
+      sottotipo === 'parallelo'
+        ? generaParallelo(punti, fotoScala, {
+            unita: 'cm',
+            offset: 40,
+            passo: 20,
+            verso: 'sinistra',
+            origineEstremo: 'inizio'
+          })
+        : generaProgressiva(punti, fotoScala, {
+            unita: 'cm',
+            offset: 40,
+            verso: 'sinistra',
+            origineEstremo: 'inizio'
+          });
+    return {
+      id: 'q',
+      fotoId: 'foto',
+      tipo: 'quotaTecnica',
+      sottotipo,
+      lineaGuida: r.lineaGuida,
+      verso: 'sinistra',
+      unita: 'cm',
+      origineEstremo: 'inizio',
+      puntiOriginali: punti,
+      quote: r.quote,
+      partePerimetro: false,
+      zIndex: 1,
+      stile
+    };
+  }
+
+  it('parallelo: una linea di quota e un testo per ogni punto + marcatore origine', () => {
+    const prim = primitiveQuotaTecnica(quotaDa('parallelo'));
+    expect(prim.filter((p) => p.kind === 'testo')).toHaveLength(2);
+    expect(prim.some((p) => p.kind === 'cerchio')).toBe(true); // marcatore origine
+  });
+
+  it('progressiva: linea di riferimento, marcatore zero e un valore per ordinata', () => {
+    const prim = primitiveQuotaTecnica(quotaDa('progressiva'));
+    expect(prim.filter((p) => p.kind === 'testo')).toHaveLength(2);
+    expect(prim.some((p) => p.kind === 'cerchio')).toBe(true); // marcatore zero
+    expect(prim.some((p) => p.kind === 'linea')).toBe(true); // riferimento
   });
 });

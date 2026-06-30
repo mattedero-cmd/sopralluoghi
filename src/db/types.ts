@@ -706,6 +706,10 @@ export interface QuotaTecnica extends AnnotazioneBase {
   unita: Unita;
   /** valori derivati dalla calibrazione (false = qualche valore è manuale) */
   valoreAuto?: boolean;
+  /** passo di impilamento delle linee di quota (parallelo), in px immagine */
+  passo?: number;
+  /** estremo della guida usato come origine/zero (parallelo/progressiva) */
+  origineEstremo?: 'inizio' | 'fine';
   /** tap dell'utente (punti reali) */
   puntiOriginali: Punto[];
   /** quote generate (rieditabili) — serie/parallelo/progressiva */

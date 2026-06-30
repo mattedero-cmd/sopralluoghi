@@ -611,7 +611,9 @@ export function StageEditor(p: Props) {
       case 'cerchio3p':
       case 'piano':
       case 'forPoligono':
-      case 'tecSerie': {
+      case 'tecSerie':
+      case 'tecParallelo':
+      case 'tecProgressiva': {
         const punto = applicaSnap(pos);
         setPuntoPendente(punto);
         setPuntoLente(punto);
@@ -759,8 +761,12 @@ export function StageEditor(p: Props) {
       setBozza({ tipo: 'forPoli', punti: [...correnti, punto] });
       return;
     }
-    if (p.strumento === 'tecSerie') {
-      // i punti della catena sono gestiti dal genitore (anteprima + "Genera")
+    if (
+      p.strumento === 'tecSerie' ||
+      p.strumento === 'tecParallelo' ||
+      p.strumento === 'tecProgressiva'
+    ) {
+      // i punti sono gestiti dal genitore (anteprima + "Genera")
       p.onPuntoTecnico(punto);
       return;
     }
