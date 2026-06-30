@@ -6,9 +6,11 @@ import {
   applicaOffsetSerie,
   ascissaSuGuida,
   direzioneSerie,
+  generaForo,
   generaParallelo,
   generaProgressiva,
   generaSerie,
+  ricalcolaForo,
   ricalcolaValori,
   ricalcolaValoriSerie
 } from '../../geometry/quotaTecnica';
@@ -472,5 +474,93 @@ describe('linee di estensione editabili (Fase 4)', () => {
     const con = primitiveQuotaTecnica(serie(undefined)).filter((p) => p.kind === 'linea').length;
     const senza = primitiveQuotaTecnica(serie(false)).filter((p) => p.kind === 'linea').length;
     expect(senza).toBeLessThan(con);
+  });
+});
+
+describe('generaForo — foro da tre tap (Fase 5)', () => {
+  // cerchio di raggio 50px centrato in (50,50): tre punti sulla circonferenza
+  const p0: Punto = { x: 100, y: 50 };
+  const p1: Punto = { x: 50, y: 100 };
+  const p2: Punto = { x: 0, y: 50 };
+
+  it('calcola centro (circumcentro) e ⌀/R reali', () => {
+    const r = generaForo(p0, p1, p2, fotoScala, { unita: 'cm', modo: 'diametro' });
+    expect(r).not.toBeNull();
+    expect(r!.foro.centro.x).toBeCloseTo(50);
+    expect(r!.foro.centro.y).toBeCloseTo(50);
+    expect(r!.foro.raggioPx).toBeCloseTo(50);
+    // 50 px → 50·50/100 = 25 cm di raggio; ⌀ = 50 cm
+    expect(r!.foro.raggioReale).toBeCloseTo(25);
+    expect(r!.foro.diametroReale).toBeCloseTo(50);
+  });
+
+  it('tre punti allineati → null', () => {
+    const r = generaForo({ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 20, y: 0 }, fotoScala, {
+      unita: 'cm',
+      modo: 'diametro'
+    });
+    expect(r).toBeNull();
+  });
+
+  it('ricalcolaForo riconverte ⌀/R al cambio unità', () => {
+    const gen = generaForo(p0, p1, p2, fotoScala, { unita: 'cm', modo: 'diametro' })!;
+    const quota: QuotaTecnica = {
+      id: 'h',
+      fotoId: 'foto',
+      tipo: 'quotaTecnica',
+      sottotipo: 'foro',
+      verso: 'sinistra',
+      unita: 'cm',
+      foro: gen.foro,
+      puntiOriginali: [p0, p1, p2],
+      quote: [],
+      partePerimetro: false,
+      zIndex: 1,
+      stile
+    };
+    const inMm = ricalcolaForo(quota, fotoScala, 'mm');
+    // 25 cm → 250 mm di raggio; ⌀ 500 mm
+    expect(inMm!.raggioReale).toBeCloseTo(250);
+    expect(inMm!.diametroReale).toBeCloseTo(500);
+  });
+});
+
+describe('primitiveQuotaTecnica — foro', () => {
+  function foroQuota(modo: 'diametro' | 'raggio', etichetta = ''): QuotaTecnica {
+    const gen = generaForo({ x: 100, y: 50 }, { x: 50, y: 100 }, { x: 0, y: 50 }, fotoScala, {
+      unita: 'cm',
+      modo
+    })!;
+    return {
+      id: 'h',
+      fotoId: 'foto',
+      tipo: 'quotaTecnica',
+      sottotipo: 'foro',
+      verso: 'sinistra',
+      unita: 'cm',
+      foro: { ...gen.foro, etichetta },
+      puntiOriginali: [],
+      quote: [],
+      partePerimetro: false,
+      zIndex: 1,
+      stile
+    };
+  }
+
+  it('disegna la circonferenza, la croce di centro e l’etichetta ⌀', () => {
+    const prim = primitiveQuotaTecnica(foroQuota('diametro'));
+    expect(prim.some((p) => p.kind === 'cerchio')).toBe(true);
+    const t = prim.find((p) => p.kind === 'testo') as { kind: 'testo'; testo: string };
+    expect(t.testo).toContain('⌀');
+    expect(t.testo).toContain('50'); // ⌀ 50 cm
+  });
+
+  it('in modo raggio l’etichetta usa R', () => {
+    const t = primitiveQuotaTecnica(foroQuota('raggio')).find((p) => p.kind === 'testo') as {
+      kind: 'testo';
+      testo: string;
+    };
+    expect(t.testo).toContain('R');
+    expect(t.testo).toContain('25'); // R 25 cm
   });
 });

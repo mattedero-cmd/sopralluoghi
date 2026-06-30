@@ -7,6 +7,7 @@ import {
   applicaGeometria,
   generaParallelo,
   generaProgressiva,
+  ricalcolaForo,
   ricalcolaValori
 } from '../geometry/quotaTecnica';
 import { distanza } from '../geometry/punti';
@@ -88,6 +89,9 @@ export function AmbienteQuotaturaTecnica({
   const isParallelo = quota.sottotipo === 'parallelo';
   const isProgressiva = quota.sottotipo === 'progressiva';
   const isDatum = quota.sottotipo === 'datum';
+  const isForo = quota.sottotipo === 'foro';
+  const isCatena = isParallelo || isProgressiva || quota.sottotipo === 'serie';
+  const foro = quota.foro;
   const sp = quota.stile.spessore;
   const estMax = Math.max(20, Math.round(sp * 12));
   const gapCorrente = quota.gapEstensione ?? sp * 1.5;
@@ -113,6 +117,10 @@ export function AmbienteQuotaturaTecnica({
   });
 
   const cambiaUnita = (unita: Unita) => {
+    if (isForo) {
+      onModifica({ ...quota, unita, foro: ricalcolaForo(quota, foto, unita) ?? quota.foro });
+      return;
+    }
     onModifica({ ...quota, unita, quote: ricalcolaValori(quota, foto, unita) });
   };
 
@@ -153,6 +161,23 @@ export function AmbienteQuotaturaTecnica({
     onModifica({ ...quota, etichetta: etichetta.toUpperCase().slice(0, 3) });
   };
 
+  const cambiaModoForo = (modo: 'diametro' | 'raggio') => {
+    if (!foro) return;
+    onModifica({ ...quota, foro: { ...foro, modo } });
+  };
+
+  const cambiaValoreForo = (v: number | null) => {
+    if (!foro) return;
+    const raggioReale = foro.modo === 'diametro' ? (v === null ? null : v / 2) : v;
+    const diametroReale = foro.modo === 'diametro' ? v : v === null ? null : v * 2;
+    onModifica({ ...quota, valoreAuto: false, foro: { ...foro, raggioReale, diametroReale } });
+  };
+
+  const cambiaEtichettaForo = (etichetta: string) => {
+    if (!foro) return;
+    onModifica({ ...quota, foro: { ...foro, etichetta: etichetta.toUpperCase().slice(0, 3) } });
+  };
+
   return (
     <Modale titolo={TITOLI[quota.sottotipo] ?? 'Quotatura tecnica'} onChiudi={onChiudi} centro>
       <div className="quota-tecnica-editor">
@@ -172,23 +197,66 @@ export function AmbienteQuotaturaTecnica({
         )}
 
         {!isDatum && (
+          <div className="qt-riga">
+            <label className="qt-label">Unità</label>
+            <div className="segmenti" role="group" aria-label="Unità di misura">
+              {UNITA.map((u) => (
+                <button
+                  key={u}
+                  className={quota.unita === u ? 'attivo' : ''}
+                  onClick={() => cambiaUnita(u)}
+                >
+                  {u}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Foro: ⌀/R, valore, lettera */}
+        {isForo && foro && (
           <>
-            {/* Unità */}
             <div className="qt-riga">
-              <label className="qt-label">Unità</label>
-              <div className="segmenti" role="group" aria-label="Unità di misura">
-                {UNITA.map((u) => (
-                  <button
-                    key={u}
-                    className={quota.unita === u ? 'attivo' : ''}
-                    onClick={() => cambiaUnita(u)}
-                  >
-                    {u}
-                  </button>
-                ))}
+              <label className="qt-label">Modo</label>
+              <div className="segmenti" role="group" aria-label="Diametro o raggio">
+                <button
+                  className={foro.modo === 'diametro' ? 'attivo' : ''}
+                  onClick={() => cambiaModoForo('diametro')}
+                >
+                  ⌀ Diametro
+                </button>
+                <button
+                  className={foro.modo === 'raggio' ? 'attivo' : ''}
+                  onClick={() => cambiaModoForo('raggio')}
+                >
+                  R Raggio
+                </button>
               </div>
             </div>
+            <div className="qt-riga">
+              <label className="qt-label">{foro.modo === 'diametro' ? '⌀' : 'R'}</label>
+              <CampoValoreTecnico
+                valore={foro.modo === 'diametro' ? foro.diametroReale : foro.raggioReale}
+                onCambia={cambiaValoreForo}
+              />
+              <span className="qt-misura-unita">{quota.unita}</span>
+            </div>
+            <div className="qt-riga">
+              <label className="qt-label">Etichetta</label>
+              <input
+                className="input-misura"
+                style={{ width: 80 }}
+                value={foro.etichetta ?? ''}
+                maxLength={3}
+                onChange={(e) => cambiaEtichettaForo(e.target.value)}
+                aria-label="Etichetta del foro"
+              />
+            </div>
+          </>
+        )}
 
+        {isCatena && (
+          <>
             {/* Lato della linea di quota */}
             <div className="qt-riga">
               <label className="qt-label">Lato</label>
@@ -288,7 +356,7 @@ export function AmbienteQuotaturaTecnica({
         </div>
 
         {/* Misure della catena */}
-        {!isDatum && (
+        {isCatena && (
           <div className="qt-misure">
             <div className="qt-label" style={{ marginBottom: 6 }}>
               Misure ({quota.quote.length})
@@ -307,7 +375,7 @@ export function AmbienteQuotaturaTecnica({
         )}
 
         {/* Linee di estensione */}
-        {!isDatum && (
+        {isCatena && (
           <>
             <div className="qt-riga">
               <label className="qt-label">Estensioni</label>

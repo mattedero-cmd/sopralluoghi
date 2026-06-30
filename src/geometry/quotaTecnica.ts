@@ -1,6 +1,14 @@
-import type { Foto, Punto, QuotaSingolaTecnica, QuotaTecnica, Unita, VersoQuota } from '../db/types';
-import { haCalibrazione, misuraSegmento } from './calibrazione';
-import { dot, normalizza, sottrai } from './punti';
+import type {
+  Foto,
+  ForoTecnico,
+  Punto,
+  QuotaSingolaTecnica,
+  QuotaTecnica,
+  Unita,
+  VersoQuota
+} from '../db/types';
+import { arrotondaMisura, haCalibrazione, misuraSegmento } from './calibrazione';
+import { circumcentro, distanza, dot, normalizza, sottrai } from './punti';
 
 /**
  * Quotatura tecnica IN SERIE (catena di quote, §5.1 del briefing).
@@ -246,4 +254,36 @@ export function applicaGeometria(
     ...q,
     offset: quota.sottotipo === 'parallelo' ? segno * (base + i * passo) : segno * base
   }));
+}
+
+/**
+ * Quotatura FORO (§5.4): da TRE tap sulla circonferenza calcola il centro
+ * (circumcentro) e il raggio, convertendo ⌀/R in unità reali.
+ * Restituisce null se i tre punti sono allineati (cerchio impossibile).
+ */
+export function generaForo(
+  p0: Punto,
+  p1: Punto,
+  p2: Punto,
+  foto: CalibFoto,
+  opts: { unita: Unita; modo: 'diametro' | 'raggio' }
+): { foro: ForoTecnico } | null {
+  const centro = circumcentro(p0, p1, p2);
+  if (!centro) return null;
+  const raggioPx = distanza(centro, p0);
+  const raggioReale = haCalibrazione(foto) ? misuraSegmento(centro, p0, foto, opts.unita) : null;
+  const diametroReale = raggioReale === null ? null : arrotondaMisura(raggioReale * 2);
+  return {
+    foro: { centro, raggioPx, raggioReale, diametroReale, modo: opts.modo, etichetta: '' }
+  };
+}
+
+/** Ricalcola ⌀/R reali del foro (es. al cambio unità) dal primo punto toccato. */
+export function ricalcolaForo(q: QuotaTecnica, foto: CalibFoto, unita: Unita): ForoTecnico | null {
+  if (!q.foro) return null;
+  if (!haCalibrazione(foto)) return { ...q.foro };
+  const bordo = q.puntiOriginali[0] ?? { x: q.foro.centro.x + q.foro.raggioPx, y: q.foro.centro.y };
+  const raggioReale = misuraSegmento(q.foro.centro, bordo, foto, unita);
+  const diametroReale = raggioReale === null ? null : arrotondaMisura(raggioReale * 2);
+  return { ...q.foro, raggioReale, diametroReale };
 }

@@ -4,6 +4,7 @@ import type {
   DisegnoLibero,
   Etichetta,
   Forma,
+  ForoTecnico,
   Legenda,
   Freccia,
   Punto,
@@ -1211,6 +1212,49 @@ function primitiveProgressiva(q: QuotaTecnica): Primitiva[] {
   return prim;
 }
 
+/** Etichetta del foro: tag opzionale + ⌀/R + valore reale (o — se assente). */
+function etichettaForo(f: ForoTecnico, unita: Unita): string {
+  const val = f.modo === 'diametro' ? f.diametroReale : f.raggioReale;
+  const prefisso = f.modo === 'diametro' ? '⌀ ' : 'R ';
+  const tag = f.etichetta ? `${f.etichetta}  ` : '';
+  return `${tag}${prefisso}${formattaMisura(val, unita)}`;
+}
+
+/**
+ * Quotatura FORO (§5.4): circonferenza, croce di centro, leader ed etichetta
+ * con ⌀ o R nelle unità reali.
+ */
+function primitiveForo(q: QuotaTecnica): Primitiva[] {
+  const f = q.foro;
+  if (!f) return [];
+  const colore = q.stile.colore || COLORE_QUOTA_TECNICA;
+  const sp = q.stile.spessore;
+  const s = q.stile.dimensioneTesto;
+  const c = f.centro;
+  const r = f.raggioPx;
+  const cross = Math.max(r * 0.5, s * 0.4);
+  const dir = normalizza({ x: 1, y: -1 }); // leader a 45° in alto a destra
+  const bordo = somma(c, scala(dir, r));
+  const fine = somma(c, scala(dir, r + s * 1.4));
+  return [
+    { kind: 'cerchio', centro: c, raggio: r, colore, spessore: sp, alone: ALONE },
+    { kind: 'linea', punti: [c.x - cross, c.y, c.x + cross, c.y], colore, spessore: sp * 0.75, alone: ALONE },
+    { kind: 'linea', punti: [c.x, c.y - cross, c.x, c.y + cross], colore, spessore: sp * 0.75, alone: ALONE },
+    { kind: 'linea', punti: [bordo.x, bordo.y, fine.x, fine.y], colore, spessore: sp * 0.75, alone: ALONE },
+    {
+      kind: 'testo',
+      testo: etichettaForo(f, q.unita),
+      posizione: somma(fine, scala(dir, s * 0.15)),
+      rotazioneDeg: 0,
+      dimensione: s,
+      colore,
+      sfondo: null,
+      alone: ALONE,
+      allineamento: 'left'
+    }
+  ];
+}
+
 /**
  * Riferimento / datum: triangolo pieno con l'apice sul punto di riferimento,
  * leader e riquadro con la lettera del datum (A, B, …).
@@ -1257,8 +1301,10 @@ export function primitiveQuotaTecnica(q: QuotaTecnica): Primitiva[] {
       return primitiveProgressiva(q);
     case 'datum':
       return primitiveDatum(q);
+    case 'foro':
+      return primitiveForo(q);
     default:
-      // foro/smusso/filettatura: fasi successive
+      // smusso/filettatura: fasi successive
       return [];
   }
 }

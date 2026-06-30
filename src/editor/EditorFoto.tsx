@@ -1018,6 +1018,18 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     setSelezioneId(d.id);
   };
 
+  /** quotatura foro: tre tap sul bordo → centro e ⌀/R; resta nello strumento */
+  const creaForo = (p0: Punto, p1: Punto, p2: Punto) => {
+    if (!fabbrica || !annotazioni) return;
+    const f = fabbrica.quotaTecnicaForo(p0, p1, p2, annotazioni);
+    if (!f) {
+      mostraToast('errore', 'I 3 punti sono allineati: impossibile trovare il centro del foro. Riprova.');
+      return;
+    }
+    commit([...annotazioni, f]);
+    setSelezioneId(f.id);
+  };
+
   /** Avvia la modalità "duplica misura" sulla forma selezionata (stessa foto):
    *  fissa il gruppo della famiglia e poi ogni tocco crea una copia collegata. */
   const avviaDuplica = () => {
@@ -1424,6 +1436,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         onPuntoTecnico={(pt) => setPuntiTecnici((punti) => [...punti, pt])}
         puntiTecnici={STRUMENTI_POSA_TECNICA.has(strumento) ? puntiTecnici : null}
         onNuovoDatum={creaDatum}
+        onNuovoForo={creaForo}
         onNuovoCallout={creaCallout}
         onCalibra={(p1, p2) => setSchedaScala({ px: distanza(p1, p2) })}
         onPiano={(punti) => setSchedaPiano({ punti })}
@@ -1481,6 +1494,15 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       {strumento === 'tecDatum' && (
         <div className="barra-etichetta" role="status">
           <span className="hint">Tocca per posare un riferimento (datum); la lettera è automatica</span>
+          <button className="btn" onClick={() => setStrumento('seleziona')}>
+            <Icona nome="check" dimensione={18} /> Fine
+          </button>
+        </div>
+      )}
+
+      {strumento === 'tecForo' && (
+        <div className="barra-etichetta" role="status">
+          <span className="hint">Tocca 3 punti sul bordo del foro: centro e ⌀/R automatici</span>
           <button className="btn" onClick={() => setStrumento('seleziona')}>
             <Icona nome="check" dimensione={18} /> Fine
           </button>
@@ -1866,9 +1888,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                         setStrumento(v.s);
                         return;
                       }
-                      if (v.s === 'tecDatum') {
-                        // posa del datum con tap singolo sulla foto
-                        setStrumento('tecDatum');
+                      if (v.s === 'tecDatum' || v.s === 'tecForo') {
+                        // posa diretta sulla foto (datum a 1 tap, foro a 3 tap)
+                        setStrumento(v.s);
                         return;
                       }
                       if (STRUMENTI_TECNICI.has(v.s)) {

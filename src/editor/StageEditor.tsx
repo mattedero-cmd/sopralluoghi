@@ -164,6 +164,8 @@ interface Props {
   onPuntoTecnico: (p: Punto) => void;
   /** posa di un riferimento/datum con un tap singolo */
   onNuovoDatum: (p: Punto) => void;
+  /** quotatura foro: tre tap sul bordo → centro e ⌀/R */
+  onNuovoForo: (p0: Punto, p1: Punto, p2: Punto) => void;
   /** punti già posati della quota tecnica in corso (anteprima); null = inattivo */
   puntiTecnici: Punto[] | null;
   onNuovoCallout: (sorgente: Rettangolo) => void;
@@ -622,7 +624,8 @@ export function StageEditor(p: Props) {
       case 'forPoligono':
       case 'tecSerie':
       case 'tecParallelo':
-      case 'tecProgressiva': {
+      case 'tecProgressiva':
+      case 'tecForo': {
         const punto = applicaSnap(pos);
         setPuntoPendente(punto);
         setPuntoLente(punto);
@@ -837,6 +840,16 @@ export function StageEditor(p: Props) {
         } else {
           p.onErrore?.('I 3 punti sono allineati: impossibile trovare il centro del cerchio. Riprova.');
         }
+      } else {
+        setBozza({ tipo: 'cerchio3p', punti });
+      }
+      return;
+    }
+    if (p.strumento === 'tecForo') {
+      const punti = bozza?.tipo === 'cerchio3p' ? [...bozza.punti, punto] : [punto];
+      if (punti.length === 3) {
+        setBozza(null);
+        p.onNuovoForo(punti[0], punti[1], punti[2]);
       } else {
         setBozza({ tipo: 'cerchio3p', punti });
       }

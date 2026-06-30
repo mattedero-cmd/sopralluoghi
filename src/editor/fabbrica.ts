@@ -26,7 +26,7 @@ import type {
 import { COLORE_QUOTA, COLORE_QUOTA_TECNICA, quadrilateroQuotaRett } from '../db/types';
 import { nuovoId } from '../utils/id';
 import { haCalibrazione, misuraSegmento, valoreAutomatico } from '../geometry/calibrazione';
-import { generaParallelo, generaProgressiva, generaSerie } from '../geometry/quotaTecnica';
+import { generaForo, generaParallelo, generaProgressiva, generaSerie } from '../geometry/quotaTecnica';
 
 /**
  * Creazione delle annotazioni con valori predefiniti proporzionati
@@ -387,6 +387,30 @@ export class FabbricaAnnotazioni {
     });
     const q = this.baseQuotaTecnica('progressiva', puntiOriginali, unita, verso, lineaGuida, quote, esistenti);
     return { ...q, origineEstremo };
+  }
+
+  /** Quotatura foro: tre tap sul bordo → centro (circumcentro) + ⌀/R reali.
+   *  null se i tre punti sono allineati. */
+  quotaTecnicaForo(p0: Punto, p1: Punto, p2: Punto, esistenti: Annotazione[]): QuotaTecnica | null {
+    const unita = this.impostazioni.unitaDefault;
+    const r = generaForo(p0, p1, p2, this.foto, { unita, modo: 'diametro' });
+    if (!r) return null;
+    return {
+      id: nuovoId(),
+      fotoId: this.foto.id,
+      tipo: 'quotaTecnica',
+      sottotipo: 'foro',
+      verso: 'sinistra',
+      unita,
+      valoreAuto: haCalibrazione(this.foto),
+      foro: r.foro,
+      puntiOriginali: [p0, p1, p2],
+      quote: [],
+      partePerimetro: false,
+      zIndex: this.prossimoZ(esistenti),
+      creatoIl: Date.now(),
+      stile: this.stileQuotaTecnica()
+    };
   }
 
   /** Riferimento / datum: marcatore con lettera posato con un tap. */
