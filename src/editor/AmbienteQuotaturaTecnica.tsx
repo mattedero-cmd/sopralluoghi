@@ -62,7 +62,8 @@ const COLORI_TECNICI = [COLORE_QUOTA_TECNICA, '#ff3b30', '#34c759', '#111111', '
 const TITOLI: Record<string, string> = {
   serie: 'Quotatura in serie',
   parallelo: 'Quotatura in parallelo',
-  progressiva: 'Quotatura progressiva'
+  progressiva: 'Quotatura progressiva',
+  datum: 'Riferimento (datum)'
 };
 
 /**
@@ -86,6 +87,11 @@ export function AmbienteQuotaturaTecnica({
 }) {
   const isParallelo = quota.sottotipo === 'parallelo';
   const isProgressiva = quota.sottotipo === 'progressiva';
+  const isDatum = quota.sottotipo === 'datum';
+  const sp = quota.stile.spessore;
+  const estMax = Math.max(20, Math.round(sp * 12));
+  const gapCorrente = quota.gapEstensione ?? sp * 1.5;
+  const sporgenzaCorrente = quota.sporgenzaEstensione ?? sp * 2.5;
   const offsetCorrente = Math.abs(quota.quote[0]?.offset ?? 0);
   const passoCorrente =
     quota.passo ??
@@ -143,58 +149,81 @@ export function AmbienteQuotaturaTecnica({
     onModifica({ ...quota, valoreAuto: false, quote });
   };
 
+  const cambiaEtichetta = (etichetta: string) => {
+    onModifica({ ...quota, etichetta: etichetta.toUpperCase().slice(0, 3) });
+  };
+
   return (
     <Modale titolo={TITOLI[quota.sottotipo] ?? 'Quotatura tecnica'} onChiudi={onChiudi} centro>
       <div className="quota-tecnica-editor">
-        {/* Unità */}
-        <div className="qt-riga">
-          <label className="qt-label">Unità</label>
-          <div className="segmenti" role="group" aria-label="Unità di misura">
-            {UNITA.map((u) => (
-              <button
-                key={u}
-                className={quota.unita === u ? 'attivo' : ''}
-                onClick={() => cambiaUnita(u)}
-              >
-                {u}
-              </button>
-            ))}
+        {/* Lettera del datum */}
+        {isDatum && (
+          <div className="qt-riga">
+            <label className="qt-label">Lettera</label>
+            <input
+              className="input-misura"
+              style={{ width: 80 }}
+              value={quota.etichetta ?? ''}
+              maxLength={3}
+              onChange={(e) => cambiaEtichetta(e.target.value)}
+              aria-label="Lettera del datum"
+            />
           </div>
-        </div>
+        )}
 
-        {/* Lato della linea di quota */}
-        <div className="qt-riga">
-          <label className="qt-label">Lato</label>
-          <div className="segmenti" role="group" aria-label="Lato della linea di quota">
-            <button
-              className={quota.verso === 'sinistra' ? 'attivo' : ''}
-              onClick={() => cambiaVerso('sinistra')}
-            >
-              ◀ Sinistra
-            </button>
-            <button
-              className={quota.verso === 'destra' ? 'attivo' : ''}
-              onClick={() => cambiaVerso('destra')}
-            >
-              Destra ▶
-            </button>
-          </div>
-        </div>
+        {!isDatum && (
+          <>
+            {/* Unità */}
+            <div className="qt-riga">
+              <label className="qt-label">Unità</label>
+              <div className="segmenti" role="group" aria-label="Unità di misura">
+                {UNITA.map((u) => (
+                  <button
+                    key={u}
+                    className={quota.unita === u ? 'attivo' : ''}
+                    onClick={() => cambiaUnita(u)}
+                  >
+                    {u}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-        {/* Distanza (offset) della linea di quota */}
-        <div className="qt-riga">
-          <label className="qt-label">Distacco</label>
-          <input
-            type="range"
-            min={0}
-            max={offsetMax}
-            step={Math.max(1, Math.round(offsetMax / 100))}
-            value={Math.min(offsetCorrente, offsetMax)}
-            onChange={(e) => cambiaOffset(Number(e.target.value))}
-            style={{ flex: 1 }}
-            aria-label="Distacco della linea di quota"
-          />
-        </div>
+            {/* Lato della linea di quota */}
+            <div className="qt-riga">
+              <label className="qt-label">Lato</label>
+              <div className="segmenti" role="group" aria-label="Lato della linea di quota">
+                <button
+                  className={quota.verso === 'sinistra' ? 'attivo' : ''}
+                  onClick={() => cambiaVerso('sinistra')}
+                >
+                  ◀ Sinistra
+                </button>
+                <button
+                  className={quota.verso === 'destra' ? 'attivo' : ''}
+                  onClick={() => cambiaVerso('destra')}
+                >
+                  Destra ▶
+                </button>
+              </div>
+            </div>
+
+            {/* Distanza (offset) della linea di quota */}
+            <div className="qt-riga">
+              <label className="qt-label">Distacco</label>
+              <input
+                type="range"
+                min={0}
+                max={offsetMax}
+                step={Math.max(1, Math.round(offsetMax / 100))}
+                value={Math.min(offsetCorrente, offsetMax)}
+                onChange={(e) => cambiaOffset(Number(e.target.value))}
+                style={{ flex: 1 }}
+                aria-label="Distacco della linea di quota"
+              />
+            </div>
+          </>
+        )}
 
         {/* Passo di impilamento (solo parallelo) */}
         {isParallelo && (
@@ -259,31 +288,84 @@ export function AmbienteQuotaturaTecnica({
         </div>
 
         {/* Misure della catena */}
-        <div className="qt-misure">
-          <div className="qt-label" style={{ marginBottom: 6 }}>
-            Misure ({quota.quote.length})
-          </div>
-          {quota.quote.length === 0 && (
-            <p style={{ color: 'var(--testo-2)', margin: 0 }}>Nessuna misura: servono almeno 2 punti.</p>
-          )}
-          {quota.quote.map((q, i) => (
-            <div key={i} className="qt-misura-riga">
-              <span className="qt-misura-num">{i + 1}</span>
-              <CampoValoreTecnico valore={q.valore} onCambia={(v) => cambiaValore(i, v)} />
-              <span className="qt-misura-unita">{quota.unita}</span>
+        {!isDatum && (
+          <div className="qt-misure">
+            <div className="qt-label" style={{ marginBottom: 6 }}>
+              Misure ({quota.quote.length})
             </div>
-          ))}
-        </div>
+            {quota.quote.length === 0 && (
+              <p style={{ color: 'var(--testo-2)', margin: 0 }}>Nessuna misura: servono almeno 2 punti.</p>
+            )}
+            {quota.quote.map((q, i) => (
+              <div key={i} className="qt-misura-riga">
+                <span className="qt-misura-num">{i + 1}</span>
+                <CampoValoreTecnico valore={q.valore} onCambia={(v) => cambiaValore(i, v)} />
+                <span className="qt-misura-unita">{quota.unita}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Linee di estensione */}
+        {!isDatum && (
+          <>
+            <div className="qt-riga">
+              <label className="qt-label">Estensioni</label>
+              <button
+                className={`btn${quota.estensioniVisibili === false ? '' : ' attivo'}`}
+                onClick={() =>
+                  onModifica({ ...quota, estensioniVisibili: quota.estensioniVisibili === false })
+                }
+              >
+                {quota.estensioniVisibili === false ? 'Nascoste' : 'Visibili'}
+              </button>
+            </div>
+            {quota.estensioniVisibili !== false && (
+              <>
+                <div className="qt-riga">
+                  <label className="qt-label">Distacco est.</label>
+                  <input
+                    type="range"
+                    min={0}
+                    max={estMax}
+                    step={1}
+                    value={Math.min(gapCorrente, estMax)}
+                    onChange={(e) => onModifica({ ...quota, gapEstensione: Number(e.target.value) })}
+                    style={{ flex: 1 }}
+                    aria-label="Distacco delle estensioni dall'oggetto"
+                  />
+                </div>
+                <div className="qt-riga">
+                  <label className="qt-label">Sporgenza</label>
+                  <input
+                    type="range"
+                    min={0}
+                    max={estMax}
+                    step={1}
+                    value={Math.min(sporgenzaCorrente, estMax)}
+                    onChange={(e) =>
+                      onModifica({ ...quota, sporgenzaEstensione: Number(e.target.value) })
+                    }
+                    style={{ flex: 1 }}
+                    aria-label="Sporgenza delle estensioni oltre la linea"
+                  />
+                </div>
+              </>
+            )}
+          </>
+        )}
 
         {/* Nel PDF */}
-        <label className="fisc-check qt-riga">
-          <input
-            type="checkbox"
-            checked={quota.partePerimetro}
-            onChange={(e) => onModifica({ ...quota, partePerimetro: e.target.checked })}
-          />
-          Includi le misure nel riepilogo del PDF
-        </label>
+        {!isDatum && (
+          <label className="fisc-check qt-riga">
+            <input
+              type="checkbox"
+              checked={quota.partePerimetro}
+              onChange={(e) => onModifica({ ...quota, partePerimetro: e.target.checked })}
+            />
+            Includi le misure nel riepilogo del PDF
+          </label>
+        )}
       </div>
 
       <div className="riga-pulsanti" style={{ justifyContent: 'space-between' }}>

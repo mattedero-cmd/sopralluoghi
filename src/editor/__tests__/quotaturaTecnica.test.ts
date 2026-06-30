@@ -406,3 +406,71 @@ describe('primitiveQuotaTecnica — parallelo e progressiva', () => {
     expect(prim.some((p) => p.kind === 'linea')).toBe(true); // riferimento
   });
 });
+
+describe('primitiveQuotaTecnica — datum (Fase 4)', () => {
+  function datum(lettera: string): QuotaTecnica {
+    return {
+      id: 'd',
+      fotoId: 'foto',
+      tipo: 'quotaTecnica',
+      sottotipo: 'datum',
+      verso: 'sinistra',
+      unita: 'cm',
+      etichetta: lettera,
+      riferimento: { riferimentoTipo: 'puntoZero', punti: [{ x: 100, y: 200 }] },
+      puntiOriginali: [{ x: 100, y: 200 }],
+      quote: [],
+      partePerimetro: false,
+      zIndex: 1,
+      stile
+    };
+  }
+
+  it('disegna triangolo, riquadro e la lettera del datum', () => {
+    const prim = primitiveQuotaTecnica(datum('A'));
+    expect(prim.some((p) => p.kind === 'poligono')).toBe(true); // triangolo
+    expect(prim.some((p) => p.kind === 'rettangolo')).toBe(true); // riquadro
+    const t = prim.find((p) => p.kind === 'testo') as { kind: 'testo'; testo: string };
+    expect(t.testo).toBe('A');
+  });
+
+  it('il triangolo ha l’apice sul punto di riferimento', () => {
+    const prim = primitiveQuotaTecnica(datum('B'));
+    const tri = prim.find((p) => p.kind === 'poligono') as { kind: 'poligono'; punti: number[] };
+    // primo vertice = apice = punto datum (100, 200)
+    expect(tri.punti[0]).toBeCloseTo(100);
+    expect(tri.punti[1]).toBeCloseTo(200);
+  });
+});
+
+describe('linee di estensione editabili (Fase 4)', () => {
+  function serie(estensioniVisibili?: boolean): QuotaTecnica {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 250, y: 0 }
+    ];
+    const r = generaSerie(punti, fotoScala, { unita: 'cm', offset: 40, verso: 'sinistra' });
+    return {
+      id: 's',
+      fotoId: 'foto',
+      tipo: 'quotaTecnica',
+      sottotipo: 'serie',
+      lineaGuida: r.lineaGuida,
+      verso: 'sinistra',
+      unita: 'cm',
+      estensioniVisibili,
+      puntiOriginali: punti,
+      quote: r.quote,
+      partePerimetro: false,
+      zIndex: 1,
+      stile
+    };
+  }
+
+  it('nascondere le estensioni riduce le linee disegnate', () => {
+    const con = primitiveQuotaTecnica(serie(undefined)).filter((p) => p.kind === 'linea').length;
+    const senza = primitiveQuotaTecnica(serie(false)).filter((p) => p.kind === 'linea').length;
+    expect(senza).toBeLessThan(con);
+  });
+});

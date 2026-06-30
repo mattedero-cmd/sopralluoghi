@@ -389,6 +389,26 @@ export class FabbricaAnnotazioni {
     return { ...q, origineEstremo };
   }
 
+  /** Riferimento / datum: marcatore con lettera posato con un tap. */
+  quotaTecnicaDatum(punto: Punto, lettera: string, esistenti: Annotazione[]): QuotaTecnica {
+    return {
+      id: nuovoId(),
+      fotoId: this.foto.id,
+      tipo: 'quotaTecnica',
+      sottotipo: 'datum',
+      verso: 'sinistra',
+      unita: this.impostazioni.unitaDefault,
+      etichetta: lettera,
+      riferimento: { riferimentoTipo: 'puntoZero', punti: [punto] },
+      puntiOriginali: [punto],
+      quote: [],
+      partePerimetro: false,
+      zIndex: this.prossimoZ(esistenti),
+      creatoIl: Date.now(),
+      stile: this.stileQuotaTecnica()
+    };
+  }
+
   /** Legenda della foto (una sola): riquadro in basso a sinistra per default. */
   legenda(esistenti: Annotazione[]): Legenda {
     const W = this.foto.larghezzaPx;

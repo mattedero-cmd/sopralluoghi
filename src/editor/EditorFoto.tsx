@@ -1006,6 +1006,18 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     if (!haCalibrazione(foto)) setQuotaInModifica({ tipo: 'tecnica', id: q.id });
   };
 
+  /** posa un riferimento/datum con lettera automatica; resta nello strumento */
+  const creaDatum = (punto: Punto) => {
+    if (!fabbrica || !annotazioni) return;
+    const usate: string[] = [];
+    for (const a of annotazioni) {
+      if (a.tipo === 'quotaTecnica' && a.sottotipo === 'datum' && a.etichetta) usate.push(a.etichetta);
+    }
+    const d = fabbrica.quotaTecnicaDatum(punto, prossimaLetteraLibera(usate), annotazioni);
+    commit([...annotazioni, d]);
+    setSelezioneId(d.id);
+  };
+
   /** Avvia la modalità "duplica misura" sulla forma selezionata (stessa foto):
    *  fissa il gruppo della famiglia e poi ogni tocco crea una copia collegata. */
   const avviaDuplica = () => {
@@ -1411,6 +1423,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         onNuovaForma={creaForma}
         onPuntoTecnico={(pt) => setPuntiTecnici((punti) => [...punti, pt])}
         puntiTecnici={STRUMENTI_POSA_TECNICA.has(strumento) ? puntiTecnici : null}
+        onNuovoDatum={creaDatum}
         onNuovoCallout={creaCallout}
         onCalibra={(p1, p2) => setSchedaScala({ px: distanza(p1, p2) })}
         onPiano={(punti) => setSchedaPiano({ punti })}
@@ -1461,6 +1474,15 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             }}
           >
             <Icona nome="chiudi" dimensione={18} /> Annulla
+          </button>
+        </div>
+      )}
+
+      {strumento === 'tecDatum' && (
+        <div className="barra-etichetta" role="status">
+          <span className="hint">Tocca per posare un riferimento (datum); la lettera è automatica</span>
+          <button className="btn" onClick={() => setStrumento('seleziona')}>
+            <Icona nome="check" dimensione={18} /> Fine
           </button>
         </div>
       )}
@@ -1842,6 +1864,11 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                         // posa guidata sulla foto (no modale)
                         setPuntiTecnici([]);
                         setStrumento(v.s);
+                        return;
+                      }
+                      if (v.s === 'tecDatum') {
+                        // posa del datum con tap singolo sulla foto
+                        setStrumento('tecDatum');
                         return;
                       }
                       if (STRUMENTI_TECNICI.has(v.s)) {

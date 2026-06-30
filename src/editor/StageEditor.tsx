@@ -162,6 +162,8 @@ interface Props {
   onNuovaForma: (forma: TipoForma, punti: Punto[]) => void;
   /** punto posato in modalità quotatura tecnica (catena in serie) */
   onPuntoTecnico: (p: Punto) => void;
+  /** posa di un riferimento/datum con un tap singolo */
+  onNuovoDatum: (p: Punto) => void;
   /** punti già posati della quota tecnica in corso (anteprima); null = inattivo */
   puntiTecnici: Punto[] | null;
   onNuovoCallout: (sorgente: Rettangolo) => void;
@@ -583,6 +585,13 @@ export function StageEditor(p: Props) {
         disegnoAttivo.current = true;
         break;
       }
+      // datum tecnico: tocco singolo per posare il marcatore di riferimento
+      case 'tecDatum': {
+        setPuntoPendente(applicaSnap(pos));
+        setPuntoLente(pos);
+        disegnoAttivo.current = true;
+        break;
+      }
       // etichetta: tocco singolo → posa la lettera attiva; tap prolungato →
       // apre il menu circolare delle lettere SENZA posare nulla
       case 'etichetta': {
@@ -668,6 +677,10 @@ export function StageEditor(p: Props) {
     }
     if (p.strumento === 'riferimento') {
       p.onRiferimento(punto);
+      return;
+    }
+    if (p.strumento === 'tecDatum') {
+      p.onNuovoDatum(punto);
       return;
     }
     if (p.strumento === 'etichetta') {

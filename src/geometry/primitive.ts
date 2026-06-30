@@ -952,6 +952,15 @@ function orientamentoTesto(d: Punto): { angolo: number; sopra: Punto } {
   return { angolo, sopra: su.y > 0 ? scala(su, -1) : su };
 }
 
+/** Parametri editabili delle linee di estensione (con default dallo spessore). */
+function paramEstensione(q: QuotaTecnica, sp: number): { gap: number; oltre: number; visibili: boolean } {
+  return {
+    gap: q.gapEstensione ?? sp * 1.5,
+    oltre: q.sporgenzaEstensione ?? sp * 2.5,
+    visibili: q.estensioniVisibili !== false
+  };
+}
+
 /** Linea di estensione da un punto reale fino al suo piede sulla linea di quota. */
 function lineaEstensione(
   p: Punto,
@@ -984,33 +993,22 @@ function primitiveSerie(q: QuotaTecnica): Primitiva[] {
   const sp = q.stile.spessore;
   const dimTesto = q.stile.dimensioneTesto;
   const dimFreccia = sp * 3 + 5;
-  const gap = sp * 1.5; // distacco della linea di estensione dal punto reale
-  const oltre = sp * 2.5; // sporgenza oltre la linea di quota
+  const { gap, oltre, visibili } = paramEstensione(q, sp);
   const d = normalizza(sottrai(guida.b, guida.a));
   const n = normale(d);
   const a = guida.a;
   const offset = q.quote[0].offset;
 
   // 1) Linee di estensione, una per ogni estremo distinto
-  const visti: Punto[] = [];
-  for (const seg of q.quote) {
-    for (const p of [seg.p1, seg.p2]) {
-      if (visti.some((v) => Math.abs(v.x - p.x) < 0.5 && Math.abs(v.y - p.y) < 0.5)) continue;
-      visti.push(p);
-      const piede = piedeQuotaTecnica(p, a, d, n, offset);
-      const v = sottrai(piede, p);
-      const lung = Math.hypot(v.x, v.y);
-      if (lung > 1e-6) {
-        const vn = normalizza(v);
-        const inizio = somma(p, scala(vn, Math.min(gap, lung)));
-        const fine = somma(piede, scala(vn, oltre));
-        prim.push({
-          kind: 'linea',
-          punti: [inizio.x, inizio.y, fine.x, fine.y],
-          colore,
-          spessore: sp * 0.75,
-          alone: ALONE
-        });
+  if (visibili) {
+    const visti: Punto[] = [];
+    for (const seg of q.quote) {
+      for (const p of [seg.p1, seg.p2]) {
+        if (visti.some((v) => Math.abs(v.x - p.x) < 0.5 && Math.abs(v.y - p.y) < 0.5)) continue;
+        visti.push(p);
+        const piede = piedeQuotaTecnica(p, a, d, n, offset);
+        const e = lineaEstensione(p, piede, gap, oltre, colore, sp);
+        if (e) prim.push(e);
       }
     }
   }
@@ -1094,8 +1092,7 @@ function primitiveParallelo(q: QuotaTecnica): Primitiva[] {
   const sp = q.stile.spessore;
   const dimTesto = q.stile.dimensioneTesto;
   const dimFreccia = sp * 3 + 5;
-  const gap = sp * 1.5;
-  const oltre = sp * 2.5;
+  const { gap, oltre, visibili } = paramEstensione(q, sp);
   const d = normalizza(sottrai(guida.b, guida.a));
   const n = normale(d);
   const a = guida.a;
@@ -1111,10 +1108,12 @@ function primitiveParallelo(q: QuotaTecnica): Primitiva[] {
     const lungSeg = distanza(f1, f2);
     if (lungSeg < 1e-6) continue;
 
-    const e1 = lineaEstensione(seg.p1, f1, gap, oltre, colore, sp);
-    const e2 = lineaEstensione(seg.p2, f2, gap, oltre, colore, sp);
-    if (e1) prim.push(e1);
-    if (e2) prim.push(e2);
+    if (visibili) {
+      const e1 = lineaEstensione(seg.p1, f1, gap, oltre, colore, sp);
+      const e2 = lineaEstensione(seg.p2, f2, gap, oltre, colore, sp);
+      if (e1) prim.push(e1);
+      if (e2) prim.push(e2);
+    }
 
     prim.push({ kind: 'linea', punti: [f1.x, f1.y, f2.x, f2.y], colore, spessore: sp, alone: ALONE });
 
@@ -1154,8 +1153,7 @@ function primitiveProgressiva(q: QuotaTecnica): Primitiva[] {
   const sp = q.stile.spessore;
   const dimTesto = q.stile.dimensioneTesto;
   const dimFreccia = sp * 3 + 5;
-  const gap = sp * 1.5;
-  const oltre = sp * 2.5;
+  const { gap, oltre, visibili } = paramEstensione(q, sp);
   const d = normalizza(sottrai(guida.b, guida.a));
   const n = normale(d);
   const a = guida.a;
@@ -1179,13 +1177,17 @@ function primitiveProgressiva(q: QuotaTecnica): Primitiva[] {
 
   // marcatore dello zero + etichetta "0"
   prim.push({ kind: 'cerchio', centro: zeroFoot, raggio: dimFreccia * 0.45, colore, spessore: sp, alone: ALONE });
-  const e0 = lineaEstensione(zero, zeroFoot, gap, oltre, colore, sp);
-  if (e0) prim.push(e0);
+  if (visibili) {
+    const e0 = lineaEstensione(zero, zeroFoot, gap, oltre, colore, sp);
+    if (e0) prim.push(e0);
+  }
 
   for (const seg of q.quote) {
     const piede = piedeQuotaTecnica(seg.p2, a, d, n, offset);
-    const e = lineaEstensione(seg.p2, piede, gap, oltre, colore, sp);
-    if (e) prim.push(e);
+    if (visibili) {
+      const e = lineaEstensione(seg.p2, piede, gap, oltre, colore, sp);
+      if (e) prim.push(e);
+    }
     // tacca corta sulla linea di riferimento (niente doppia freccia)
     const tk = dimFreccia * 0.6;
     prim.push({
@@ -1209,6 +1211,41 @@ function primitiveProgressiva(q: QuotaTecnica): Primitiva[] {
   return prim;
 }
 
+/**
+ * Riferimento / datum: triangolo pieno con l'apice sul punto di riferimento,
+ * leader e riquadro con la lettera del datum (A, B, …).
+ */
+function primitiveDatum(q: QuotaTecnica): Primitiva[] {
+  const p = q.riferimento?.punti[0] ?? q.puntiOriginali[0];
+  if (!p) return [];
+  const colore = q.stile.colore || COLORE_QUOTA_TECNICA;
+  const sp = q.stile.spessore;
+  const s = q.stile.dimensioneTesto;
+  const triBaseY = p.y - s * 0.7;
+  const boxLato = s * 1.35;
+  const boxCy = triBaseY - s * 0.6 - boxLato / 2;
+  const rect = { x: p.x - boxLato / 2, y: boxCy - boxLato / 2, width: boxLato, height: boxLato };
+  return [
+    {
+      kind: 'poligono',
+      punti: [p.x, p.y, p.x - s * 0.35, triBaseY, p.x + s * 0.35, triBaseY],
+      colore,
+      alone: ALONE
+    },
+    { kind: 'linea', punti: [p.x, triBaseY, p.x, boxCy + boxLato / 2], colore, spessore: sp, alone: ALONE },
+    { kind: 'rettangolo', rect, colore, spessore: sp, riempimento: 'rgba(255,255,255,0.92)' },
+    {
+      kind: 'testo',
+      testo: q.etichetta || '?',
+      posizione: { x: p.x, y: boxCy },
+      rotazioneDeg: 0,
+      dimensione: s,
+      colore,
+      sfondo: null
+    }
+  ];
+}
+
 /** Dispatcher della quotatura tecnica per sottotipo. */
 export function primitiveQuotaTecnica(q: QuotaTecnica): Primitiva[] {
   switch (q.sottotipo) {
@@ -1218,8 +1255,10 @@ export function primitiveQuotaTecnica(q: QuotaTecnica): Primitiva[] {
       return primitiveParallelo(q);
     case 'progressiva':
       return primitiveProgressiva(q);
+    case 'datum':
+      return primitiveDatum(q);
     default:
-      // foro/smusso/filettatura/datum: fasi successive
+      // foro/smusso/filettatura: fasi successive
       return [];
   }
 }

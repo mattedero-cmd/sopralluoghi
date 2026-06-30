@@ -710,6 +710,14 @@ export interface QuotaTecnica extends AnnotazioneBase {
   passo?: number;
   /** estremo della guida usato come origine/zero (parallelo/progressiva) */
   origineEstremo?: 'inizio' | 'fine';
+  /** etichetta/lettera (es. datum "A", o nota della catena) */
+  etichetta?: string;
+  /** linee di estensione visibili (default true) */
+  estensioniVisibili?: boolean;
+  /** distacco delle estensioni dall'oggetto (px); assente = default dallo spessore */
+  gapEstensione?: number;
+  /** sporgenza delle estensioni oltre la linea di quota (px); assente = default */
+  sporgenzaEstensione?: number;
   /** tap dell'utente (punti reali) */
   puntiOriginali: Punto[];
   /** quote generate (rieditabili) — serie/parallelo/progressiva */
