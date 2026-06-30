@@ -1422,8 +1422,11 @@ function Lente({
     ctx.scale(zoom, zoom);
     ctx.translate(-punto.x, -punto.y);
     ctx.drawImage(immagine, 0, 0);
+    const vociLente = vociLegenda(annotazioni);
     for (const a of annotazioni) {
-      for (const prim of primitiveAnnotazione(a)) disegnaPrimitiva(ctx, prim, immagine);
+      for (const prim of primitiveAnnotazione(a, undefined, undefined, () => vociLente)) {
+        disegnaPrimitiva(ctx, prim, immagine);
+      }
     }
     if (bozza) {
       for (const prim of primitiveAnnotazione(bozza)) disegnaPrimitiva(ctx, prim, immagine);

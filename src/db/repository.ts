@@ -320,6 +320,13 @@ export async function eliminaFoto(id: ID): Promise<void> {
   await scrivi('eliminare la foto', () =>
     db.transaction('rw', [db.foto, db.annotazioni], async () => {
       await db.annotazioni.where('fotoId').equals(id).delete();
+      // le foto di DETTAGLIO collegate a questa foto tornano autonome (non
+      // vengono cancellate né lasciate orfane verso un id inesistente)
+      const collegate = await db.foto.filter((f) => f.dettaglioDi?.fotoId === id).toArray();
+      for (const f of collegate) {
+        const { dettaglioDi: _d, ...resto } = f;
+        await db.foto.put({ ...resto, modificataIl: ora() });
+      }
       await db.foto.delete(id);
     })
   );

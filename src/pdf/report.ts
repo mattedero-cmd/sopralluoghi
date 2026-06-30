@@ -319,6 +319,23 @@ export async function generaReportPdf(
   principali.sort((a, b) => rankSez(a) - rankSez(b) || a.ordine - b.ordine);
   let sezPrec: string | null | undefined = ' ';
   let indice = 0;
+  // blocco di una foto di dettaglio: titolo "Dettaglio X" in cima a una pagina
+  const bloccoDettaglio = (dett: Foto) => {
+    const annD = annotazioniPerFoto.get(dett.id) ?? [];
+    const percD = ctx.percorsoFoto.get(dett.id) ?? percorso;
+    const lettera = dett.dettaglioDi?.lettera ?? '';
+    const nome =
+      dett.didascalia && dett.didascalia !== `Dettaglio ${lettera}` ? ` · ${dett.didascalia}` : '';
+    contenuto.push(
+      ...sezioneFoto(dett, indice, annD, opzioni, impostazioni.pdf, ctx, percD, {
+        style: 'h3',
+        toc: false,
+        etichetta: '',
+        titolo: `Dettaglio ${lettera}${nome}`,
+        nuovaPagina: true
+      })
+    );
+  };
   principali.forEach((f) => {
     const annotazioni = annotazioniPerFoto.get(f.id) ?? [];
     const perc = ctx.percorsoFoto.get(f.id) ?? percorso;
@@ -333,25 +350,17 @@ export async function generaReportPdf(
       ...sezioneFoto(f, indice, annotazioni, opzioni, impostazioni.pdf, ctx, perc, undefined, titoloSez)
     );
     indice++; // numerazione progressiva SOLO delle foto principali
-    // foto di dettaglio collegate alle etichette di questa foto, subito dopo:
-    // ogni dettaglio inizia in cima a una nuova pagina, come blocco a sé
-    for (const dett of dettagliDi.get(f.id) ?? []) {
-      const annD = annotazioniPerFoto.get(dett.id) ?? [];
-      const percD = ctx.percorsoFoto.get(dett.id) ?? percorso;
-      const lettera = dett.dettaglioDi!.lettera;
-      const nome =
-        dett.didascalia && dett.didascalia !== `Dettaglio ${lettera}` ? ` · ${dett.didascalia}` : '';
-      contenuto.push(
-        ...sezioneFoto(dett, indice, annD, opzioni, impostazioni.pdf, ctx, percD, {
-          style: 'h3',
-          toc: false,
-          etichetta: '',
-          titolo: `Dettaglio ${lettera}${nome}`,
-          nuovaPagina: true
-        })
-      );
-    }
+    // foto di dettaglio collegate alle etichette di questa foto, subito dopo
+    for (const dett of dettagliDi.get(f.id) ?? []) bloccoDettaglio(dett);
     });
+    // dettagli ORFANI (foto principale assente dal report perché esclusa
+    // dall'export selettivo, eliminata o non presente): stampati comunque in
+    // coda, così nessuna foto di dettaglio sparisce silenziosamente
+    const idPrincipali = new Set(principali.map((p) => p.id));
+    for (const [mainId, lista] of dettagliDi) {
+      if (idPrincipali.has(mainId)) continue;
+      for (const dett of lista) bloccoDettaglio(dett);
+    }
   }
 
   // ogni foto usa il proprio percorso (cartelle + progetto + sezione)
@@ -533,7 +542,42 @@ export async function generaReportCartella(
         const i = sezioni.findIndex((s) => s.id === f.sezioneId);
         return i < 0 ? 1e9 : i;
       };
-      const ordinata = [...lista].sort((a, b) => rankSez(a) - rankSez(b) || a.ordine - b.ordine);
+      // foto di dettaglio raggruppate per principale (come nel report di progetto)
+      const dettagliDi = new Map<string, Foto[]>();
+      for (const ph of lista) {
+        if (ph.dettaglioDi) {
+          const arr = dettagliDi.get(ph.dettaglioDi.fotoId) ?? [];
+          arr.push(ph);
+          dettagliDi.set(ph.dettaglioDi.fotoId, arr);
+        }
+      }
+      for (const arr of dettagliDi.values()) {
+        arr.sort(
+          (a, b) =>
+            confrontaEtichetta(a.dettaglioDi!.lettera, b.dettaglioDi!.lettera) || a.ordine - b.ordine
+        );
+      }
+      const bloccoDett = (dett: Foto) => {
+        const lettera = dett.dettaglioDi?.lettera ?? '';
+        const nome =
+          dett.didascalia && dett.didascalia !== `Dettaglio ${lettera}`
+            ? ` · ${dett.didascalia}`
+            : '';
+        out.push(
+          ...sezioneFoto(
+            dett,
+            indiceFoto,
+            annotPerFoto.get(dett.id) ?? [],
+            opzioni,
+            impostazioni.pdf,
+            ctx,
+            ctx.percorsoFoto.get(dett.id) ?? [],
+            { style: 'h3', toc: false, etichetta: '', titolo: `Dettaglio ${lettera}${nome}`, nuovaPagina: true }
+          )
+        );
+      };
+      const principali = lista.filter((ph) => !ph.dettaglioDi);
+      const ordinata = [...principali].sort((a, b) => rankSez(a) - rankSez(b) || a.ordine - b.ordine);
       let sezPrec: string | null | undefined = ' ';
       for (const f of ordinata) {
         const sid = f.sezioneId && sezioni.some((s) => s.id === f.sezioneId) ? f.sezioneId : null;
@@ -554,6 +598,13 @@ export async function generaReportCartella(
             etichetta: ''
           })
         );
+        for (const dett of dettagliDi.get(f.id) ?? []) bloccoDett(dett);
+      }
+      // dettagli orfani (principale non presente): stampati comunque in coda
+      const idPr = new Set(principali.map((p) => p.id));
+      for (const [mid, l] of dettagliDi) {
+        if (idPr.has(mid)) continue;
+        for (const dett of l) bloccoDett(dett);
       }
     }
     return out;

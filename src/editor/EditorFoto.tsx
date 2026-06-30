@@ -864,15 +864,31 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const modificaEtichetta = (id: string, m: { lettera: string; descrizione: string }) => {
     if (!annotazioni) return;
     const nuovaLettera = m.lettera;
-    commit(
-      annotazioni.map((a) => {
-        if (a.tipo !== 'etichetta') return a;
-        if (a.id === id) return { ...a, lettera: nuovaLettera, descrizione: m.descrizione };
-        // mantieni allineate le descrizioni delle etichette con la stessa lettera
-        if (a.lettera === nuovaLettera) return { ...a, descrizione: m.descrizione };
-        return a;
-      })
-    );
+    const vecchiaLettera = annotazioni.find(
+      (a): a is Etichetta => a.tipo === 'etichetta' && a.id === id
+    )?.lettera;
+    const nuove = annotazioni.map((a) => {
+      if (a.tipo !== 'etichetta') return a;
+      if (a.id === id) return { ...a, lettera: nuovaLettera, descrizione: m.descrizione };
+      // mantieni allineate le descrizioni delle etichette con la stessa lettera
+      if (a.lettera === nuovaLettera) return { ...a, descrizione: m.descrizione };
+      return a;
+    });
+    commit(nuove);
+    // se la VECCHIA lettera non esiste più su questa foto, le foto di dettaglio
+    // collegate a quella lettera seguono la nuova (l'elemento è stato rinominato)
+    if (foto && vecchiaLettera && vecchiaLettera !== nuovaLettera) {
+      const restaVecchia = nuove.some((a) => a.tipo === 'etichetta' && a.lettera === vecchiaLettera);
+      if (!restaVecchia) {
+        for (const f of fotoProgetto ?? []) {
+          if (f.dettaglioDi?.fotoId === foto.id && f.dettaglioDi.lettera === vecchiaLettera) {
+            void aggiornaFoto(f.id, {
+              dettaglioDi: { ...f.dettaglioDi, lettera: nuovaLettera }
+            });
+          }
+        }
+      }
+    }
   };
 
   const creaDisegno = (punti: number[]) => {
@@ -1341,11 +1357,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           const dettagli = (fotoProgetto ?? []).filter(
             (f) => f.dettaglioDi?.fotoId === foto.id && f.dettaglioDi?.lettera === et.lettera
           );
-          const candidati = (fotoProgetto ?? []).filter(
-            (f) =>
-              f.id !== foto.id &&
-              !(f.dettaglioDi?.fotoId === foto.id && f.dettaglioDi?.lettera === et.lettera)
-          );
+          // solo foto NON già usate come dettaglio (niente "furto" silenzioso
+          // di un dettaglio da un'altra etichetta/foto) ed esclusa la principale
+          const candidati = (fotoProgetto ?? []).filter((f) => f.id !== foto.id && !f.dettaglioDi);
           return (
             <ModificaEtichetta
               lettera={et.lettera}

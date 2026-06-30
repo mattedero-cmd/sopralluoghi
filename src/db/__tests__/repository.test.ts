@@ -11,6 +11,7 @@ import {
   duplicaProgetto,
   eliminaCartella,
   eliminaCliente,
+  eliminaFoto,
   eliminaProgetto,
   migraFotoLegacy,
   prossimoNumeroPreventivo,
@@ -85,6 +86,21 @@ describe('relazioni e integrità', () => {
     const f2 = await aggiungiFoto(p.id, datiFoto());
     expect(f1.ordine).toBe(0);
     expect(f2.ordine).toBe(1);
+  });
+
+  it('eliminando la foto principale, le foto di dettaglio tornano autonome (non orfane)', async () => {
+    const p = await creaProgetto({ nome: 'Test', cliente: '', luogo: '' }, null);
+    const principale = await aggiungiFoto(p.id, datiFoto());
+    const dettaglio = await aggiungiFoto(p.id, {
+      ...datiFoto(),
+      dettaglioDi: { fotoId: principale.id, etichettaId: 'et1', lettera: 'A' }
+    });
+    await eliminaFoto(principale.id);
+    const rimasta = await db.foto.get(dettaglio.id);
+    expect(rimasta).toBeTruthy();
+    // niente più collegamento a una foto inesistente: è una foto normale
+    expect(rimasta?.dettaglioDi).toBeUndefined();
+    expect(await db.foto.get(principale.id)).toBeUndefined();
   });
 });
 
