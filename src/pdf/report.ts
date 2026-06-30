@@ -18,6 +18,7 @@ import {
   type NumeroForma
 } from '../geometry/nomenclatura';
 import { leggiImpostazioni } from '../db/repository';
+import { rigaMisuraTecnica } from './righeTecniche';
 import { renderFotoAnnotata } from '../render/renderAnnotata';
 import { caricaImmagine, fotoIllegibile } from '../utils/image';
 import { calcolaCatene, sommaCatenaInUnita } from '../geometry/catene';
@@ -892,6 +893,11 @@ function righeMisureFoto(
         }
         righe.push(riga);
       }
+    } else if (a.tipo === 'quotaTecnica') {
+      // entrano nel riepilogo solo le quote tecniche strutturate
+      // (partePerimetro=true); le altre restano disegnate sulla foto
+      const r = rigaMisuraTecnica(a);
+      if (r) righe.push({ forma: r.forma, reale: r.reale, stato: r.stato });
     }
   }
   return righe;
