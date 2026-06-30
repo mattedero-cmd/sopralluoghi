@@ -2364,6 +2364,136 @@ function ManiglieAnnotazione({
         </>
       );
     }
+    case 'quotaTecnica': {
+      const eps = 0.5;
+      const uguale = (x: Punto, y: Punto) => Math.abs(x.x - y.x) < eps && Math.abs(x.y - y.y) < eps;
+
+      // datum: una maniglia sul punto di riferimento
+      if (ann.sottotipo === 'datum') {
+        const p = ann.riferimento?.punti[0] ?? ann.puntiOriginali[0];
+        if (!p) return null;
+        return maniglia(
+          'datum',
+          p,
+          (n) => ({
+            ...ann,
+            puntiOriginali: [n],
+            riferimento: ann.riferimento ? { ...ann.riferimento, punti: [n] } : ann.riferimento
+          }),
+          { snap: true, escludi: [p] }
+        );
+      }
+
+      // foro: tre maniglie sui tap → ricostruiscono centro e raggio
+      if (ann.sottotipo === 'foro' && ann.foro) {
+        const foro = ann.foro;
+        return (
+          <>
+            {ann.puntiOriginali.map((pos, i) =>
+              maniglia(
+                `foro-${i}`,
+                pos,
+                (n) => {
+                  const nuovi = ann.puntiOriginali.map((q, j) => (j === i ? n : q));
+                  const centro =
+                    nuovi.length >= 3
+                      ? circumcentro(nuovi[0], nuovi[1], nuovi[2]) ?? foro.centro
+                      : foro.centro;
+                  return {
+                    ...ann,
+                    puntiOriginali: nuovi,
+                    foro: { ...foro, centro, raggioPx: distanza(centro, nuovi[0]) }
+                  };
+                },
+                { snap: true, escludi: [pos] }
+              )
+            )}
+          </>
+        );
+      }
+
+      // smusso: maniglie sugli estremi del segmento + sulla callout (leader)
+      if (ann.sottotipo === 'smusso' && ann.smusso) {
+        const s = ann.smusso;
+        return (
+          <>
+            {maniglia(
+              'sm-a',
+              s.a,
+              (n) => ({
+                ...ann,
+                puntiOriginali: ann.puntiOriginali.map((pt) => (uguale(pt, s.a) ? n : pt)),
+                smusso: { ...s, a: n }
+              }),
+              { snap: true, escludi: [s.a] }
+            )}
+            {maniglia(
+              'sm-b',
+              s.b,
+              (n) => ({
+                ...ann,
+                puntiOriginali: ann.puntiOriginali.map((pt) => (uguale(pt, s.b) ? n : pt)),
+                smusso: { ...s, b: n }
+              }),
+              { snap: true, escludi: [s.b] }
+            )}
+            {s.leader &&
+              maniglia('sm-leader', s.leader.a, (n) => ({
+                ...ann,
+                smusso: { ...s, leader: { da: s.leader!.da, a: n } }
+              }))}
+          </>
+        );
+      }
+
+      // filettatura: maniglia sull'ancora + sulla callout (leader)
+      if (ann.sottotipo === 'filettatura' && ann.filettatura) {
+        const f = ann.filettatura;
+        return (
+          <>
+            {maniglia(
+              'fil-ancora',
+              f.ancora,
+              (n) => ({
+                ...ann,
+                puntiOriginali: [n],
+                filettatura: { ...f, ancora: n, leader: f.leader ? { ...f.leader, da: n } : f.leader }
+              }),
+              { snap: true, escludi: [f.ancora] }
+            )}
+            {f.leader &&
+              maniglia('fil-leader', f.leader.a, (n) => ({
+                ...ann,
+                filettatura: { ...f, leader: { da: f.leader!.da, a: n } }
+              }))}
+          </>
+        );
+      }
+
+      // serie / parallelo / progressiva: una maniglia per ogni punto reale
+      return (
+        <>
+          {ann.puntiOriginali.map((pos, i) =>
+            maniglia(
+              `pt-${i}`,
+              pos,
+              (n) => {
+                const muovi = (pt: Punto) => (uguale(pt, pos) ? n : pt);
+                return {
+                  ...ann,
+                  puntiOriginali: ann.puntiOriginali.map((pt, j) => (j === i ? n : pt)),
+                  lineaGuida: ann.lineaGuida
+                    ? { a: muovi(ann.lineaGuida.a), b: muovi(ann.lineaGuida.b) }
+                    : ann.lineaGuida,
+                  quote: ann.quote.map((qq) => ({ ...qq, p1: muovi(qq.p1), p2: muovi(qq.p2) }))
+                };
+              },
+              { snap: true, escludi: [pos] }
+            )
+          )}
+        </>
+      );
+    }
     default:
       return null;
   }

@@ -197,10 +197,14 @@ export function AmbienteQuotaturaTecnica({
     onModifica({ ...quota, foro: { ...foro, etichetta: etichetta.toUpperCase().slice(0, 3) } });
   };
 
-  const aggiornaSmusso = (patch: Partial<SmussoTecnico>) => {
+  const aggiornaSmusso = (patch: Partial<SmussoTecnico>, manuale = false) => {
     if (!smusso) return;
     const s = { ...smusso, ...patch };
-    onModifica({ ...quota, smusso: { ...s, designazione: designazioneSmusso(s) } });
+    onModifica({
+      ...quota,
+      ...(manuale ? { valoreAuto: false } : {}),
+      smusso: { ...s, designazione: designazioneSmusso(s) }
+    });
   };
 
   const aggiornaFilettatura = (patch: Partial<FilettaturaTecnica>) => {
@@ -310,7 +314,7 @@ export function AmbienteQuotaturaTecnica({
               <label className="qt-label">Lunghezza</label>
               <CampoValoreTecnico
                 valore={smusso.catetoReale}
-                onCambia={(v) => aggiornaSmusso({ catetoReale: v })}
+                onCambia={(v) => aggiornaSmusso({ catetoReale: v }, true)}
               />
               <span className="qt-misura-unita">{quota.unita}</span>
             </div>

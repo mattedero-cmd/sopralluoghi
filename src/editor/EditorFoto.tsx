@@ -51,6 +51,7 @@ import {
   valoreAutomatico
 } from '../geometry/calibrazione';
 import { etichettaPoligono, nomeFormaPoligono, simboliPoligono, versiSegmento } from '../geometry/primitive';
+import { ricalcolaTecniche } from '../geometry/quotaTecnica';
 import {
   codiceCompletoForma,
   codiceLocaleForma,
@@ -512,7 +513,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   /** commit dalle modifiche di geometria: i valori auto vengono ricalcolati */
   const commitGeometria = useCallback(
     (nuove: Annotazione[]) => {
-      commit(foto ? applicaValoriAuto(nuove, foto) : nuove);
+      const agg = foto ? ricalcolaTecniche(applicaValoriAuto(nuove, foto), foto) : nuove;
+      commit(agg);
     },
     [commit, foto]
   );

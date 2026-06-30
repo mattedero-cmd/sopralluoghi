@@ -1,4 +1,5 @@
 import type {
+  Annotazione,
   FilettaturaTecnica,
   Foto,
   ForoTecnico,
@@ -361,4 +362,33 @@ export function ricalcolaSmusso(q: QuotaTecnica, foto: CalibFoto, unita: Unita):
 /** Leader di default per un'ancora di filettatura (in alto a destra). */
 export function leaderFilettatura(ancora: Punto, len: number): { da: Punto; a: Punto } {
   return leaderDefault(ancora, { x: 1, y: -1 }, len);
+}
+
+// ---------------------------------------------------------------------------
+// Ricalcolo dei valori dopo uno spostamento dei punti (§7 — editing avanzato)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ricalcola i valori reali delle quote tecniche quando la geometria cambia
+ * (es. trascinamento di una maniglia). Salta quelle a valore manuale
+ * (`valoreAuto === false`) e quelle senza calibrazione. Datum e filettatura non
+ * hanno una misura derivata e restano invariati.
+ */
+export function ricalcolaTecniche(annotazioni: Annotazione[], foto: CalibFoto): Annotazione[] {
+  if (!haCalibrazione(foto)) return annotazioni;
+  return annotazioni.map((a) => {
+    if (a.tipo !== 'quotaTecnica' || a.valoreAuto === false) return a;
+    switch (a.sottotipo) {
+      case 'serie':
+      case 'parallelo':
+      case 'progressiva':
+        return { ...a, quote: ricalcolaValori(a, foto, a.unita) };
+      case 'foro':
+        return a.foro ? { ...a, foro: ricalcolaForo(a, foto, a.unita) ?? a.foro } : a;
+      case 'smusso':
+        return a.smusso ? { ...a, smusso: ricalcolaSmusso(a, foto, a.unita) ?? a.smusso } : a;
+      default:
+        return a; // datum / filettatura
+    }
+  });
 }

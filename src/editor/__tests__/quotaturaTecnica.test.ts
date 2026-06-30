@@ -15,10 +15,11 @@ import {
   generaSmusso,
   ricalcolaForo,
   ricalcolaSmusso,
+  ricalcolaTecniche,
   ricalcolaValori,
   ricalcolaValoriSerie
 } from '../../geometry/quotaTecnica';
-import type { Forma, Punto, QuotaTecnica } from '../../db/types';
+import type { Annotazione, Forma, Punto, QuotaTecnica } from '../../db/types';
 
 const fotoScala = { scala: { px: 100, reale: 50, unita: 'cm' as const }, piano: null };
 
@@ -684,5 +685,110 @@ describe('smusso e filettatura (Fase 5b)', () => {
     const t = prim.find((p) => p.kind === 'testo') as { kind: 'testo'; testo: string };
     expect(t.testo).toContain('M8');
     expect(t.testo).toContain('6H');
+  });
+});
+
+describe('ricalcolaTecniche — ricalcolo dopo spostamento (Fase 6)', () => {
+  it('serie: muovendo un punto, il valore del tratto si aggiorna', () => {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 }
+    ];
+    const g = generaSerie(punti, fotoScala, { unita: 'cm', offset: 40, verso: 'sinistra' });
+    const quota: QuotaTecnica = {
+      id: 's',
+      fotoId: 'foto',
+      tipo: 'quotaTecnica',
+      sottotipo: 'serie',
+      lineaGuida: g.lineaGuida,
+      verso: 'sinistra',
+      unita: 'cm',
+      valoreAuto: true,
+      puntiOriginali: punti,
+      quote: g.quote,
+      partePerimetro: false,
+      zIndex: 1,
+      stile
+    };
+    expect(quota.quote[0].valore).toBeCloseTo(50); // 100px → 50cm
+    // simula lo spostamento del secondo punto a 200px (come farebbe la maniglia)
+    const spostata: QuotaTecnica = {
+      ...quota,
+      puntiOriginali: [{ x: 0, y: 0 }, { x: 200, y: 0 }],
+      lineaGuida: { a: { x: 0, y: 0 }, b: { x: 200, y: 0 } },
+      quote: quota.quote.map((q) => ({ ...q, p2: { x: 200, y: 0 } }))
+    };
+    const [agg] = ricalcolaTecniche([spostata], fotoScala) as [QuotaTecnica];
+    expect(agg.quote[0].valore).toBeCloseTo(100); // 200px → 100cm
+  });
+
+  it('foro: muovendo il centro/raggio, ⌀ si aggiorna', () => {
+    const gen = generaForo({ x: 100, y: 50 }, { x: 50, y: 100 }, { x: 0, y: 50 }, fotoScala, {
+      unita: 'cm',
+      modo: 'diametro'
+    })!;
+    const quota: QuotaTecnica = {
+      id: 'h',
+      fotoId: 'foto',
+      tipo: 'quotaTecnica',
+      sottotipo: 'foro',
+      verso: 'sinistra',
+      unita: 'cm',
+      valoreAuto: true,
+      foro: { ...gen.foro, raggioPx: 100 }, // raggio raddoppiato dalla maniglia
+      puntiOriginali: [{ x: 150, y: 50 }, { x: 50, y: 100 }, { x: 0, y: 50 }],
+      quote: [],
+      partePerimetro: false,
+      zIndex: 1,
+      stile
+    };
+    const [agg] = ricalcolaTecniche([quota], fotoScala) as [QuotaTecnica];
+    // ricalcolaForo usa puntiOriginali[0]=(150,50), centro=(50,50) → raggio 100px → 50cm; ⌀ 100cm
+    expect(agg.foro!.diametroReale).toBeCloseTo(100);
+  });
+
+  it('rispetta valoreAuto=false (non sovrascrive i valori manuali)', () => {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 }
+    ];
+    const g = generaSerie(punti, fotoScala, { unita: 'cm', offset: 40, verso: 'sinistra' });
+    const quota: QuotaTecnica = {
+      id: 's',
+      fotoId: 'foto',
+      tipo: 'quotaTecnica',
+      sottotipo: 'serie',
+      lineaGuida: g.lineaGuida,
+      verso: 'sinistra',
+      unita: 'cm',
+      valoreAuto: false,
+      puntiOriginali: punti,
+      quote: g.quote.map((q) => ({ ...q, valore: 999 })),
+      partePerimetro: false,
+      zIndex: 1,
+      stile
+    };
+    const [agg] = ricalcolaTecniche([quota], fotoScala) as [QuotaTecnica];
+    expect(agg.quote[0].valore).toBe(999); // invariato
+  });
+
+  it('datum e filettatura restano invariati', () => {
+    const datum: Annotazione = {
+      id: 'd',
+      fotoId: 'foto',
+      tipo: 'quotaTecnica',
+      sottotipo: 'datum',
+      verso: 'sinistra',
+      unita: 'cm',
+      etichetta: 'A',
+      riferimento: { riferimentoTipo: 'puntoZero', punti: [{ x: 10, y: 10 }] },
+      puntiOriginali: [{ x: 10, y: 10 }],
+      quote: [],
+      partePerimetro: false,
+      zIndex: 1,
+      stile
+    };
+    const [agg] = ricalcolaTecniche([datum], fotoScala);
+    expect(agg).toBe(datum); // stessa referenza: nessun ricalcolo
   });
 });
