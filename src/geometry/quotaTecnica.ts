@@ -1,14 +1,17 @@
 import type {
+  FilettaturaTecnica,
   Foto,
   ForoTecnico,
   Punto,
   QuotaSingolaTecnica,
   QuotaTecnica,
+  SmussoTecnico,
   Unita,
   VersoQuota
 } from '../db/types';
 import { arrotondaMisura, haCalibrazione, misuraSegmento } from './calibrazione';
-import { circumcentro, distanza, dot, normalizza, sottrai } from './punti';
+import { circumcentro, distanza, dot, normale, normalizza, scala, somma, sottrai } from './punti';
+import { formattaNumero } from '../utils/format';
 
 /**
  * Quotatura tecnica IN SERIE (catena di quote, §5.1 del briefing).
@@ -286,4 +289,76 @@ export function ricalcolaForo(q: QuotaTecnica, foto: CalibFoto, unita: Unita): F
   const raggioReale = misuraSegmento(q.foro.centro, bordo, foto, unita);
   const diametroReale = raggioReale === null ? null : arrotondaMisura(raggioReale * 2);
   return { ...q.foro, raggioReale, diametroReale };
+}
+
+// ---------------------------------------------------------------------------
+// Smusso (chamfer) e filettatura (§5.7, §5.8) — callout normalizzate
+// ---------------------------------------------------------------------------
+
+/** Callout dello smusso: `C{x}` (≈45°) oppure `{lunghezza} × {angolo}°` (ISO 3040). */
+export function designazioneSmusso(
+  s: Pick<SmussoTecnico, 'modo' | 'catetoReale' | 'angoloGradi'>
+): string {
+  const len = s.catetoReale === null ? '?' : formattaNumero(s.catetoReale);
+  if (s.modo === 'C') return `C${len}`;
+  const ang = s.angoloGradi === null ? '45' : formattaNumero(s.angoloGradi);
+  return `${len} × ${ang}°`;
+}
+
+/** Callout della filettatura: `M{Ø} × {passo} - {classe}` (+ lunghezza se presente). */
+export function designazioneFilettatura(
+  f: Pick<FilettaturaTecnica, 'diametroNominale' | 'passo' | 'classeTolleranza' | 'lunghezza'>
+): string {
+  let s = `M${formattaNumero(f.diametroNominale)}`;
+  if (f.passo) s += ` × ${formattaNumero(f.passo)}`;
+  if (f.classeTolleranza) s += ` - ${f.classeTolleranza}`;
+  if (f.lunghezza) s += `, L${formattaNumero(f.lunghezza)}`;
+  return s;
+}
+
+/** Leader di default a partire dal punto `da`, lungo `dir`, di lunghezza `len`. */
+function leaderDefault(da: Punto, dir: Punto, len: number): { da: Punto; a: Punto } {
+  return { da, a: somma(da, scala(normalizza(dir), len)) };
+}
+
+/**
+ * Smusso (§5.7): due tap sugli estremi del segmento smussato → lunghezza reale
+ * e callout. L'angolo rispetto a una faccia di riferimento è rinviato (Fase 6):
+ * qui l'angolo è impostabile a mano (default 45° → modo C).
+ */
+export function generaSmusso(
+  a: Punto,
+  b: Punto,
+  foto: CalibFoto,
+  opts: { unita: Unita; modo: 'C' | 'lunghezzaAngolo'; angoloGradi: number }
+): { smusso: SmussoTecnico } {
+  const catetoReale = haCalibrazione(foto) ? misuraSegmento(a, b, foto, opts.unita) : null;
+  const medio = scala(somma(a, b), 0.5);
+  const off = Math.max(40, distanza(a, b) * 0.8);
+  const leader = leaderDefault(medio, normale(normalizza(sottrai(b, a))), off);
+  const smusso: SmussoTecnico = {
+    a,
+    b,
+    catetoReale,
+    angoloGradi: opts.angoloGradi,
+    modo: opts.modo,
+    designazione: designazioneSmusso({ modo: opts.modo, catetoReale, angoloGradi: opts.angoloGradi }),
+    leader
+  };
+  return { smusso };
+}
+
+/** Ricalcola lunghezza e callout dello smusso (es. al cambio unità). */
+export function ricalcolaSmusso(q: QuotaTecnica, foto: CalibFoto, unita: Unita): SmussoTecnico | null {
+  if (!q.smusso) return null;
+  const catetoReale = haCalibrazione(foto)
+    ? misuraSegmento(q.smusso.a, q.smusso.b, foto, unita)
+    : q.smusso.catetoReale;
+  const s = { ...q.smusso, catetoReale };
+  return { ...s, designazione: designazioneSmusso(s) };
+}
+
+/** Leader di default per un'ancora di filettatura (in alto a destra). */
+export function leaderFilettatura(ancora: Punto, len: number): { da: Punto; a: Punto } {
+  return leaderDefault(ancora, { x: 1, y: -1 }, len);
 }

@@ -1,13 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modale } from '../components/comuni';
 import { Icona } from '../components/Icona';
-import type { Foto, QuotaTecnica, Unita, VersoQuota } from '../db/types';
+import type {
+  FilettaturaTecnica,
+  Foto,
+  QuotaTecnica,
+  SmussoTecnico,
+  Unita,
+  VersoQuota
+} from '../db/types';
 import { COLORE_QUOTA_TECNICA } from '../db/types';
 import {
   applicaGeometria,
+  designazioneFilettatura,
+  designazioneSmusso,
   generaParallelo,
   generaProgressiva,
   ricalcolaForo,
+  ricalcolaSmusso,
   ricalcolaValori
 } from '../geometry/quotaTecnica';
 import { distanza } from '../geometry/punti';
@@ -90,8 +100,13 @@ export function AmbienteQuotaturaTecnica({
   const isProgressiva = quota.sottotipo === 'progressiva';
   const isDatum = quota.sottotipo === 'datum';
   const isForo = quota.sottotipo === 'foro';
+  const isSmusso = quota.sottotipo === 'smusso';
+  const isFilettatura = quota.sottotipo === 'filettatura';
   const isCatena = isParallelo || isProgressiva || quota.sottotipo === 'serie';
+  const hasUnita = isCatena || isForo || isSmusso;
   const foro = quota.foro;
+  const smusso = quota.smusso;
+  const filettatura = quota.filettatura;
   const sp = quota.stile.spessore;
   const estMax = Math.max(20, Math.round(sp * 12));
   const gapCorrente = quota.gapEstensione ?? sp * 1.5;
@@ -119,6 +134,10 @@ export function AmbienteQuotaturaTecnica({
   const cambiaUnita = (unita: Unita) => {
     if (isForo) {
       onModifica({ ...quota, unita, foro: ricalcolaForo(quota, foto, unita) ?? quota.foro });
+      return;
+    }
+    if (isSmusso) {
+      onModifica({ ...quota, unita, smusso: ricalcolaSmusso(quota, foto, unita) ?? quota.smusso });
       return;
     }
     onModifica({ ...quota, unita, quote: ricalcolaValori(quota, foto, unita) });
@@ -178,6 +197,18 @@ export function AmbienteQuotaturaTecnica({
     onModifica({ ...quota, foro: { ...foro, etichetta: etichetta.toUpperCase().slice(0, 3) } });
   };
 
+  const aggiornaSmusso = (patch: Partial<SmussoTecnico>) => {
+    if (!smusso) return;
+    const s = { ...smusso, ...patch };
+    onModifica({ ...quota, smusso: { ...s, designazione: designazioneSmusso(s) } });
+  };
+
+  const aggiornaFilettatura = (patch: Partial<FilettaturaTecnica>) => {
+    if (!filettatura) return;
+    const f = { ...filettatura, ...patch };
+    onModifica({ ...quota, filettatura: { ...f, designazione: designazioneFilettatura(f) } });
+  };
+
   return (
     <Modale titolo={TITOLI[quota.sottotipo] ?? 'Quotatura tecnica'} onChiudi={onChiudi} centro>
       <div className="quota-tecnica-editor">
@@ -196,7 +227,7 @@ export function AmbienteQuotaturaTecnica({
           </div>
         )}
 
-        {!isDatum && (
+        {hasUnita && (
           <div className="qt-riga">
             <label className="qt-label">Unità</label>
             <div className="segmenti" role="group" aria-label="Unità di misura">
@@ -251,6 +282,112 @@ export function AmbienteQuotaturaTecnica({
                 onChange={(e) => cambiaEtichettaForo(e.target.value)}
                 aria-label="Etichetta del foro"
               />
+            </div>
+          </>
+        )}
+
+        {/* Smusso: modo C/angolo, valore, angolo */}
+        {isSmusso && smusso && (
+          <>
+            <div className="qt-riga">
+              <label className="qt-label">Modo</label>
+              <div className="segmenti" role="group" aria-label="Tipo di smusso">
+                <button
+                  className={smusso.modo === 'C' ? 'attivo' : ''}
+                  onClick={() => aggiornaSmusso({ modo: 'C' })}
+                >
+                  C (45°)
+                </button>
+                <button
+                  className={smusso.modo === 'lunghezzaAngolo' ? 'attivo' : ''}
+                  onClick={() => aggiornaSmusso({ modo: 'lunghezzaAngolo' })}
+                >
+                  Lungh. × angolo
+                </button>
+              </div>
+            </div>
+            <div className="qt-riga">
+              <label className="qt-label">Lunghezza</label>
+              <CampoValoreTecnico
+                valore={smusso.catetoReale}
+                onCambia={(v) => aggiornaSmusso({ catetoReale: v })}
+              />
+              <span className="qt-misura-unita">{quota.unita}</span>
+            </div>
+            {smusso.modo === 'lunghezzaAngolo' && (
+              <div className="qt-riga">
+                <label className="qt-label">Angolo</label>
+                <CampoValoreTecnico
+                  valore={smusso.angoloGradi}
+                  onCambia={(v) => aggiornaSmusso({ angoloGradi: v })}
+                />
+                <span className="qt-misura-unita">°</span>
+              </div>
+            )}
+            <div className="qt-riga">
+              <label className="qt-label">Callout</label>
+              <strong style={{ color: 'var(--testo-1)' }}>{smusso.designazione}</strong>
+            </div>
+          </>
+        )}
+
+        {/* Filettatura: tipo, Ø nominale, passo, classe, lunghezza */}
+        {isFilettatura && filettatura && (
+          <>
+            <div className="qt-riga">
+              <label className="qt-label">Tipo</label>
+              <div className="segmenti" role="group" aria-label="Filettatura interna o esterna">
+                <button
+                  className={filettatura.filettatura === 'interna' ? 'attivo' : ''}
+                  onClick={() => aggiornaFilettatura({ filettatura: 'interna' })}
+                >
+                  Interna
+                </button>
+                <button
+                  className={filettatura.filettatura === 'esterna' ? 'attivo' : ''}
+                  onClick={() => aggiornaFilettatura({ filettatura: 'esterna' })}
+                >
+                  Esterna
+                </button>
+              </div>
+            </div>
+            <div className="qt-riga">
+              <label className="qt-label">Ø nom. (M)</label>
+              <CampoValoreTecnico
+                valore={filettatura.diametroNominale}
+                onCambia={(v) =>
+                  aggiornaFilettatura({ diametroNominale: v ?? filettatura.diametroNominale })
+                }
+              />
+            </div>
+            <div className="qt-riga">
+              <label className="qt-label">Passo</label>
+              <CampoValoreTecnico
+                valore={filettatura.passo ?? null}
+                onCambia={(v) => aggiornaFilettatura({ passo: v ?? undefined })}
+              />
+            </div>
+            <div className="qt-riga">
+              <label className="qt-label">Classe</label>
+              <input
+                className="input-misura"
+                style={{ width: 90 }}
+                value={filettatura.classeTolleranza ?? ''}
+                maxLength={6}
+                onChange={(e) => aggiornaFilettatura({ classeTolleranza: e.target.value || undefined })}
+                aria-label="Classe di tolleranza"
+              />
+            </div>
+            <div className="qt-riga">
+              <label className="qt-label">Lunghezza</label>
+              <CampoValoreTecnico
+                valore={filettatura.lunghezza ?? null}
+                onCambia={(v) => aggiornaFilettatura({ lunghezza: v ?? undefined })}
+              />
+            </div>
+            <div className="qt-riga">
+              <label className="qt-label">Callout</label>
+              <strong style={{ color: 'var(--testo-1)' }}>{filettatura.designazione}</strong>
             </div>
           </>
         )}

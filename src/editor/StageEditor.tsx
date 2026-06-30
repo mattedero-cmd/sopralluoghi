@@ -89,7 +89,8 @@ function strumentoDuePunti(s: Strumento): boolean {
     s === 'calibra' ||
     s === 'forLinea' ||
     s === 'forRett' ||
-    s === 'forCerchio'
+    s === 'forCerchio' ||
+    s === 'tecSmusso'
   );
 }
 
@@ -166,6 +167,10 @@ interface Props {
   onNuovoDatum: (p: Punto) => void;
   /** quotatura foro: tre tap sul bordo → centro e ⌀/R */
   onNuovoForo: (p0: Punto, p1: Punto, p2: Punto) => void;
+  /** smusso: due tap sugli estremi del segmento smussato */
+  onNuovoSmusso: (a: Punto, b: Punto) => void;
+  /** filettatura: un tap sull'ancora → callout normalizzata */
+  onNuovaFilettatura: (ancora: Punto) => void;
   /** punti già posati della quota tecnica in corso (anteprima); null = inattivo */
   puntiTecnici: Punto[] | null;
   onNuovoCallout: (sorgente: Rettangolo) => void;
@@ -198,6 +203,7 @@ type Bozza =
   | { tipo: 'forRett'; p1: Punto; p2: Punto }
   | { tipo: 'forCerchio'; centro: Punto; bordo: Punto }
   | { tipo: 'forPoli'; punti: Punto[] }
+  | { tipo: 'tecSmusso'; p1: Punto; p2: Punto }
   | null;
 
 /** primo punto già fissato di una bozza a due punti */
@@ -210,6 +216,7 @@ function puntoFisso(b: Bozza): Punto | null {
     case 'rett':
     case 'forLinea':
     case 'forRett':
+    case 'tecSmusso':
       return b.p1;
     case 'raggio':
     case 'forCerchio':
@@ -228,6 +235,7 @@ function conSecondoPunto(b: NonNullable<Bozza>, punto: Punto): NonNullable<Bozza
     case 'rett':
     case 'forLinea':
     case 'forRett':
+    case 'tecSmusso':
       return { ...b, p2: punto };
     case 'raggio':
     case 'forCerchio':
@@ -587,8 +595,9 @@ export function StageEditor(p: Props) {
         disegnoAttivo.current = true;
         break;
       }
-      // datum tecnico: tocco singolo per posare il marcatore di riferimento
-      case 'tecDatum': {
+      // datum/filettatura tecnici: tocco singolo (con snap) per posare l'ancora
+      case 'tecDatum':
+      case 'tecFilettatura': {
         setPuntoPendente(applicaSnap(pos));
         setPuntoLente(pos);
         disegnoAttivo.current = true;
@@ -686,6 +695,10 @@ export function StageEditor(p: Props) {
       p.onNuovoDatum(punto);
       return;
     }
+    if (p.strumento === 'tecFilettatura') {
+      p.onNuovaFilettatura(punto);
+      return;
+    }
     if (p.strumento === 'etichetta') {
       p.onNuovaEtichetta(punto);
       return;
@@ -728,6 +741,9 @@ export function StageEditor(p: Props) {
           case 'forCerchio':
             setBozza({ tipo: 'forCerchio', centro: punto, bordo: punto });
             break;
+          case 'tecSmusso':
+            setBozza({ tipo: 'tecSmusso', p1: punto, p2: punto });
+            break;
         }
         return;
       }
@@ -760,6 +776,9 @@ export function StageEditor(p: Props) {
           break;
         case 'forCerchio':
           p.onNuovaForma('cerchio', [b.centro, b.bordo]);
+          break;
+        case 'tecSmusso':
+          p.onNuovoSmusso(b.p1, b.p2);
           break;
       }
       return;
@@ -989,7 +1008,8 @@ export function StageEditor(p: Props) {
       bozza.tipo === 'calibra' ||
       bozza.tipo === 'rett' ||
       bozza.tipo === 'forLinea' ||
-      bozza.tipo === 'forRett'
+      bozza.tipo === 'forRett' ||
+      bozza.tipo === 'tecSmusso'
         ? bozza.p2
         : bozza.tipo === 'raggio' || bozza.tipo === 'forCerchio'
           ? bozza.bordo
@@ -1044,6 +1064,7 @@ export function StageEditor(p: Props) {
         };
       case 'disegno':
         return { ...base, tipo: 'disegno', punti: bozza.punti };
+      case 'tecSmusso':
       case 'forLinea':
         return { ...base, tipo: 'forma', forma: 'linea', punti: [bozza.p1, bozza.p2], chiusa: false, partePerimetro: false };
       case 'forRett':

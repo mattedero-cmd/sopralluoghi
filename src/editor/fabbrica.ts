@@ -3,6 +3,7 @@ import type {
   Callout,
   DisegnoLibero,
   Etichetta,
+  FilettaturaTecnica,
   Forma,
   Foto,
   Freccia,
@@ -26,7 +27,15 @@ import type {
 import { COLORE_QUOTA, COLORE_QUOTA_TECNICA, quadrilateroQuotaRett } from '../db/types';
 import { nuovoId } from '../utils/id';
 import { haCalibrazione, misuraSegmento, valoreAutomatico } from '../geometry/calibrazione';
-import { generaForo, generaParallelo, generaProgressiva, generaSerie } from '../geometry/quotaTecnica';
+import {
+  designazioneFilettatura,
+  generaForo,
+  generaParallelo,
+  generaProgressiva,
+  generaSerie,
+  generaSmusso,
+  leaderFilettatura
+} from '../geometry/quotaTecnica';
 
 /**
  * Creazione delle annotazioni con valori predefiniti proporzionati
@@ -405,6 +414,62 @@ export class FabbricaAnnotazioni {
       valoreAuto: haCalibrazione(this.foto),
       foro: r.foro,
       puntiOriginali: [p0, p1, p2],
+      quote: [],
+      partePerimetro: false,
+      zIndex: this.prossimoZ(esistenti),
+      creatoIl: Date.now(),
+      stile: this.stileQuotaTecnica()
+    };
+  }
+
+  /** Smusso: due tap sugli estremi del segmento smussato → callout C/angolo. */
+  quotaTecnicaSmusso(a: Punto, b: Punto, esistenti: Annotazione[]): QuotaTecnica {
+    const unita = this.impostazioni.unitaDefault;
+    const { smusso } = generaSmusso(a, b, this.foto, { unita, modo: 'C', angoloGradi: 45 });
+    return {
+      id: nuovoId(),
+      fotoId: this.foto.id,
+      tipo: 'quotaTecnica',
+      sottotipo: 'smusso',
+      verso: 'sinistra',
+      unita,
+      valoreAuto: haCalibrazione(this.foto),
+      smusso,
+      puntiOriginali: [a, b],
+      quote: [],
+      partePerimetro: false,
+      zIndex: this.prossimoZ(esistenti),
+      creatoIl: Date.now(),
+      stile: this.stileQuotaTecnica()
+    };
+  }
+
+  /** Filettatura: un tap (ancora) → callout normalizzata (default M8 × 1.25 - 6H). */
+  quotaTecnicaFilettatura(ancora: Punto, esistenti: Annotazione[]): QuotaTecnica {
+    const unita = this.impostazioni.unitaDefault;
+    const off = Math.max(40, Math.round(this.stileBase().dimensioneTesto * 2.5));
+    const filettatura: FilettaturaTecnica = {
+      filettatura: 'interna',
+      ancora,
+      diametroNominale: 8,
+      passo: 1.25,
+      classeTolleranza: '6H',
+      designazione: designazioneFilettatura({
+        diametroNominale: 8,
+        passo: 1.25,
+        classeTolleranza: '6H'
+      }),
+      leader: leaderFilettatura(ancora, off)
+    };
+    return {
+      id: nuovoId(),
+      fotoId: this.foto.id,
+      tipo: 'quotaTecnica',
+      sottotipo: 'filettatura',
+      verso: 'sinistra',
+      unita,
+      filettatura,
+      puntiOriginali: [ancora],
       quote: [],
       partePerimetro: false,
       zIndex: this.prossimoZ(esistenti),

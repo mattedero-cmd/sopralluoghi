@@ -1030,6 +1030,22 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     setSelezioneId(f.id);
   };
 
+  /** smusso: due tap sugli estremi del segmento smussato; resta nello strumento */
+  const creaSmusso = (a: Punto, b: Punto) => {
+    if (!fabbrica || !annotazioni) return;
+    const s = fabbrica.quotaTecnicaSmusso(a, b, annotazioni);
+    commit([...annotazioni, s]);
+    setSelezioneId(s.id);
+  };
+
+  /** filettatura: un tap sull'ancora → callout normalizzata; resta nello strumento */
+  const creaFilettatura = (ancora: Punto) => {
+    if (!fabbrica || !annotazioni) return;
+    const f = fabbrica.quotaTecnicaFilettatura(ancora, annotazioni);
+    commit([...annotazioni, f]);
+    setSelezioneId(f.id);
+  };
+
   /** Avvia la modalità "duplica misura" sulla forma selezionata (stessa foto):
    *  fissa il gruppo della famiglia e poi ogni tocco crea una copia collegata. */
   const avviaDuplica = () => {
@@ -1437,6 +1453,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         puntiTecnici={STRUMENTI_POSA_TECNICA.has(strumento) ? puntiTecnici : null}
         onNuovoDatum={creaDatum}
         onNuovoForo={creaForo}
+        onNuovoSmusso={creaSmusso}
+        onNuovaFilettatura={creaFilettatura}
         onNuovoCallout={creaCallout}
         onCalibra={(p1, p2) => setSchedaScala({ px: distanza(p1, p2) })}
         onPiano={(punti) => setSchedaPiano({ punti })}
@@ -1503,6 +1521,24 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       {strumento === 'tecForo' && (
         <div className="barra-etichetta" role="status">
           <span className="hint">Tocca 3 punti sul bordo del foro: centro e ⌀/R automatici</span>
+          <button className="btn" onClick={() => setStrumento('seleziona')}>
+            <Icona nome="check" dimensione={18} /> Fine
+          </button>
+        </div>
+      )}
+
+      {strumento === 'tecSmusso' && (
+        <div className="barra-etichetta" role="status">
+          <span className="hint">Tocca i due estremi del segmento smussato</span>
+          <button className="btn" onClick={() => setStrumento('seleziona')}>
+            <Icona nome="check" dimensione={18} /> Fine
+          </button>
+        </div>
+      )}
+
+      {strumento === 'tecFilettatura' && (
+        <div className="barra-etichetta" role="status">
+          <span className="hint">Tocca il punto della filettatura; i dati si impostano dopo</span>
           <button className="btn" onClick={() => setStrumento('seleziona')}>
             <Icona nome="check" dimensione={18} /> Fine
           </button>
@@ -1888,13 +1924,18 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                         setStrumento(v.s);
                         return;
                       }
-                      if (v.s === 'tecDatum' || v.s === 'tecForo') {
-                        // posa diretta sulla foto (datum a 1 tap, foro a 3 tap)
+                      if (
+                        v.s === 'tecDatum' ||
+                        v.s === 'tecForo' ||
+                        v.s === 'tecSmusso' ||
+                        v.s === 'tecFilettatura'
+                      ) {
+                        // posa diretta sulla foto (datum/filettatura 1 tap, smusso 2, foro 3)
                         setStrumento(v.s);
                         return;
                       }
                       if (STRUMENTI_TECNICI.has(v.s)) {
-                        // strumenti tecnici non ancora implementati
+                        // sicurezza: strumenti tecnici non ancora implementati
                         setStrumento('seleziona');
                         mostraToast('info', 'Questo strumento tecnico arriva nelle prossime fasi.');
                         return;

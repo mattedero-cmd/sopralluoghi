@@ -5,12 +5,16 @@ import {
   applicaGeometria,
   applicaOffsetSerie,
   ascissaSuGuida,
+  designazioneFilettatura,
+  designazioneSmusso,
   direzioneSerie,
   generaForo,
   generaParallelo,
   generaProgressiva,
   generaSerie,
+  generaSmusso,
   ricalcolaForo,
+  ricalcolaSmusso,
   ricalcolaValori,
   ricalcolaValoriSerie
 } from '../../geometry/quotaTecnica';
@@ -562,5 +566,123 @@ describe('primitiveQuotaTecnica — foro', () => {
     };
     expect(t.testo).toContain('R');
     expect(t.testo).toContain('25'); // R 25 cm
+  });
+});
+
+describe('smusso e filettatura (Fase 5b)', () => {
+  it('designazioneSmusso: C{x} a 45°, lunghezza×angolo altrimenti', () => {
+    expect(designazioneSmusso({ modo: 'C', catetoReale: 2, angoloGradi: 45 })).toBe('C2');
+    expect(designazioneSmusso({ modo: 'lunghezzaAngolo', catetoReale: 3, angoloGradi: 30 })).toBe(
+      '3 × 30°'
+    );
+  });
+
+  it('designazioneFilettatura: M{Ø} × {passo} - {classe}', () => {
+    const d = designazioneFilettatura({ diametroNominale: 8, passo: 1.25, classeTolleranza: '6H' });
+    expect(d.startsWith('M8')).toBe(true);
+    expect(d).toContain('6H');
+    expect(d).toContain('×');
+    // solo diametro, senza passo/classe
+    expect(designazioneFilettatura({ diametroNominale: 10 })).toBe('M10');
+  });
+
+  it('generaSmusso misura il segmento e imposta il leader', () => {
+    const r = generaSmusso({ x: 0, y: 0 }, { x: 100, y: 0 }, fotoScala, {
+      unita: 'cm',
+      modo: 'C',
+      angoloGradi: 45
+    });
+    // 100 px → 50 cm
+    expect(r.smusso.catetoReale).toBeCloseTo(50);
+    expect(r.smusso.designazione).toBe('C50');
+    expect(r.smusso.leader?.da).toEqual({ x: 50, y: 0 }); // punto medio
+    expect(r.smusso.leader!.a.y).not.toBeCloseTo(0); // staccato dal segmento
+  });
+
+  it('ricalcolaSmusso riconverte la lunghezza al cambio unità', () => {
+    const gen = generaSmusso({ x: 0, y: 0 }, { x: 100, y: 0 }, fotoScala, {
+      unita: 'cm',
+      modo: 'C',
+      angoloGradi: 45
+    });
+    const quota: QuotaTecnica = {
+      id: 'sm',
+      fotoId: 'foto',
+      tipo: 'quotaTecnica',
+      sottotipo: 'smusso',
+      verso: 'sinistra',
+      unita: 'cm',
+      smusso: gen.smusso,
+      puntiOriginali: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 }
+      ],
+      quote: [],
+      partePerimetro: false,
+      zIndex: 1,
+      stile
+    };
+    const inMm = ricalcolaSmusso(quota, fotoScala, 'mm');
+    expect(inMm!.catetoReale).toBeCloseTo(500); // 50 cm → 500 mm
+    expect(inMm!.designazione).toBe('C500');
+  });
+
+  it('primitiveQuotaTecnica disegna smusso (segmento + leader + callout)', () => {
+    const gen = generaSmusso({ x: 0, y: 0 }, { x: 100, y: 0 }, fotoScala, {
+      unita: 'cm',
+      modo: 'C',
+      angoloGradi: 45
+    });
+    const quota: QuotaTecnica = {
+      id: 'sm',
+      fotoId: 'foto',
+      tipo: 'quotaTecnica',
+      sottotipo: 'smusso',
+      verso: 'sinistra',
+      unita: 'cm',
+      smusso: gen.smusso,
+      puntiOriginali: [],
+      quote: [],
+      partePerimetro: false,
+      zIndex: 1,
+      stile
+    };
+    const prim = primitiveQuotaTecnica(quota);
+    expect(prim.some((p) => p.kind === 'linea')).toBe(true);
+    const t = prim.find((p) => p.kind === 'testo') as { kind: 'testo'; testo: string };
+    expect(t.testo).toBe('C50');
+  });
+
+  it('primitiveQuotaTecnica disegna la callout della filettatura', () => {
+    const quota: QuotaTecnica = {
+      id: 'th',
+      fotoId: 'foto',
+      tipo: 'quotaTecnica',
+      sottotipo: 'filettatura',
+      verso: 'sinistra',
+      unita: 'cm',
+      filettatura: {
+        filettatura: 'interna',
+        ancora: { x: 50, y: 50 },
+        diametroNominale: 8,
+        passo: 1.25,
+        classeTolleranza: '6H',
+        designazione: designazioneFilettatura({
+          diametroNominale: 8,
+          passo: 1.25,
+          classeTolleranza: '6H'
+        }),
+        leader: { da: { x: 50, y: 50 }, a: { x: 120, y: -20 } }
+      },
+      puntiOriginali: [{ x: 50, y: 50 }],
+      quote: [],
+      partePerimetro: false,
+      zIndex: 1,
+      stile
+    };
+    const prim = primitiveQuotaTecnica(quota);
+    const t = prim.find((p) => p.kind === 'testo') as { kind: 'testo'; testo: string };
+    expect(t.testo).toContain('M8');
+    expect(t.testo).toContain('6H');
   });
 });

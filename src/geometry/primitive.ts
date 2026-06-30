@@ -1290,6 +1290,63 @@ function primitiveDatum(q: QuotaTecnica): Primitiva[] {
   ];
 }
 
+/** Leader di richiamo con mensola e testo (callout di smusso/filettatura). */
+function leaderCallout(
+  da: Punto,
+  a: Punto,
+  testo: string,
+  dimTesto: number,
+  colore: string,
+  sp: number
+): Primitiva[] {
+  const larghezza = misuraLarghezzaTesto(testo, dimTesto);
+  const verso = a.x >= da.x ? 1 : -1;
+  const shelfEnd = { x: a.x + verso * larghezza, y: a.y };
+  const testoX = verso > 0 ? a.x : shelfEnd.x;
+  return [
+    { kind: 'cerchio', centro: da, raggio: Math.max(sp * 1.4, 2), colore, spessore: 0, riempimento: colore },
+    { kind: 'linea', punti: [da.x, da.y, a.x, a.y], colore, spessore: sp * 0.75, alone: ALONE },
+    { kind: 'linea', punti: [a.x, a.y, shelfEnd.x, shelfEnd.y], colore, spessore: sp * 0.75, alone: ALONE },
+    {
+      kind: 'testo',
+      testo,
+      posizione: { x: testoX, y: a.y - dimTesto * 0.62 },
+      rotazioneDeg: 0,
+      dimensione: dimTesto,
+      colore,
+      sfondo: null,
+      alone: ALONE,
+      allineamento: 'left'
+    }
+  ];
+}
+
+/** Smusso (§5.7): segmento smussato evidenziato + leader con la callout C/angolo. */
+function primitiveSmusso(q: QuotaTecnica): Primitiva[] {
+  const s = q.smusso;
+  if (!s) return [];
+  const colore = q.stile.colore || COLORE_QUOTA_TECNICA;
+  const sp = q.stile.spessore;
+  const dimT = q.stile.dimensioneTesto;
+  const medio = scala(somma(s.a, s.b), 0.5);
+  const leader = s.leader ?? { da: medio, a: medio };
+  return [
+    { kind: 'linea', punti: [s.a.x, s.a.y, s.b.x, s.b.y], colore, spessore: sp, alone: ALONE },
+    ...leaderCallout(leader.da, leader.a, s.designazione, dimT, colore, sp)
+  ];
+}
+
+/** Filettatura (§5.8): leader + callout normalizzata (nessun filetto disegnato). */
+function primitiveFilettatura(q: QuotaTecnica): Primitiva[] {
+  const f = q.filettatura;
+  if (!f) return [];
+  const colore = q.stile.colore || COLORE_QUOTA_TECNICA;
+  const sp = q.stile.spessore;
+  const dimT = q.stile.dimensioneTesto;
+  const leader = f.leader ?? { da: f.ancora, a: f.ancora };
+  return leaderCallout(leader.da, leader.a, f.designazione, dimT, colore, sp);
+}
+
 /** Dispatcher della quotatura tecnica per sottotipo. */
 export function primitiveQuotaTecnica(q: QuotaTecnica): Primitiva[] {
   switch (q.sottotipo) {
@@ -1303,9 +1360,10 @@ export function primitiveQuotaTecnica(q: QuotaTecnica): Primitiva[] {
       return primitiveDatum(q);
     case 'foro':
       return primitiveForo(q);
-    default:
-      // smusso/filettatura: fasi successive
-      return [];
+    case 'smusso':
+      return primitiveSmusso(q);
+    case 'filettatura':
+      return primitiveFilettatura(q);
   }
 }
 
