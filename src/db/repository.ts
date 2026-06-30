@@ -12,6 +12,7 @@ import {
   type Sezione
 } from './types';
 import { nuovoId } from '../utils/id';
+import { blobMiniatura, blobOrigine } from '../utils/image';
 import { inizioSalvataggio, fineSalvataggio } from '../state/saveStatus';
 import { mostraToast } from '../state/toast';
 import { segnaModifica } from '../cloud/promemoria';
@@ -356,11 +357,14 @@ export async function creaPianta(
  * misurano già in reale. Lo sfondo è mostrato e si può nascondere a piacere.
  */
 export async function creaPiantaDaFoto(progettoId: ID, sorgente: Foto): Promise<Foto> {
+  // accessori robusti ai record legacy (origine ancora come Blob su iOS)
+  const blobO = blobOrigine(sorgente);
+  const blobM = blobMiniatura(sorgente);
   return aggiungiFoto(progettoId, {
-    origine: sorgente.origine.slice(0),
-    origineTipo: sorgente.origineTipo,
-    miniatura: sorgente.miniatura.slice(0),
-    miniaturaTipo: sorgente.miniaturaTipo,
+    origine: await blobO.arrayBuffer(),
+    origineTipo: blobO.type || sorgente.origineTipo || 'image/jpeg',
+    miniatura: await blobM.arrayBuffer(),
+    miniaturaTipo: blobM.type || sorgente.miniaturaTipo || 'image/jpeg',
     larghezzaPx: sorgente.larghezzaPx,
     altezzaPx: sorgente.altezzaPx,
     dataScatto: ora(),
