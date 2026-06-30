@@ -2093,6 +2093,55 @@ a {
   font-weight: 800;
 }
 
+/* ambiente di modifica della quotatura tecnica */
+.quota-tecnica-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 8px 0 16px;
+}
+.quota-tecnica-editor .qt-riga {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.quota-tecnica-editor .qt-label {
+  flex: 0 0 76px;
+  color: var(--testo-2);
+  font-size: 14px;
+}
+.quota-tecnica-editor .qt-colori {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.quota-tecnica-editor .qt-misure {
+  border-top: 1px solid var(--bordo, rgba(255, 255, 255, 0.12));
+  padding-top: 12px;
+}
+.quota-tecnica-editor .qt-misura-riga {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.quota-tecnica-editor .qt-misura-num {
+  flex: 0 0 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #1a73e8;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+.quota-tecnica-editor .qt-misura-unita {
+  color: var(--testo-2);
+  font-size: 14px;
+}
+
 /* griglia delle foto di dettaglio nel modale dell'etichetta */
 .griglia-dettagli {
   display: grid;

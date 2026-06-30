@@ -286,8 +286,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [strumento, setStrumento] = useState<Strumento>('seleziona');
   /** modalità quotatura: base ↔ tecnica (sostituisce la toolbar) */
   const [modalitaTecnica, setModalitaTecnica] = useState(false);
-  /** ambiente dedicato della quotatura tecnica aperto su uno strumento */
-  const [ambienteTecnico, setAmbienteTecnico] = useState<Strumento | null>(null);
+  /** punti posati della quotatura tecnica in serie in corso (catena da generare) */
+  const [puntiTecnici, setPuntiTecnici] = useState<Punto[]>([]);
   /** lettera attiva per la posa rapida delle etichette (modalità Note) */
   const [letteraAttiva, setLetteraAttiva] = useState('A');
   /** menu circolare aperto (coord schermo + indice della voce proposta) */
@@ -317,6 +317,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     | { tipo: 'poligono'; id: string }
     | { tipo: 'segmento'; id: string; indice: number }
     | { tipo: 'callout'; id: string }
+    | { tipo: 'tecnica'; id: string }
     | null
   >(null);
   const [testoInModifica, setTestoInModifica] = useState<string | null>(null);
@@ -473,6 +474,11 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     setLetteraAttiva(prossimaLetteraLibera(usate));
     // solo all'ingresso nello strumento, non a ogni modifica delle annotazioni
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [strumento]);
+
+  // uscendo dalla posa della quotatura tecnica, scarta i punti non confermati
+  useEffect(() => {
+    if (strumento !== 'tecSerie') setPuntiTecnici((punti) => (punti.length ? [] : punti));
   }, [strumento]);
 
 
@@ -969,6 +975,23 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     setStrumento('seleziona');
   };
 
+  /** genera la quotatura tecnica in serie dai punti posati e ne apre l'editor */
+  const creaQuotaTecnicaSerie = () => {
+    if (!fabbrica || !annotazioni || !foto || puntiTecnici.length < 2) return;
+    const q = fabbrica.quotaTecnicaSerie(
+      puntiTecnici,
+      { unita: impostazioni.unitaDefault },
+      annotazioni
+    );
+    commit([...annotazioni, q]);
+    setPuntiTecnici([]);
+    setSelezioneId(q.id);
+    setStrumento('seleziona');
+    // si mostra subito la catena generata (selezionata): l'ambiente di
+    // modifica si apre col pulsante Modifica, se servono ritocchi
+    if (!haCalibrazione(foto)) setQuotaInModifica({ tipo: 'tecnica', id: q.id });
+  };
+
   /** Avvia la modalità "duplica misura" sulla forma selezionata (stessa foto):
    *  fissa il gruppo della famiglia e poi ogni tocco crea una copia collegata. */
   const avviaDuplica = () => {
@@ -1245,7 +1268,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     a.tipo === 'quotaAngolo' ||
     a.tipo === 'quotaPoligono' ||
     a.tipo === 'testo' ||
-    a.tipo === 'callout';
+    a.tipo === 'callout' ||
+    a.tipo === 'quotaTecnica';
 
   /** un tocco "secco" sulla quota apre subito l'ambiente di modifica */
   const apriModifica = (id: string) => {
@@ -1257,6 +1281,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     if (a.tipo === 'quotaPoligono') setQuotaInModifica({ tipo: 'poligono', id });
     else if (a.tipo === 'callout') setQuotaInModifica({ tipo: 'callout', id });
     else if (a.tipo === 'testo') setTestoInModifica(id);
+    else if (a.tipo === 'quotaTecnica') setQuotaInModifica({ tipo: 'tecnica', id });
     else if (haAmbienteDedicato(a)) setQuotaInModifica({ tipo: 'quota', id });
   };
 
@@ -1370,6 +1395,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         onNuovaFreccia={creaFreccia}
         onNuovoDisegno={creaDisegno}
         onNuovaForma={creaForma}
+        onPuntoTecnico={(pt) => setPuntiTecnici((punti) => [...punti, pt])}
+        puntiTecnici={strumento === 'tecSerie' ? puntiTecnici : null}
         onNuovoCallout={creaCallout}
         onCalibra={(p1, p2) => setSchedaScala({ px: distanza(p1, p2) })}
         onPiano={(punti) => setSchedaPiano({ punti })}
@@ -1385,6 +1412,41 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           </button>
           <button className="btn" onClick={() => setStrumento('seleziona')}>
             <Icona nome="check" dimensione={18} /> Fine
+          </button>
+        </div>
+      )}
+
+      {strumento === 'tecSerie' && (
+        <div className="barra-etichetta" role="status">
+          <span className="hint">
+            {puntiTecnici.length === 0
+              ? 'Tocca i punti della catena, in sequenza'
+              : `${puntiTecnici.length} ${puntiTecnici.length === 1 ? 'punto' : 'punti'} · tocca per aggiungere`}
+          </span>
+          {puntiTecnici.length > 0 && (
+            <button
+              className="btn"
+              onClick={() => setPuntiTecnici((punti) => punti.slice(0, -1))}
+              aria-label="Annulla ultimo punto"
+            >
+              <Icona nome="annulla" dimensione={18} /> Indietro
+            </button>
+          )}
+          <button
+            className="btn primario"
+            disabled={puntiTecnici.length < 2}
+            onClick={creaQuotaTecnicaSerie}
+          >
+            <Icona nome="check" dimensione={18} /> Genera
+          </button>
+          <button
+            className="btn"
+            onClick={() => {
+              setPuntiTecnici([]);
+              setStrumento('seleziona');
+            }}
+          >
+            <Icona nome="chiudi" dimensione={18} /> Annulla
           </button>
         </div>
       )}
@@ -1452,15 +1514,28 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           );
         })()}
 
-      {ambienteTecnico && (
-        <AmbienteQuotaturaTecnica
-          strumento={ambienteTecnico}
-          onChiudi={() => {
-            setAmbienteTecnico(null);
-            setStrumento('seleziona');
-          }}
-        />
-      )}
+      {quotaInModifica?.tipo === 'tecnica' &&
+        foto &&
+        annotazioni &&
+        (() => {
+          const a0 = annotazioni.find((a) => a.id === quotaInModifica.id);
+          if (!a0 || a0.tipo !== 'quotaTecnica') return null;
+          return (
+            <AmbienteQuotaturaTecnica
+              quota={a0}
+              foto={foto}
+              onModifica={(nuova) =>
+                commit(annotazioni.map((a) => (a.id === nuova.id ? nuova : a)))
+              }
+              onElimina={() => {
+                commit(annotazioni.filter((a) => a.id !== a0.id));
+                if (selezioneId === a0.id) setSelezioneId(null);
+                setQuotaInModifica(null);
+              }}
+              onChiudi={() => setQuotaInModifica(null)}
+            />
+          );
+        })()}
 
       {menuEtichetta && (
         <MenuCircolareEtichette
@@ -1748,10 +1823,20 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                     key={v.s}
                     className={`btn-strumento-grande${strumento === v.s ? ' attivo' : ''}`}
                     onClick={() => {
-                      setStrumento(v.s);
                       setMenuAperto(null);
-                      // gli strumenti tecnici aprono l'ambiente dedicato
-                      if (STRUMENTI_TECNICI.has(v.s)) setAmbienteTecnico(v.s);
+                      if (v.s === 'tecSerie') {
+                        // posa guidata della catena sulla foto (no modale)
+                        setPuntiTecnici([]);
+                        setStrumento('tecSerie');
+                        return;
+                      }
+                      if (STRUMENTI_TECNICI.has(v.s)) {
+                        // strumenti tecnici non ancora implementati
+                        setStrumento('seleziona');
+                        mostraToast('info', 'Questo strumento tecnico arriva nelle prossime fasi.');
+                        return;
+                      }
+                      setStrumento(v.s);
                     }}
                   >
                     <span className="ico">

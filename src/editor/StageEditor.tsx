@@ -160,6 +160,10 @@ interface Props {
   onNuovoDisegno: (punti: number[]) => void;
   /** nuova forma di disegno generica (linea/rettangolo/cerchio/poligono) */
   onNuovaForma: (forma: TipoForma, punti: Punto[]) => void;
+  /** punto posato in modalità quotatura tecnica (catena in serie) */
+  onPuntoTecnico: (p: Punto) => void;
+  /** punti già posati della quota tecnica in corso (anteprima); null = inattivo */
+  puntiTecnici: Punto[] | null;
   onNuovoCallout: (sorgente: Rettangolo) => void;
   onCalibra: (p1: Punto, p2: Punto) => void;
   onPiano: (punti: [Punto, Punto, Punto, Punto]) => void;
@@ -606,7 +610,8 @@ export function StageEditor(p: Props) {
       case 'polilinea':
       case 'cerchio3p':
       case 'piano':
-      case 'forPoligono': {
+      case 'forPoligono':
+      case 'tecSerie': {
         const punto = applicaSnap(pos);
         setPuntoPendente(punto);
         setPuntoLente(punto);
@@ -752,6 +757,11 @@ export function StageEditor(p: Props) {
         }
       }
       setBozza({ tipo: 'forPoli', punti: [...correnti, punto] });
+      return;
+    }
+    if (p.strumento === 'tecSerie') {
+      // i punti della catena sono gestiti dal genitore (anteprima + "Genera")
+      p.onPuntoTecnico(punto);
       return;
     }
     if (p.strumento === 'angolo') {
@@ -1326,6 +1336,31 @@ export function StageEditor(p: Props) {
                   listening={false}
                 />
               )}
+            </>
+          )}
+          {p.puntiTecnici && p.puntiTecnici.length > 0 && (
+            <>
+              {p.puntiTecnici.length > 1 && (
+                <Line
+                  points={p.puntiTecnici.flatMap((pt) => [pt.x, pt.y])}
+                  stroke="#1a73e8"
+                  strokeWidth={2 / vista.scala}
+                  dash={[8 / vista.scala, 6 / vista.scala]}
+                  listening={false}
+                />
+              )}
+              {p.puntiTecnici.map((pt, i) => (
+                <Circle
+                  key={i}
+                  x={pt.x}
+                  y={pt.y}
+                  radius={raggioManiglia * 0.55}
+                  fill="#1a73e8"
+                  stroke="#ffffff"
+                  strokeWidth={1.5 / vista.scala}
+                  listening={false}
+                />
+              ))}
             </>
           )}
           {tracciaAuto && tracciaAuto.length >= 4 && (

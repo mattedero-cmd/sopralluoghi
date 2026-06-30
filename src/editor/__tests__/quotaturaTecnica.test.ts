@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { traslaAnnotazione } from '../fabbrica';
-import { primitiveForma } from '../../geometry/primitive';
-import type { Forma, QuotaTecnica } from '../../db/types';
+import { primitiveForma, primitiveQuotaTecnica } from '../../geometry/primitive';
+import {
+  applicaOffsetSerie,
+  ascissaSuGuida,
+  direzioneSerie,
+  generaSerie,
+  ricalcolaValoriSerie
+} from '../../geometry/quotaTecnica';
+import type { Forma, Punto, QuotaTecnica } from '../../db/types';
+
+const fotoScala = { scala: { px: 100, reale: 50, unita: 'cm' as const }, piano: null };
 
 const stile = { colore: '#1a73e8', spessore: 3, dimensioneTesto: 24 };
 
@@ -54,6 +63,7 @@ describe('quotatura tecnica — modello dati additivo', () => {
       sottotipo: 'serie',
       lineaGuida: { a: { x: 0, y: 0 }, b: { x: 100, y: 0 } },
       verso: 'sinistra',
+      unita: 'cm',
       puntiOriginali: [
         { x: 10, y: 0 },
         { x: 40, y: 0 }
@@ -105,5 +115,112 @@ describe('primitiveForma — rendering forme generiche', () => {
     const pl = prim.find((p) => p.kind === 'polilinea') as { kind: 'polilinea'; punti: number[] };
     // 3 vertici + ritorno al primo = 4 punti (8 coordinate)
     expect(pl.punti.length).toBe(8);
+  });
+});
+
+describe('generaSerie — catena di quote in serie', () => {
+  it('ordina i punti lungo la guida e crea una quota per coppia consecutiva', () => {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 80, y: 0 },
+      { x: 40, y: 0 }
+    ]; // volutamente fuori ordine
+    const r = generaSerie(punti, fotoScala, { unita: 'cm', offset: 20, verso: 'sinistra' });
+    expect(r.quote).toHaveLength(2);
+    expect(r.puntiOrdinati.map((p) => p.x)).toEqual([0, 40, 80]);
+    // 40 px → 40·50/100 = 20 cm per ogni tratto
+    expect(r.quote[0].valore).toBeCloseTo(20);
+    expect(r.quote[1].valore).toBeCloseTo(20);
+  });
+
+  it('il verso destra inverte il segno dell’offset', () => {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 }
+    ];
+    const sx = generaSerie(punti, fotoScala, { unita: 'cm', offset: 30, verso: 'sinistra' });
+    const dx = generaSerie(punti, fotoScala, { unita: 'cm', offset: 30, verso: 'destra' });
+    expect(sx.quote[0].offset).toBeCloseTo(30);
+    expect(dx.quote[0].offset).toBeCloseTo(-30);
+  });
+
+  it('senza calibrazione i valori restano null', () => {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 50, y: 0 }
+    ];
+    const r = generaSerie(punti, { scala: null, piano: null }, {
+      unita: 'cm',
+      offset: 10,
+      verso: 'sinistra'
+    });
+    expect(r.quote[0].valore).toBeNull();
+  });
+
+  it('direzioneSerie e ascissaSuGuida descrivono la guida primo→ultimo', () => {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 30, y: 0 }
+    ];
+    const d = direzioneSerie(punti);
+    expect(d.x).toBeCloseTo(1);
+    expect(d.y).toBeCloseTo(0);
+    expect(ascissaSuGuida(punti[2], punti[0], d)).toBeCloseTo(30);
+  });
+
+  it('ricalcolaValoriSerie ed applicaOffsetSerie aggiornano le quote esistenti', () => {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 }
+    ];
+    const { quote } = generaSerie(punti, fotoScala, { unita: 'cm', offset: 20, verso: 'sinistra' });
+    // 100 px → 50 cm; in mm → 500
+    const inMm = ricalcolaValoriSerie(quote, fotoScala, 'mm');
+    expect(inMm[0].valore).toBeCloseTo(500);
+    const spostate = applicaOffsetSerie(quote, 45, 'destra');
+    expect(spostate[0].offset).toBeCloseTo(-45);
+  });
+});
+
+describe('primitiveQuotaTecnica — rendering serie', () => {
+  function serie(): QuotaTecnica {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 250, y: 0 }
+    ];
+    const { lineaGuida, quote } = generaSerie(punti, fotoScala, {
+      unita: 'cm',
+      offset: 40,
+      verso: 'sinistra'
+    });
+    return {
+      id: 's1',
+      fotoId: 'foto',
+      tipo: 'quotaTecnica',
+      sottotipo: 'serie',
+      lineaGuida,
+      verso: 'sinistra',
+      unita: 'cm',
+      valoreAuto: true,
+      puntiOriginali: punti,
+      quote,
+      partePerimetro: false,
+      zIndex: 1,
+      stile
+    };
+  }
+
+  it('produce linea di quota, estensioni e un testo per ogni tratto', () => {
+    const prim = primitiveQuotaTecnica(serie());
+    expect(prim.some((p) => p.kind === 'linea')).toBe(true);
+    // un’etichetta di valore per ciascuno dei 2 tratti
+    expect(prim.filter((p) => p.kind === 'testo')).toHaveLength(2);
+  });
+
+  it('le sottotipologie non ancora implementate non disegnano nulla', () => {
+    const q = { ...serie(), sottotipo: 'parallelo' as const };
+    expect(primitiveQuotaTecnica(q)).toHaveLength(0);
   });
 });

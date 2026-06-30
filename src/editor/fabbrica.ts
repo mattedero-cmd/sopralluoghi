@@ -14,15 +14,19 @@ import type {
   QuotaAngolare,
   QuotaPoligono,
   QuotaRaggio,
+  QuotaTecnica,
   Rettangolo,
   SegmentoQuota,
   SottotipoQuota,
   Stile,
-  TestoFoto
+  TestoFoto,
+  Unita,
+  VersoQuota
 } from '../db/types';
-import { COLORE_QUOTA, quadrilateroQuotaRett } from '../db/types';
+import { COLORE_QUOTA, COLORE_QUOTA_TECNICA, quadrilateroQuotaRett } from '../db/types';
 import { nuovoId } from '../utils/id';
 import { haCalibrazione, misuraSegmento, valoreAutomatico } from '../geometry/calibrazione';
+import { generaSerie } from '../geometry/quotaTecnica';
 
 /**
  * Creazione delle annotazioni con valori predefiniti proporzionati
@@ -282,6 +286,47 @@ export class FabbricaAnnotazioni {
       zIndex: this.prossimoZ(esistenti),
       creatoIl: Date.now(),
       stile: this.stileBase()
+    };
+  }
+
+  /** Stile delle quote tecniche: come quello base ma con il blu tecnico. */
+  private stileQuotaTecnica(): Stile {
+    return { ...this.stileBase(), colore: COLORE_QUOTA_TECNICA };
+  }
+
+  /** Offset di default della linea di quota tecnica dai punti (px immagine). */
+  private offsetTecnicoDefault(): number {
+    return Math.max(30, Math.round(this.stileBase().dimensioneTesto * 2.5));
+  }
+
+  /**
+   * Quotatura tecnica IN SERIE da N punti posati: ordina i punti lungo la
+   * guida e genera la catena di quote allineate su un'unica linea di quota.
+   */
+  quotaTecnicaSerie(
+    puntiOriginali: Punto[],
+    opts: { unita?: Unita; offset?: number; verso?: VersoQuota },
+    esistenti: Annotazione[]
+  ): QuotaTecnica {
+    const unita = opts.unita ?? this.impostazioni.unitaDefault;
+    const verso: VersoQuota = opts.verso ?? 'sinistra';
+    const offset = opts.offset ?? this.offsetTecnicoDefault();
+    const { lineaGuida, quote } = generaSerie(puntiOriginali, this.foto, { unita, offset, verso });
+    return {
+      id: nuovoId(),
+      fotoId: this.foto.id,
+      tipo: 'quotaTecnica',
+      sottotipo: 'serie',
+      lineaGuida,
+      verso,
+      unita,
+      valoreAuto: haCalibrazione(this.foto),
+      puntiOriginali,
+      quote,
+      partePerimetro: false,
+      zIndex: this.prossimoZ(esistenti),
+      creatoIl: Date.now(),
+      stile: this.stileQuotaTecnica()
     };
   }
 

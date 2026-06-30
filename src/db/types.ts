@@ -702,6 +702,10 @@ export interface QuotaTecnica extends AnnotazioneBase {
   lineaGuida?: { a: Punto; b: Punto };
   riferimento?: RiferimentoTecnico;
   verso: VersoQuota;
+  /** unità delle misure di tutte le quote del gruppo */
+  unita: Unita;
+  /** valori derivati dalla calibrazione (false = qualche valore è manuale) */
+  valoreAuto?: boolean;
   /** tap dell'utente (punti reali) */
   puntiOriginali: Punto[];
   /** quote generate (rieditabili) — serie/parallelo/progressiva */

@@ -12,11 +12,14 @@ import type {
   QuotaPoligono,
   QuotaRaggio,
   QuotaRettangolo,
+  QuotaTecnica,
   Rettangolo,
-  TestoFoto
+  TestoFoto,
+  Unita
 } from '../db/types';
 import {
   COLORE_QUOTA,
+  COLORE_QUOTA_TECNICA,
   quadrilateroQuotaRett,
   segmentiPoligono,
   segmentoELato
@@ -921,6 +924,143 @@ export function primitiveForma(f: Forma): Primitiva[] {
   return prim;
 }
 
+// ---------------------------------------------------------------------------
+// Quotatura tecnica (§5) — rendering per sottotipo
+// ---------------------------------------------------------------------------
+
+/** Piede di `p` sulla linea di quota: proiezione sulla guida + offset normale. */
+function piedeQuotaTecnica(p: Punto, a: Punto, d: Punto, n: Punto, offset: number): Punto {
+  const t = dot(sottrai(p, a), d);
+  return somma(somma(a, scala(d, t)), scala(n, offset));
+}
+
+/** Etichetta del valore di una quota tecnica (— se non calcolabile). */
+function etichettaQuotaTecnica(valore: number | null, unita: Unita): string {
+  return valore === null ? '—' : formattaMisura(valore, unita);
+}
+
+/**
+ * Quotatura IN SERIE: un'unica linea di quota a offset costante dalla guida,
+ * linee di estensione da ciascun punto reale e, per ogni segmento, frecce
+ * (o tacche oblique se corto) ed etichetta del valore.
+ */
+function primitiveSerie(q: QuotaTecnica): Primitiva[] {
+  const prim: Primitiva[] = [];
+  const guida = q.lineaGuida;
+  if (!guida || q.quote.length === 0) return prim;
+
+  const colore = q.stile.colore || COLORE_QUOTA_TECNICA;
+  const sp = q.stile.spessore;
+  const dimTesto = q.stile.dimensioneTesto;
+  const dimFreccia = sp * 3 + 5;
+  const gap = sp * 1.5; // distacco della linea di estensione dal punto reale
+  const oltre = sp * 2.5; // sporgenza oltre la linea di quota
+  const d = normalizza(sottrai(guida.b, guida.a));
+  const n = normale(d);
+  const a = guida.a;
+  const offset = q.quote[0].offset;
+
+  // 1) Linee di estensione, una per ogni estremo distinto
+  const visti: Punto[] = [];
+  for (const seg of q.quote) {
+    for (const p of [seg.p1, seg.p2]) {
+      if (visti.some((v) => Math.abs(v.x - p.x) < 0.5 && Math.abs(v.y - p.y) < 0.5)) continue;
+      visti.push(p);
+      const piede = piedeQuotaTecnica(p, a, d, n, offset);
+      const v = sottrai(piede, p);
+      const lung = Math.hypot(v.x, v.y);
+      if (lung > 1e-6) {
+        const vn = normalizza(v);
+        const inizio = somma(p, scala(vn, Math.min(gap, lung)));
+        const fine = somma(piede, scala(vn, oltre));
+        prim.push({
+          kind: 'linea',
+          punti: [inizio.x, inizio.y, fine.x, fine.y],
+          colore,
+          spessore: sp * 0.75,
+          alone: ALONE
+        });
+      }
+    }
+  }
+
+  // 2) Linea di quota continua tra il primo e l'ultimo piede
+  const primoPiede = piedeQuotaTecnica(q.quote[0].p1, a, d, n, offset);
+  const ultimoPiede = piedeQuotaTecnica(q.quote[q.quote.length - 1].p2, a, d, n, offset);
+  prim.push({
+    kind: 'linea',
+    punti: [primoPiede.x, primoPiede.y, ultimoPiede.x, ultimoPiede.y],
+    colore,
+    spessore: sp,
+    alone: ALONE
+  });
+
+  // orientamento del testo: allineato alla guida, mai capovolto
+  let angolo = (Math.atan2(d.y, d.x) * 180) / Math.PI;
+  let dirTesto = d;
+  if (angolo > 90 || angolo <= -90) {
+    angolo += 180;
+    if (angolo > 180) angolo -= 360;
+    dirTesto = scala(d, -1);
+  }
+  const su = normale(dirTesto);
+  const sopraVett = su.y > 0 ? scala(su, -1) : su;
+
+  // 3) Per ogni segmento: frecce/tacche ai piedi ed etichetta del valore
+  for (const seg of q.quote) {
+    const f1 = piedeQuotaTecnica(seg.p1, a, d, n, offset);
+    const f2 = piedeQuotaTecnica(seg.p2, a, d, n, offset);
+    const lungSeg = distanza(f1, f2);
+    if (lungSeg < 1e-6) continue;
+    const verso12 = normalizza(sottrai(f2, f1));
+    if (lungSeg > dimFreccia * 2.2) {
+      // frecce interne che puntano l'una verso l'altra
+      prim.push(
+        freccette(f1, verso12, dimFreccia, colore),
+        freccette(f2, scala(verso12, -1), dimFreccia, colore)
+      );
+    } else {
+      // segmento corto: tacche oblique a 45° (convenzione tecnica)
+      const obliqua = normalizza(somma(d, n));
+      const tk = dimFreccia * 0.6;
+      for (const f of [f1, f2]) {
+        prim.push({
+          kind: 'linea',
+          punti: [f.x - obliqua.x * tk, f.y - obliqua.y * tk, f.x + obliqua.x * tk, f.y + obliqua.y * tk],
+          colore,
+          spessore: sp,
+          alone: ALONE
+        });
+      }
+    }
+    const centro = scala(somma(f1, f2), 0.5);
+    const posTesto = somma(centro, scala(sopraVett, dimTesto * 0.75));
+    prim.push({
+      kind: 'testo',
+      testo: etichettaQuotaTecnica(seg.valore, q.unita),
+      posizione: posTesto,
+      rotazioneDeg: angolo,
+      dimensione: dimTesto,
+      colore,
+      sfondo: null,
+      alone: ALONE
+    });
+  }
+
+  return prim;
+}
+
+/** Dispatcher della quotatura tecnica per sottotipo (serie in Fase 2). */
+export function primitiveQuotaTecnica(q: QuotaTecnica): Primitiva[] {
+  switch (q.sottotipo) {
+    case 'serie':
+      return primitiveSerie(q);
+    default:
+      // parallelo/progressiva/foro/smusso/filettatura/datum: fasi successive
+      return [];
+  }
+}
+
 /** Colore dedicato alle catene di misure (turchese), distinto dal giallo quote. */
 const COLORE_CATENA = '#13b8cc';
 const COLORE_CATENA_BANDA = 'rgba(19,184,204,0.42)';
@@ -1242,7 +1382,6 @@ export function primitiveAnnotazione(
     case 'forma':
       return primitiveForma(a);
     case 'quotaTecnica':
-      // rendering dedicato nelle fasi successive (quotature tecniche, 2+/7)
-      return [];
+      return primitiveQuotaTecnica(a);
   }
 }
