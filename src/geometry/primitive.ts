@@ -940,6 +940,53 @@ function etichettaQuotaTecnica(valore: number | null, unita: Unita): string {
   return valore === null ? '—' : formattaMisura(valore, unita);
 }
 
+/**
+ * Terminatori della linea di quota ai due piedi f1, f2, secondo lo stile:
+ * frecce (default; interne se c'è spazio, tacche oblique se il tratto è corto),
+ * tacche oblique a 45°, oppure pallini pieni.
+ */
+function disegnaTerminatori(
+  prim: Primitiva[],
+  f1: Punto,
+  f2: Punto,
+  terminatore: 'freccia' | 'tacca' | 'pallino' | undefined,
+  dimFreccia: number,
+  colore: string,
+  sp: number
+): void {
+  const d = normalizza(sottrai(f2, f1));
+  const n = normale(d);
+  const tacca = (f: Punto) => {
+    const obliqua = normalizza(somma(d, n));
+    const tk = dimFreccia * 0.6;
+    prim.push({
+      kind: 'linea',
+      punti: [f.x - obliqua.x * tk, f.y - obliqua.y * tk, f.x + obliqua.x * tk, f.y + obliqua.y * tk],
+      colore,
+      spessore: sp,
+      alone: ALONE
+    });
+  };
+  if (terminatore === 'tacca') {
+    tacca(f1);
+    tacca(f2);
+    return;
+  }
+  if (terminatore === 'pallino') {
+    for (const f of [f1, f2]) {
+      prim.push({ kind: 'cerchio', centro: f, raggio: dimFreccia * 0.32, colore, spessore: 0, riempimento: colore });
+    }
+    return;
+  }
+  // freccia (default): interne se c'è spazio, oblique se il tratto è corto
+  if (distanza(f1, f2) > dimFreccia * 2.2) {
+    prim.push(freccette(f1, d, dimFreccia, colore), freccette(f2, scala(d, -1), dimFreccia, colore));
+  } else {
+    tacca(f1);
+    tacca(f2);
+  }
+}
+
 /** Orientamento del testo allineato alla guida, mai capovolto, + versore "sopra". */
 function orientamentoTesto(d: Punto): { angolo: number; sopra: Punto } {
   let angolo = (Math.atan2(d.y, d.x) * 180) / Math.PI;
@@ -1036,33 +1083,13 @@ function primitiveSerie(q: QuotaTecnica): Primitiva[] {
   const su = normale(dirTesto);
   const sopraVett = su.y > 0 ? scala(su, -1) : su;
 
-  // 3) Per ogni segmento: frecce/tacche ai piedi ed etichetta del valore
+  // 3) Per ogni segmento: terminatori ai piedi ed etichetta del valore
   for (const seg of q.quote) {
     const f1 = piedeQuotaTecnica(seg.p1, a, d, n, offset);
     const f2 = piedeQuotaTecnica(seg.p2, a, d, n, offset);
     const lungSeg = distanza(f1, f2);
     if (lungSeg < 1e-6) continue;
-    const verso12 = normalizza(sottrai(f2, f1));
-    if (lungSeg > dimFreccia * 2.2) {
-      // frecce interne che puntano l'una verso l'altra
-      prim.push(
-        freccette(f1, verso12, dimFreccia, colore),
-        freccette(f2, scala(verso12, -1), dimFreccia, colore)
-      );
-    } else {
-      // segmento corto: tacche oblique a 45° (convenzione tecnica)
-      const obliqua = normalizza(somma(d, n));
-      const tk = dimFreccia * 0.6;
-      for (const f of [f1, f2]) {
-        prim.push({
-          kind: 'linea',
-          punti: [f.x - obliqua.x * tk, f.y - obliqua.y * tk, f.x + obliqua.x * tk, f.y + obliqua.y * tk],
-          colore,
-          spessore: sp,
-          alone: ALONE
-        });
-      }
-    }
+    disegnaTerminatori(prim, f1, f2, q.terminatore, dimFreccia, colore, sp);
     const centro = scala(somma(f1, f2), 0.5);
     const posTesto = somma(centro, scala(sopraVett, dimTesto * 0.75));
     prim.push({
@@ -1118,12 +1145,7 @@ function primitiveParallelo(q: QuotaTecnica): Primitiva[] {
 
     prim.push({ kind: 'linea', punti: [f1.x, f1.y, f2.x, f2.y], colore, spessore: sp, alone: ALONE });
 
-    const verso12 = normalizza(sottrai(f2, f1));
-    if (lungSeg > dimFreccia * 2.2) {
-      prim.push(freccette(f1, verso12, dimFreccia, colore), freccette(f2, scala(verso12, -1), dimFreccia, colore));
-    } else {
-      prim.push(freccette(f1, scala(verso12, -1), dimFreccia, colore), freccette(f2, verso12, dimFreccia, colore));
-    }
+    disegnaTerminatori(prim, f1, f2, q.terminatore, dimFreccia, colore, sp);
 
     const centro = scala(somma(f1, f2), 0.5);
     prim.push({

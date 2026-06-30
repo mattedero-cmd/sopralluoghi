@@ -792,3 +792,45 @@ describe('ricalcolaTecniche — ricalcolo dopo spostamento (Fase 6)', () => {
     expect(agg).toBe(datum); // stessa referenza: nessun ricalcolo
   });
 });
+
+describe('terminatori — stile grafico tecnico (Fase 7)', () => {
+  function serieTerm(terminatore?: 'freccia' | 'tacca' | 'pallino'): QuotaTecnica {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 200, y: 0 }
+    ];
+    const g = generaSerie(punti, fotoScala, { unita: 'cm', offset: 40, verso: 'sinistra' });
+    return {
+      id: 's',
+      fotoId: 'foto',
+      tipo: 'quotaTecnica',
+      sottotipo: 'serie',
+      lineaGuida: g.lineaGuida,
+      verso: 'sinistra',
+      unita: 'cm',
+      terminatore,
+      puntiOriginali: punti,
+      quote: g.quote,
+      partePerimetro: false,
+      zIndex: 1,
+      stile
+    };
+  }
+
+  it('default (freccia): il terminatore è un poligono (freccia piena)', () => {
+    const prim = primitiveQuotaTecnica(serieTerm(undefined));
+    expect(prim.some((p) => p.kind === 'poligono')).toBe(true);
+  });
+
+  it('tacca: nessuna freccia (poligono), solo linee oblique', () => {
+    const prim = primitiveQuotaTecnica(serieTerm('tacca'));
+    expect(prim.some((p) => p.kind === 'poligono')).toBe(false);
+    expect(prim.filter((p) => p.kind === 'linea').length).toBeGreaterThan(1);
+  });
+
+  it('pallino: terminatori a cerchio pieno, nessuna freccia', () => {
+    const prim = primitiveQuotaTecnica(serieTerm('pallino'));
+    expect(prim.some((p) => p.kind === 'poligono')).toBe(false);
+    expect(prim.some((p) => p.kind === 'cerchio')).toBe(true);
+  });
+});

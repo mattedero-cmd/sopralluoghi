@@ -712,6 +712,8 @@ export interface QuotaTecnica extends AnnotazioneBase {
   origineEstremo?: 'inizio' | 'fine';
   /** etichetta/lettera (es. datum "A", o nota della catena) */
   etichetta?: string;
+  /** terminatore della linea di quota: freccia (default), tacca obliqua o pallino */
+  terminatore?: 'freccia' | 'tacca' | 'pallino';
   /** linee di estensione visibili (default true) */
   estensioniVisibili?: boolean;
   /** distacco delle estensioni dall'oggetto (px); assente = default dallo spessore */

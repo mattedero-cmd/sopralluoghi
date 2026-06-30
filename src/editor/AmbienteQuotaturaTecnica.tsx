@@ -104,6 +104,7 @@ export function AmbienteQuotaturaTecnica({
   const isFilettatura = quota.sottotipo === 'filettatura';
   const isCatena = isParallelo || isProgressiva || quota.sottotipo === 'serie';
   const hasUnita = isCatena || isForo || isSmusso;
+  const haTerminatori = quota.sottotipo === 'serie' || isParallelo;
   const foro = quota.foro;
   const smusso = quota.smusso;
   const filettatura = quota.filettatura;
@@ -169,6 +170,21 @@ export function AmbienteQuotaturaTecnica({
 
   const cambiaColore = (colore: string) => {
     onModifica({ ...quota, stile: { ...quota.stile, colore } });
+  };
+
+  const cambiaTerminatore = (terminatore: 'freccia' | 'tacca' | 'pallino') => {
+    onModifica({ ...quota, terminatore });
+  };
+
+  const scalaStile = (f: number) => {
+    onModifica({
+      ...quota,
+      stile: {
+        ...quota.stile,
+        spessore: Math.max(1, Math.round(quota.stile.spessore * f)),
+        dimensioneTesto: Math.max(8, Math.round(quota.stile.dimensioneTesto * f))
+      }
+    });
   };
 
   const cambiaValore = (indice: number, v: number | null) => {
@@ -471,6 +487,46 @@ export function AmbienteQuotaturaTecnica({
             </div>
           </div>
         )}
+
+        {/* Terminatore della linea di quota */}
+        {haTerminatori && (
+          <div className="qt-riga">
+            <label className="qt-label">Terminatore</label>
+            <div className="segmenti" role="group" aria-label="Stile dei terminatori">
+              <button
+                className={(quota.terminatore ?? 'freccia') === 'freccia' ? 'attivo' : ''}
+                onClick={() => cambiaTerminatore('freccia')}
+              >
+                ▶ Frecce
+              </button>
+              <button
+                className={quota.terminatore === 'tacca' ? 'attivo' : ''}
+                onClick={() => cambiaTerminatore('tacca')}
+              >
+                ╱ Tacche
+              </button>
+              <button
+                className={quota.terminatore === 'pallino' ? 'attivo' : ''}
+                onClick={() => cambiaTerminatore('pallino')}
+              >
+                ● Pallini
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Dimensione (spessore + testo) */}
+        <div className="qt-riga">
+          <label className="qt-label">Dimensione</label>
+          <span className="segmenti" role="group" aria-label="Dimensione della quota">
+            <button aria-label="Riduci dimensione" onClick={() => scalaStile(1 / 1.25)}>
+              A−
+            </button>
+            <button aria-label="Aumenta dimensione" onClick={() => scalaStile(1.25)}>
+              A＋
+            </button>
+          </span>
+        </div>
 
         {/* Colore */}
         <div className="qt-riga">
