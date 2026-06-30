@@ -3,11 +3,13 @@ import type {
   Callout,
   DisegnoLibero,
   Etichetta,
+  Forma,
   Foto,
   Freccia,
   Impostazioni,
   Legenda,
   Punto,
+  TipoForma,
   Quota,
   QuotaAngolare,
   QuotaPoligono,
@@ -261,6 +263,22 @@ export class FabbricaAnnotazioni {
       posizione,
       lettera,
       descrizione: '',
+      zIndex: this.prossimoZ(esistenti),
+      creatoIl: Date.now(),
+      stile: this.stileBase()
+    };
+  }
+
+  /** Forma di disegno generica (linea/rettangolo/cerchio/poligono). */
+  forma(forma: TipoForma, punti: Punto[], esistenti: Annotazione[]): Forma {
+    return {
+      id: nuovoId(),
+      fotoId: this.foto.id,
+      tipo: 'forma',
+      forma,
+      punti,
+      chiusa: forma === 'rettangolo' || forma === 'poligono' || forma === 'cerchio',
+      partePerimetro: false,
       zIndex: this.prossimoZ(esistenti),
       creatoIl: Date.now(),
       stile: this.stileBase()

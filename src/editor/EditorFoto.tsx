@@ -19,6 +19,7 @@ import type {
   SottotipoQuota,
   StatoMisura,
   TestoFoto,
+  TipoForma,
   Unita
 } from '../db/types';
 import {
@@ -151,6 +152,18 @@ const GRUPPI_STRUMENTI: Array<{
     ]
   },
   {
+    id: 'formeBase',
+    icona: 'disegno',
+    testo: 'Forme',
+    voci: [
+      { s: 'forLinea', icona: 'righello', testo: 'Linea' },
+      { s: 'forRett', icona: 'rettangolo', testo: 'Rettangolo' },
+      { s: 'forCerchio', icona: 'cerchio', testo: 'Cerchio' },
+      { s: 'forPoligono', icona: 'polilinea', testo: 'Poligono' },
+      { s: 'disegno', icona: 'disegno', testo: 'Mano libera' }
+    ]
+  },
+  {
     id: 'note',
     icona: 'matita',
     testo: 'Note',
@@ -158,7 +171,6 @@ const GRUPPI_STRUMENTI: Array<{
       { s: 'etichetta', icona: 'testo', testo: 'Etichette e legenda' },
       { s: 'testo', icona: 'testo', testo: 'Testo' },
       { s: 'freccia', icona: 'freccia', testo: 'Freccia' },
-      { s: 'disegno', icona: 'disegno', testo: 'Disegno' },
       { s: 'callout', icona: 'dettaglio', testo: 'Dettaglio' }
     ]
   },
@@ -949,6 +961,14 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     commit([...annotazioni, d]);
   };
 
+  const creaForma = (forma: TipoForma, punti: Punto[]) => {
+    if (!fabbrica || !annotazioni) return;
+    const f = fabbrica.forma(forma, punti, annotazioni);
+    commit([...annotazioni, f]);
+    setSelezioneId(f.id);
+    setStrumento('seleziona');
+  };
+
   /** Avvia la modalità "duplica misura" sulla forma selezionata (stessa foto):
    *  fissa il gruppo della famiglia e poi ogni tocco crea una copia collegata. */
   const avviaDuplica = () => {
@@ -1349,6 +1369,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         onMenuEtichetta={apriMenuEtichetta}
         onNuovaFreccia={creaFreccia}
         onNuovoDisegno={creaDisegno}
+        onNuovaForma={creaForma}
         onNuovoCallout={creaCallout}
         onCalibra={(p1, p2) => setSchedaScala({ px: distanza(p1, p2) })}
         onPiano={(punti) => setSchedaPiano({ punti })}
@@ -3495,6 +3516,42 @@ function PannelloProprieta({
             >
               {ann.forma === 'rettangolo' ? '▭ Squadrato' : '▢ Arrotondato'}
             </button>
+          </>
+        )}
+        {ann.tipo === 'forma' && (
+          <>
+            <button
+              className={`btn${ann.riempimento ? ' attivo' : ''}`}
+              onClick={() =>
+                onModifica(
+                  ann.riempimento
+                    ? { riempimento: undefined }
+                    : { riempimento: ann.stile.colore, opacitaRiempimento: ann.opacitaRiempimento ?? 0.3 }
+                )
+              }
+            >
+              {ann.riempimento ? '■ Riempito' : '▢ Vuoto'}
+            </button>
+            <button
+              className={`btn${ann.tratteggio ? ' attivo' : ''}`}
+              onClick={() =>
+                onModifica({
+                  tratteggio: ann.tratteggio
+                    ? undefined
+                    : [ann.stile.spessore * 4, ann.stile.spessore * 3]
+                })
+              }
+            >
+              {ann.tratteggio ? '┄ Tratteggio' : '── Continuo'}
+            </button>
+            <label className="fisc-check" style={{ marginLeft: 4 }}>
+              <input
+                type="checkbox"
+                checked={ann.partePerimetro}
+                onChange={(e) => onModifica({ partePerimetro: e.target.checked })}
+              />
+              Nel PDF
+            </label>
           </>
         )}
         {ann.tipo === 'callout' && (

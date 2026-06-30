@@ -142,11 +142,12 @@ export function disegnaPrimitiva(
       for (let i = 2; i < p.punti.length; i += 2) {
         ctx.lineTo(p.punti[i], p.punti[i + 1]);
       }
-      if (p.alone) {
+      if (p.alone && !p.tratteggio) {
         ctx.strokeStyle = p.alone;
         ctx.lineWidth = p.spessore + Math.max(2, p.spessore * 0.9);
         ctx.stroke();
       }
+      if (p.tratteggio) ctx.setLineDash(p.tratteggio);
       ctx.strokeStyle = p.colore;
       ctx.lineWidth = p.spessore;
       ctx.stroke();

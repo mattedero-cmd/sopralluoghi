@@ -13,7 +13,8 @@ import {
   type PianoProspettiva,
   type Punto,
   type Rettangolo,
-  type SottotipoQuota
+  type SottotipoQuota,
+  type TipoForma
 } from '../db/types';
 import { primitiveAnnotazione, primitiveCatene, latiQuotaRett } from '../geometry/primitive';
 import { geometriaQuota, posizioneEtichettaBase, posizioneEtichettaPoligono } from '../geometry/primitive';
@@ -85,7 +86,10 @@ function strumentoDuePunti(s: Strumento): boolean {
     s === 'rettangolo' ||
     s === 'freccia' ||
     s === 'raggio' ||
-    s === 'calibra'
+    s === 'calibra' ||
+    s === 'forLinea' ||
+    s === 'forRett' ||
+    s === 'forCerchio'
   );
 }
 
@@ -154,6 +158,8 @@ interface Props {
   onMenuEtichetta: (schermo: Punto) => void;
   onNuovaFreccia: (p1: Punto, p2: Punto) => void;
   onNuovoDisegno: (punti: number[]) => void;
+  /** nuova forma di disegno generica (linea/rettangolo/cerchio/poligono) */
+  onNuovaForma: (forma: TipoForma, punti: Punto[]) => void;
   onNuovoCallout: (sorgente: Rettangolo) => void;
   onCalibra: (p1: Punto, p2: Punto) => void;
   onPiano: (punti: [Punto, Punto, Punto, Punto]) => void;
@@ -180,6 +186,10 @@ type Bozza =
   | { tipo: 'poli'; punti: Punto[]; lati: number }
   | { tipo: 'cerchio3p'; punti: Punto[] }
   | { tipo: 'piano'; punti: Punto[] }
+  | { tipo: 'forLinea'; p1: Punto; p2: Punto }
+  | { tipo: 'forRett'; p1: Punto; p2: Punto }
+  | { tipo: 'forCerchio'; centro: Punto; bordo: Punto }
+  | { tipo: 'forPoli'; punti: Punto[] }
   | null;
 
 /** primo punto già fissato di una bozza a due punti */
@@ -190,8 +200,11 @@ function puntoFisso(b: Bozza): Punto | null {
     case 'freccia':
     case 'calibra':
     case 'rett':
+    case 'forLinea':
+    case 'forRett':
       return b.p1;
     case 'raggio':
+    case 'forCerchio':
       return b.centro;
     default:
       return null;
@@ -205,8 +218,11 @@ function conSecondoPunto(b: NonNullable<Bozza>, punto: Punto): NonNullable<Bozza
     case 'freccia':
     case 'calibra':
     case 'rett':
+    case 'forLinea':
+    case 'forRett':
       return { ...b, p2: punto };
     case 'raggio':
+    case 'forCerchio':
       return { ...b, bordo: punto };
     default:
       return b;
@@ -589,7 +605,8 @@ export function StageEditor(p: Props) {
       case 'tri':
       case 'polilinea':
       case 'cerchio3p':
-      case 'piano': {
+      case 'piano':
+      case 'forPoligono': {
         const punto = applicaSnap(pos);
         setPuntoPendente(punto);
         setPuntoLente(punto);
@@ -679,6 +696,15 @@ export function StageEditor(p: Props) {
           case 'rettangolo':
             setBozza({ tipo: 'rett', p1: punto, p2: punto });
             break;
+          case 'forLinea':
+            setBozza({ tipo: 'forLinea', p1: punto, p2: punto });
+            break;
+          case 'forRett':
+            setBozza({ tipo: 'forRett', p1: punto, p2: punto });
+            break;
+          case 'forCerchio':
+            setBozza({ tipo: 'forCerchio', centro: punto, bordo: punto });
+            break;
         }
         return;
       }
@@ -703,7 +729,29 @@ export function StageEditor(p: Props) {
         case 'rett':
           p.onNuovoRett(normalizzaRect(b.p1, b.p2));
           break;
+        case 'forLinea':
+          p.onNuovaForma('linea', [b.p1, b.p2]);
+          break;
+        case 'forRett':
+          p.onNuovaForma('rettangolo', [b.p1, b.p2]);
+          break;
+        case 'forCerchio':
+          p.onNuovaForma('cerchio', [b.centro, b.bordo]);
+          break;
       }
+      return;
+    }
+    if (p.strumento === 'forPoligono') {
+      const correnti = bozza?.tipo === 'forPoli' ? bozza.punti : [];
+      if (correnti.length >= 3) {
+        const sogliaChiusura = Math.max(p.sogliaSnap, 18 / vista.scala);
+        if (distanza(punto, correnti[0]) <= sogliaChiusura) {
+          setBozza(null);
+          p.onNuovaForma('poligono', correnti);
+          return;
+        }
+      }
+      setBozza({ tipo: 'forPoli', punti: [...correnti, punto] });
       return;
     }
     if (p.strumento === 'angolo') {
@@ -894,9 +942,14 @@ export function StageEditor(p: Props) {
     // in attesa del secondo punto i due punti coincidono: nessuna anteprima
     const fisso = puntoFisso(bozza);
     const secondo =
-      bozza.tipo === 'quota' || bozza.tipo === 'freccia' || bozza.tipo === 'calibra' || bozza.tipo === 'rett'
+      bozza.tipo === 'quota' ||
+      bozza.tipo === 'freccia' ||
+      bozza.tipo === 'calibra' ||
+      bozza.tipo === 'rett' ||
+      bozza.tipo === 'forLinea' ||
+      bozza.tipo === 'forRett'
         ? bozza.p2
-        : bozza.tipo === 'raggio'
+        : bozza.tipo === 'raggio' || bozza.tipo === 'forCerchio'
           ? bozza.bordo
           : null;
     if (fisso && secondo && distanza(fisso, secondo) < 2) return null;
@@ -949,6 +1002,14 @@ export function StageEditor(p: Props) {
         };
       case 'disegno':
         return { ...base, tipo: 'disegno', punti: bozza.punti };
+      case 'forLinea':
+        return { ...base, tipo: 'forma', forma: 'linea', punti: [bozza.p1, bozza.p2], chiusa: false, partePerimetro: false };
+      case 'forRett':
+        return { ...base, tipo: 'forma', forma: 'rettangolo', punti: [bozza.p1, bozza.p2], chiusa: true, partePerimetro: false };
+      case 'forCerchio':
+        return { ...base, tipo: 'forma', forma: 'cerchio', punti: [bozza.centro, bozza.bordo], chiusa: true, partePerimetro: false };
+      case 'forPoli':
+        return { ...base, tipo: 'forma', forma: 'poligono', punti: bozza.punti, chiusa: false, partePerimetro: false };
       case 'callout': {
         // anteprima della regione da ritagliare: un semplice rettangolo
         const r = normalizzaRect(bozza.inizio, bozza.corrente);
@@ -1855,7 +1916,15 @@ function boxAnnotazione(a: Annotazione): Rettangolo {
       });
       break;
     case 'forma':
-      punti.push(...a.punti);
+      if (a.forma === 'cerchio' && a.punti.length >= 2) {
+        const r = distanza(a.punti[0], a.punti[1]);
+        punti.push(
+          { x: a.punti[0].x - r, y: a.punti[0].y - r },
+          { x: a.punti[0].x + r, y: a.punti[0].y + r }
+        );
+      } else {
+        punti.push(...a.punti);
+      }
       break;
     case 'quotaTecnica':
       punti.push(...a.puntiOriginali);
@@ -2180,6 +2249,29 @@ function ManiglieAnnotazione({
               larghezza: Math.max(min, n.x - ann.posizione.x),
               altezza: Math.max(min, n.y - ann.posizione.y)
             })
+          )}
+        </>
+      );
+    }
+    case 'forma': {
+      if (ann.forma === 'cerchio' && ann.punti.length >= 2) {
+        return (
+          <>
+            {maniglia('centro', ann.punti[0], (n) => ({ ...ann, punti: [n, ann.punti[1]] }))}
+            {maniglia('raggio', ann.punti[1], (n) => ({ ...ann, punti: [ann.punti[0], n] }))}
+          </>
+        );
+      }
+      // linea / rettangolo / poligono / mano libera: una maniglia per vertice
+      return (
+        <>
+          {ann.punti.map((pt, i) =>
+            maniglia(
+              `v-${i}`,
+              pt,
+              (n) => ({ ...ann, punti: ann.punti.map((q, j) => (j === i ? n : q)) }),
+              { snap: true, escludi: [pt] }
+            )
           )}
         </>
       );

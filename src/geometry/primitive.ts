@@ -3,6 +3,7 @@ import type {
   Callout,
   DisegnoLibero,
   Etichetta,
+  Forma,
   Legenda,
   Freccia,
   Punto,
@@ -51,7 +52,7 @@ const ALONE = 'rgba(0,0,0,0.55)';
 export type Primitiva =
   | { kind: 'linea'; punti: number[]; colore: string; spessore: number; tratteggio?: number[]; alone?: string }
   | { kind: 'poligono'; punti: number[]; colore: string; alone?: string }
-  | { kind: 'polilinea'; punti: number[]; colore: string; spessore: number; alone?: string }
+  | { kind: 'polilinea'; punti: number[]; colore: string; spessore: number; alone?: string; tratteggio?: number[] }
   | {
       kind: 'testo';
       testo: string;
@@ -839,6 +840,87 @@ export function primitiveLegenda(
   return prim;
 }
 
+/** Converte un colore hex in rgba con l'opacità data (per i riempimenti forma). */
+function coloreConOpacita(hex: string, opacita: number): string {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return hex;
+  let h = m[1];
+  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${Math.max(0, Math.min(1, opacita))})`;
+}
+
+/** Forma di disegno generica: contorno (+ riempimento opzionale) per linea,
+ *  rettangolo, cerchio, poligono e tracciato a mano libera. */
+export function primitiveForma(f: Forma): Primitiva[] {
+  const colore = f.stile.colore;
+  const sp = f.stile.spessore;
+  const tratteggio = f.tratteggio;
+  const riemp = f.riempimento ? coloreConOpacita(f.riempimento, f.opacitaRiempimento ?? 0.3) : undefined;
+  const prim: Primitiva[] = [];
+  switch (f.forma) {
+    case 'linea':
+      if (f.punti.length >= 2) {
+        prim.push({
+          kind: 'linea',
+          punti: [f.punti[0].x, f.punti[0].y, f.punti[1].x, f.punti[1].y],
+          colore,
+          spessore: sp,
+          tratteggio,
+          alone: tratteggio ? undefined : ALONE
+        });
+      }
+      break;
+    case 'rettangolo': {
+      if (f.punti.length < 2) break;
+      const a = f.punti[0];
+      const b = f.punti[1];
+      const rect = {
+        x: Math.min(a.x, b.x),
+        y: Math.min(a.y, b.y),
+        width: Math.abs(b.x - a.x),
+        height: Math.abs(b.y - a.y)
+      };
+      const contorno = [
+        rect.x, rect.y, rect.x + rect.width, rect.y,
+        rect.x + rect.width, rect.y + rect.height, rect.x, rect.y + rect.height,
+        rect.x, rect.y
+      ];
+      if (riemp) prim.push({ kind: 'rettangolo', rect, colore: riemp, spessore: 0, riempimento: riemp });
+      prim.push({ kind: 'polilinea', punti: contorno, colore, spessore: sp, tratteggio, alone: tratteggio ? undefined : ALONE });
+      break;
+    }
+    case 'cerchio': {
+      if (f.punti.length < 2) break;
+      const raggio = distanza(f.punti[0], f.punti[1]);
+      prim.push({
+        kind: 'cerchio',
+        centro: f.punti[0],
+        raggio,
+        colore,
+        spessore: sp,
+        riempimento: riemp,
+        tratteggio,
+        alone: tratteggio ? undefined : ALONE
+      });
+      break;
+    }
+    case 'poligono':
+    case 'manoLibera': {
+      if (f.punti.length < 2) break;
+      const flat = f.punti.flatMap((pt) => [pt.x, pt.y]);
+      const chiudi = f.chiusa || f.forma === 'poligono';
+      const contorno = chiudi ? [...flat, f.punti[0].x, f.punti[0].y] : flat;
+      if (riemp && f.punti.length >= 3) prim.push({ kind: 'poligono', punti: flat, colore: riemp });
+      prim.push({ kind: 'polilinea', punti: contorno, colore, spessore: sp, tratteggio, alone: tratteggio ? undefined : ALONE });
+      break;
+    }
+  }
+  return prim;
+}
+
 /** Colore dedicato alle catene di misure (turchese), distinto dal giallo quote. */
 const COLORE_CATENA = '#13b8cc';
 const COLORE_CATENA_BANDA = 'rgba(19,184,204,0.42)';
@@ -1158,9 +1240,9 @@ export function primitiveAnnotazione(
       // trascritta come elenco separato
       return primitiveLegenda(a, vociLegenda?.() ?? []);
     case 'forma':
+      return primitiveForma(a);
     case 'quotaTecnica':
-      // Fase 1 (infrastruttura): il rendering dedicato arriva nelle fasi
-      // successive (forme in 1b, quotature tecniche in 2+/7).
+      // rendering dedicato nelle fasi successive (quotature tecniche, 2+/7)
       return [];
   }
 }
