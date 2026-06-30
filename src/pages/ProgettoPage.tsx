@@ -211,6 +211,7 @@ export function ProgettoPage({ id }: { id: string }) {
   const idsSezioni = new Set(sezioni.map((s) => s.id));
   // le piante (tele bianche) sono elencate a parte, non tra le foto
   const piante = foto.filter((f) => f.ePianta);
+  const fotoReali = foto.filter((f) => !f.ePianta);
   const fotoDi = (sid: string | null) =>
     foto.filter(
       (f) =>
@@ -374,8 +375,8 @@ export function ProgettoPage({ id }: { id: string }) {
           onChange={(e) => void acquisisci(e.target.files)}
         />
 
-        <h2>Foto ({foto.length})</h2>
-        {foto.length === 0 && sezioni.length === 0 ? (
+        <h2>Foto ({fotoReali.length})</h2>
+        {fotoReali.length === 0 && sezioni.length === 0 ? (
           <div className="vuoto">
             <div className="grande">
               <Icona nome="fotocamera" dimensione={46} />

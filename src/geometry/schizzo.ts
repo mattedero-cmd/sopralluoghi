@@ -51,6 +51,35 @@ export function semplificaTracciato(punti: Punto[], epsilon: number): Punto[] {
   return punti.filter((_, i) => tieni[i]);
 }
 
+/**
+ * Semplificazione di un ANELLO CHIUSO (non di una catena aperta): si ancora
+ * al punto più lontano dal primo, così gli spigoli estremi della stanza sono
+ * sempre conservati anche quando il tratto inizia a metà di un lato o la
+ * stanza è molto allungata (corridoi). Senza questo, RDP "aperto" sul giunto
+ * arbitrario può collassare una stanza stretta in un triangolo degenere.
+ */
+export function semplificaAnello(punti: Punto[], epsilon: number): Punto[] {
+  const n = punti.length;
+  if (n < 4) return punti.slice();
+  // ancora opposta = vertice più lontano dal punto di partenza (uno spigolo reale)
+  let far = 0;
+  let dmax = -1;
+  for (let i = 1; i < n; i++) {
+    const d = distanza(punti[0], punti[i]);
+    if (d > dmax) {
+      dmax = d;
+      far = i;
+    }
+  }
+  // due semi-catene aperte con estremi fissi (0↔far e far↔0)
+  const catena1 = punti.slice(0, far + 1); // 0 … far
+  const catena2 = [...punti.slice(far), punti[0]]; // far … ultimo … 0
+  const s1 = semplificaTracciato(catena1, epsilon);
+  const s2 = semplificaTracciato(catena2, epsilon);
+  // ricompone l'anello: s1 (0…far) + vertici di s2 strettamente tra far e 0
+  return [...s1, ...s2.slice(1, -1)];
+}
+
 export interface OpzioniRaddrizza {
   /** tolleranza di semplificazione (px immagine); se assente, derivata dal tracciato */
   epsilon?: number;
@@ -92,13 +121,14 @@ export function raddrizzaStanza(grezzo: Punto[], opts: OpzioniRaddrizza = {}): P
     punti.pop();
   }
 
-  let vertici = semplificaTracciato(punti, epsilon);
-  // la semplificazione lascia start/end: su un anello vanno trattati come
-  // consecutivi, quindi si rimuove un eventuale doppione di chiusura
+  // semplificazione COME ANELLO (non catena aperta): conserva gli spigoli
+  // estremi anche per stanze allungate e per tratti iniziati a metà lato
+  let vertici = semplificaAnello(punti, epsilon);
+  // eventuale doppione di chiusura (primo ≈ ultimo) → rimosso
   if (vertici.length >= 2 && distanza(vertici[0], vertici[vertici.length - 1]) <= epsilon) {
     vertici = vertici.slice(0, -1);
   }
-  // scarta i vertici quasi-collineari (angolo ~180°) rimasti
+  // scarta i vertici quasi-collineari (angolo ~180°) rimasti, es. il giunto
   vertici = rimuoviCollineari(vertici, epsilon);
 
   return vertici.length >= 3 ? vertici : null;

@@ -50,6 +50,25 @@ describe('raddrizzaStanza — schizzo a mano libera → poligono', () => {
   it('un tracciato troppo corto non produce un poligono', () => {
     expect(raddrizzaStanza([{ x: 0, y: 0 }, { x: 1, y: 1 }])).toBeNull();
   });
+
+  it('una stanza molto allungata (corridoio) conserva i 4 spigoli', () => {
+    // corridoio 1000×40 (aspetto 25:1), tracciato partendo da un angolo
+    const p: Punto[] = [];
+    for (let x = 0; x <= 1000; x += 20) p.push({ x, y: 0 });
+    for (let y = 5; y <= 40; y += 5) p.push({ x: 1000, y });
+    for (let x = 980; x >= 0; x -= 20) p.push({ x, y: 40 });
+    for (let y = 35; y >= 5; y -= 5) p.push({ x: 0, y });
+    p.push({ x: 0, y: 2 }); // chiusura vicino all'origine
+    const v = raddrizzaStanza(p);
+    expect(v).not.toBeNull();
+    expect(v).toHaveLength(4); // niente collasso a triangolo
+    const xs = v!.map((q) => q.x);
+    const ys = v!.map((q) => q.y);
+    expect(Math.min(...xs)).toBeLessThan(20);
+    expect(Math.max(...xs)).toBeGreaterThan(980);
+    expect(Math.min(...ys)).toBeLessThan(20);
+    expect(Math.max(...ys)).toBeGreaterThan(20);
+  });
 });
 
 describe('squadra — ortogonalizzazione a squadro', () => {
