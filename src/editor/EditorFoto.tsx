@@ -52,7 +52,7 @@ import {
 } from '../geometry/calibrazione';
 import { etichettaPoligono, nomeFormaPoligono, simboliPoligono, versiSegmento } from '../geometry/primitive';
 import { ricalcolaTecniche } from '../geometry/quotaTecnica';
-import { raddrizzaStanza } from '../geometry/schizzo';
+import { raddrizzaStanza, squadra } from '../geometry/schizzo';
 import {
   codiceCompletoForma,
   codiceLocaleForma,
@@ -484,6 +484,15 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       setPuntiTecnici((punti) => (punti.length ? [] : punti));
     }
   }, [strumento]);
+
+  // aprendo una pianta ancora vuota, parte già con lo strumento Schizzo
+  const piantaInit = useRef<string | null>(null);
+  useEffect(() => {
+    if (!foto || !annotazioni) return;
+    if (piantaInit.current === foto.id) return;
+    piantaInit.current = foto.id;
+    if (foto.ePianta && annotazioni.length === 0) setStrumento('schizzo');
+  }, [foto, annotazioni]);
 
 
   const commit = useCallback(
@@ -1211,6 +1220,21 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     await aggiornaFoto(foto.id, { scala });
     ricalcolaConCalibrazione({ scala, piano: foto.piano });
     mostraToast('successo', 'Scala ricavata dalla quota selezionata.');
+  };
+
+  /** Quotatura guidata delle piante: dal lato di un poligono ricava la scala e
+   *  rimette il poligono in automatico, così TUTTI i lati si misurano. */
+  const calibraDaLatoPoligono = async (poli: QuotaPoligono, q: Quota) => {
+    if (!foto || !annotazioni || q.valore === null) return;
+    const px = lunghezzaPxQuota(q);
+    if (px < 2) return;
+    const scala = { px, reale: q.valore, unita: q.unita };
+    await aggiornaFoto(foto.id, { scala });
+    const conAuto = annotazioni.map((a) =>
+      a.id === poli.id ? ({ ...a, valoreAuto: true } as Annotazione) : a
+    );
+    commit(applicaValoriAuto(conAuto, { scala, piano: foto.piano }));
+    mostraToast('successo', 'Scala ricavata dal lato: gli altri lati sono ora misurati.');
   };
 
   const esporta = async () => {
@@ -2257,6 +2281,15 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 )
               }
               onModificaSegmento={(indice) => setQuotaInModifica({ tipo: 'segmento', id: poli.id, indice })}
+              onSquadra={() =>
+                commitGeometria(
+                  annotazioni.map((a) =>
+                    a.id === poli.id
+                      ? ({ ...poli, punti: squadra(poli.punti), lati: undefined, offsetLati: undefined } as QuotaPoligono)
+                      : a
+                  )
+                )
+              }
               onElimina={() => {
                 commit(annotazioni.filter((a) => a.id !== poli.id));
                 setSelezioneId(null);
@@ -2317,6 +2350,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               quota={quotaSeg}
               immagine={immagine}
               nomenclatura={{ simbolo: seg.simbolo ?? '', auto: simboloAuto }}
+              onCalibraDaQuota={(q) => {
+                void calibraDaLatoPoligono(poli, q);
+                tornaAlPoligono();
+              }}
               onChiudi={tornaAlPoligono}
               onElimina={() => {
                 const nuovi = segs.filter((_, i) => i !== rif.indice);
@@ -2393,6 +2430,7 @@ function EditorQuota({
   immagine,
   nomenclatura,
   onSalva,
+  onCalibraDaQuota,
   onElimina,
   onChiudi
 }: {
@@ -2403,6 +2441,9 @@ function EditorQuota({
    *  segnaposto; `simbolo` è l'eventuale override già impostato. */
   nomenclatura?: { simbolo: string; auto: string };
   onSalva: (q: Quota, extra?: { simbolo?: string }) => void;
+  /** se presente, mostra "Usa come scala": ricava la calibrazione da questa
+   *  misura (utile sulle piante non calibrate) */
+  onCalibraDaQuota?: (q: Quota) => void;
   onElimina: () => void;
   onChiudi: () => void;
 }) {
@@ -2708,6 +2749,15 @@ function EditorQuota({
         <button className="btn pericolo" onClick={onElimina}>
           <Icona nome="cestino" dimensione={18} /> Elimina
         </button>
+        {onCalibraDaQuota && valore !== null && (
+          <button
+            className="btn"
+            onClick={() => onCalibraDaQuota({ ...quota, valore, unita })}
+            title="Ricava la scala da questa misura, per calcolare gli altri lati"
+          >
+            <Icona nome="righello" dimensione={18} /> Usa come scala
+          </button>
+        )}
         <button className="btn primario" onClick={salva}>
           <Icona nome="check" dimensione={18} /> Salva quota
         </button>
@@ -3218,6 +3268,7 @@ function EditorPoligono({
   onNumero,
   onModifica,
   onModificaSegmento,
+  onSquadra,
   onElimina,
   onChiudi
 }: {
@@ -3231,6 +3282,8 @@ function EditorPoligono({
   onNumero: (n: number) => void;
   onModifica: (m: Partial<QuotaPoligono>) => void;
   onModificaSegmento: (indice: number) => void;
+  /** raddrizza il poligono ad angoli retti (orizzontale/verticale) */
+  onSquadra: () => void;
   onElimina: () => void;
   onChiudi: () => void;
 }) {
@@ -3508,6 +3561,16 @@ function EditorPoligono({
             </div>
           </div>
         )}
+        <div className="campo">
+          <label>Forma</label>
+          <button
+            className="btn"
+            onClick={onSquadra}
+            title="Porta i lati a orizzontale/verticale (angoli retti): utile per le piante"
+          >
+            ⊾ Squadra ad angolo retto
+          </button>
+        </div>
         <div className="campo">
           <label>Colore e dimensione</label>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
