@@ -316,14 +316,27 @@ type ComandoPianta =
   | 'raddrizza90'
   | 'unisci'
   | 'semplifica'
-  | 'ricostruisci';
+  | 'ricostruisci'
+  | 'oggRettangolo'
+  | 'oggCerchio'
+  | 'origine'
+  | 'togliVincoli'
+  | 'nome';
+/** azioni "arma-e-tocca" sul canvas: vincoli geometrici + operazioni puntuali */
+type TipoArmato =
+  | TipoVincoloPianta
+  | 'diagonale'
+  | 'angoloVertice'
+  | 'eliminaLato'
+  | 'ancoraCentroOgg'
+  | 'bloccaDimOgg';
 interface VocePianta {
   icona: NomeIcona;
   testo: string;
   tool?: Strumento;
   cmd?: ComandoPianta;
-  /** vincolo geometrico da applicare a tocchi (tap-tap) */
-  vincolo?: TipoVincoloPianta;
+  /** azione da applicare a tocchi sul canvas (tap-tap) */
+  vincolo?: TipoArmato;
   /** suggerimento operativo mostrato come avviso (funzioni "seleziona-poi-agisci") */
   suggerimento?: string;
 }
@@ -337,7 +350,11 @@ const GRUPPI_STRUMENTI_PIANTA: Array<{
     id: 'piaDisegno',
     icona: 'disegno',
     testo: 'Disegno',
-    voci: [{ icona: 'disegno', testo: 'Mano libera', tool: 'schizzo' }]
+    voci: [
+      { icona: 'disegno', testo: 'Mano libera', tool: 'schizzo' },
+      { icona: 'etichetta', testo: 'Nome / numero stanza', cmd: 'nome' },
+      { icona: 'mirino', testo: 'Origine (datum) sì/no', cmd: 'origine' }
+    ]
   },
   {
     id: 'piaQuote',
@@ -348,25 +365,15 @@ const GRUPPI_STRUMENTI_PIANTA: Array<{
         icona: 'quota-allin',
         testo: 'Quota lato (parametrica)',
         suggerimento:
-          'Tocca un lato dello schizzo per quotarlo: la quota comanda il disegno (modificandola la geometria si adatta).'
+          'Tocca l’etichetta di una quota sul canvas e digita il valore: la quota comanda il disegno.'
       },
+      { icona: 'quota-orizz', testo: 'Diagonale (tocca 2 vertici)', vincolo: 'diagonale' },
+      { icona: 'angolo', testo: 'Angolo (tocca un vertice)', vincolo: 'angoloVertice' },
       {
-        icona: 'quota-orizz',
-        testo: 'Tra due vertici (diagonale)',
-        suggerimento:
-          'Nell’editor dello schizzo usa “◇ Diagonali / ＋ diagonale”, poi modifica la quota: la diagonale comanda la forma.'
-      },
-      {
-        icona: 'angolo',
-        testo: 'Angolare',
-        suggerimento:
-          'Nell’editor dello schizzo, sezione “Angoli”: vincola un angolo per comandarlo (la forma si adatta).'
-      },
-      {
-        icona: 'quota-allin',
+        icona: 'occhio',
         testo: 'Quota di riferimento',
         suggerimento:
-          'Tocca un lato o una diagonale e scegli “Riferimento”: misura soltanto, non comanda il disegno.'
+          'Tocca l’etichetta della quota e scegli “( ) Riferimento”: misura soltanto, non comanda il disegno.'
       }
     ]
   },
@@ -386,8 +393,9 @@ const GRUPPI_STRUMENTI_PIANTA: Array<{
         icona: 'magnete',
         testo: 'Blocca lato / ancora',
         suggerimento:
-          'Tocca un lato dello schizzo: nell’editor del lato puoi bloccarne la lunghezza o ancorare vertice/centro/lato.'
-      }
+          'Tocca l’etichetta della quota di un lato: nel campo trovi “Blocca” e l’ancora (vertice/centro/lato).'
+      },
+      { icona: 'cestino', testo: 'Rimuovi vincoli geometrici', cmd: 'togliVincoli' }
     ]
   },
   {
@@ -395,21 +403,13 @@ const GRUPPI_STRUMENTI_PIANTA: Array<{
     icona: 'rettangolo',
     testo: 'Oggetti',
     voci: [
-      {
-        icona: 'rettangolo',
-        testo: 'Rettangolo / Cerchio interni',
-        suggerimento:
-          'Tocca lo schizzo e apri l’editor: nella sezione “Oggetti interni” inserisci un rettangolo o un cerchio e imposta le distanze dall’origine.'
-      },
+      { icona: 'rettangolo', testo: 'Rettangolo interno', cmd: 'oggRettangolo' },
+      { icona: 'cerchio', testo: 'Cerchio interno', cmd: 'oggCerchio' },
       // quota di distanza oggetto–lato: tap-tap (oggetto, poi lato); il valore
       // si modifica poi toccando la sua etichetta sul canvas
       { icona: 'quota-allin', testo: 'Distanza oggetto–lato', vincolo: 'distanza' },
-      {
-        icona: 'mirino',
-        testo: 'Distanze dall’origine',
-        suggerimento:
-          'Imposta prima l’origine (datum, in basso a sinistra): gli oggetti si posizionano con le distanze da lì e le mantengono se modifichi la stanza.'
-      }
+      { icona: 'magnete', testo: 'Ancora centro (tocca oggetto)', vincolo: 'ancoraCentroOgg' },
+      { icona: 'cerchio-3p', testo: 'Blocca dimensione (tocca oggetto)', vincolo: 'bloccaDimOgg' }
     ]
   },
   {
@@ -423,12 +423,7 @@ const GRUPPI_STRUMENTI_PIANTA: Array<{
       { icona: 'polilinea', testo: 'Unisci lati allineati', cmd: 'unisci' },
       { icona: 'auto', testo: 'Semplifica (togli micro-lati)', cmd: 'semplifica' },
       { icona: 'rettangolo', testo: 'Ricostruisci dalle misure', cmd: 'ricostruisci' },
-      {
-        icona: 'cestino',
-        testo: 'Elimina lato e richiudi',
-        suggerimento:
-          'Tocca un lato dello schizzo: nell’editor del lato trovi “Elimina lato e richiudi”.'
-      }
+      { icona: 'cestino', testo: 'Elimina lato (tocca il lato)', vincolo: 'eliminaLato' }
     ]
   }
 ];
@@ -573,7 +568,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
    *  quota di DISTANZA il primo tocco sceglie l'oggetto (centro o bordo). */
   const [vincoloArmato, setVincoloArmato] = useState<{
     id: string;
-    tipo: TipoVincoloPianta;
+    tipo: TipoArmato;
     picks: number[];
     oggettoPick?: { oggettoId: string; entita: 'centroOggetto' | 'bordoOggetto' };
   } | null>(null);
@@ -584,6 +579,16 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     x: number;
     y: number;
   } | null>(null);
+  /** campo inline per l'angolo a un vertice (gradi) */
+  const [angoloInline, setAngoloInline] = useState<{
+    id: string;
+    vertice: number;
+    corrente: number;
+    x: number;
+    y: number;
+  } | null>(null);
+  /** dialogo compatto "Nome / numero stanza" (sostituisce l'editor dedicato) */
+  const [nomePianta, setNomePianta] = useState<string | null>(null);
   /** griglia di verifica sul piano calibrato (controllo visivo della scala) */
   const [mostraGriglia, setMostraGriglia] = useState(false);
   /** picker della foto di riferimento (sfondo) per una pianta */
@@ -1002,6 +1007,35 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     'collineare'
   ];
 
+  /** indice del VERTICE più vicino al punto toccato */
+  const verticePiuVicino = (poli: QuotaPoligono, p: Punto): number => {
+    let best = 0;
+    let bestD = Infinity;
+    poli.punti.forEach((v, i) => {
+      const d = Math.hypot(p.x - v.x, p.y - v.y);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    });
+    return best;
+  };
+
+  /** angolo interno (gradi) al vertice `v` del poligono */
+  const angoloAlVertice = (poli: QuotaPoligono, v: number): number => {
+    const n = poli.punti.length;
+    const P = poli.punti[v];
+    const A = poli.punti[(v - 1 + n) % n];
+    const B = poli.punti[(v + 1) % n];
+    const a = { x: A.x - P.x, y: A.y - P.y };
+    const b = { x: B.x - P.x, y: B.y - P.y };
+    const la = Math.hypot(a.x, a.y);
+    const lb = Math.hypot(b.x, b.y);
+    if (la < 1e-6 || lb < 1e-6) return 90;
+    const cos = Math.max(-1, Math.min(1, (a.x * b.x + a.y * b.y) / (la * lb)));
+    return Math.round(((Math.acos(cos) * 180) / Math.PI) * 10) / 10;
+  };
+
   /** indice del LATO (spigolo i→i+1) più vicino al punto toccato */
   const latoPiuVicino = (poli: QuotaPoligono, p: Punto): number => {
     const n = poli.punti.length;
@@ -1072,23 +1106,27 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     return true;
   };
 
-  /** Arma un vincolo tap-tap sul poligono bersaglio (selezionato o unico). */
-  const armaVincolo = (tipo: TipoVincoloPianta) => {
+  /** Arma un'azione tap-tap sul poligono bersaglio (selezionato o unico). */
+  const armaVincolo = (tipo: TipoArmato) => {
     if (!foto) return;
     const poli = poligonoBersaglio();
     if (!poli) {
       mostraToast('info', 'Seleziona prima lo schizzo su cui applicare il vincolo.');
       return;
     }
-    if (tipo === 'distanza') {
+    if (tipo === 'distanza' || tipo === 'ancoraCentroOgg' || tipo === 'bloccaDimOgg') {
       if (!poli.oggetti?.length) {
         mostraToast('info', 'Inserisci prima un oggetto (Oggetti → Rettangolo / Cerchio interni).');
         return;
       }
-      if (pxPerUnita(foto, poli.unita) == null) {
-        mostraToast('info', 'Calibra prima la scala: la distanza è una misura reale.');
-        return;
-      }
+    }
+    if (tipo === 'distanza' && pxPerUnita(foto, poli.unita) == null) {
+      mostraToast('info', 'Calibra prima la scala: la distanza è una misura reale.');
+      return;
+    }
+    if (tipo === 'eliminaLato' && poli.punti.length <= 3) {
+      mostraToast('info', 'Servono almeno 4 lati per eliminarne uno e richiudere la figura.');
+      return;
     }
     setMenuAperto(null);
     setSelezioneId(poli.id);
@@ -1098,13 +1136,147 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
 
   /** Tocco in modalità vincolo: sceglie il lato più vicino e, raggiunto il
    *  numero di lati richiesto, applica il vincolo e disarma il comando. */
-  const onPuntoVincolo = (p: Punto) => {
+  const onPuntoVincolo = (p: Punto, cliente: { x: number; y: number }) => {
     if (!vincoloArmato || !annotazioni || !foto) return;
     const poli = annotazioni.find(
       (a) => a.id === vincoloArmato.id && a.tipo === 'quotaPoligono'
     ) as QuotaPoligono | undefined;
     if (!poli) {
       annullaVincolo();
+      return;
+    }
+    // DIAGONALE: due vertici → quota di riferimento (poi modificabile inline)
+    if (vincoloArmato.tipo === 'diagonale') {
+      const v = verticePiuVicino(poli, p);
+      if (vincoloArmato.picks.length === 0) {
+        setVincoloArmato({ ...vincoloArmato, picks: [v] });
+        return;
+      }
+      const v0 = vincoloArmato.picks[0];
+      const n = poli.punti.length;
+      if (v === v0) {
+        mostraToast('info', 'Tocca un vertice diverso dal primo.');
+        return;
+      }
+      if ((v0 + 1) % n === v || (v + 1) % n === v0) {
+        mostraToast('info', 'I due vertici sono adiacenti: quella è già la quota del lato.');
+        return;
+      }
+      const px = pxPerUnita(foto, poli.unita);
+      const A = poli.punti[v0];
+      const B = poli.punti[v];
+      const misura = px != null ? arrotondaMisura(Math.hypot(B.x - A.x, B.y - A.y) / px) : null;
+      const segs = segmentiPoligono(poli);
+      if (segs.some((s) => (s.da === v0 && s.a === v) || (s.da === v && s.a === v0))) {
+        mostraToast('info', 'Questa diagonale è già quotata.');
+        annullaVincolo();
+        return;
+      }
+      commit(
+        annotazioni.map((a) =>
+          a.id === poli.id
+            ? ({
+                ...poli,
+                segmenti: [...segs, { da: v0, a: v, valore: misura, riferimento: true }],
+                lati: undefined,
+                offsetLati: undefined
+              } as QuotaPoligono)
+            : a
+        )
+      );
+      setVincoloArmato(null);
+      setStrumento('seleziona');
+      mostraToast(
+        'successo',
+        'Diagonale quotata (riferimento): tocca la sua etichetta per farla comandare la forma.'
+      );
+      return;
+    }
+    // ANGOLO al vertice: un tocco → campo inline con i gradi correnti
+    if (vincoloArmato.tipo === 'angoloVertice') {
+      const v = verticePiuVicino(poli, p);
+      setAngoloInline({
+        id: poli.id,
+        vertice: v,
+        corrente: angoloAlVertice(poli, v),
+        x: cliente.x,
+        y: cliente.y
+      });
+      setVincoloArmato(null);
+      setStrumento('seleziona');
+      return;
+    }
+    // ELIMINA LATO e richiudi la figura
+    if (vincoloArmato.tipo === 'eliminaLato') {
+      const lato = latoPiuVicino(poli, p);
+      const r = eliminaLatoRichiudi(poli.punti, segmentiPoligono(poli), lato, poli.origine);
+      setVincoloArmato(null);
+      setStrumento('seleziona');
+      if (!r) {
+        mostraToast('errore', 'Impossibile richiudere la figura senza questo lato.');
+        return;
+      }
+      commitGeometria(
+        annotazioni.map((a) =>
+          a.id === poli.id
+            ? ({
+                ...poli,
+                punti: r.punti,
+                segmenti: r.segmenti,
+                origine: r.origine,
+                vincoli: undefined,
+                lati: undefined,
+                offsetLati: undefined
+              } as QuotaPoligono)
+            : a
+        )
+      );
+      mostraToast('successo', 'Lato eliminato: figura richiusa.');
+      return;
+    }
+    // ANCORE DELL'OGGETTO: un tocco sull'oggetto → toggle del flag
+    if (vincoloArmato.tipo === 'ancoraCentroOgg' || vincoloArmato.tipo === 'bloccaDimOgg') {
+      const oggetti = poli.oggetti ?? [];
+      let best = oggetti[0];
+      let bestD = Infinity;
+      for (const o of oggetti) {
+        const c = centroOggetto(o);
+        const d = Math.hypot(p.x - c.x, p.y - c.y);
+        if (d < bestD) {
+          bestD = d;
+          best = o;
+        }
+      }
+      if (!best) {
+        annullaVincolo();
+        return;
+      }
+      const centro = vincoloArmato.tipo === 'ancoraCentroOgg';
+      const nuovi = oggetti.map((o) =>
+        o.id === best.id
+          ? centro
+            ? { ...o, centroAncorato: !o.centroAncorato || undefined }
+            : { ...o, dimensioneBloccata: !o.dimensioneBloccata || undefined }
+          : o
+      );
+      const attivo = centro ? !best.centroAncorato : !best.dimensioneBloccata;
+      commit(
+        annotazioni.map((a) =>
+          a.id === poli.id ? ({ ...poli, oggetti: nuovi } as QuotaPoligono) : a
+        )
+      );
+      setVincoloArmato(null);
+      setStrumento('seleziona');
+      mostraToast(
+        'successo',
+        centro
+          ? attivo
+            ? '⚓ Centro ancorato: non si sposterà.'
+            : 'Centro liberato.'
+          : attivo
+            ? '🔒 Dimensione bloccata: raggio/lati non cambieranno.'
+            : 'Dimensione sbloccata.'
+      );
       return;
     }
     // QUOTA DI DISTANZA oggetto–lato: primo tocco = oggetto (centro o bordo),
@@ -1535,7 +1707,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     chiudiProposta();
     setSelezioneId(definitiva.id);
     setStrumento('seleziona');
-    setQuotaInModifica({ tipo: 'poligono', id: definitiva.id });
+    // sullo SCHIZZO non si apre l'ambiente dedicato: si resta sul canvas
+    if (!foto?.ePianta) setQuotaInModifica({ tipo: 'poligono', id: definitiva.id });
   };
 
   /**
@@ -2083,6 +2256,58 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       void ricostruisciPianta(poli);
       return;
     }
+    if (cmd === 'nome') {
+      setNomePianta(poli.id);
+      return;
+    }
+    if (cmd === 'origine') {
+      // toggle: se non c'è la si mette in basso a sinistra, altrimenti si toglie
+      if (poli.origine == null) {
+        const o = origineDefault(poli.punti);
+        scrivi({ origine: o });
+        mostraToast('successo', 'Origine impostata (vertice in basso a sinistra): resta ferma e le misure si propagano da lì.');
+      } else {
+        scrivi({ origine: undefined });
+        mostraToast('successo', 'Origine rimossa.');
+      }
+      return;
+    }
+    if (cmd === 'togliVincoli') {
+      const distanze = (poli.vincoli ?? []).filter((v) => v.tipo === 'distanza');
+      const rimossi = (poli.vincoli ?? []).length - distanze.length;
+      if (rimossi === 0) {
+        mostraToast('info', 'Nessun vincolo geometrico da rimuovere.');
+        return;
+      }
+      scrivi({ vincoli: distanze.length ? distanze : undefined });
+      mostraToast('successo', `Rimossi ${rimossi} vincoli geometrici (le quote di distanza restano).`);
+      return;
+    }
+    if (cmd === 'oggRettangolo' || cmd === 'oggCerchio') {
+      const px = foto ? pxPerUnita(foto, poli.unita) : null;
+      if (px == null) {
+        mostraToast('info', 'Calibra prima la scala: gli oggetti hanno dimensioni reali.');
+        return;
+      }
+      const orig = poli.punti[poli.origine ?? origineDefault(poli.punti)] ?? poli.punti[0];
+      const dim =
+        cmd === 'oggRettangolo'
+          ? { larghezza: 100 * px, altezza: 80 * px }
+          : { raggioPx: 40 * px };
+      const nuovo: OggettoPianta = {
+        id: nuovoId(),
+        tipo: cmd === 'oggRettangolo' ? 'rettangolo' : 'cerchio',
+        x: orig.x + 50 * px,
+        y: orig.y - 50 * px,
+        ...dim
+      };
+      scrivi({ oggetti: [...(poli.oggetti ?? []), nuovo] });
+      mostraToast(
+        'successo',
+        'Oggetto inserito. Posizionalo con “Distanza oggetto–lato”; ancore: “Ancora centro” / “Blocca dimensione”.'
+      );
+      return;
+    }
     if (cmd === 'unisci') {
       const r = fondiCollineari(poli.punti, segmentiPoligono(poli), 4, poli.origine);
       if (!r) {
@@ -2290,6 +2515,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     // una copia "solo etichetta" non ha un editor proprio (la misura è
     // dell'originale): si può solo spostare o eliminare
     if (a.tipo === 'quotaPoligono' && a.soloEtichetta) return;
+    // SCHIZZO (pianta): niente ambiente dedicato — si lavora tutto sul canvas
+    // (quote inline, vincoli tap-tap, comandi del Menu Schizzo)
+    if (a.tipo === 'quotaPoligono' && foto.ePianta) return;
     if (a.tipo === 'quotaPoligono') setQuotaInModifica({ tipo: 'poligono', id });
     else if (a.tipo === 'callout') setQuotaInModifica({ tipo: 'callout', id });
     else if (a.tipo === 'testo') setTestoInModifica(id);
@@ -2796,26 +3024,42 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       {/* Vincolo armato (tap-tap): guida al tocco del/i lato/i, con Annulla. */}
       {vincoloArmato &&
         (() => {
-          const nomi: Partial<Record<TipoVincoloPianta, string>> = {
+          const nomi: Partial<Record<TipoArmato, string>> = {
             orizzontale: 'Orizzontale',
             verticale: 'Verticale',
             parallelo: 'Parallelo',
             perpendicolare: 'Perpendicolare',
             ugualeLunghezza: 'Uguale lunghezza',
             collineare: 'Collineare',
-            distanza: 'Distanza oggetto–lato'
+            distanza: 'Distanza oggetto–lato',
+            diagonale: 'Diagonale',
+            angoloVertice: 'Angolo',
+            eliminaLato: 'Elimina lato',
+            ancoraCentroOgg: 'Ancora centro',
+            bloccaDimOgg: 'Blocca dimensione'
           };
-          const binario = VINCOLI_BINARI.includes(vincoloArmato.tipo);
+          const binario = VINCOLI_BINARI.includes(vincoloArmato.tipo as TipoVincoloPianta);
           const passo =
             vincoloArmato.tipo === 'distanza'
               ? vincoloArmato.oggettoPick
                 ? 'ora tocca il lato'
                 : 'tocca l’oggetto (centro o bordo)'
-              : vincoloArmato.picks.length === 0
-                ? binario
-                  ? 'tocca il primo lato'
-                  : 'tocca il lato'
-                : 'tocca il secondo lato';
+              : vincoloArmato.tipo === 'diagonale'
+                ? vincoloArmato.picks.length === 0
+                  ? 'tocca il primo vertice'
+                  : 'tocca il secondo vertice'
+                : vincoloArmato.tipo === 'angoloVertice'
+                  ? 'tocca il vertice dell’angolo'
+                  : vincoloArmato.tipo === 'eliminaLato'
+                    ? 'tocca il lato da eliminare'
+                    : vincoloArmato.tipo === 'ancoraCentroOgg' ||
+                        vincoloArmato.tipo === 'bloccaDimOgg'
+                      ? 'tocca l’oggetto'
+                      : vincoloArmato.picks.length === 0
+                        ? binario
+                          ? 'tocca il primo lato'
+                          : 'tocca il lato'
+                        : 'tocca il secondo lato';
           return (
             <div className="barra-duplica" role="status">
               <span className="titolo">
@@ -2843,6 +3087,28 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           const nLatiInline = poli.punti.length;
           const eLatoInline =
             (seg.da + 1) % nLatiInline === seg.a || (seg.a + 1) % nLatiInline === seg.da;
+          // blocca/ancora: aggiornano il segmento e lasciano il campo aperto
+          const patchSeg = (patch: Partial<SegmentoQuota>) =>
+            commit(
+              (annotazioni ?? []).map((a) =>
+                a.id === poli.id
+                  ? ({
+                      ...poli,
+                      segmenti: segmentiPoligono(poli).map((s, i) =>
+                        i === quotaInline.indice ? { ...s, ...patch } : s
+                      ),
+                      lati: undefined,
+                      offsetLati: undefined
+                    } as QuotaPoligono)
+                  : a
+              )
+            );
+          const CICLO_ANCORE: Array<AncoraSegmento | undefined> = [
+            undefined,
+            'vertice-da',
+            'centro',
+            'lato'
+          ];
           return (
             <QuotaInline
               x={quotaInline.x}
@@ -2850,6 +3116,22 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               valore={seg.valore}
               unita={poli.unita}
               riferimento={!!seg.riferimento}
+              bloccato={foto.ePianta && eLatoInline ? !!seg.bloccato : undefined}
+              onBlocca={
+                foto.ePianta && eLatoInline
+                  ? () => patchSeg({ bloccato: !seg.bloccato || undefined })
+                  : undefined
+              }
+              ancora={foto.ePianta && eLatoInline ? (seg.ancora ?? null) : undefined}
+              onAncora={
+                foto.ePianta && eLatoInline
+                  ? () => {
+                      const i = CICLO_ANCORE.indexOf(seg.ancora as AncoraSegmento | undefined);
+                      const prossima = CICLO_ANCORE[(i + 1) % CICLO_ANCORE.length];
+                      patchSeg({ ancora: prossima });
+                    }
+                  : undefined
+              }
               onUguaglianza={
                 eLatoInline
                   ? () => {
@@ -2940,6 +3222,90 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           );
         })()}
 
+      {/* Campo inline per l'ANGOLO a un vertice: comanda la forma (vincolo). */}
+      {angoloInline &&
+        (() => {
+          const poli = annotazioni?.find(
+            (a) => a.id === angoloInline.id && a.tipo === 'quotaPoligono'
+          ) as QuotaPoligono | undefined;
+          if (!poli) return null;
+          const esistente = (poli.vincoli ?? []).find(
+            (v) => v.tipo === 'angolo' && v.riferimenti[0]?.indice === angoloInline.vertice
+          );
+          return (
+            <QuotaInline
+              x={angoloInline.x}
+              y={angoloInline.y}
+              valore={esistente?.valore ?? angoloInline.corrente}
+              unita="°"
+              riferimento
+              onAnnulla={() => setAngoloInline(null)}
+              onConferma={(gradi) => {
+                const senza = (poli.vincoli ?? []).filter(
+                  (v) => !(v.tipo === 'angolo' && v.riferimenti[0]?.indice === angoloInline.vertice)
+                );
+                const nuovo: VincoloPianta = {
+                  id: nuovoId(),
+                  tipo: 'angolo',
+                  riferimenti: [{ entita: 'vertice', indice: angoloInline.vertice }],
+                  valore: gradi
+                };
+                const ok = applicaVincoliSchizzo(poli, [...senza, nuovo]);
+                if (!ok)
+                  mostraToast('errore', 'Angolo in conflitto con gli altri vincoli: non applicato.');
+                else mostraToast('successo', 'Angolo vincolato: la forma si è adattata.');
+                setAngoloInline(null);
+              }}
+              onRiferimento={() => setAngoloInline(null)}
+              onElimina={() => {
+                // elimina l'eventuale vincolo d'angolo su questo vertice
+                if (esistente) {
+                  commit(
+                    (annotazioni ?? []).map((a) =>
+                      a.id === poli.id
+                        ? ({
+                            ...poli,
+                            vincoli: (poli.vincoli ?? []).filter((v) => v.id !== esistente.id)
+                          } as QuotaPoligono)
+                        : a
+                    )
+                  );
+                }
+                setAngoloInline(null);
+              }}
+            />
+          );
+        })()}
+
+      {/* Dialogo compatto "Nome / numero stanza" (lo Schizzo non ha più
+          l'ambiente dedicato dove stavano questi campi). */}
+      {nomePianta &&
+        (() => {
+          const poli = annotazioni.find(
+            (a) => a.id === nomePianta && a.tipo === 'quotaPoligono'
+          ) as QuotaPoligono | undefined;
+          if (!poli) return null;
+          return (
+            <ModaleNomePianta
+              codice={codiceForma(poli)}
+              numero={numeriForme.get(poli.id)?.numero}
+              nome={poli.etichetta ?? ''}
+              onChiudi={() => setNomePianta(null)}
+              onSalva={(nome, numero) => {
+                let mod: Partial<QuotaPoligono> = { etichetta: nome.trim() || undefined };
+                if (numero != null) {
+                  const ord = ordinePerNumero(poli, numero, fotoProgetto ?? [foto], annotazioniDi);
+                  if (ord !== null) mod = { ...mod, ordine: ord };
+                }
+                commit(
+                  annotazioni.map((a) => (a.id === poli.id ? ({ ...poli, ...mod } as QuotaPoligono) : a))
+                );
+                setNomePianta(null);
+              }}
+            />
+          );
+        })()}
+
       {/* oggetto selezionato (con ambiente dedicato): subito due pulsanti
           discreti — Modifica ed Elimina — senza dover azzeccare il secondo tap */}
       {!proposta &&
@@ -2950,16 +3316,18 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         quotaInModifica === null &&
         testoInModifica === null && (
           <div className="azioni-flottanti" role="group" aria-label="Azioni elemento">
-            {!(selezionata.tipo === 'quotaPoligono' && selezionata.soloEtichetta) && (
-              <button
-                className="azione-flottante modifica"
-                aria-label="Modifica"
-                title="Modifica"
-                onClick={() => apriModifica(selezionata.id)}
-              >
-                <Icona nome="matita" dimensione={20} />
-              </button>
-            )}
+            {!(selezionata.tipo === 'quotaPoligono' && selezionata.soloEtichetta) &&
+              // lo SCHIZZO non ha ambiente dedicato: si modifica sul canvas
+              !(selezionata.tipo === 'quotaPoligono' && foto.ePianta) && (
+                <button
+                  className="azione-flottante modifica"
+                  aria-label="Modifica"
+                  title="Modifica"
+                  onClick={() => apriModifica(selezionata.id)}
+                >
+                  <Icona nome="matita" dimensione={20} />
+                </button>
+              )}
             {selezionata.tipo === 'quotaTecnica' && (
               <>
                 <button
@@ -4133,12 +4501,16 @@ function QuotaInline({
   onAnnulla,
   onRiferimento,
   onElimina,
-  onUguaglianza
+  onUguaglianza,
+  bloccato,
+  onBlocca,
+  ancora,
+  onAncora
 }: {
   x: number;
   y: number;
   valore: number | null;
-  unita: Unita;
+  unita: string;
   riferimento: boolean;
   onConferma: (v: number) => void;
   onAnnulla: () => void;
@@ -4146,6 +4518,12 @@ function QuotaInline({
   onElimina: () => void;
   /** presente solo per i lati: avvia l'uguaglianza "=Ln" con un altro lato */
   onUguaglianza?: () => void;
+  /** lati dello schizzo: blocca la lunghezza (toggle) */
+  bloccato?: boolean;
+  onBlocca?: () => void;
+  /** lati dello schizzo: ancora corrente (—/vertice/centro/lato, a ciclo) */
+  ancora?: AncoraSegmento | null;
+  onAncora?: () => void;
 }) {
   const [txt, setTxt] = useState(valore != null ? String(valore) : '');
   const ref = useRef<HTMLInputElement>(null);
@@ -4185,6 +4563,28 @@ function QuotaInline({
             <Icona nome="check" dimensione={18} />
           </button>
         </div>
+        {(onBlocca || onAncora) && (
+          <div className="qi-azioni">
+            {onBlocca && (
+              <button
+                className={bloccato ? 'attivo' : ''}
+                onClick={onBlocca}
+                title="Blocca la lunghezza: non si adatta quando modifichi altre quote"
+              >
+                {bloccato ? '🔒 Bloccato' : '🔓 Blocca'}
+              </button>
+            )}
+            {onAncora && (
+              <button
+                className={ancora ? 'attivo' : ''}
+                onClick={onAncora}
+                title="Ancora del lato: il punto ancorato resta fermo (—/vertice/centro/lato)"
+              >
+                ⚓ {ancora === 'vertice-da' || ancora === 'vertice-a' ? 'vertice' : (ancora ?? '—')}
+              </button>
+            )}
+          </div>
+        )}
         <div className="qi-azioni">
           {onUguaglianza && (
             <button onClick={onUguaglianza} title="Uguale a un altro lato (=Ln): poi tocca il lato di riferimento">
@@ -4202,6 +4602,68 @@ function QuotaInline({
         </div>
       </div>
     </>
+  );
+}
+
+/** Dialogo compatto per nome (override del codice) e numero della stanza. */
+function ModaleNomePianta({
+  codice,
+  numero,
+  nome,
+  onSalva,
+  onChiudi
+}: {
+  codice: string;
+  numero: number | undefined;
+  nome: string;
+  onSalva: (nome: string, numero: number | null) => void;
+  onChiudi: () => void;
+}) {
+  const [txtNome, setTxtNome] = useState(nome);
+  const [txtNumero, setTxtNumero] = useState(numero != null ? String(numero) : '');
+  return (
+    <Modale titolo="Nome e numero" onChiudi={onChiudi} centro>
+      <div className="campo">
+        <label>Codice attuale</label>
+        <strong>{codice}</strong>
+      </div>
+      <div className="campo">
+        <label>Nome manuale (override del codice, facoltativo)</label>
+        <input
+          type="text"
+          value={txtNome}
+          onChange={(e) => setTxtNome(e.target.value)}
+          placeholder="es. Cucina"
+        />
+      </div>
+      <div className="campo">
+        <label>Numero nella sequenza</label>
+        <input
+          type="number"
+          inputMode="numeric"
+          value={txtNumero}
+          onChange={(e) => setTxtNumero(e.target.value)}
+        />
+        <span style={{ color: 'var(--testo-2)', fontSize: 13 }}>
+          Cambiando il numero la forma si sposta nella sequenza; le altre si rinumerano.
+        </span>
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+        <button className="btn" onClick={onChiudi}>
+          Annulla
+        </button>
+        <button
+          className="btn primario"
+          style={{ flex: 1 }}
+          onClick={() => {
+            const n = parseInt(txtNumero, 10);
+            onSalva(txtNome, Number.isFinite(n) && n > 0 ? n : null);
+          }}
+        >
+          ✓ Salva
+        </button>
+      </div>
+    </Modale>
   );
 }
 

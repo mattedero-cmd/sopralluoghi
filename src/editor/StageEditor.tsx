@@ -130,8 +130,9 @@ interface Props {
    *  apre la modifica inline (id del vincolo + posizione schermo). */
   onDistanzaInline?: (vincoloId: string, cliente: { x: number; y: number }) => void;
   /** tocco in modalità "vincolo" (tap-tap): riporta il punto toccato in
-   *  coordinate immagine, così il chiamante individua il lato più vicino. */
-  onPuntoVincolo?: (p: Punto) => void;
+   *  coordinate immagine (per trovare lato/vertice/oggetto più vicino) e in
+   *  pixel schermo (per ancorare eventuali campi inline). */
+  onPuntoVincolo?: (p: Punto, cliente: { x: number; y: number }) => void;
   /** tocco con lo strumento autoquotatura */
   onAutoTocco: (p: Punto) => void;
   /** tocco con lo strumento "riferimento": rileva il rettangolo di un oggetto
@@ -673,7 +674,16 @@ export function StageEditor(p: Props) {
   /** conferma del punto pendente al rilascio */
   const confermaPuntoPendente = (punto: Punto) => {
     if (p.strumento === 'vincolo') {
-      p.onPuntoVincolo?.(punto);
+      // posizione schermo del punto (per ancorare i campi inline): dal punto
+      // IMMAGINE via la vista, così vale anche se il dito si è già alzato
+      const rect = stageRef.current?.container().getBoundingClientRect();
+      const cliente = rect
+        ? {
+            x: rect.left + vista.x + punto.x * vista.scala,
+            y: rect.top + vista.y + punto.y * vista.scala
+          }
+        : { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+      p.onPuntoVincolo?.(punto, cliente);
       return;
     }
     if (p.strumento === 'testo') {

@@ -917,6 +917,12 @@ h2 {
   color: var(--pericolo, #e5534b);
 }
 
+.quota-inline .qi-azioni button.attivo {
+  background: var(--accento);
+  color: #fff;
+  border-color: var(--accento);
+}
+
 /* maniglia del foglio (affordance visiva che è un pannello, non una schermata) */
 .editor-quota::before {
   content: '';
