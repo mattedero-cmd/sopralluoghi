@@ -18,6 +18,7 @@ import type {
   SegmentoQuota,
   SottotipoQuota,
   StatoMisura,
+  TipoAnnotazione,
   OggettoPianta,
   TestoFoto,
   TipoForma,
@@ -141,86 +142,41 @@ function pxPerUnita(foto: Foto, unita: Unita): number | null {
 }
 
 /**
- * Strumenti raggruppati: la toolbar mostra pochi pulsanti grandi; toccando
- * un gruppo si apre un pannello temporaneo con le varianti (es. "Forma" →
- * rettangolo / 4 angoli / triangolo / polilinea). Meno pulsanti a schermo,
- * più spazio alla foto.
+ * Strumenti raggruppati per FUNZIONE. La toolbar mostra pochi pulsanti grandi;
+ * toccando un gruppo si apre un pannello temporaneo con le varianti. I menu
+ * sono organizzati per area: Quotature (tutte le misure/quote), Disegno
+ * (grafica libera non parametrica) e Pianta (ambiente parametrico dedicato).
+ * Nessuna funzione nuova: le voci esistenti sono solo raggruppate in modo più
+ * logico e bilanciato, con meno pulsanti a schermo.
  */
-const GRUPPI_STRUMENTI: Array<{
+type GruppoStrumenti = {
   id: string;
   icona: NomeIcona;
   testo: string;
   voci: Array<{ s: Strumento; icona: NomeIcona; testo: string }>;
-}> = [
+};
+
+/**
+ * MENU QUOTATURE — tutte le funzioni di misura e quotatura: quote base,
+ * quote multiple (tecniche), cerchi/dettagli, forme quotate e la
+ * calibrazione della scala/prospettiva (piano). Include l'autoquotatura.
+ */
+const GRUPPI_STRUMENTI_QUOTATURE: GruppoStrumenti[] = [
   {
     id: 'quote',
-    icona: 'quota-orizz',
+    icona: 'quota-allin',
     testo: 'Quote',
     voci: [
       { s: 'quotaO', icona: 'quota-orizz', testo: 'Orizzontale' },
       { s: 'quotaV', icona: 'quota-vert', testo: 'Verticale' },
       { s: 'quotaA', icona: 'quota-allin', testo: 'Allineata' },
-      { s: 'raggio', icona: 'cerchio', testo: 'Raggio' },
-      { s: 'cerchio3p', icona: 'cerchio-3p', testo: 'Cerchio 3 punti' },
       { s: 'angolo', icona: 'angolo', testo: 'Angolo' }
     ]
   },
   {
-    id: 'forme',
-    icona: 'rettangolo',
-    testo: 'Elementi',
-    voci: [
-      { s: 'rettangolo', icona: 'rettangolo', testo: 'Rettangolo' },
-      { s: 'quad', icona: 'quad', testo: '4 angoli' },
-      { s: 'tri', icona: 'triangolo', testo: 'Triangolo' },
-      { s: 'polilinea', icona: 'polilinea', testo: 'Polilinea' },
-      { s: 'schizzo', icona: 'disegno', testo: 'Schizzo stanza' }
-    ]
-  },
-  {
-    id: 'formeBase',
-    icona: 'disegno',
-    testo: 'Forme',
-    voci: [
-      { s: 'forLinea', icona: 'righello', testo: 'Linea' },
-      { s: 'forRett', icona: 'rettangolo', testo: 'Rettangolo' },
-      { s: 'forCerchio', icona: 'cerchio', testo: 'Cerchio' },
-      { s: 'forPoligono', icona: 'polilinea', testo: 'Poligono' },
-      { s: 'disegno', icona: 'disegno', testo: 'Mano libera' }
-    ]
-  },
-  {
-    id: 'note',
-    icona: 'matita',
-    testo: 'Note',
-    voci: [
-      { s: 'etichetta', icona: 'testo', testo: 'Etichette e legenda' },
-      { s: 'testo', icona: 'testo', testo: 'Testo' },
-      { s: 'freccia', icona: 'freccia', testo: 'Freccia' },
-      { s: 'callout', icona: 'dettaglio', testo: 'Dettaglio' }
-    ]
-  },
-  {
-    id: 'calibra',
-    icona: 'righello',
-    testo: 'Scala',
-    voci: [
-      { s: 'riferimento', icona: 'riferimento', testo: 'Riferimento auto' },
-      { s: 'calibra', icona: 'righello', testo: 'Scala (segmento)' }
-    ]
-  }
-];
-
-/**
- * Toolbar della MODALITÀ TECNICA: sostituisce quella base quando si attiva il
- * toggle. Fase 1: gli strumenti aprono l'ambiente dedicato (shell); la posa
- * guidata dei punti arriva nelle fasi successive.
- */
-const GRUPPI_STRUMENTI_TECNICA: typeof GRUPPI_STRUMENTI = [
-  {
-    id: 'tecQuote',
-    icona: 'quota-allin',
-    testo: 'Quote',
+    id: 'quoteMultiple',
+    icona: 'griglia',
+    testo: 'Quote multiple',
     voci: [
       { s: 'tecSerie', icona: 'quota-orizz', testo: 'In serie' },
       { s: 'tecParallelo', icona: 'quota-vert', testo: 'In parallelo' },
@@ -228,18 +184,97 @@ const GRUPPI_STRUMENTI_TECNICA: typeof GRUPPI_STRUMENTI = [
     ]
   },
   {
-    id: 'tecElementi',
-    icona: 'cerchio',
-    testo: 'Elementi',
+    id: 'cerchiDettagli',
+    icona: 'cerchio-3p',
+    testo: 'Cerchi e dettagli',
     voci: [
-      { s: 'tecForo', icona: 'cerchio', testo: 'Foro ⌀/R' },
+      { s: 'raggio', icona: 'cerchio', testo: 'Raggio' },
+      { s: 'cerchio3p', icona: 'cerchio-3p', testo: 'Cerchio 3 punti' },
+      { s: 'tecForo', icona: 'goccia', testo: 'Foro ⌀/R' },
       { s: 'tecSmusso', icona: 'angolo', testo: 'Smusso' },
       { s: 'tecFilettatura', icona: 'righello', testo: 'Filettatura' }
     ]
+  },
+  {
+    id: 'formeQuotate',
+    icona: 'rettangolo',
+    testo: 'Forme quotate',
+    voci: [
+      { s: 'rettangolo', icona: 'rettangolo', testo: 'Rettangolo' },
+      { s: 'quad', icona: 'quad', testo: '4 angoli' },
+      { s: 'tri', icona: 'triangolo', testo: 'Triangolo' },
+      { s: 'polilinea', icona: 'polilinea', testo: 'Polilinea' },
+      { s: 'schizzo', icona: 'griglia', testo: 'Schizzo stanza' }
+    ]
+  },
+  {
+    id: 'scala',
+    icona: 'righello',
+    testo: 'Scala e piano',
+    voci: [
+      { s: 'auto', icona: 'auto', testo: 'Quotatura automatica' },
+      { s: 'riferimento', icona: 'riferimento', testo: 'Riferimento auto' },
+      { s: 'calibra', icona: 'righello', testo: 'Scala (segmento)' },
+      { s: 'piano', icona: 'piano', testo: 'Piano (prospettiva)' }
+    ]
   }
-  // Datum/riferimento rimosso dal menu: poco utile finché non è collegabile
-  // come origine (resta nel modello e nei renderer, riattivabile in futuro).
 ];
+
+/**
+ * MENU DISEGNO — grafica generica NON parametrica: forme libere (linea,
+ * rettangolo, cerchio, poligono, mano libera) e annotazioni (etichette,
+ * testo, frecce, dettagli). Nessuna misura: solo elementi grafici.
+ */
+const GRUPPI_STRUMENTI_DISEGNO: GruppoStrumenti[] = [
+  {
+    id: 'forme',
+    icona: 'disegno',
+    testo: 'Forme',
+    voci: [
+      { s: 'forLinea', icona: 'righello', testo: 'Linea' },
+      { s: 'forRett', icona: 'rettangolo', testo: 'Rettangolo' },
+      { s: 'forCerchio', icona: 'cerchio', testo: 'Cerchio' },
+      { s: 'forPoligono', icona: 'polilinea', testo: 'Poligono' },
+      { s: 'disegno', icona: 'matita', testo: 'Mano libera' }
+    ]
+  },
+  {
+    id: 'note',
+    icona: 'etichetta',
+    testo: 'Note',
+    voci: [
+      { s: 'etichetta', icona: 'etichetta', testo: 'Etichette e legenda' },
+      { s: 'testo', icona: 'testo', testo: 'Testo' },
+      { s: 'freccia', icona: 'freccia', testo: 'Freccia' },
+      { s: 'callout', icona: 'dettaglio', testo: 'Dettaglio' }
+    ]
+  }
+];
+
+/**
+ * Menu funzionale a cui appartiene un'annotazione: selezionando un oggetto si
+ * apre automaticamente il suo menu dedicato (linea/forma/nota → Disegno, quota
+ * → Quotature, elemento della pianta → Schizzo/Pianta). Indipendente dal menu
+ * attivo: la selezione riporta sempre nel contesto giusto.
+ */
+function menuDiAnnotazione(
+  tipo: TipoAnnotazione,
+  ePianta: boolean
+): 'quotature' | 'disegno' | 'pianta' {
+  if (tipo === 'quotaPoligono' && ePianta) return 'pianta';
+  switch (tipo) {
+    case 'quota':
+    case 'quotaAngolo':
+    case 'quotaRaggio':
+    case 'quotaRett':
+    case 'quotaPoligono':
+    case 'quotaTecnica':
+      return 'quotature';
+    default:
+      // testo, disegno, freccia, callout, etichetta, legenda, forma
+      return 'disegno';
+  }
+}
 
 /** Strumenti tecnici (tutti). */
 const STRUMENTI_TECNICI = new Set<Strumento>([
@@ -457,8 +492,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [selezioneId, setSelezioneId] = useState<string | null>(null);
   const [strumento, setStrumento] = useState<Strumento>('seleziona');
   /** menu attivo (sostituisce la toolbar): base · tecnica · pianta */
-  const [modalitaMenu, setModalitaMenu] = useState<'base' | 'tecnica' | 'pianta'>('base');
-  const modalitaTecnica = modalitaMenu === 'tecnica';
+  const [modalitaMenu, setModalitaMenu] = useState<'quotature' | 'disegno' | 'pianta'>(
+    'quotature'
+  );
   /** punti posati della quotatura tecnica in serie in corso (catena da generare) */
   const [puntiTecnici, setPuntiTecnici] = useState<Punto[]>([]);
   /** lettera attiva per la posa rapida delle etichette (modalità Note) */
@@ -671,9 +707,27 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       if (annotazioni.length === 0) setStrumento('schizzo');
     } else {
       // aprendo una foto normale non si resta nel Menu Pianta (che è per le piante)
-      setModalitaMenu((m) => (m === 'pianta' ? 'base' : m));
+      setModalitaMenu((m) => (m === 'pianta' ? 'quotature' : m));
     }
   }, [foto, annotazioni]);
+
+  // Selezionando un oggetto si apre automaticamente il suo menu dedicato
+  // (linea/forma/nota → Disegno, quota → Quotature, elemento pianta →
+  // Schizzo/Pianta), indipendentemente dal menu attivo. Così "Seleziona" resta
+  // neutro e riporta sempre nel contesto giusto dell'oggetto scelto.
+  const menuDaSelezione = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selezioneId || !annotazioni || !foto) {
+      menuDaSelezione.current = null;
+      return;
+    }
+    if (menuDaSelezione.current === selezioneId) return;
+    menuDaSelezione.current = selezioneId;
+    const a = annotazioni.find((x) => x.id === selezioneId);
+    if (!a) return;
+    const m = menuDiAnnotazione(a.tipo, !!foto.ePianta);
+    setModalitaMenu((cur) => (cur === m ? cur : m));
+  }, [selezioneId, annotazioni, foto]);
 
 
   const commit = useCallback(
@@ -2470,7 +2524,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         {menuAperto &&
           modalitaMenu !== 'pianta' &&
           (() => {
-            const set = modalitaTecnica ? GRUPPI_STRUMENTI_TECNICA : GRUPPI_STRUMENTI;
+            const set =
+              modalitaMenu === 'disegno' ? GRUPPI_STRUMENTI_DISEGNO : GRUPPI_STRUMENTI_QUOTATURE;
             const g = set.find((x) => x.id === menuAperto);
             if (!g) return null;
             return (
@@ -2525,18 +2580,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             icona="cursore"
             testo="Seleziona"
           />
-          {/* Auto (autoquotatura) e Richiama non servono nel Menu Pianta */}
-          {modalitaMenu !== 'pianta' && (
-            <BtnStrumento
-              attivo={strumento === 'auto'}
-              onClick={() => {
-                setStrumento('auto');
-                setMenuAperto(null);
-              }}
-              icona="auto"
-              testo="Auto"
-            />
-          )}
+          {/* "Auto" (autoquotatura) è ora nel gruppo Scala del menu Quotature.
+              "Richiama" resta a portata di mano ma non serve nel Menu Pianta. */}
           {modalitaMenu !== 'pianta' && (
             <BtnStrumento
               attivo={menuRichiamo || !!duplicaMaster}
@@ -2551,7 +2596,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             />
           )}
           {modalitaMenu !== 'pianta' &&
-            (modalitaTecnica ? GRUPPI_STRUMENTI_TECNICA : GRUPPI_STRUMENTI).map((g) => {
+            (modalitaMenu === 'disegno'
+              ? GRUPPI_STRUMENTI_DISEGNO
+              : GRUPPI_STRUMENTI_QUOTATURE
+            ).map((g) => {
               const voceAtt = g.voci.find((v) => v.s === strumento);
               return (
                 <BtnStrumento
@@ -2578,16 +2626,27 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 />
               );
             })}
-          {/* selettore del menu: base · tecnica · pianta (mutuamente esclusivi) */}
+          {/* selettore del menu per funzione: Quotature · Disegno · Pianta
+              (mutuamente esclusivi). "Seleziona" resta neutro e non legato. */}
           <BtnStrumento
-            attivo={modalitaMenu === 'tecnica'}
+            attivo={modalitaMenu === 'quotature'}
             onClick={() => {
               setMenuAperto(null);
               setStrumento('seleziona');
-              setModalitaMenu((m) => (m === 'tecnica' ? 'base' : 'tecnica'));
+              setModalitaMenu('quotature');
             }}
-            icona="righello"
-            testo="Tecnica"
+            icona="quota-allin"
+            testo="Quotature"
+          />
+          <BtnStrumento
+            attivo={modalitaMenu === 'disegno'}
+            onClick={() => {
+              setMenuAperto(null);
+              setStrumento('seleziona');
+              setModalitaMenu('disegno');
+            }}
+            icona="disegno"
+            testo="Disegno"
           />
           {foto.ePianta && (
             <BtnStrumento
@@ -2595,7 +2654,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               onClick={() => {
                 setMenuAperto(null);
                 setStrumento('seleziona');
-                setModalitaMenu((m) => (m === 'pianta' ? 'base' : 'pianta'));
+                setModalitaMenu('pianta');
               }}
               icona="griglia"
               testo="Pianta"
