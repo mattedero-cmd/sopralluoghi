@@ -141,6 +141,17 @@ function pxPerUnita(foto: Foto, unita: Unita): number | null {
   return (foto.scala.px / mmScala) * inMillimetri(1, unita);
 }
 
+/** distanza (px) di un punto dal segmento a–b (per scegliere il lato toccato) */
+function distanzaPuntoSegmento(p: Punto, a: Punto, b: Punto): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  if (len2 <= 1e-9) return Math.hypot(p.x - a.x, p.y - a.y);
+  let t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+
 /**
  * Strumenti raggruppati per FUNZIONE. La toolbar mostra pochi pulsanti grandi;
  * toccando un gruppo si apre un pannello temporaneo con le varianti. I menu
@@ -306,6 +317,8 @@ interface VocePianta {
   testo: string;
   tool?: Strumento;
   cmd?: ComandoPianta;
+  /** vincolo geometrico da applicare a tocchi (tap-tap) */
+  vincolo?: TipoVincoloPianta;
   /** suggerimento operativo mostrato come avviso (funzioni "seleziona-poi-agisci") */
   suggerimento?: string;
 }
@@ -357,17 +370,18 @@ const GRUPPI_STRUMENTI_PIANTA: Array<{
     icona: 'angolo',
     testo: 'Vincoli',
     voci: [
+      // vincoli a tocchi (tap-tap): premi, poi tocca il/i lato/i sullo schizzo
+      { icona: 'quota-orizz', testo: 'Orizzontale', vincolo: 'orizzontale' },
+      { icona: 'quota-vert', testo: 'Verticale', vincolo: 'verticale' },
+      { icona: 'polilinea', testo: 'Parallelo', vincolo: 'parallelo' },
+      { icona: 'angolo', testo: 'Perpendicolare', vincolo: 'perpendicolare' },
+      { icona: 'righello', testo: 'Uguale lunghezza', vincolo: 'ugualeLunghezza' },
+      { icona: 'quota-allin', testo: 'Collineare', vincolo: 'collineare' },
       {
         icona: 'magnete',
         testo: 'Blocca lato / ancora',
         suggerimento:
           'Tocca un lato dello schizzo: nell’editor del lato puoi bloccarne la lunghezza o ancorare vertice/centro/lato.'
-      },
-      {
-        icona: 'polilinea',
-        testo: 'Orizz./Vert./Parallelo/Perp./Uguale',
-        suggerimento:
-          'Tocca lo schizzo e apri l’editor: nella sezione “Vincoli geometrici” scegli il vincolo e i lati; la forma si adatta.'
       }
     ]
   },
@@ -545,6 +559,13 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     indice: number;
     x: number;
     y: number;
+  } | null>(null);
+  /** vincolo "armato" (tap-tap): tipo, poligono bersaglio e lati già toccati.
+   *  Con lo strumento 'vincolo' il tocco successivo sceglie il lato. */
+  const [vincoloArmato, setVincoloArmato] = useState<{
+    id: string;
+    tipo: TipoVincoloPianta;
+    picks: number[];
   } | null>(null);
   /** griglia di verifica sul piano calibrato (controllo visivo della scala) */
   const [mostraGriglia, setMostraGriglia] = useState(false);
@@ -940,6 +961,135 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           : a
       )
     );
+  };
+
+  // -------------------------------------------------------------------------
+  // SCHIZZO — VINCOLI a tocchi (tap-tap), stile Inventor: premo il pulsante del
+  // vincolo, tocco il primo lato (e per i vincoli binari il secondo); il
+  // vincolo si applica, la forma si adatta e il comando si disarma.
+  // -------------------------------------------------------------------------
+
+  /** i vincoli che richiedono DUE lati; gli altri (orizz./vert.) ne usano uno */
+  const VINCOLI_BINARI: TipoVincoloPianta[] = [
+    'parallelo',
+    'perpendicolare',
+    'ugualeLunghezza',
+    'collineare'
+  ];
+
+  /** indice del LATO (spigolo i→i+1) più vicino al punto toccato */
+  const latoPiuVicino = (poli: QuotaPoligono, p: Punto): number => {
+    const n = poli.punti.length;
+    let best = 0;
+    let bestD = Infinity;
+    for (let i = 0; i < n; i++) {
+      const a = poli.punti[i];
+      const b = poli.punti[(i + 1) % n];
+      const d = distanzaPuntoSegmento(p, a, b);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    return best;
+  };
+
+  /** Applica una lista di vincoli allo schizzo: se calibrato risolve e adatta
+   *  la forma (false se in conflitto), altrimenti memorizza senza risolvere. */
+  const applicaVincoliSchizzo = (poli: QuotaPoligono, vincoli: VincoloPianta[]): boolean => {
+    if (!annotazioni || !foto) return false;
+    const px = pxPerUnita(foto, poli.unita);
+    // i vincoli geometrici (orizz./vert./parallelo/…) sono indipendenti dalla
+    // scala: si possono risolvere anche senza calibrazione (pxSolve = 1),
+    // dando comunque l'adattamento immediato della forma sul canvas.
+    const pxSolve = px ?? 1;
+    const origine = poli.origine ?? origineDefault(poli.punti);
+    const r = risolviPianta(poli.punti, segmentiPoligono(poli), vincoli, pxSolve, origine);
+    if (!r.ok) return false;
+    const nLati = poli.punti.length;
+    // le quote reali si riquotano solo se c'è una scala vera
+    const segsFinali =
+      px == null
+        ? segmentiPoligono(poli)
+        : segmentiPoligono(poli).map((s) => {
+            if (s.valore == null || quotaFissa(s, nLati)) return s;
+            const A = r.punti[s.da];
+            const B = r.punti[s.a];
+            if (!A || !B) return s;
+            return { ...s, valore: arrotondaMisura(Math.hypot(B.x - A.x, B.y - A.y) / px) };
+          });
+    commit(
+      annotazioni.map((a) =>
+        a.id === poli.id
+          ? ({
+              ...poli,
+              punti: r.punti,
+              segmenti: segsFinali,
+              oggetti: riposizionaOggetti(poli.oggetti, poli.punti, r.punti, origine),
+              vincoli: vincoli.length ? vincoli : undefined,
+              lati: undefined,
+              offsetLati: undefined,
+              ...(px != null ? { valoreAuto: false } : {})
+            } as QuotaPoligono)
+          : a
+      )
+    );
+    return true;
+  };
+
+  /** Arma un vincolo tap-tap sul poligono bersaglio (selezionato o unico). */
+  const armaVincolo = (tipo: TipoVincoloPianta) => {
+    const poli = poligonoBersaglio();
+    if (!poli) {
+      mostraToast('info', 'Seleziona prima lo schizzo su cui applicare il vincolo.');
+      return;
+    }
+    setMenuAperto(null);
+    setSelezioneId(poli.id);
+    setVincoloArmato({ id: poli.id, tipo, picks: [] });
+    setStrumento('vincolo');
+  };
+
+  /** Tocco in modalità vincolo: sceglie il lato più vicino e, raggiunto il
+   *  numero di lati richiesto, applica il vincolo e disarma il comando. */
+  const onPuntoVincolo = (p: Punto) => {
+    if (!vincoloArmato || !annotazioni) return;
+    const poli = annotazioni.find(
+      (a) => a.id === vincoloArmato.id && a.tipo === 'quotaPoligono'
+    ) as QuotaPoligono | undefined;
+    if (!poli) {
+      annullaVincolo();
+      return;
+    }
+    const i = latoPiuVicino(poli, p);
+    const binario = VINCOLI_BINARI.includes(vincoloArmato.tipo);
+    const richiesti = binario ? 2 : 1;
+    // per i binari il secondo lato dev'essere diverso dal primo
+    if (binario && vincoloArmato.picks.length === 1 && vincoloArmato.picks[0] === i) {
+      mostraToast('info', 'Tocca un lato diverso dal primo.');
+      return;
+    }
+    const picks = [...vincoloArmato.picks, i];
+    if (picks.length < richiesti) {
+      setVincoloArmato({ ...vincoloArmato, picks });
+      return;
+    }
+    const nuovo: VincoloPianta = {
+      id: nuovoId(),
+      tipo: vincoloArmato.tipo,
+      riferimenti: picks.map((idx) => ({ entita: 'lato' as const, indice: idx }))
+    };
+    const ok = applicaVincoliSchizzo(poli, [...(poli.vincoli ?? []), nuovo]);
+    setVincoloArmato(null);
+    setStrumento('seleziona');
+    if (!ok) mostraToast('errore', 'Vincolo in conflitto con gli altri: non applicato.');
+    else mostraToast('successo', 'Vincolo applicato: la forma si è adattata.');
+  };
+
+  /** Annulla la modalità vincolo (X o tocco fuori). */
+  const annullaVincolo = () => {
+    setVincoloArmato(null);
+    setStrumento('seleziona');
   };
 
   const creaRettangolo = (rect: Rettangolo) => {
@@ -2100,6 +2250,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           if (!selezionata || selezionata.tipo !== 'quotaPoligono') return;
           setQuotaInline({ id: selezionata.id, indice, x: cliente.x, y: cliente.y });
         }}
+        onPuntoVincolo={onPuntoVincolo}
         onCommit={commitGeometria}
         onNuovaQuota={creaQuota}
         onNuovoRett={creaRettangolo}
@@ -2424,6 +2575,38 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         )
       )}
 
+      {/* Vincolo armato (tap-tap): guida al tocco del/i lato/i, con Annulla. */}
+      {vincoloArmato &&
+        (() => {
+          const nomi: Partial<Record<TipoVincoloPianta, string>> = {
+            orizzontale: 'Orizzontale',
+            verticale: 'Verticale',
+            parallelo: 'Parallelo',
+            perpendicolare: 'Perpendicolare',
+            ugualeLunghezza: 'Uguale lunghezza',
+            collineare: 'Collineare'
+          };
+          const binario = VINCOLI_BINARI.includes(vincoloArmato.tipo);
+          const passo =
+            vincoloArmato.picks.length === 0
+              ? binario
+                ? 'tocca il primo lato'
+                : 'tocca il lato'
+              : 'tocca il secondo lato';
+          return (
+            <div className="barra-duplica" role="status">
+              <span className="titolo">
+                <Icona nome="magnete" dimensione={18} /> Vincolo{' '}
+                <strong>{nomi[vincoloArmato.tipo] ?? vincoloArmato.tipo}</strong> · {passo}
+              </span>
+              <span className="spazio" />
+              <button className="btn" onClick={annullaVincolo}>
+                <Icona nome="chiudi" dimensione={16} /> Annulla
+              </button>
+            </div>
+          );
+        })()}
+
       {/* Modifica INLINE della quota dello schizzo, ancorata al punto toccato:
           niente editor dedicato, si resta sul disegno. */}
       {quotaInline &&
@@ -2716,6 +2899,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                       }
                       if (v.cmd) {
                         eseguiComandoPianta(v.cmd);
+                        return;
+                      }
+                      if (v.vincolo) {
+                        armaVincolo(v.vincolo);
                         return;
                       }
                       if (v.suggerimento) {

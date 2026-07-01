@@ -61,6 +61,8 @@ export type Strumento =
   | 'piano'
   | 'riferimento'
   | 'etichetta'
+  // schizzo parametrico: modalità "applica vincolo" a tocchi (tap-tap)
+  | 'vincolo'
   // forme di disegno generiche (menu generico, Fase 1b)
   | 'forLinea'
   | 'forRett'
@@ -123,6 +125,9 @@ interface Props {
    *  apre la modifica INLINE del valore sul canvas, senza editor dedicato.
    *  `indice` = segmento; `cliente` = posizione in pixel schermo del tocco. */
   onQuotaInline?: (indice: number, cliente: { x: number; y: number }) => void;
+  /** tocco in modalità "vincolo" (tap-tap): riporta il punto toccato in
+   *  coordinate immagine, così il chiamante individua il lato più vicino. */
+  onPuntoVincolo?: (p: Punto) => void;
   /** tocco con lo strumento autoquotatura */
   onAutoTocco: (p: Punto) => void;
   /** tocco con lo strumento "riferimento": rileva il rettangolo di un oggetto
@@ -612,6 +617,14 @@ export function StageEditor(p: Props) {
         disegnoAttivo.current = true;
         break;
       }
+      // vincolo (schizzo): tocco singolo grezzo, il lato più vicino lo trova
+      // il chiamante — niente snap ai vertici (sarebbe ambiguo tra due lati)
+      case 'vincolo': {
+        setPuntoPendente(pos);
+        setPuntoLente(pos);
+        disegnoAttivo.current = true;
+        break;
+      }
       // etichetta: tocco singolo → posa la lettera attiva; tap prolungato →
       // apre il menu circolare delle lettere SENZA posare nulla
       case 'etichetta': {
@@ -655,6 +668,10 @@ export function StageEditor(p: Props) {
 
   /** conferma del punto pendente al rilascio */
   const confermaPuntoPendente = (punto: Punto) => {
+    if (p.strumento === 'vincolo') {
+      p.onPuntoVincolo?.(punto);
+      return;
+    }
     if (p.strumento === 'testo') {
       const inizio = inizioTesto.current;
       inizioTesto.current = null;
