@@ -119,6 +119,10 @@ interface Props {
   onSeleziona: (id: string | null) => void;
   /** tocco "secco" (senza trascinamento) su un'annotazione: apre la modifica */
   onModifica: (id: string) => void;
+  /** tocco sull'etichetta di una quota di uno schizzo (perimetro selezionato):
+   *  apre la modifica INLINE del valore sul canvas, senza editor dedicato.
+   *  `indice` = segmento; `cliente` = posizione in pixel schermo del tocco. */
+  onQuotaInline?: (indice: number, cliente: { x: number; y: number }) => void;
   /** tocco con lo strumento autoquotatura */
   onAutoTocco: (p: Punto) => void;
   /** tocco con lo strumento "riferimento": rileva il rettangolo di un oggetto
@@ -1531,6 +1535,7 @@ export function StageEditor(p: Props) {
               applicaSnap={applicaSnap}
               vincolo={p.vincolo}
               gestoMulti={() => gestoMulti.current}
+              onQuotaInline={p.onQuotaInline}
             />
           )}
         </Layer>
@@ -2065,7 +2070,8 @@ function ManiglieAnnotazione({
   onPuntoAttivo,
   applicaSnap,
   vincolo,
-  gestoMulti
+  gestoMulti,
+  onQuotaInline
 }: {
   ann: Annotazione;
   raggio: number;
@@ -2078,12 +2084,17 @@ function ManiglieAnnotazione({
   vincolo: ModalitaVincolo;
   /** true durante un gesto a due dita (zoom): le maniglie non si muovono */
   gestoMulti?: () => boolean;
+  /** tocco secco sull'etichetta di una quota: modifica inline del valore */
+  onQuotaInline?: (indice: number, cliente: { x: number; y: number }) => void;
 }) {
+  // distingue il tocco "secco" dal trascinamento: dopo un drag il click non
+  // deve aprire la modifica inline (Konva può emetterlo comunque)
+  const trascinato = useRef(false);
   const maniglia = (
     chiave: string,
     pos: Punto,
     aggiorna: (nuova: Punto) => Annotazione,
-    opzioni?: { snap?: boolean; escludi?: Punto[] }
+    opzioni?: { snap?: boolean; escludi?: Punto[]; onTap?: (cliente: { x: number; y: number }) => void }
   ) => (
     <Circle
       key={chiave}
@@ -2095,6 +2106,7 @@ function ManiglieAnnotazione({
       strokeWidth={2.5 / scala}
       draggable
       onDragStart={(e) => {
+        trascinato.current = false;
         if (gestoMulti?.()) {
           e.target.stopDrag();
           e.target.position(pos);
@@ -2105,6 +2117,7 @@ function ManiglieAnnotazione({
           e.target.position(pos); // gesto a due dita: la maniglia resta ferma
           return;
         }
+        trascinato.current = true;
         let nuovo: Punto = { x: e.target.x(), y: e.target.y() };
         if (opzioni?.snap) nuovo = applicaSnap(nuovo, opzioni.escludi);
         e.target.position(nuovo);
@@ -2120,8 +2133,28 @@ function ManiglieAnnotazione({
         onPuntoAttivo(null);
         onFine();
       }}
+      onClick={opzioni?.onTap ? (e) => onTapManiglia(e, opzioni.onTap!) : undefined}
+      onTap={opzioni?.onTap ? (e) => onTapManiglia(e, opzioni.onTap!) : undefined}
     />
   );
+
+  /** tocco "secco" su una maniglia: calcola la posizione schermo e delega */
+  const onTapManiglia = (
+    e: Konva.KonvaEventObject<Event>,
+    cb: (cliente: { x: number; y: number }) => void
+  ) => {
+    if (trascinato.current) {
+      // era un trascinamento (riposiziona l'etichetta), non un tocco: ignora
+      trascinato.current = false;
+      return;
+    }
+    const stage = e.target.getStage();
+    if (!stage) return;
+    const rect = stage.container().getBoundingClientRect();
+    const pp = stage.getPointerPosition();
+    if (!pp) return;
+    cb({ x: rect.left + pp.x, y: rect.top + pp.y });
+  };
 
   const applicaVincolo = (origine: Punto, punto: Punto): Punto => {
     if (vincolo === 'orto') return vincolaOrto(origine, punto);
@@ -2273,13 +2306,19 @@ function ManiglieAnnotazione({
             if (!a || !b) return null;
             const g = geometriaQuota({ sottotipo: 'allineata', p1: a, p2: b, offset: seg.offset ?? 0 });
             const ancora = somma(g.centro, scalaVett(g.d, seg.scorrTesto ?? 0));
-            return maniglia(`proj-${i}`, ancora, (n) => {
-              const offset = dot(sottrai(n, a), normale(g.d));
-              const meta = g.lunghezzaPx / 2;
-              const scorr = Math.max(-meta, Math.min(meta, dot(sottrai(n, g.centro), g.d)));
-              const nuovi = segs.map((s, j) => (j === i ? { ...s, offset, scorrTesto: scorr } : s));
-              return { ...ann, lati: undefined, offsetLati: undefined, segmenti: nuovi };
-            });
+            return maniglia(
+              `proj-${i}`,
+              ancora,
+              (n) => {
+                const offset = dot(sottrai(n, a), normale(g.d));
+                const meta = g.lunghezzaPx / 2;
+                const scorr = Math.max(-meta, Math.min(meta, dot(sottrai(n, g.centro), g.d)));
+                const nuovi = segs.map((s, j) => (j === i ? { ...s, offset, scorrTesto: scorr } : s));
+                return { ...ann, lati: undefined, offsetLati: undefined, segmenti: nuovi };
+              },
+              // tocco secco sull'etichetta: modifica INLINE del valore sul canvas
+              onQuotaInline ? { onTap: (cliente) => onQuotaInline(i, cliente) } : undefined
+            );
           })}
           {/* glifi delle ancore/vincoli (piante parametriche): marcatori non
               trascinabili, visibili solo mentre l'elemento è selezionato */}

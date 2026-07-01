@@ -831,6 +831,92 @@ h2 {
   padding-top: 10px;
 }
 
+/* Campo INLINE per la quota dello schizzo: piccolo pannello ancorato al punto
+   toccato, sopra il canvas, senza coprire il disegno. */
+.quota-inline-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 65;
+  background: transparent;
+}
+
+.quota-inline {
+  position: fixed;
+  z-index: 66;
+  transform: translate(-50%, calc(-100% - 14px));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: var(--sfondo-2);
+  border: 1px solid var(--bordo);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.quota-inline .qi-riga {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.quota-inline input {
+  width: 92px;
+  min-height: 44px;
+  padding: 6px 10px;
+  font-size: 17px;
+  font-weight: 600;
+  border: 1px solid var(--bordo);
+  border-radius: 8px;
+  background: var(--sfondo);
+  color: var(--testo);
+}
+
+.quota-inline .qi-unita {
+  font-size: 14px;
+  color: var(--testo-2);
+  min-width: 24px;
+}
+
+.quota-inline .qi-ok {
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accento);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.quota-inline .qi-azioni {
+  display: flex;
+  gap: 6px;
+}
+
+.quota-inline .qi-azioni button {
+  flex: 1;
+  min-height: 38px;
+  padding: 4px 8px;
+  font-size: 13px;
+  border: 1px solid var(--bordo);
+  border-radius: 8px;
+  background: var(--sfondo-3);
+  color: var(--testo);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.quota-inline .qi-azioni .qi-elimina {
+  color: var(--pericolo, #e5534b);
+}
+
 /* maniglia del foglio (affordance visiva che è un pannello, non una schermata) */
 .editor-quota::before {
   content: '';

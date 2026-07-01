@@ -537,6 +537,15 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [duplicaMaster, setDuplicaMaster] = useState<QuotaPoligono | null>(null);
   /** menu "richiama misura": elenco delle misure originali del progetto/edificio */
   const [menuRichiamo, setMenuRichiamo] = useState(false);
+  /** modifica INLINE del valore di una quota dello schizzo, direttamente sul
+   *  canvas (niente editor dedicato): id del poligono, indice del segmento e
+   *  posizione schermo del campo. */
+  const [quotaInline, setQuotaInline] = useState<{
+    id: string;
+    indice: number;
+    x: number;
+    y: number;
+  } | null>(null);
   /** griglia di verifica sul piano calibrato (controllo visivo della scala) */
   const [mostraGriglia, setMostraGriglia] = useState(false);
   /** picker della foto di riferimento (sfondo) per una pianta */
@@ -786,6 +795,151 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     // lo Schizzo resta sul canvas: il poligono creato viene solo selezionato
     // (la selezione apre il Menu Schizzo) e resta modificabile con i pulsanti
     // flottanti, senza aprire un ambiente separato a schermo intero.
+  };
+
+  // -------------------------------------------------------------------------
+  // SCHIZZO — modifica delle quote DIRETTAMENTE sul canvas (Inventor-like):
+  // toccando l'etichetta di un lato/diagonale si apre un campo inline; il
+  // nuovo valore diventa "driving" e la geometria si riadatta col risolutore.
+  // Nessun ambiente dedicato: si resta sul disegno.
+  // -------------------------------------------------------------------------
+
+  /** Applica un nuovo valore a un lato/diagonale dello schizzo: la quota diventa
+   *  parametrica (driving), si risolve la geometria e si committa. Restituisce
+   *  false se la modifica è in conflitto con i vincoli (niente commit). */
+  const applicaValoreLatoInline = (poli: QuotaPoligono, indice: number, valore: number): boolean => {
+    if (!annotazioni || !foto) return false;
+    const segs = segmentiPoligono(poli);
+    const seg = segs[indice];
+    if (!seg) return false;
+    const nLati = poli.punti.length;
+    const edgeIdx =
+      (seg.da + 1) % nLati === seg.a ? seg.da : (seg.a + 1) % nLati === seg.da ? seg.a : null;
+    const eLato = edgeIdx != null;
+    // una quota modificata a mano è "driving" (manuale) e non più di riferimento
+    const nuovoSeg: SegmentoQuota = {
+      ...seg,
+      valore,
+      riferimento: undefined,
+      manuale: foto.ePianta ? true : undefined
+    };
+    const nuoviSegs = segs.map((s, i) => (i === indice ? nuovoSeg : s));
+    const origine = poli.origine ?? origineDefault(poli.punti);
+    const px = pxPerUnita(foto, poli.unita);
+    const scrivi = (mod: Partial<QuotaPoligono>) =>
+      commit(
+        annotazioni.map((a) =>
+          a.id === poli.id
+            ? ({ ...poli, lati: undefined, offsetLati: undefined, ...mod } as QuotaPoligono)
+            : a
+        )
+      );
+    // le quote AUTO e di RIFERIMENTO si riquotano dalla nuova geometria; quelle
+    // FISSE (manuali/bloccate/ancorate/diagonali driving) restano intatte
+    const riquota = (nuovi: SegmentoQuota[], punti: Punto[]): SegmentoQuota[] =>
+      px == null
+        ? nuovi
+        : nuovi.map((s) => {
+            if (s.valore == null || quotaFissa(s, nLati)) return s;
+            const A = punti[s.da];
+            const B = punti[s.a];
+            if (!A || !B) return s;
+            return { ...s, valore: arrotondaMisura(Math.hypot(B.x - A.x, B.y - A.y) / px) };
+          });
+    const haVincoliAvanzati =
+      (poli.vincoli ?? []).some((v) => v.tipo === 'angolo' && !v.riferimento && v.valore != null) ||
+      nuoviSegs.some((s) => !segmentoELato(s, nLati) && !s.riferimento && s.valore != null);
+
+    // solver generale (diagonali / vincoli avanzati)
+    if (foto.ePianta && px != null && (!eLato || haVincoliAvanzati)) {
+      const r = risolviPianta(poli.punti, nuoviSegs, poli.vincoli, px, origine);
+      if (!r.ok) return false;
+      scrivi({
+        punti: r.punti,
+        segmenti: riquota(nuoviSegs, r.punti),
+        oggetti: riposizionaOggetti(poli.oggetti, poli.punti, r.punti, origine),
+        valoreAuto: false
+      });
+      return true;
+    }
+    // modello a lati orientati (lato semplice, più permissivo)
+    if (foto.ePianta && px != null && eLato) {
+      const esito = risolviParametrico(poli.punti, nuoviSegs, {
+        pxPerReale: px,
+        latoModificato: edgeIdx ?? undefined,
+        origine
+      });
+      if (!esito.ok) return false;
+      scrivi({
+        punti: esito.punti,
+        segmenti: riquota(nuoviSegs, esito.punti),
+        oggetti: riposizionaOggetti(poli.oggetti, poli.punti, esito.punti, origine),
+        valoreAuto: false
+      });
+      return true;
+    }
+    // schizzo non calibrato: questo lato FISSA la scala e misura gli altri
+    if (foto.ePianta && eLato && px == null && !foto.scala && !foto.piano) {
+      const A = poli.punti[seg.da];
+      const B = poli.punti[seg.a];
+      const pxLen = Math.hypot(B.x - A.x, B.y - A.y);
+      if (pxLen > 1 && valore > 0) {
+        const scala = { px: pxLen, reale: valore, unita: poli.unita };
+        void aggiornaFoto(foto.id, { scala });
+        const conAuto = annotazioni.map((a) =>
+          a.id === poli.id
+            ? ({ ...poli, segmenti: nuoviSegs, valoreAuto: true, lati: undefined, offsetLati: undefined } as Annotazione)
+            : a
+        );
+        commit(applicaValoriAuto(conAuto, { scala, piano: undefined }));
+        return true;
+      }
+    }
+    // fallback: salva solo il valore (nessun adattamento geometrico)
+    scrivi({ segmenti: nuoviSegs, valoreAuto: false });
+    return true;
+  };
+
+  /** Converte una quota dello schizzo in "di riferimento": misura soltanto,
+   *  non comanda la geometria; si aggiorna dalla misura corrente. */
+  const convertiQuotaRiferimento = (poli: QuotaPoligono, indice: number) => {
+    if (!annotazioni || !foto) return;
+    const segs = segmentiPoligono(poli);
+    const seg = segs[indice];
+    if (!seg) return;
+    const A = poli.punti[seg.da];
+    const B = poli.punti[seg.a];
+    const px = pxPerUnita(foto, poli.unita);
+    const misura = px != null && A && B ? arrotondaMisura(Math.hypot(B.x - A.x, B.y - A.y) / px) : seg.valore;
+    const nuovi = segs.map((s, i) =>
+      i === indice ? { ...s, riferimento: true, valore: misura, manuale: undefined } : s
+    );
+    commit(
+      annotazioni.map((a) =>
+        a.id === poli.id
+          ? ({ ...poli, segmenti: nuovi, lati: undefined, offsetLati: undefined } as QuotaPoligono)
+          : a
+      )
+    );
+  };
+
+  /** Elimina un segmento-quota dello schizzo (se è l'ultimo, rimuove la forma). */
+  const eliminaSegmentoInline = (poli: QuotaPoligono, indice: number) => {
+    if (!annotazioni) return;
+    const segs = segmentiPoligono(poli);
+    const nuovi = segs.filter((_, i) => i !== indice);
+    if (nuovi.length === 0) {
+      commit(annotazioni.filter((a) => a.id !== poli.id));
+      setSelezioneId(null);
+      return;
+    }
+    commit(
+      annotazioni.map((a) =>
+        a.id === poli.id
+          ? ({ ...poli, segmenti: nuovi, lati: undefined, offsetLati: undefined } as QuotaPoligono)
+          : a
+      )
+    );
   };
 
   const creaRettangolo = (rect: Rettangolo) => {
@@ -1942,6 +2096,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         onAutoTraccia={autoTraccia}
         onSeleziona={setSelezioneId}
         onModifica={apriModifica}
+        onQuotaInline={(indice, cliente) => {
+          if (!selezionata || selezionata.tipo !== 'quotaPoligono') return;
+          setQuotaInline({ id: selezionata.id, indice, x: cliente.x, y: cliente.y });
+        }}
         onCommit={commitGeometria}
         onNuovaQuota={creaQuota}
         onNuovoRett={creaRettangolo}
@@ -2265,6 +2423,45 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           />
         )
       )}
+
+      {/* Modifica INLINE della quota dello schizzo, ancorata al punto toccato:
+          niente editor dedicato, si resta sul disegno. */}
+      {quotaInline &&
+        (() => {
+          const poli = annotazioni?.find(
+            (a) => a.id === quotaInline.id && a.tipo === 'quotaPoligono'
+          ) as QuotaPoligono | undefined;
+          if (!poli) return null;
+          const seg = segmentiPoligono(poli)[quotaInline.indice];
+          if (!seg) return null;
+          return (
+            <QuotaInline
+              x={quotaInline.x}
+              y={quotaInline.y}
+              valore={seg.valore}
+              unita={poli.unita}
+              riferimento={!!seg.riferimento}
+              onAnnulla={() => setQuotaInline(null)}
+              onConferma={(v) => {
+                const ok = applicaValoreLatoInline(poli, quotaInline.indice, v);
+                if (!ok)
+                  mostraToast(
+                    'errore',
+                    'Quota in conflitto con altri vincoli: modifica non applicata.'
+                  );
+                setQuotaInline(null);
+              }}
+              onRiferimento={() => {
+                convertiQuotaRiferimento(poli, quotaInline.indice);
+                setQuotaInline(null);
+              }}
+              onElimina={() => {
+                eliminaSegmentoInline(poli, quotaInline.indice);
+                setQuotaInline(null);
+              }}
+            />
+          );
+        })()}
 
       {/* oggetto selezionato (con ambiente dedicato): subito due pulsanti
           discreti — Modifica ed Elimina — senza dover azzeccare il secondo tap */}
@@ -3413,6 +3610,85 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           );
         })()}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Campo INLINE per modificare il valore di una quota dello schizzo, ancorato
+// al punto toccato sul canvas: niente ambiente dedicato, il disegno resta
+// visibile e si aggiorna appena si conferma il valore.
+// ---------------------------------------------------------------------------
+function QuotaInline({
+  x,
+  y,
+  valore,
+  unita,
+  riferimento,
+  onConferma,
+  onAnnulla,
+  onRiferimento,
+  onElimina
+}: {
+  x: number;
+  y: number;
+  valore: number | null;
+  unita: Unita;
+  riferimento: boolean;
+  onConferma: (v: number) => void;
+  onAnnulla: () => void;
+  onRiferimento: () => void;
+  onElimina: () => void;
+}) {
+  const [txt, setTxt] = useState(valore != null ? String(valore) : '');
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    ref.current?.focus();
+    ref.current?.select();
+  }, []);
+  const conferma = () => {
+    const v = parseFloat(txt.replace(',', '.'));
+    if (!Number.isFinite(v) || v <= 0) {
+      onAnnulla();
+      return;
+    }
+    onConferma(v);
+  };
+  // tiene il campo dentro lo schermo, sopra il punto toccato
+  const left = Math.max(96, Math.min(window.innerWidth - 96, x));
+  const top = Math.max(76, y);
+  return (
+    <>
+      <div className="quota-inline-backdrop" onClick={onAnnulla} />
+      <div className="quota-inline" style={{ left, top }} role="dialog" aria-label="Modifica quota">
+        <div className="qi-riga">
+          <input
+            ref={ref}
+            type="number"
+            inputMode="decimal"
+            value={txt}
+            onChange={(e) => setTxt(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') conferma();
+              if (e.key === 'Escape') onAnnulla();
+            }}
+          />
+          <span className="qi-unita">{unita}</span>
+          <button className="qi-ok" onClick={conferma} aria-label="Conferma">
+            <Icona nome="check" dimensione={18} />
+          </button>
+        </div>
+        <div className="qi-azioni">
+          {!riferimento && (
+            <button onClick={onRiferimento} title="Converti in quota di riferimento (misura soltanto)">
+              ( ) Riferimento
+            </button>
+          )}
+          <button className="qi-elimina" onClick={onElimina} title="Elimina questa quota">
+            <Icona nome="cestino" dimensione={16} /> Elimina
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
 
