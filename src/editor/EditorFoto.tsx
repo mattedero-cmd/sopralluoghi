@@ -145,7 +145,7 @@ function pxPerUnita(foto: Foto, unita: Unita): number | null {
  * Strumenti raggruppati per FUNZIONE. La toolbar mostra pochi pulsanti grandi;
  * toccando un gruppo si apre un pannello temporaneo con le varianti. I menu
  * sono organizzati per area: Quotature (tutte le misure/quote), Disegno
- * (grafica libera non parametrica) e Pianta (ambiente parametrico dedicato).
+ * (grafica libera non parametrica) e Schizzo (ambiente parametrico integrato).
  * Nessuna funzione nuova: le voci esistenti sono solo raggruppate in modo più
  * logico e bilanciato, con meno pulsanti a schermo.
  */
@@ -254,20 +254,18 @@ const GRUPPI_STRUMENTI_DISEGNO: GruppoStrumenti[] = [
 /**
  * Menu funzionale a cui appartiene un'annotazione: selezionando un oggetto si
  * apre automaticamente il suo menu dedicato (linea/forma/nota → Disegno, quota
- * → Quotature, elemento della pianta → Schizzo/Pianta). Indipendente dal menu
- * attivo: la selezione riporta sempre nel contesto giusto.
+ * → Quotature, elemento dello Schizzo → Schizzo). Indipendente dal menu attivo:
+ * la selezione riporta sempre nel contesto giusto.
  */
-function menuDiAnnotazione(
-  tipo: TipoAnnotazione,
-  ePianta: boolean
-): 'quotature' | 'disegno' | 'pianta' {
-  if (tipo === 'quotaPoligono' && ePianta) return 'pianta';
+function menuDiAnnotazione(tipo: TipoAnnotazione): 'quotature' | 'disegno' | 'schizzo' {
+  // il perimetro parametrico è l'oggetto dello Schizzo: selezionandolo si apre
+  // il menu Schizzo (dove le quote comandano la geometria), su qualsiasi foto.
+  if (tipo === 'quotaPoligono') return 'schizzo';
   switch (tipo) {
     case 'quota':
     case 'quotaAngolo':
     case 'quotaRaggio':
     case 'quotaRett':
-    case 'quotaPoligono':
     case 'quotaTecnica':
       return 'quotature';
     default:
@@ -291,8 +289,8 @@ const STRUMENTI_TECNICI = new Set<Strumento>([
 const STRUMENTI_POSA_TECNICA = new Set<Strumento>(['tecSerie', 'tecParallelo', 'tecProgressiva']);
 
 /**
- * MENU PIANTA (§CAD) — terzo menu, separato da base e tecnico, dedicato alla
- * costruzione PARAMETRICA della pianta. Fase 1: struttura del menu (sezioni
+ * MENU SCHIZZO (§CAD) — terzo menu, separato da base e tecnico, dedicato alla
+ * costruzione PARAMETRICA dello schizzo. Fase 1: struttura del menu (sezioni
  * Disegno/Quote/Vincoli/Oggetti/Pulizia) con le funzioni già disponibili
  * cablate; le altre aprono un avviso con la fase in cui arriveranno.
  * Ogni voce è uno strumento (`tool`), un comando immediato (`cmd`) o un
@@ -343,19 +341,19 @@ const GRUPPI_STRUMENTI_PIANTA: Array<{
         icona: 'quota-allin',
         testo: 'Quota lato (parametrica)',
         suggerimento:
-          'Tocca un lato della pianta per quotarlo: la quota comanda il disegno (modificandola la geometria si adatta).'
+          'Tocca un lato dello schizzo per quotarlo: la quota comanda il disegno (modificandola la geometria si adatta).'
       },
       {
         icona: 'quota-orizz',
         testo: 'Tra due vertici (diagonale)',
         suggerimento:
-          'Nell’editor della pianta usa “◇ Diagonali / ＋ diagonale”, poi modifica la quota: la diagonale comanda la forma.'
+          'Nell’editor dello schizzo usa “◇ Diagonali / ＋ diagonale”, poi modifica la quota: la diagonale comanda la forma.'
       },
       {
         icona: 'angolo',
         testo: 'Angolare',
         suggerimento:
-          'Nell’editor della pianta, sezione “Angoli”: vincola un angolo per comandarlo (la forma si adatta).'
+          'Nell’editor dello schizzo, sezione “Angoli”: vincola un angolo per comandarlo (la forma si adatta).'
       },
       {
         icona: 'quota-allin',
@@ -377,13 +375,13 @@ const GRUPPI_STRUMENTI_PIANTA: Array<{
         icona: 'magnete',
         testo: 'Blocca lato / ancora',
         suggerimento:
-          'Tocca un lato della pianta: nell’editor del lato puoi bloccarne la lunghezza o ancorare vertice/centro/lato.'
+          'Tocca un lato dello schizzo: nell’editor del lato puoi bloccarne la lunghezza o ancorare vertice/centro/lato.'
       },
       {
         icona: 'polilinea',
         testo: 'Orizz./Vert./Parallelo/Perp./Uguale',
         suggerimento:
-          'Tocca la pianta e apri l’editor: nella sezione “Vincoli geometrici” scegli il vincolo e i lati; la forma si adatta.'
+          'Tocca lo schizzo e apri l’editor: nella sezione “Vincoli geometrici” scegli il vincolo e i lati; la forma si adatta.'
       },
       { icona: 'cerchio', testo: 'Concentrico / Tangente', fase: 4 },
       { icona: 'quad', testo: 'Simmetrico / Punto medio', fase: 4 }
@@ -398,7 +396,7 @@ const GRUPPI_STRUMENTI_PIANTA: Array<{
         icona: 'rettangolo',
         testo: 'Rettangolo / Cerchio interni',
         suggerimento:
-          'Tocca la pianta e apri l’editor: nella sezione “Oggetti interni” inserisci un rettangolo o un cerchio e imposta le distanze dall’origine.'
+          'Tocca lo schizzo e apri l’editor: nella sezione “Oggetti interni” inserisci un rettangolo o un cerchio e imposta le distanze dall’origine.'
       },
       {
         icona: 'quota-allin',
@@ -424,7 +422,7 @@ const GRUPPI_STRUMENTI_PIANTA: Array<{
         icona: 'cestino',
         testo: 'Elimina lato e richiudi',
         suggerimento:
-          'Tocca un lato della pianta: nell’editor del lato trovi “Elimina lato e richiudi”.'
+          'Tocca un lato dello schizzo: nell’editor del lato trovi “Elimina lato e richiudi”.'
       }
     ]
   }
@@ -491,8 +489,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [annotazioni, setAnnotazioni] = useState<Annotazione[] | null>(null);
   const [selezioneId, setSelezioneId] = useState<string | null>(null);
   const [strumento, setStrumento] = useState<Strumento>('seleziona');
-  /** menu attivo (sostituisce la toolbar): base · tecnica · pianta */
-  const [modalitaMenu, setModalitaMenu] = useState<'quotature' | 'disegno' | 'pianta'>(
+  /** menu attivo (sostituisce la toolbar): quotature · disegno · schizzo */
+  const [modalitaMenu, setModalitaMenu] = useState<'quotature' | 'disegno' | 'schizzo'>(
     'quotature'
   );
   /** punti posati della quotatura tecnica in serie in corso (catena da generare) */
@@ -560,7 +558,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [mostraGriglia, setMostraGriglia] = useState(false);
   /** picker della foto di riferimento (sfondo) per una pianta */
   const [pickerSfondo, setPickerSfondo] = useState(false);
-  /** passo di snap angolare (gradi) applicato allo schizzo pianta: 0 = libero */
+  /** passo di snap angolare (gradi) applicato allo schizzo: 0 = libero */
   const [snapSchizzo, setSnapSchizzo] = useState<number>(45);
   /** poligono proposto dall'autoquotatura (base + altezza), da confermare */
   const [proposta, setProposta] = useState<QuotaPoligono | null>(null);
@@ -696,25 +694,24 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     }
   }, [strumento]);
 
-  // aprendo una pianta, si entra già nel Menu Pianta; se vuota, con lo Schizzo
+  // aprendo una pianta si entra già nel Menu Schizzo; se vuota, con lo Schizzo
+  // pronto a tracciare. Sulle foto normali il Menu Schizzo resta comunque
+  // disponibile come menu principale, ma non è quello di partenza.
   const piantaInit = useRef<string | null>(null);
   useEffect(() => {
     if (!foto || !annotazioni) return;
     if (piantaInit.current === foto.id) return;
     piantaInit.current = foto.id;
     if (foto.ePianta) {
-      setModalitaMenu('pianta');
+      setModalitaMenu('schizzo');
       if (annotazioni.length === 0) setStrumento('schizzo');
-    } else {
-      // aprendo una foto normale non si resta nel Menu Pianta (che è per le piante)
-      setModalitaMenu((m) => (m === 'pianta' ? 'quotature' : m));
     }
   }, [foto, annotazioni]);
 
   // Selezionando un oggetto si apre automaticamente il suo menu dedicato
-  // (linea/forma/nota → Disegno, quota → Quotature, elemento pianta →
-  // Schizzo/Pianta), indipendentemente dal menu attivo. Così "Seleziona" resta
-  // neutro e riporta sempre nel contesto giusto dell'oggetto scelto.
+  // (linea/forma/nota → Disegno, quota → Quotature, elemento dello Schizzo →
+  // Schizzo), indipendentemente dal menu attivo. Così "Seleziona" resta neutro
+  // e riporta sempre nel contesto giusto dell'oggetto scelto.
   const menuDaSelezione = useRef<string | null>(null);
   useEffect(() => {
     if (!selezioneId || !annotazioni || !foto) {
@@ -725,12 +722,12 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     menuDaSelezione.current = selezioneId;
     const a = annotazioni.find((x) => x.id === selezioneId);
     if (!a) return;
-    const m = menuDiAnnotazione(a.tipo, !!foto.ePianta);
+    const m = menuDiAnnotazione(a.tipo);
     setModalitaMenu((cur) => (cur === m ? cur : m));
   }, [selezioneId, annotazioni, foto]);
 
   /** cambia il menu funzionale attivo dalla barra dedicata */
-  const cambiaMenu = useCallback((m: 'quotature' | 'disegno' | 'pianta') => {
+  const cambiaMenu = useCallback((m: 'quotature' | 'disegno' | 'schizzo') => {
     setMenuAperto(null);
     setStrumento('seleziona');
     setModalitaMenu(m);
@@ -803,8 +800,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     commit([...annotazioni, a]);
     setSelezioneId(a.id);
     setStrumento('seleziona');
-    // i poligoni si aprono subito nel loro ambiente dedicato
-    if (a.tipo === 'quotaPoligono') setQuotaInModifica({ tipo: 'poligono', id: a.id });
+    // lo Schizzo resta sul canvas: il poligono creato viene solo selezionato
+    // (la selezione apre il Menu Schizzo) e resta modificabile con i pulsanti
+    // flottanti, senza aprire un ambiente separato a schermo intero.
   };
 
   const creaRettangolo = (rect: Rettangolo) => {
@@ -1496,7 +1494,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     mostraToast('successo', 'Scala ricavata dal lato: gli altri lati sono ora misurati.');
   };
 
-  /** Ricostruzione parametrica della pianta (§12): il poligono viene ridisegnato
+  /** Ricostruzione parametrica dello schizzo (§12): il poligono viene ridisegnato
    *  ad angoli retti rispettando i lati quotati; i lati senza misura si ricavano
    *  dalla chiusura. La geometria non corrisponde più ai pixel della foto, quindi
    *  si azzera l'eventuale piano prospettico e si imposta una scala lineare. */
@@ -1555,15 +1553,15 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     // vecchia (scala/piano non ancora propagati da useLiveQuery), sovrascrivendo
     // le misure appena calcolate con quelle della vecchia calibrazione.
     commit(applicaValoriAuto(conNuovo, { scala, piano: undefined }));
-    mostraToast('successo', 'Pianta ricostruita in scala dalle misure inserite.');
+    mostraToast('successo', 'Schizzo ricostruito in scala dalle misure inserite.');
   };
 
-  /** Poligoni-perimetro presenti nella pianta. */
+  /** Poligoni-perimetro presenti nello schizzo. */
   const poligoniPianta = (): QuotaPoligono[] =>
     (annotazioni ?? []).filter((a): a is QuotaPoligono => a.tipo === 'quotaPoligono');
 
-  /** Poligono-perimetro bersaglio dei comandi del Menu Pianta: quello
-   *  selezionato se è un poligono, altrimenti l'UNICO della pianta. Con più
+  /** Poligono-perimetro bersaglio dei comandi del Menu Schizzo: quello
+   *  selezionato se è un poligono, altrimenti l'UNICO dello schizzo. Con più
    *  stanze e nessuna selezione è ambiguo → null (il chiamante avvisa). */
   const poligonoBersaglio = (): QuotaPoligono | null => {
     const sel = (annotazioni ?? []).find(
@@ -1574,7 +1572,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     return poligoni.length === 1 ? poligoni[0] : null;
   };
 
-  /** Esegue un comando del Menu Pianta (Pulizia/Ricostruisci) sul perimetro. */
+  /** Esegue un comando del Menu Schizzo (Pulizia/Ricostruisci) sul perimetro. */
   const eseguiComandoPianta = (cmd: ComandoPianta) => {
     if (!annotazioni) return;
     const poli = poligonoBersaglio();
@@ -1583,7 +1581,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         'info',
         poligoniPianta().length > 1
           ? 'Seleziona prima la stanza su cui operare.'
-          : 'Disegna prima la pianta: Disegno → Mano libera.'
+          : 'Disegna prima lo schizzo: Disegno → Mano libera.'
       );
       return;
     }
@@ -1636,10 +1634,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       if (esito.ok) nuoviPunti = esito.punti;
     }
     scrivi({ punti: nuoviPunti, snapAngolo: passo });
-    mostraToast('successo', passo === 90 ? 'Pianta resa ortogonale.' : `Lati agganciati a ${passo}°.`);
+    mostraToast('successo', passo === 90 ? 'Schizzo reso ortogonale.' : `Lati agganciati a ${passo}°.`);
   };
 
-  /** Imposta una foto reale come riferimento (sfondo) della pianta, così lo
+  /** Imposta una foto reale come riferimento (sfondo) dello schizzo, così lo
    *  schizzo si ricalca su una geometria ben proporzionata. Se la pianta ha
    *  già uno schizzo (tracciato su tela vuota, non allineato alla foto) lo si
    *  azzera per ridisegnarlo sulla base reale — l'operazione è annullabile. */
@@ -1906,7 +1904,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       </header>
 
       {/* Selettore del menu funzionale, staccato dagli strumenti: tre pulsanti
-          separati (Quotature · Disegno · Pianta) sotto l'intestazione. */}
+          separati (Quotature · Disegno · Schizzo) sotto l'intestazione. Lo
+          Schizzo è un menu principale come gli altri, disponibile su ogni foto. */}
       <div className="selettore-menu" role="tablist" aria-label="Menu">
         <button
           role="tab"
@@ -1924,16 +1923,14 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         >
           <Icona nome="disegno" dimensione={18} /> Disegno
         </button>
-        {foto.ePianta && (
-          <button
-            role="tab"
-            aria-selected={modalitaMenu === 'pianta'}
-            className={modalitaMenu === 'pianta' ? 'attivo' : ''}
-            onClick={() => cambiaMenu('pianta')}
-          >
-            <Icona nome="griglia" dimensione={18} /> Pianta
-          </button>
-        )}
+        <button
+          role="tab"
+          aria-selected={modalitaMenu === 'schizzo'}
+          className={modalitaMenu === 'schizzo' ? 'attivo' : ''}
+          onClick={() => cambiaMenu('schizzo')}
+        >
+          <Icona nome="griglia" dimensione={18} /> Schizzo
+        </button>
       </div>
 
       <StageEditor
@@ -2031,7 +2028,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         </div>
       )}
 
-      {modalitaMenu === 'pianta' &&
+      {modalitaMenu === 'schizzo' &&
         strumento !== 'schizzo' &&
         (() => {
           const poli = poligonoBersaglio();
@@ -2040,8 +2037,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               <div className="barra-etichetta" role="status">
                 <span className="hint">
                   {poligoniPianta().length > 1
-                    ? 'Menu Pianta · seleziona una stanza per operare'
-                    : 'Menu Pianta · Disegno → Mano libera per tracciare la stanza'}
+                    ? 'Menu Schizzo · seleziona una stanza per operare'
+                    : 'Menu Schizzo · Disegno → Mano libera per tracciare la stanza'}
                 </span>
               </div>
             );
@@ -2059,7 +2056,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                   aria-hidden
                   style={{ width: 11, height: 11, borderRadius: 999, background: info[stato][1] }}
                 />
-                <span className="hint">Pianta: {info[stato][0]}</span>
+                <span className="hint">Schizzo: {info[stato][0]}</span>
               </span>
               <span className="hint" style={{ opacity: 0.65 }}>
                 Tocca un lato per quotarlo o vincolarlo
@@ -2521,7 +2518,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           <div className="backdrop-strumenti" onClick={() => setMenuAperto(null)} />
         )}
         {menuAperto &&
-          modalitaMenu === 'pianta' &&
+          modalitaMenu === 'schizzo' &&
           (() => {
             const g = GRUPPI_STRUMENTI_PIANTA.find((x) => x.id === menuAperto);
             if (!g) return null;
@@ -2546,7 +2543,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                         return;
                       }
                       if (v.fase) {
-                        mostraToast('info', `“${v.testo}” arriva nella Fase ${v.fase} del Menu Pianta.`);
+                        mostraToast('info', `“${v.testo}” arriva nella Fase ${v.fase} del Menu Schizzo.`);
                       }
                     }}
                   >
@@ -2560,7 +2557,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             );
           })()}
         {menuAperto &&
-          modalitaMenu !== 'pianta' &&
+          modalitaMenu !== 'schizzo' &&
           (() => {
             const set =
               modalitaMenu === 'disegno' ? GRUPPI_STRUMENTI_DISEGNO : GRUPPI_STRUMENTI_QUOTATURE;
@@ -2619,8 +2616,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             testo="Seleziona"
           />
           {/* "Auto" (autoquotatura) è ora nel gruppo Scala del menu Quotature.
-              "Richiama" resta a portata di mano ma non serve nel Menu Pianta. */}
-          {modalitaMenu !== 'pianta' && (
+              "Richiama" resta a portata di mano ma non serve nel Menu Schizzo. */}
+          {modalitaMenu !== 'schizzo' && (
             <BtnStrumento
               attivo={menuRichiamo || !!duplicaMaster}
               onClick={() => {
@@ -2633,7 +2630,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               testo="Richiama"
             />
           )}
-          {modalitaMenu !== 'pianta' &&
+          {modalitaMenu !== 'schizzo' &&
             (modalitaMenu === 'disegno'
               ? GRUPPI_STRUMENTI_DISEGNO
               : GRUPPI_STRUMENTI_QUOTATURE
@@ -2650,7 +2647,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 />
               );
             })}
-          {modalitaMenu === 'pianta' &&
+          {modalitaMenu === 'schizzo' &&
             GRUPPI_STRUMENTI_PIANTA.map((g) => {
               const attivo = g.voci.some((v) => v.tool && v.tool === strumento);
               return (
@@ -2746,12 +2743,12 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           return (
             <Modale titolo="Foto di riferimento" onChiudi={() => setPickerSfondo(false)}>
               <p style={{ color: 'var(--testo-2)', marginTop: 0 }}>
-                Scegli una foto del progetto: diventa lo sfondo della pianta, così ricalchi lo
+                Scegli una foto del progetto: diventa lo sfondo dello schizzo, così ricalchi lo
                 schizzo su una geometria già proporzionata. Potrai nasconderla in qualsiasi momento.
               </p>
               {haSchizzo && (
                 <p style={{ color: '#ff9500', fontWeight: 700, fontSize: 13 }}>
-                  ⚠ La pianta ha già uno schizzo: impostando la foto verrà rimosso per ridisegnarlo
+                  ⚠ C'è già uno schizzo: impostando la foto verrà rimosso per ridisegnarlo
                   sulla foto (puoi annullare con ↶).
                 </p>
               )}
@@ -3150,7 +3147,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           const extraPianta = foto.ePianta ? (
             <>
               <div className="campo">
-                <label>Quota (Menu Pianta)</label>
+                <label>Quota (Menu Schizzo)</label>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                   <span className="segmenti" role="group" aria-label="Tipo di quota">
                     <button
@@ -3181,7 +3178,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
                   {eLato
                     ? 'Una quota parametrica comanda la forma; quella di riferimento misura soltanto.'
-                    : 'Diagonale (tra due vertici): come parametrica comanda la forma della pianta.'}
+                    : 'Diagonale (tra due vertici): come parametrica comanda la forma dello schizzo.'}
                 </span>
               </div>
               {eLato && (
@@ -3392,7 +3389,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                       commit(applicaValoriAuto(conAuto, { scala, piano: undefined }));
                       mostraToast(
                         'successo',
-                        'Scala della pianta impostata da questo lato: ora modificando le quote la geometria si adatta.'
+                        'Scala dello schizzo impostata da questo lato: ora modificando le quote la geometria si adatta.'
                       );
                       tornaAlPoligono();
                       return;
@@ -4325,7 +4322,7 @@ function EditorPoligono({
   onApplicaVincoli?: (vincoli: VincoloPianta[]) => void;
   /** imposta il vertice ORIGINE (datum); null = rimuove. Solo piante. */
   onImpostaOrigine?: (vertice: number | null) => void;
-  /** aggiorna gli oggetti interni della pianta (Fase 4). Solo piante. */
+  /** aggiorna gli oggetti interni dello schizzo (Fase 4). Solo piante. */
   onOggetti?: (oggetti: OggettoPianta[]) => void;
   /** ricostruisce la forma dalle misure inserite (parametrica): solo piante */
   onRicostruisci?: () => void;
@@ -4722,7 +4719,7 @@ function EditorPoligono({
               <button
                 className="btn"
                 onClick={onRicostruisci}
-                title="Ridisegna la pianta rispettando le misure inserite; i lati senza misura si ricavano dalla chiusura"
+                title="Ridisegna lo schizzo rispettando le misure inserite; i lati senza misura si ricavano dalla chiusura"
               >
                 ⧉ Ricostruisci dalle misure
               </button>
@@ -4730,7 +4727,7 @@ function EditorPoligono({
           </div>
           {onRicostruisci && (
             <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
-              Inserisci le misure dei lati che conosci: la pianta viene ridisegnata in scala e i
+              Inserisci le misure dei lati che conosci: lo schizzo viene ridisegnato in scala e i
               lati mancanti si calcolano automaticamente. Modificando una quota, la geometria si
               adatta mantenendo la figura chiusa.
             </span>

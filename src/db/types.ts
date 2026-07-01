@@ -523,7 +523,7 @@ export interface QuotaPoligono extends AnnotazioneBase {
   snapAngolo?: number;
   /** MENU PIANTA (Fase 3): vincoli geometrici dello schizzo parametrico */
   vincoli?: VincoloPianta[];
-  /** MENU PIANTA (Fase 4): oggetti interni alla pianta */
+  /** MENU SCHIZZO (Fase 4): oggetti dello schizzo */
   oggetti?: OggettoPianta[];
   /**
    * MENU PIANTA (Fase 4): indice del vertice ORIGINE (datum). È il punto
@@ -561,7 +561,7 @@ export function segmentoELato(seg: SegmentoQuota, nVertici: number): boolean {
 // VINCOLI geometrici generali (Fase 3) e gli OGGETTI interni (Fase 4).
 // ---------------------------------------------------------------------------
 
-/** Tipo di entità selezionabile in uno schizzo pianta. */
+/** Tipo di entità selezionabile in uno schizzo. */
 export type EntitaPianta =
   | 'vertice'
   | 'lato'

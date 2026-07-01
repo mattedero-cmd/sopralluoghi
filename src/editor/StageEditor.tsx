@@ -968,7 +968,7 @@ export function StageEditor(p: Props) {
     const minimo = 8 / vista.scala;
     switch (b.tipo) {
       case 'disegno':
-        // lo stesso tracciato a mano libera alimenta disegno o schizzo pianta
+        // lo stesso tracciato a mano libera alimenta disegno o schizzo
         if (b.punti.length >= 6) {
           if (p.strumento === 'schizzo') p.onNuovoSchizzo(b.punti);
           else p.onNuovoDisegno(b.punti);
