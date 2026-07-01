@@ -317,19 +317,11 @@ type ComandoPianta =
   | 'unisci'
   | 'semplifica'
   | 'ricostruisci'
-  | 'oggRettangolo'
-  | 'oggCerchio'
   | 'origine'
   | 'togliVincoli'
   | 'nome';
 /** azioni "arma-e-tocca" sul canvas: vincoli geometrici + operazioni puntuali */
-type TipoArmato =
-  | TipoVincoloPianta
-  | 'diagonale'
-  | 'angoloVertice'
-  | 'eliminaLato'
-  | 'ancoraCentroOgg'
-  | 'bloccaDimOgg';
+type TipoArmato = TipoVincoloPianta | 'diagonale' | 'angoloVertice' | 'eliminaLato';
 interface VocePianta {
   icona: NomeIcona;
   testo: string;
@@ -403,13 +395,14 @@ const GRUPPI_STRUMENTI_PIANTA: Array<{
     icona: 'rettangolo',
     testo: 'Oggetti',
     voci: [
-      { icona: 'rettangolo', testo: 'Rettangolo interno', cmd: 'oggRettangolo' },
-      { icona: 'cerchio', testo: 'Cerchio interno', cmd: 'oggCerchio' },
+      // gli oggetti si DISEGNANO trascinando sul canvas, come le forme; poi
+      // sono entità a sé stanti: tocco = selezione (ancore, dimensioni,
+      // elimina), trascinamento = spostamento
+      { icona: 'rettangolo', testo: 'Rettangolo (disegna)', tool: 'oggRett' },
+      { icona: 'cerchio', testo: 'Cerchio (disegna)', tool: 'oggCerchio' },
       // quota di distanza oggetto–lato: tap-tap (oggetto, poi lato); il valore
       // si modifica poi toccando la sua etichetta sul canvas
-      { icona: 'quota-allin', testo: 'Distanza oggetto–lato', vincolo: 'distanza' },
-      { icona: 'magnete', testo: 'Ancora centro (tocca oggetto)', vincolo: 'ancoraCentroOgg' },
-      { icona: 'cerchio-3p', testo: 'Blocca dimensione (tocca oggetto)', vincolo: 'bloccaDimOgg' }
+      { icona: 'quota-allin', testo: 'Distanza oggetto–lato', vincolo: 'distanza' }
     ]
   },
   {
@@ -589,6 +582,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   } | null>(null);
   /** dialogo compatto "Nome / numero stanza" (sostituisce l'editor dedicato) */
   const [nomePianta, setNomePianta] = useState<string | null>(null);
+  /** oggetto dello schizzo selezionato come entità A SÉ STANTE */
+  const [oggettoSel, setOggettoSel] = useState<{ annId: string; oggettoId: string } | null>(null);
+  /** dialogo compatto per le dimensioni dell'oggetto selezionato */
+  const [oggettoDims, setOggettoDims] = useState(false);
   /** griglia di verifica sul piano calibrato (controllo visivo della scala) */
   const [mostraGriglia, setMostraGriglia] = useState(false);
   /** picker della foto di riferimento (sfondo) per una pianta */
@@ -1114,15 +1111,15 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       mostraToast('info', 'Seleziona prima lo schizzo su cui applicare il vincolo.');
       return;
     }
-    if (tipo === 'distanza' || tipo === 'ancoraCentroOgg' || tipo === 'bloccaDimOgg') {
+    if (tipo === 'distanza') {
       if (!poli.oggetti?.length) {
-        mostraToast('info', 'Inserisci prima un oggetto (Oggetti → Rettangolo / Cerchio interni).');
+        mostraToast('info', 'Disegna prima un oggetto (Oggetti → Rettangolo / Cerchio).');
         return;
       }
-    }
-    if (tipo === 'distanza' && pxPerUnita(foto, poli.unita) == null) {
-      mostraToast('info', 'Calibra prima la scala: la distanza è una misura reale.');
-      return;
+      if (pxPerUnita(foto, poli.unita) == null) {
+        mostraToast('info', 'Calibra prima la scala: la distanza è una misura reale.');
+        return;
+      }
     }
     if (tipo === 'eliminaLato' && poli.punti.length <= 3) {
       mostraToast('info', 'Servono almeno 4 lati per eliminarne uno e richiudere la figura.');
@@ -1232,51 +1229,6 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         )
       );
       mostraToast('successo', 'Lato eliminato: figura richiusa.');
-      return;
-    }
-    // ANCORE DELL'OGGETTO: un tocco sull'oggetto → toggle del flag
-    if (vincoloArmato.tipo === 'ancoraCentroOgg' || vincoloArmato.tipo === 'bloccaDimOgg') {
-      const oggetti = poli.oggetti ?? [];
-      let best = oggetti[0];
-      let bestD = Infinity;
-      for (const o of oggetti) {
-        const c = centroOggetto(o);
-        const d = Math.hypot(p.x - c.x, p.y - c.y);
-        if (d < bestD) {
-          bestD = d;
-          best = o;
-        }
-      }
-      if (!best) {
-        annullaVincolo();
-        return;
-      }
-      const centro = vincoloArmato.tipo === 'ancoraCentroOgg';
-      const nuovi = oggetti.map((o) =>
-        o.id === best.id
-          ? centro
-            ? { ...o, centroAncorato: !o.centroAncorato || undefined }
-            : { ...o, dimensioneBloccata: !o.dimensioneBloccata || undefined }
-          : o
-      );
-      const attivo = centro ? !best.centroAncorato : !best.dimensioneBloccata;
-      commit(
-        annotazioni.map((a) =>
-          a.id === poli.id ? ({ ...poli, oggetti: nuovi } as QuotaPoligono) : a
-        )
-      );
-      setVincoloArmato(null);
-      setStrumento('seleziona');
-      mostraToast(
-        'successo',
-        centro
-          ? attivo
-            ? '⚓ Centro ancorato: non si sposterà.'
-            : 'Centro liberato.'
-          : attivo
-            ? '🔒 Dimensione bloccata: raggio/lati non cambieranno.'
-            : 'Dimensione sbloccata.'
-      );
       return;
     }
     // QUOTA DI DISTANZA oggetto–lato: primo tocco = oggetto (centro o bordo),
@@ -1458,6 +1410,129 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       )
     );
     return true;
+  };
+
+  // -------------------------------------------------------------------------
+  // OGGETTI dello schizzo come entità A SÉ STANTI: disegnati trascinando sul
+  // canvas, selezionabili singolarmente, trascinabili, con azioni proprie
+  // (ancora centro, blocca dimensione, dimensioni, elimina).
+  // -------------------------------------------------------------------------
+
+  /** risolve l'oggetto selezionato nel suo poligono */
+  const oggettoSelezionato = (): { poli: QuotaPoligono; ogg: OggettoPianta } | null => {
+    if (!oggettoSel || !annotazioni) return null;
+    const poli = annotazioni.find(
+      (a) => a.id === oggettoSel.annId && a.tipo === 'quotaPoligono'
+    ) as QuotaPoligono | undefined;
+    const ogg = poli?.oggetti?.find((o) => o.id === oggettoSel.oggettoId);
+    return poli && ogg ? { poli, ogg } : null;
+  };
+
+  /** oggetto DISEGNATO sul canvas (strumenti oggRett/oggCerchio) */
+  const creaOggettoDisegnato = (tipo: 'rettangolo' | 'cerchio', a: Punto, b: Punto) => {
+    if (!annotazioni) return;
+    const poli = poligonoBersaglio();
+    if (!poli) {
+      mostraToast('info', 'Disegna prima lo schizzo: Disegno → Mano libera.');
+      setStrumento('seleziona');
+      return;
+    }
+    let nuovo: OggettoPianta;
+    if (tipo === 'rettangolo') {
+      const larghezza = Math.abs(b.x - a.x);
+      const altezza = Math.abs(b.y - a.y);
+      if (larghezza < 4 || altezza < 4) return;
+      // (x,y) = angolo in basso a sinistra (y-giù: il bordo con y maggiore)
+      nuovo = {
+        id: nuovoId(),
+        tipo,
+        x: Math.min(a.x, b.x),
+        y: Math.max(a.y, b.y),
+        larghezza,
+        altezza
+      };
+    } else {
+      const raggioPx = Math.hypot(b.x - a.x, b.y - a.y);
+      if (raggioPx < 3) return;
+      nuovo = { id: nuovoId(), tipo, x: a.x, y: a.y, raggioPx };
+    }
+    commit(
+      annotazioni.map((x) =>
+        x.id === poli.id
+          ? ({ ...poli, oggetti: [...(poli.oggetti ?? []), nuovo] } as QuotaPoligono)
+          : x
+      )
+    );
+    setStrumento('seleziona');
+    setSelezioneId(poli.id);
+    setOggettoSel({ annId: poli.id, oggettoId: nuovo.id });
+  };
+
+  /** applica una patch all'oggetto selezionato (ancore, dimensioni) */
+  const patchOggettoSel = (patch: Partial<OggettoPianta>) => {
+    const sel = oggettoSelezionato();
+    if (!sel || !annotazioni || !foto) return;
+    const { poli, ogg } = sel;
+    const oggNuovi = (poli.oggetti ?? []).map((o) => (o.id === ogg.id ? { ...o, ...patch } : o));
+    const px = pxPerUnita(foto, poli.unita);
+    const vincoli =
+      px != null
+        ? rimisuraDistanze(poli.vincoli, poli.punti, oggNuovi, px, arrotondaMisura)
+        : poli.vincoli;
+    commit(
+      annotazioni.map((a) =>
+        a.id === poli.id ? ({ ...poli, oggetti: oggNuovi, vincoli } as QuotaPoligono) : a
+      )
+    );
+  };
+
+  /** spostamento dell'oggetto trascinato sul canvas */
+  const spostaOggetto = (annId: string, oggettoId: string, dx: number, dy: number) => {
+    if (!annotazioni || !foto) return;
+    const poli = annotazioni.find((a) => a.id === annId && a.tipo === 'quotaPoligono') as
+      | QuotaPoligono
+      | undefined;
+    if (!poli) return;
+    const oggNuovi = (poli.oggetti ?? []).map((o) =>
+      o.id === oggettoId ? { ...o, x: o.x + dx, y: o.y + dy } : o
+    );
+    const px = pxPerUnita(foto, poli.unita);
+    const vincoli =
+      px != null
+        ? rimisuraDistanze(poli.vincoli, poli.punti, oggNuovi, px, arrotondaMisura)
+        : poli.vincoli;
+    commit(
+      annotazioni.map((a) =>
+        a.id === poli.id ? ({ ...poli, oggetti: oggNuovi, vincoli } as QuotaPoligono) : a
+      )
+    );
+    setSelezioneId(annId);
+    setOggettoSel({ annId, oggettoId });
+  };
+
+  /** elimina l'oggetto selezionato (con le sue quote di distanza) */
+  const eliminaOggettoSel = () => {
+    const sel = oggettoSelezionato();
+    if (!sel || !annotazioni) return;
+    const { poli, ogg } = sel;
+    const oggNuovi = (poli.oggetti ?? []).filter((o) => o.id !== ogg.id);
+    const vincoli = (poli.vincoli ?? []).filter(
+      (v) =>
+        v.tipo !== 'distanza' || v.riferimenti.every((r) => r.oggettoId == null || r.oggettoId !== ogg.id)
+    );
+    commit(
+      annotazioni.map((a) =>
+        a.id === poli.id
+          ? ({
+              ...poli,
+              oggetti: oggNuovi.length ? oggNuovi : undefined,
+              vincoli: vincoli.length ? vincoli : undefined
+            } as QuotaPoligono)
+          : a
+      )
+    );
+    setOggettoSel(null);
+    setOggettoDims(false);
   };
 
   const creaRettangolo = (rect: Rettangolo) => {
@@ -2283,31 +2358,6 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       mostraToast('successo', `Rimossi ${rimossi} vincoli geometrici (le quote di distanza restano).`);
       return;
     }
-    if (cmd === 'oggRettangolo' || cmd === 'oggCerchio') {
-      const px = foto ? pxPerUnita(foto, poli.unita) : null;
-      if (px == null) {
-        mostraToast('info', 'Calibra prima la scala: gli oggetti hanno dimensioni reali.');
-        return;
-      }
-      const orig = poli.punti[poli.origine ?? origineDefault(poli.punti)] ?? poli.punti[0];
-      const dim =
-        cmd === 'oggRettangolo'
-          ? { larghezza: 100 * px, altezza: 80 * px }
-          : { raggioPx: 40 * px };
-      const nuovo: OggettoPianta = {
-        id: nuovoId(),
-        tipo: cmd === 'oggRettangolo' ? 'rettangolo' : 'cerchio',
-        x: orig.x + 50 * px,
-        y: orig.y - 50 * px,
-        ...dim
-      };
-      scrivi({ oggetti: [...(poli.oggetti ?? []), nuovo] });
-      mostraToast(
-        'successo',
-        'Oggetto inserito. Posizionalo con “Distanza oggetto–lato”; ancore: “Ancora centro” / “Blocca dimensione”.'
-      );
-      return;
-    }
     if (cmd === 'unisci') {
       const r = fondiCollineari(poli.punti, segmentiPoligono(poli), 4, poli.origine);
       if (!r) {
@@ -2668,8 +2718,19 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         celleGriglia={calibGriglia ? calibGriglia.celle : celleGriglia}
         inquadra={inquadraCalib}
         onAutoTraccia={autoTraccia}
-        onSeleziona={setSelezioneId}
+        onSeleziona={(id) => {
+          setSelezioneId(id);
+          setOggettoSel(null); // selezione "normale": l'oggetto si deseleziona
+        }}
         onModifica={apriModifica}
+        onNuovoOggettoPianta={creaOggettoDisegnato}
+        oggettoSelezionato={oggettoSel}
+        onSelezionaOggetto={(annId, oggettoId) => {
+          setSelezioneId(annId);
+          setOggettoSel({ annId, oggettoId });
+        }}
+        onSpostaOggetto={spostaOggetto}
+        onTapOggettoSelezionato={() => setOggettoDims(true)}
         onQuotaInline={(indice, cliente) => {
           if (!selezionata || selezionata.tipo !== 'quotaPoligono') return;
           setQuotaInline({ id: selezionata.id, indice, x: cliente.x, y: cliente.y });
@@ -3034,9 +3095,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             distanza: 'Distanza oggetto–lato',
             diagonale: 'Diagonale',
             angoloVertice: 'Angolo',
-            eliminaLato: 'Elimina lato',
-            ancoraCentroOgg: 'Ancora centro',
-            bloccaDimOgg: 'Blocca dimensione'
+            eliminaLato: 'Elimina lato'
           };
           const binario = VINCOLI_BINARI.includes(vincoloArmato.tipo as TipoVincoloPianta);
           const passo =
@@ -3052,14 +3111,11 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                   ? 'tocca il vertice dell’angolo'
                   : vincoloArmato.tipo === 'eliminaLato'
                     ? 'tocca il lato da eliminare'
-                    : vincoloArmato.tipo === 'ancoraCentroOgg' ||
-                        vincoloArmato.tipo === 'bloccaDimOgg'
-                      ? 'tocca l’oggetto'
-                      : vincoloArmato.picks.length === 0
-                        ? binario
-                          ? 'tocca il primo lato'
-                          : 'tocca il lato'
-                        : 'tocca il secondo lato';
+                    : vincoloArmato.picks.length === 0
+                      ? binario
+                        ? 'tocca il primo lato'
+                        : 'tocca il lato'
+                      : 'tocca il secondo lato';
           return (
             <div className="barra-duplica" role="status">
               <span className="titolo">
@@ -3306,11 +3362,82 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           );
         })()}
 
+      {/* Dimensioni dell'oggetto dello schizzo selezionato (dialogo compatto). */}
+      {oggettoDims &&
+        (() => {
+          const sel = oggettoSelezionato();
+          if (!sel) return null;
+          const { poli, ogg } = sel;
+          const px = pxPerUnita(foto, poli.unita);
+          return (
+            <ModaleOggetto
+              ogg={ogg}
+              px={px}
+              unita={poli.unita}
+              onChiudi={() => setOggettoDims(false)}
+              onSalva={(patch) => {
+                patchOggettoSel(patch);
+                setOggettoDims(false);
+              }}
+            />
+          );
+        })()}
+
+      {/* OGGETTO dello schizzo selezionato: azioni proprie (entità a sé stante) */}
+      {!proposta &&
+        !duplicaMaster &&
+        strumento === 'seleziona' &&
+        oggettoSel &&
+        (() => {
+          const sel = oggettoSelezionato();
+          if (!sel) return null;
+          const { ogg } = sel;
+          return (
+            <div className="azioni-flottanti" role="group" aria-label="Azioni oggetto">
+              <button
+                className={`azione-flottante${ogg.centroAncorato ? ' attivo' : ''}`}
+                aria-label="Ancora il centro"
+                title="Ancora il centro: l'oggetto non si sposta (si muove circonferenza o lato)"
+                onClick={() => patchOggettoSel({ centroAncorato: !ogg.centroAncorato || undefined })}
+              >
+                <Icona nome="magnete" dimensione={20} />
+              </button>
+              <button
+                className={`azione-flottante${ogg.dimensioneBloccata ? ' attivo' : ''}`}
+                aria-label="Blocca la dimensione"
+                title="Blocca la dimensione: raggio/lati non cambiano"
+                onClick={() =>
+                  patchOggettoSel({ dimensioneBloccata: !ogg.dimensioneBloccata || undefined })
+                }
+              >
+                <Icona nome="mirino" dimensione={20} />
+              </button>
+              <button
+                className="azione-flottante modifica"
+                aria-label="Dimensioni"
+                title="Dimensioni dell'oggetto"
+                onClick={() => setOggettoDims(true)}
+              >
+                <Icona nome="righello" dimensione={20} />
+              </button>
+              <button
+                className="azione-flottante elimina"
+                aria-label="Elimina oggetto"
+                title="Elimina l'oggetto (e le sue quote di distanza)"
+                onClick={eliminaOggettoSel}
+              >
+                <Icona nome="cestino" dimensione={20} />
+              </button>
+            </div>
+          );
+        })()}
+
       {/* oggetto selezionato (con ambiente dedicato): subito due pulsanti
           discreti — Modifica ed Elimina — senza dover azzeccare il secondo tap */}
       {!proposta &&
         !duplicaMaster &&
         strumento === 'seleziona' &&
+        !oggettoSel &&
         selezionata &&
         haAmbienteDedicato(selezionata) &&
         quotaInModifica === null &&
@@ -3556,6 +3683,11 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                     onClick={() => {
                       setMenuAperto(null);
                       if (v.tool) {
+                        // gli oggetti si disegnano DENTRO uno schizzo esistente
+                        if ((v.tool === 'oggRett' || v.tool === 'oggCerchio') && !poligonoBersaglio()) {
+                          mostraToast('info', 'Disegna prima lo schizzo: Disegno → Mano libera.');
+                          return;
+                        }
                         setStrumento(v.tool);
                         return;
                       }
@@ -4658,6 +4790,85 @@ function ModaleNomePianta({
           onClick={() => {
             const n = parseInt(txtNumero, 10);
             onSalva(txtNome, Number.isFinite(n) && n > 0 ? n : null);
+          }}
+        >
+          ✓ Salva
+        </button>
+      </div>
+    </Modale>
+  );
+}
+
+/** Dialogo compatto per le dimensioni di un oggetto dello schizzo. */
+function ModaleOggetto({
+  ogg,
+  px,
+  unita,
+  onSalva,
+  onChiudi
+}: {
+  ogg: OggettoPianta;
+  px: number | null;
+  unita: Unita;
+  onSalva: (patch: Partial<OggettoPianta>) => void;
+  onChiudi: () => void;
+}) {
+  const k = px ?? 1; // px per unità; senza scala si lavora in px
+  const u = px != null ? unita : 'px';
+  const [d1, setD1] = useState(
+    String(
+      Math.round(((ogg.tipo === 'cerchio' ? (ogg.raggioPx ?? 0) : (ogg.larghezza ?? 0)) / k) * 100) /
+        100
+    )
+  );
+  const [d2, setD2] = useState(String(Math.round(((ogg.altezza ?? 0) / k) * 100) / 100));
+  const num = (s: string) => {
+    const v = parseFloat(s.replace(',', '.'));
+    return Number.isFinite(v) && v > 0 ? v : null;
+  };
+  return (
+    <Modale titolo={ogg.tipo === 'cerchio' ? 'Cerchio' : 'Rettangolo'} onChiudi={onChiudi} centro>
+      {ogg.tipo === 'cerchio' ? (
+        <div className="campo">
+          <label>Raggio ({u})</label>
+          <input type="number" inputMode="decimal" value={d1} onChange={(e) => setD1(e.target.value)} />
+        </div>
+      ) : (
+        <>
+          <div className="campo">
+            <label>Base ({u})</label>
+            <input type="number" inputMode="decimal" value={d1} onChange={(e) => setD1(e.target.value)} />
+          </div>
+          <div className="campo">
+            <label>Altezza ({u})</label>
+            <input type="number" inputMode="decimal" value={d2} onChange={(e) => setD2(e.target.value)} />
+          </div>
+        </>
+      )}
+      {ogg.dimensioneBloccata && (
+        <span style={{ color: 'var(--testo-2)', fontSize: 13 }}>
+          🔒 La dimensione è bloccata per le quote; la modifica diretta qui resta possibile.
+        </span>
+      )}
+      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+        <button className="btn" onClick={onChiudi}>
+          Annulla
+        </button>
+        <button
+          className="btn primario"
+          style={{ flex: 1 }}
+          onClick={() => {
+            const v1 = num(d1);
+            if (v1 == null) {
+              onChiudi();
+              return;
+            }
+            if (ogg.tipo === 'cerchio') {
+              onSalva({ raggioPx: v1 * k });
+            } else {
+              const v2 = num(d2);
+              onSalva({ larghezza: v1 * k, ...(v2 != null ? { altezza: v2 * k } : {}) });
+            }
           }}
         >
           ✓ Salva

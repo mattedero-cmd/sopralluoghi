@@ -1149,6 +1149,14 @@ h2 {
   opacity: 1;
 }
 
+/* stato PERSISTENTE attivo (es. ancora/blocco dell'oggetto dello schizzo) */
+.azione-flottante.attivo {
+  background: var(--accento, #2f81f7);
+  border-color: var(--accento, #2f81f7);
+  color: #fff;
+  opacity: 1;
+}
+
 /* Modalità duplica misura: barra in alto, stessa veste della barra-calibra */
 .barra-duplica {
   position: absolute;

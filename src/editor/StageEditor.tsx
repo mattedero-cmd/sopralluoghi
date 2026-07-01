@@ -64,6 +64,9 @@ export type Strumento =
   | 'etichetta'
   // schizzo parametrico: modalità "applica vincolo" a tocchi (tap-tap)
   | 'vincolo'
+  // schizzo parametrico: DISEGNO degli oggetti interni (trascina sul canvas)
+  | 'oggRett'
+  | 'oggCerchio'
   // forme di disegno generiche (menu generico, Fase 1b)
   | 'forLinea'
   | 'forRett'
@@ -95,6 +98,8 @@ function strumentoDuePunti(s: Strumento): boolean {
     s === 'forLinea' ||
     s === 'forRett' ||
     s === 'forCerchio' ||
+    s === 'oggRett' ||
+    s === 'oggCerchio' ||
     s === 'tecSmusso'
   );
 }
@@ -133,6 +138,17 @@ interface Props {
    *  coordinate immagine (per trovare lato/vertice/oggetto più vicino) e in
    *  pixel schermo (per ancorare eventuali campi inline). */
   onPuntoVincolo?: (p: Punto, cliente: { x: number; y: number }) => void;
+  /** oggetto dello schizzo DISEGNATO sul canvas (strumenti oggRett/oggCerchio):
+   *  rettangolo → i due angoli; cerchio → centro e bordo. */
+  onNuovoOggettoPianta?: (tipo: 'rettangolo' | 'cerchio', a: Punto, b: Punto) => void;
+  /** oggetto dello schizzo selezionato (oggetti "a sé stanti") */
+  oggettoSelezionato?: { annId: string; oggettoId: string } | null;
+  /** tocco su un oggetto dello schizzo: lo seleziona come entità autonoma */
+  onSelezionaOggetto?: (annId: string, oggettoId: string) => void;
+  /** trascinamento di un oggetto dello schizzo: sposta e committa */
+  onSpostaOggetto?: (annId: string, oggettoId: string, dx: number, dy: number) => void;
+  /** tocco secco sull'oggetto GIÀ selezionato: apre le dimensioni */
+  onTapOggettoSelezionato?: (cliente: { x: number; y: number }) => void;
   /** tocco con lo strumento autoquotatura */
   onAutoTocco: (p: Punto) => void;
   /** tocco con lo strumento "riferimento": rileva il rettangolo di un oggetto
@@ -776,9 +792,11 @@ export function StageEditor(p: Props) {
             setBozza({ tipo: 'forLinea', p1: punto, p2: punto });
             break;
           case 'forRett':
+          case 'oggRett':
             setBozza({ tipo: 'forRett', p1: punto, p2: punto });
             break;
           case 'forCerchio':
+          case 'oggCerchio':
             setBozza({ tipo: 'forCerchio', centro: punto, bordo: punto });
             break;
           case 'tecSmusso':
@@ -812,10 +830,14 @@ export function StageEditor(p: Props) {
           p.onNuovaForma('linea', [b.p1, b.p2]);
           break;
         case 'forRett':
-          p.onNuovaForma('rettangolo', [b.p1, b.p2]);
+          // lo stesso trascinamento disegna una forma libera oppure un
+          // OGGETTO dello schizzo, a seconda dello strumento attivo
+          if (p.strumento === 'oggRett') p.onNuovoOggettoPianta?.('rettangolo', b.p1, b.p2);
+          else p.onNuovaForma('rettangolo', [b.p1, b.p2]);
           break;
         case 'forCerchio':
-          p.onNuovaForma('cerchio', [b.centro, b.bordo]);
+          if (p.strumento === 'oggCerchio') p.onNuovoOggettoPianta?.('cerchio', b.centro, b.bordo);
+          else p.onNuovaForma('cerchio', [b.centro, b.bordo]);
           break;
         case 'tecSmusso':
           p.onNuovoSmusso(b.p1, b.p2);
@@ -1221,6 +1243,85 @@ export function StageEditor(p: Props) {
               }}
             />
           ))}
+          {/* OGGETTI dello schizzo come entità A SÉ STANTI: ogni oggetto ha il
+              suo bersaglio sopra il poligono — tocco = selezione, tocco su
+              oggetto selezionato = dimensioni, trascinamento = spostamento
+              (bloccato se il centro è ancorato). */}
+          {p.strumento === 'seleziona' &&
+            p.onSelezionaOggetto &&
+            annotazioniVisibili.map((a) => {
+              if (a.tipo !== 'quotaPoligono' || !a.oggetti?.length) return null;
+              return a.oggetti.map((o) => {
+                const selez =
+                  p.oggettoSelezionato?.annId === a.id &&
+                  p.oggettoSelezionato?.oggettoId === o.id;
+                const fill = selez ? 'rgba(88,166,255,0.18)' : 'rgba(88,166,255,0.01)';
+                const stroke = selez ? '#58a6ff' : 'rgba(88,166,255,0.001)';
+                const base =
+                  o.tipo === 'rettangolo'
+                    ? { x: o.x, y: o.y - (o.altezza ?? 0) }
+                    : { x: o.x, y: o.y };
+                const suTap = (evt: Konva.KonvaEventObject<Event>) => {
+                  evt.cancelBubble = true;
+                  if (selez && p.onTapOggettoSelezionato) {
+                    const stage = evt.target.getStage();
+                    const rect = stage?.container().getBoundingClientRect();
+                    const pp = stage?.getPointerPosition();
+                    if (rect && pp)
+                      p.onTapOggettoSelezionato({ x: rect.left + pp.x, y: rect.top + pp.y });
+                    return;
+                  }
+                  p.onSelezionaOggetto?.(a.id, o.id);
+                };
+                const comuni = {
+                  fill,
+                  stroke,
+                  strokeWidth: 2.5 / vista.scala,
+                  draggable: !o.centroAncorato,
+                  onClick: suTap,
+                  onTap: suTap,
+                  onDragStart: (e: Konva.KonvaEventObject<DragEvent>) => {
+                    if (gestoMulti.current) {
+                      e.target.stopDrag();
+                      e.target.position(base);
+                      return;
+                    }
+                    if (!selez) p.onSelezionaOggetto?.(a.id, o.id);
+                  },
+                  onDragMove: (e: Konva.KonvaEventObject<DragEvent>) => {
+                    if (gestoMulti.current) e.target.position(base);
+                  },
+                  onDragEnd: (e: Konva.KonvaEventObject<DragEvent>) => {
+                    const dx = e.target.x() - base.x;
+                    const dy = e.target.y() - base.y;
+                    // sotto ~5px schermo è un tocco, non uno spostamento
+                    if (Math.hypot(dx, dy) * vista.scala < 5) {
+                      e.target.position(base);
+                      return;
+                    }
+                    p.onSpostaOggetto?.(a.id, o.id, dx, dy);
+                  }
+                };
+                return o.tipo === 'rettangolo' ? (
+                  <Rect
+                    key={`${a.id}-ogg-${o.id}`}
+                    {...comuni}
+                    x={base.x}
+                    y={base.y}
+                    width={o.larghezza ?? 0}
+                    height={o.altezza ?? 0}
+                  />
+                ) : (
+                  <Circle
+                    key={`${a.id}-ogg-${o.id}`}
+                    {...comuni}
+                    x={base.x}
+                    y={base.y}
+                    radius={o.raggioPx ?? 0}
+                  />
+                );
+              });
+            })}
           {/* evidenziazione delle misure concatenate, sopra le quote */}
           <Shape
             listening={false}
