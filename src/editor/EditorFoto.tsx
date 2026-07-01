@@ -867,9 +867,13 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             if (!A || !B) return s;
             return { ...s, valore: arrotondaMisura(Math.hypot(B.x - A.x, B.y - A.y) / px) };
           });
+    // qualsiasi vincolo geometrico ATTIVO (angoli, parallelo, uguale lunghezza,
+    // ecc.) impone il risolutore generale: il modello a chiusura semplice non
+    // li conosce e li romperebbe silenziosamente.
     const haVincoliAvanzati =
-      (poli.vincoli ?? []).some((v) => v.tipo === 'angolo' && !v.riferimento && v.valore != null) ||
-      nuoviSegs.some((s) => !segmentoELato(s, nLati) && !s.riferimento && s.valore != null);
+      (poli.vincoli ?? []).some((v) =>
+        v.riferimento ? false : v.tipo === 'angolo' ? v.valore != null : true
+      ) || nuoviSegs.some((s) => !segmentoELato(s, nLati) && !s.riferimento && s.valore != null);
 
     // solver generale (diagonali / vincoli avanzati)
     if (foto.ePianta && px != null && (!eLato || haVincoliAvanzati)) {
@@ -1090,6 +1094,23 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const annullaVincolo = () => {
     setVincoloArmato(null);
     setStrumento('seleziona');
+  };
+
+  /** Arma un'uguaglianza "=Ln" a partire dalla quota di un lato: il lato
+   *  corrente diventa GUIDATO e il prossimo lato toccato è il riferimento. */
+  const armaUguaglianza = (poli: QuotaPoligono, segIndice: number) => {
+    const segs = segmentiPoligono(poli);
+    const seg = segs[segIndice];
+    const n = poli.punti.length;
+    const edgeIdx =
+      seg && ((seg.da + 1) % n === seg.a ? seg.da : (seg.a + 1) % n === seg.da ? seg.a : null);
+    if (edgeIdx == null) {
+      mostraToast('info', 'L’uguaglianza vale tra due lati: seleziona la quota di un lato.');
+      return;
+    }
+    setSelezioneId(poli.id);
+    setVincoloArmato({ id: poli.id, tipo: 'ugualeLunghezza', picks: [edgeIdx] });
+    setStrumento('vincolo');
   };
 
   const creaRettangolo = (rect: Rettangolo) => {
@@ -2617,6 +2638,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           if (!poli) return null;
           const seg = segmentiPoligono(poli)[quotaInline.indice];
           if (!seg) return null;
+          const nLatiInline = poli.punti.length;
+          const eLatoInline =
+            (seg.da + 1) % nLatiInline === seg.a || (seg.a + 1) % nLatiInline === seg.da;
           return (
             <QuotaInline
               x={quotaInline.x}
@@ -2624,6 +2648,15 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               valore={seg.valore}
               unita={poli.unita}
               riferimento={!!seg.riferimento}
+              onUguaglianza={
+                eLatoInline
+                  ? () => {
+                      const idx = quotaInline.indice;
+                      setQuotaInline(null);
+                      armaUguaglianza(poli, idx);
+                    }
+                  : undefined
+              }
               onAnnulla={() => setQuotaInline(null)}
               onConferma={(v) => {
                 const ok = applicaValoreLatoInline(poli, quotaInline.indice, v);
@@ -3634,12 +3667,13 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                   manuale: foto.ePianta && nuova.valore != null ? true : undefined
                 };
                 const nuoviSegs = segs.map((s, i) => (i === rif.indice ? nuovoSeg : s));
-                // la pianta ha vincoli NON lineari (angoli o diagonali driving)?
-                // in tal caso anche la modifica di un lato passa dal risolutore
-                // generale, così quei vincoli non vengono silenziosamente rotti.
+                // vincoli geometrici ATTIVI (angoli, parallelo, uguale lunghezza,
+                // ecc.) o diagonali driving? in tal caso anche la modifica di un
+                // lato passa dal risolutore generale, così quei vincoli non
+                // vengono silenziosamente rotti.
                 const haVincoliAvanzati =
-                  (poli.vincoli ?? []).some(
-                    (v) => v.tipo === 'angolo' && !v.riferimento && v.valore != null
+                  (poli.vincoli ?? []).some((v) =>
+                    v.riferimento ? false : v.tipo === 'angolo' ? v.valore != null : true
                   ) ||
                   nuoviSegs.some((s) => !segmentoELato(s, nLati) && !s.riferimento && s.valore != null);
                 // DIAGONALE / vincoli avanzati: comanda la forma via il risolutore
@@ -3814,7 +3848,8 @@ function QuotaInline({
   onConferma,
   onAnnulla,
   onRiferimento,
-  onElimina
+  onElimina,
+  onUguaglianza
 }: {
   x: number;
   y: number;
@@ -3825,6 +3860,8 @@ function QuotaInline({
   onAnnulla: () => void;
   onRiferimento: () => void;
   onElimina: () => void;
+  /** presente solo per i lati: avvia l'uguaglianza "=Ln" con un altro lato */
+  onUguaglianza?: () => void;
 }) {
   const [txt, setTxt] = useState(valore != null ? String(valore) : '');
   const ref = useRef<HTMLInputElement>(null);
@@ -3865,6 +3902,11 @@ function QuotaInline({
           </button>
         </div>
         <div className="qi-azioni">
+          {onUguaglianza && (
+            <button onClick={onUguaglianza} title="Uguale a un altro lato (=Ln): poi tocca il lato di riferimento">
+              = lato
+            </button>
+          )}
           {!riferimento && (
             <button onClick={onRiferimento} title="Converti in quota di riferimento (misura soltanto)">
               ( ) Riferimento

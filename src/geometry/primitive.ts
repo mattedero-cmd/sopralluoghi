@@ -179,7 +179,7 @@ export function etichettaQuota(q: Pick<Quota, 'valore' | 'unita' | 'stato' | 'no
   return q.nota && q.nota.trim() ? `${base}\n${q.nota.trim()}` : base;
 }
 
-export function primitiveQuota(q: Quota): Primitiva[] {
+export function primitiveQuota(q: Quota, testoOverride?: string): Primitiva[] {
   const g = geometriaQuota(q);
   const colore = coloreQuota(q);
   const sp = q.stile.spessore;
@@ -209,7 +209,7 @@ export function primitiveQuota(q: Quota): Primitiva[] {
     }
   }
 
-  const testo = etichettaQuota(q);
+  const testo = testoOverride ?? etichettaQuota(q);
   const dimTesto = q.stile.dimensioneTesto;
   // rotazione del testo allineata alla linea di quota, mai capovolta
   let angolo = (Math.atan2(g.d.y, g.d.x) * 180) / Math.PI;
@@ -641,6 +641,26 @@ export function etichettaPoligono(q: QuotaPoligono): string {
  * vertici + quota di ciascun lato, allineata e spinta all'esterno della
  * figura. Riusa la geometria delle quote lineari, come la quota rettangolo.
  */
+/** Etichetta "=Ln" se il lato `edgeIdx` è il lato GUIDATO (primo riferimento)
+ *  di un vincolo di uguale lunghezza; il numero è quello del lato di
+ *  riferimento (secondo riferimento). Altrimenti null. */
+function etichettaUguaglianzaLato(q: QuotaPoligono, edgeIdx: number): string | null {
+  for (const v of q.vincoli ?? []) {
+    if (v.tipo !== 'ugualeLunghezza' || v.riferimento) continue;
+    const r0 = v.riferimenti[0];
+    const r1 = v.riferimenti[1];
+    if (
+      r0?.entita === 'lato' &&
+      r0.indice === edgeIdx &&
+      r1?.entita === 'lato' &&
+      r1.indice != null
+    ) {
+      return `=L${r1.indice + 1}`;
+    }
+  }
+  return null;
+}
+
 export function primitiveQuotaPoligono(q: QuotaPoligono, etichetta?: string): Primitiva[] {
   const punti = q.punti;
   const n = punti.length;
@@ -675,17 +695,24 @@ export function primitiveQuotaPoligono(q: QuotaPoligono, etichetta?: string): Pr
     const a = punti[seg.da];
     const b = punti[seg.a];
     if (!a || !b) continue;
+    // lato guidato da un'uguaglianza (=L1): l'etichetta mostra il riferimento
+    const edgeIdx =
+      (seg.da + 1) % n === seg.a ? seg.da : (seg.a + 1) % n === seg.da ? seg.a : null;
+    const eq = edgeIdx != null ? etichettaUguaglianzaLato(q, edgeIdx) : null;
     prim.push(
-      ...primitiveQuota({
-        ...comune,
-        p1: a,
-        p2: b,
-        offset: seg.offset ?? 0,
-        posizioneTesto: seg.posizioneTesto ?? 'sopra',
-        scorrTesto: seg.scorrTesto,
-        nota: seg.nota,
-        valore: seg.valore
-      })
+      ...primitiveQuota(
+        {
+          ...comune,
+          p1: a,
+          p2: b,
+          offset: seg.offset ?? 0,
+          posizioneTesto: seg.posizioneTesto ?? 'sopra',
+          scorrTesto: seg.scorrTesto,
+          nota: seg.nota,
+          valore: seg.valore
+        },
+        eq ?? undefined
+      )
     );
   }
 
