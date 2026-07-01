@@ -623,6 +623,12 @@ export interface OggettoPianta {
   /** cerchio: raggio in PX */
   raggioPx?: number;
   etichetta?: string;
+  /** ANCORE dell'oggetto (schizzo parametrico): governano che cosa si muove
+   *  quando si modifica una quota di distanza oggetto–lato. */
+  /** il centro è ancorato: non si sposta (si muove la circonferenza o il lato) */
+  centroAncorato?: boolean;
+  /** la dimensione è bloccata (raggio/diametro o larghezza×altezza) */
+  dimensioneBloccata?: boolean;
 }
 
 /** Stato di vincolatura dello schizzo (§9): usato per l'indicatore visivo. */

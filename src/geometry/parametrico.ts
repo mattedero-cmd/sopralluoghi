@@ -492,6 +492,226 @@ export function riposizionaOggetti<T extends { x: number; y: number }>(
 }
 
 // ---------------------------------------------------------------------------
+// QUOTA DI DISTANZA OGGETTO–LATO (schizzo parametrico, gradi di libertà).
+// La quota misura la distanza tra un oggetto interno (centro o bordo) e un
+// lato del perimetro. Modificandola si muove l'elemento LIBERO:
+//   - niente ancorato            → si sposta l'intero oggetto;
+//   - centro ancorato (cerchio)  → cambia il raggio (si muove la circonferenza);
+//   - dimensione bloccata        → si sposta il centro;
+//   - centro+dimensione bloccati → si sposta il LATO (se il muro è libero);
+//   - tutto vincolato            → la quota è IMMODIFICABILE (mostrata ~…~).
+// ---------------------------------------------------------------------------
+
+/** Oggetto minimo per la geometria delle distanze (subset di OggettoPianta). */
+export interface OggettoDistanza {
+  id: string;
+  tipo: 'rettangolo' | 'cerchio';
+  x: number;
+  y: number;
+  larghezza?: number;
+  altezza?: number;
+  raggioPx?: number;
+  centroAncorato?: boolean;
+  dimensioneBloccata?: boolean;
+}
+
+/** Geometria calcolata di una quota di distanza oggetto–lato. */
+export interface GeomDistanza {
+  /** punto sull'oggetto (centro o bordo verso il lato) */
+  p: Punto;
+  /** piede sul lato (proiezione ortogonale) */
+  f: Punto;
+  /** punto medio (posizione dell'etichetta / bersaglio del tocco) */
+  mid: Punto;
+  /** distanza corrente in px (può essere negativa se l'oggetto oltrepassa il lato) */
+  dPx: number;
+  /** normale del lato ORIENTATA verso l'oggetto */
+  nvo: Punto;
+}
+
+/** centro dell'oggetto in px ((x,y) = angolo basso-sx per i rettangoli) */
+export function centroOggetto(o: OggettoDistanza): Punto {
+  if (o.tipo === 'rettangolo') {
+    return { x: o.x + (o.larghezza ?? 0) / 2, y: o.y - (o.altezza ?? 0) / 2 };
+  }
+  return { x: o.x, y: o.y };
+}
+
+/** semiestensione dell'oggetto lungo una direzione (funzione di supporto) */
+function estensioneLungo(o: OggettoDistanza, dir: Punto): number {
+  if (o.tipo === 'cerchio') return o.raggioPx ?? 0;
+  // rettangolo allineato agli assi: supporto esatto lungo `dir`
+  return (Math.abs(dir.x) * (o.larghezza ?? 0) + Math.abs(dir.y) * (o.altezza ?? 0)) / 2;
+}
+
+/**
+ * Geometria della quota di distanza per il vincolo `v` (tipo 'distanza' con
+ * riferimenti [oggetto, lato]). Null se i riferimenti non sono validi.
+ */
+export function geomQuotaDistanza(
+  punti: Punto[],
+  oggetti: OggettoDistanza[] | undefined,
+  v: VincoloPianta
+): GeomDistanza | null {
+  if (v.tipo !== 'distanza') return null;
+  const rifO = v.riferimenti.find((r) => r.oggettoId != null);
+  const rifL = v.riferimenti.find((r) => r.entita === 'lato' && r.oggettoId == null);
+  if (!rifO || !rifL || rifL.indice == null) return null;
+  const o = (oggetti ?? []).find((x) => x.id === rifO.oggettoId);
+  const n = punti.length;
+  if (!o || rifL.indice < 0 || rifL.indice >= n) return null;
+  const a = punti[rifL.indice];
+  const b = punti[(rifL.indice + 1) % n];
+  const lung = Math.hypot(b.x - a.x, b.y - a.y);
+  if (lung < 1e-6) return null;
+  const dir = { x: (b.x - a.x) / lung, y: (b.y - a.y) / lung };
+  const nrm = { x: -dir.y, y: dir.x };
+  const c = centroOggetto(o);
+  const sC = (c.x - a.x) * nrm.x + (c.y - a.y) * nrm.y;
+  const segno = sC >= 0 ? 1 : -1;
+  const nvo = { x: nrm.x * segno, y: nrm.y * segno }; // verso l'oggetto
+  const distC = sC * segno;
+  const dalBordo = rifO.entita !== 'centroOggetto';
+  const ext = dalBordo ? estensioneLungo(o, nvo) : 0;
+  const dPx = distC - ext;
+  const p = { x: c.x - nvo.x * ext, y: c.y - nvo.y * ext };
+  const f = { x: p.x - nvo.x * dPx, y: p.y - nvo.y * dPx };
+  return { p, f, mid: { x: (p.x + f.x) / 2, y: (p.y + f.y) / 2 }, dPx, nvo };
+}
+
+/** Che cosa si muove modificando la quota di distanza. */
+export type LibertaDistanza = 'oggetto' | 'dimensione' | 'lato' | 'bloccata';
+
+/** Il lato può traslare lungo la propria normale? Bloccano: origine su un suo
+ *  vertice, ancore che fissano quei vertici o il lato stesso, quote FISSE sui
+ *  lati adiacenti (la traslazione ne cambierebbe la lunghezza). */
+export function latoMuovibile(
+  punti: Punto[],
+  segmenti: SegmentoQuota[],
+  lato: number,
+  origine?: number
+): boolean {
+  const n = punti.length;
+  const va = lato;
+  const vb = (lato + 1) % n;
+  if (origine === va || origine === vb) return false;
+  const prev = (lato - 1 + n) % n;
+  const next = (lato + 1) % n;
+  for (const s of segmenti) {
+    if (!segmentoELato(s, n)) continue;
+    const e = (s.da + 1) % n === s.a ? s.da : s.a;
+    // ancore che fissano i vertici del lato (o il lato intero / il suo centro)
+    if (s.ancora) {
+      const fissati =
+        s.ancora === 'lato' || s.ancora === 'centro'
+          ? [s.da, s.a]
+          : s.ancora === 'vertice-da'
+            ? [s.da]
+            : [s.a];
+      if (fissati.includes(va) || fissati.includes(vb)) return false;
+    }
+    // lati adiacenti con quota fissa: traslare il muro ne cambierebbe la misura
+    if ((e === prev || e === next) && quotaFissa(s, n)) return false;
+  }
+  return true;
+}
+
+/** Grado di libertà della quota di distanza `v`. */
+export function libertaDistanza(
+  punti: Punto[],
+  segmenti: SegmentoQuota[],
+  oggetti: OggettoDistanza[] | undefined,
+  v: VincoloPianta,
+  origine?: number
+): LibertaDistanza {
+  if (v.tipo !== 'distanza') return 'bloccata';
+  const rifO = v.riferimenti.find((r) => r.oggettoId != null);
+  const rifL = v.riferimenti.find((r) => r.entita === 'lato' && r.oggettoId == null);
+  const o = (oggetti ?? []).find((x) => x.id === rifO?.oggettoId);
+  if (!o || !rifL || rifL.indice == null) return 'bloccata';
+  const centroLibero = !o.centroAncorato;
+  const dimLibera = !o.dimensioneBloccata;
+  const muro = () => latoMuovibile(punti, segmenti, rifL.indice as number, origine);
+  if (rifO?.entita === 'centroOggetto') {
+    // distanza dal CENTRO: la dimensione non c'entra
+    if (centroLibero) return 'oggetto';
+    return muro() ? 'lato' : 'bloccata';
+  }
+  // distanza dal BORDO
+  if (centroLibero) return 'oggetto'; // (anche con dimensione bloccata: si sposta il centro)
+  if (dimLibera && o.tipo === 'cerchio') return 'dimensione';
+  return muro() ? 'lato' : 'bloccata';
+}
+
+/**
+ * Applica un nuovo valore (in px) alla quota di distanza muovendo l'elemento
+ * libero. Restituisce le parti aggiornate, o null se la quota è bloccata o il
+ * risultato è degenere (es. raggio ≤ 0).
+ */
+export function applicaDistanza<T extends OggettoDistanza>(
+  punti: Punto[],
+  segmenti: SegmentoQuota[],
+  oggetti: T[] | undefined,
+  v: VincoloPianta,
+  dTargetPx: number,
+  origine?: number
+): { oggetti?: T[]; punti?: Punto[] } | null {
+  const g = geomQuotaDistanza(punti, oggetti, v);
+  if (!g) return null;
+  const lib = libertaDistanza(punti, segmenti, oggetti, v, origine);
+  if (lib === 'bloccata') return null;
+  const rifO = v.riferimenti.find((r) => r.oggettoId != null)!;
+  const delta = dTargetPx - g.dPx;
+  if (lib === 'oggetto') {
+    // trasla l'intero oggetto lungo la normale (via dal lato = distanza cresce)
+    return {
+      oggetti: (oggetti ?? []).map((o) =>
+        o.id === rifO.oggettoId ? { ...o, x: o.x + g.nvo.x * delta, y: o.y + g.nvo.y * delta } : o
+      )
+    };
+  }
+  if (lib === 'dimensione') {
+    // centro fermo: cambia il raggio (la circonferenza si avvicina/allontana)
+    const o = (oggetti ?? []).find((x) => x.id === rifO.oggettoId);
+    const rNuovo = (o?.raggioPx ?? 0) - delta;
+    if (rNuovo <= 1) return null;
+    return {
+      oggetti: (oggetti ?? []).map((x) => (x.id === rifO.oggettoId ? { ...x, raggioPx: rNuovo } : x))
+    };
+  }
+  // 'lato': trasla il muro lungo la normale (verso l'oggetto = distanza cala)
+  const rifL = v.riferimenti.find((r) => r.entita === 'lato' && r.oggettoId == null)!;
+  const idx = rifL.indice as number;
+  const n = punti.length;
+  const va = idx;
+  const vb = (idx + 1) % n;
+  const w = -delta; // spostamento del muro lungo nvo
+  return {
+    punti: punti.map((pt, i) =>
+      i === va || i === vb ? { x: pt.x + g.nvo.x * w, y: pt.y + g.nvo.y * w } : pt
+    )
+  };
+}
+
+/** Rimisura i valori delle quote di distanza dalla geometria corrente (dopo
+ *  un solve/spostamento), lasciando intatti gli altri vincoli. */
+export function rimisuraDistanze(
+  vincoli: VincoloPianta[] | undefined,
+  punti: Punto[],
+  oggetti: OggettoDistanza[] | undefined,
+  pxPerReale: number,
+  arrotonda: (v: number) => number = (v) => Math.round(v * 100) / 100
+): VincoloPianta[] | undefined {
+  if (!vincoli || pxPerReale <= 0) return vincoli;
+  return vincoli.map((v) => {
+    if (v.tipo !== 'distanza') return v;
+    const g = geomQuotaDistanza(punti, oggetti, v);
+    if (!g) return v;
+    return { ...v, valore: arrotonda(g.dPx / pxPerReale) };
+  });
+}
+
+// ---------------------------------------------------------------------------
 // (9) Stato di vincolatura dello schizzo (indicatore visivo del Menu Pianta)
 // ---------------------------------------------------------------------------
 

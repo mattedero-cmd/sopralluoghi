@@ -60,10 +60,15 @@ import { etichettaPoligono, nomeFormaPoligono, simboliPoligono, versiSegmento } 
 import { ricalcolaTecniche } from '../geometry/quotaTecnica';
 import { raddrizzaStanza, ricostruisciOrtogonale } from '../geometry/schizzo';
 import {
+  applicaDistanza,
+  centroOggetto,
   eliminaLatoRichiudi,
   fondiCollineari,
+  geomQuotaDistanza,
+  libertaDistanza,
   origineDefault,
   quotaFissa,
+  rimisuraDistanze,
   riposizionaOggetti,
   risolviParametrico,
   risolviPianta,
@@ -396,8 +401,11 @@ const GRUPPI_STRUMENTI_PIANTA: Array<{
         suggerimento:
           'Tocca lo schizzo e apri l’editor: nella sezione “Oggetti interni” inserisci un rettangolo o un cerchio e imposta le distanze dall’origine.'
       },
+      // quota di distanza oggetto–lato: tap-tap (oggetto, poi lato); il valore
+      // si modifica poi toccando la sua etichetta sul canvas
+      { icona: 'quota-allin', testo: 'Distanza oggetto–lato', vincolo: 'distanza' },
       {
-        icona: 'quota-allin',
+        icona: 'mirino',
         testo: 'Distanze dall’origine',
         suggerimento:
           'Imposta prima l’origine (datum, in basso a sinistra): gli oggetti si posizionano con le distanze da lì e le mantengono se modifichi la stanza.'
@@ -561,11 +569,20 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     y: number;
   } | null>(null);
   /** vincolo "armato" (tap-tap): tipo, poligono bersaglio e lati già toccati.
-   *  Con lo strumento 'vincolo' il tocco successivo sceglie il lato. */
+   *  Con lo strumento 'vincolo' il tocco successivo sceglie il lato. Per la
+   *  quota di DISTANZA il primo tocco sceglie l'oggetto (centro o bordo). */
   const [vincoloArmato, setVincoloArmato] = useState<{
     id: string;
     tipo: TipoVincoloPianta;
     picks: number[];
+    oggettoPick?: { oggettoId: string; entita: 'centroOggetto' | 'bordoOggetto' };
+  } | null>(null);
+  /** modifica inline di una quota di distanza oggetto–lato (id vincolo) */
+  const [distanzaInline, setDistanzaInline] = useState<{
+    id: string;
+    vincoloId: string;
+    x: number;
+    y: number;
   } | null>(null);
   /** griglia di verifica sul piano calibrato (controllo visivo della scala) */
   const [mostraGriglia, setMostraGriglia] = useState(false);
@@ -879,10 +896,12 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     if (foto.ePianta && px != null && (!eLato || haVincoliAvanzati)) {
       const r = risolviPianta(poli.punti, nuoviSegs, poli.vincoli, px, origine);
       if (!r.ok) return false;
+      const oggNuovi = riposizionaOggetti(poli.oggetti, poli.punti, r.punti, origine);
       scrivi({
         punti: r.punti,
         segmenti: riquota(nuoviSegs, r.punti),
-        oggetti: riposizionaOggetti(poli.oggetti, poli.punti, r.punti, origine),
+        oggetti: oggNuovi,
+        vincoli: rimisuraDistanze(poli.vincoli, r.punti, oggNuovi, px, arrotondaMisura),
         valoreAuto: false
       });
       return true;
@@ -895,10 +914,12 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         origine
       });
       if (!esito.ok) return false;
+      const oggNuovi = riposizionaOggetti(poli.oggetti, poli.punti, esito.punti, origine);
       scrivi({
         punti: esito.punti,
         segmenti: riquota(nuoviSegs, esito.punti),
-        oggetti: riposizionaOggetti(poli.oggetti, poli.punti, esito.punti, origine),
+        oggetti: oggNuovi,
+        vincoli: rimisuraDistanze(poli.vincoli, esito.punti, oggNuovi, px, arrotondaMisura),
         valoreAuto: false
       });
       return true;
@@ -1005,10 +1026,17 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     const px = pxPerUnita(foto, poli.unita);
     // i vincoli geometrici (orizz./vert./parallelo/…) sono indipendenti dalla
     // scala: si possono risolvere anche senza calibrazione (pxSolve = 1),
-    // dando comunque l'adattamento immediato della forma sul canvas.
+    // dando comunque l'adattamento immediato della forma sul canvas. In quel
+    // caso però le quote in unità reali NON devono diventare bersagli in px:
+    // si passano i segmenti come "riferimento" (misurano soltanto), tenendo
+    // attive ancore e preservazione debole delle lunghezze correnti.
     const pxSolve = px ?? 1;
+    const segsSolve =
+      px == null
+        ? segmentiPoligono(poli).map((s) => ({ ...s, riferimento: true }))
+        : segmentiPoligono(poli);
     const origine = poli.origine ?? origineDefault(poli.punti);
-    const r = risolviPianta(poli.punti, segmentiPoligono(poli), vincoli, pxSolve, origine);
+    const r = risolviPianta(poli.punti, segsSolve, vincoli, pxSolve, origine);
     if (!r.ok) return false;
     const nLati = poli.punti.length;
     // le quote reali si riquotano solo se c'è una scala vera
@@ -1022,6 +1050,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             if (!A || !B) return s;
             return { ...s, valore: arrotondaMisura(Math.hypot(B.x - A.x, B.y - A.y) / px) };
           });
+    const oggNuovi = riposizionaOggetti(poli.oggetti, poli.punti, r.punti, origine);
+    const vincoliFinali =
+      px != null ? rimisuraDistanze(vincoli, r.punti, oggNuovi, px, arrotondaMisura) : vincoli;
     commit(
       annotazioni.map((a) =>
         a.id === poli.id
@@ -1029,8 +1060,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               ...poli,
               punti: r.punti,
               segmenti: segsFinali,
-              oggetti: riposizionaOggetti(poli.oggetti, poli.punti, r.punti, origine),
-              vincoli: vincoli.length ? vincoli : undefined,
+              oggetti: oggNuovi,
+              vincoli: vincoliFinali?.length ? vincoliFinali : undefined,
               lati: undefined,
               offsetLati: undefined,
               ...(px != null ? { valoreAuto: false } : {})
@@ -1043,10 +1074,21 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
 
   /** Arma un vincolo tap-tap sul poligono bersaglio (selezionato o unico). */
   const armaVincolo = (tipo: TipoVincoloPianta) => {
+    if (!foto) return;
     const poli = poligonoBersaglio();
     if (!poli) {
       mostraToast('info', 'Seleziona prima lo schizzo su cui applicare il vincolo.');
       return;
+    }
+    if (tipo === 'distanza') {
+      if (!poli.oggetti?.length) {
+        mostraToast('info', 'Inserisci prima un oggetto (Oggetti → Rettangolo / Cerchio interni).');
+        return;
+      }
+      if (pxPerUnita(foto, poli.unita) == null) {
+        mostraToast('info', 'Calibra prima la scala: la distanza è una misura reale.');
+        return;
+      }
     }
     setMenuAperto(null);
     setSelezioneId(poli.id);
@@ -1057,12 +1099,73 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   /** Tocco in modalità vincolo: sceglie il lato più vicino e, raggiunto il
    *  numero di lati richiesto, applica il vincolo e disarma il comando. */
   const onPuntoVincolo = (p: Punto) => {
-    if (!vincoloArmato || !annotazioni) return;
+    if (!vincoloArmato || !annotazioni || !foto) return;
     const poli = annotazioni.find(
       (a) => a.id === vincoloArmato.id && a.tipo === 'quotaPoligono'
     ) as QuotaPoligono | undefined;
     if (!poli) {
       annullaVincolo();
+      return;
+    }
+    // QUOTA DI DISTANZA oggetto–lato: primo tocco = oggetto (centro o bordo),
+    // secondo tocco = lato; si crea la quota con la misura corrente.
+    if (vincoloArmato.tipo === 'distanza') {
+      if (!vincoloArmato.oggettoPick) {
+        const oggetti = poli.oggetti ?? [];
+        if (!oggetti.length) {
+          annullaVincolo();
+          return;
+        }
+        let best = oggetti[0];
+        let bestD = Infinity;
+        for (const o of oggetti) {
+          const c = centroOggetto(o);
+          const d = Math.hypot(p.x - c.x, p.y - c.y);
+          if (d < bestD) {
+            bestD = d;
+            best = o;
+          }
+        }
+        const ext =
+          best.tipo === 'cerchio'
+            ? (best.raggioPx ?? 0)
+            : Math.min(best.larghezza ?? 0, best.altezza ?? 0) / 2;
+        // tocco vicino al centro → distanza dal CENTRO; altrimenti dal BORDO
+        const entita = bestD < ext * 0.5 ? 'centroOggetto' : 'bordoOggetto';
+        setVincoloArmato({ ...vincoloArmato, oggettoPick: { oggettoId: best.id, entita } });
+        return;
+      }
+      const lato = latoPiuVicino(poli, p);
+      const px = pxPerUnita(foto, poli.unita);
+      if (px == null) {
+        annullaVincolo();
+        return;
+      }
+      const nuovo: VincoloPianta = {
+        id: nuovoId(),
+        tipo: 'distanza',
+        riferimenti: [
+          { entita: vincoloArmato.oggettoPick.entita, oggettoId: vincoloArmato.oggettoPick.oggettoId },
+          { entita: 'lato', indice: lato }
+        ]
+      };
+      const g = geomQuotaDistanza(poli.punti, poli.oggetti, nuovo);
+      if (!g) {
+        annullaVincolo();
+        mostraToast('errore', 'Impossibile misurare la distanza tra oggetto e lato.');
+        return;
+      }
+      nuovo.valore = arrotondaMisura(g.dPx / px);
+      commit(
+        annotazioni.map((a) =>
+          a.id === poli.id
+            ? ({ ...poli, vincoli: [...(poli.vincoli ?? []), nuovo] } as QuotaPoligono)
+            : a
+        )
+      );
+      setVincoloArmato(null);
+      setStrumento('seleziona');
+      mostraToast('successo', 'Quota distanza creata: tocca la sua etichetta per modificarla.');
       return;
     }
     const i = latoPiuVicino(poli, p);
@@ -1083,7 +1186,21 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       tipo: vincoloArmato.tipo,
       riferimenti: picks.map((idx) => ({ entita: 'lato' as const, indice: idx }))
     };
-    const ok = applicaVincoliSchizzo(poli, [...(poli.vincoli ?? []), nuovo]);
+    // uguaglianza "=Ln": il lato GUIDATO (primo tocco) non può restare driving
+    // col suo vecchio valore manuale, altrimenti confligge con l'uguaglianza e
+    // non seguirebbe mai il riferimento. Diventa auto (segue e si riquota).
+    let poliBase = poli;
+    if (vincoloArmato.tipo === 'ugualeLunghezza') {
+      const nPoli = poli.punti.length;
+      const guidato = picks[0];
+      const segsPuliti = segmentiPoligono(poli).map((s) => {
+        if (!segmentoELato(s, nPoli)) return s;
+        const e = (s.da + 1) % nPoli === s.a ? s.da : s.a;
+        return e === guidato ? { ...s, manuale: undefined, bloccato: undefined } : s;
+      });
+      poliBase = { ...poli, segmenti: segsPuliti };
+    }
+    const ok = applicaVincoliSchizzo(poliBase, [...(poli.vincoli ?? []), nuovo]);
     setVincoloArmato(null);
     setStrumento('seleziona');
     if (!ok) mostraToast('errore', 'Vincolo in conflitto con gli altri: non applicato.');
@@ -1111,6 +1228,64 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     setSelezioneId(poli.id);
     setVincoloArmato({ id: poli.id, tipo: 'ugualeLunghezza', picks: [edgeIdx] });
     setStrumento('vincolo');
+  };
+
+  /** Applica un nuovo valore alla quota di DISTANZA oggetto–lato: muove
+   *  l'elemento libero (oggetto / raggio / lato) secondo le ancore. */
+  const applicaDistanzaInline = (poli: QuotaPoligono, vincoloId: string, valore: number): boolean => {
+    if (!annotazioni || !foto) return false;
+    const v = (poli.vincoli ?? []).find((x) => x.id === vincoloId);
+    if (!v) return false;
+    const px = pxPerUnita(foto, poli.unita);
+    if (px == null) return false;
+    const origine = poli.origine ?? origineDefault(poli.punti);
+    const esito = applicaDistanza(
+      poli.punti,
+      segmentiPoligono(poli),
+      poli.oggetti,
+      v,
+      valore * px,
+      origine
+    );
+    if (!esito) return false;
+    const puntiNuovi = esito.punti ?? poli.punti;
+    const oggettiNuovi = esito.oggetti ?? poli.oggetti;
+    const nLati = poli.punti.length;
+    // se si è mosso il LATO, i lati adiacenti auto si riquotano
+    const segsFinali = esito.punti
+      ? segmentiPoligono(poli).map((s) => {
+          if (s.valore == null || quotaFissa(s, nLati)) return s;
+          const A = puntiNuovi[s.da];
+          const B = puntiNuovi[s.a];
+          if (!A || !B) return s;
+          return { ...s, valore: arrotondaMisura(Math.hypot(B.x - A.x, B.y - A.y) / px) };
+        })
+      : undefined;
+    // il vincolo modificato prende il valore richiesto; le ALTRE quote di
+    // distanza si rimisurano dalla nuova geometria
+    const vincoliNuovi = rimisuraDistanze(
+      (poli.vincoli ?? []).map((x) => (x.id === vincoloId ? { ...x, valore } : x)),
+      puntiNuovi,
+      oggettiNuovi,
+      px,
+      arrotondaMisura
+    );
+    commit(
+      annotazioni.map((a) =>
+        a.id === poli.id
+          ? ({
+              ...poli,
+              punti: puntiNuovi,
+              ...(segsFinali ? { segmenti: segsFinali } : {}),
+              oggetti: oggettiNuovi,
+              vincoli: vincoliNuovi,
+              lati: undefined,
+              offsetLati: undefined
+            } as QuotaPoligono)
+          : a
+      )
+    );
+    return true;
   };
 
   const creaRettangolo = (rect: Rettangolo) => {
@@ -2272,6 +2447,28 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           setQuotaInline({ id: selezionata.id, indice, x: cliente.x, y: cliente.y });
         }}
         onPuntoVincolo={onPuntoVincolo}
+        onDistanzaInline={(vincoloId, cliente) => {
+          if (!selezionata || selezionata.tipo !== 'quotaPoligono') return;
+          const v = (selezionata.vincoli ?? []).find((x) => x.id === vincoloId);
+          if (!v) return;
+          // quota completamente vincolata (~…~): il campo si apre comunque
+          // (per Elimina/Riferimento) ma si spiega perché il valore non cambia
+          if (
+            libertaDistanza(
+              selezionata.punti,
+              segmentiPoligono(selezionata),
+              selezionata.oggetti,
+              v,
+              selezionata.origine ?? origineDefault(selezionata.punti)
+            ) === 'bloccata'
+          ) {
+            mostraToast(
+              'info',
+              'Quota completamente vincolata: libera il centro, la dimensione o il lato per poterla modificare.'
+            );
+          }
+          setDistanzaInline({ id: selezionata.id, vincoloId, x: cliente.x, y: cliente.y });
+        }}
         onCommit={commitGeometria}
         onNuovaQuota={creaQuota}
         onNuovoRett={creaRettangolo}
@@ -2605,15 +2802,20 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             parallelo: 'Parallelo',
             perpendicolare: 'Perpendicolare',
             ugualeLunghezza: 'Uguale lunghezza',
-            collineare: 'Collineare'
+            collineare: 'Collineare',
+            distanza: 'Distanza oggetto–lato'
           };
           const binario = VINCOLI_BINARI.includes(vincoloArmato.tipo);
           const passo =
-            vincoloArmato.picks.length === 0
-              ? binario
-                ? 'tocca il primo lato'
-                : 'tocca il lato'
-              : 'tocca il secondo lato';
+            vincoloArmato.tipo === 'distanza'
+              ? vincoloArmato.oggettoPick
+                ? 'ora tocca il lato'
+                : 'tocca l’oggetto (centro o bordo)'
+              : vincoloArmato.picks.length === 0
+                ? binario
+                  ? 'tocca il primo lato'
+                  : 'tocca il lato'
+                : 'tocca il secondo lato';
           return (
             <div className="barra-duplica" role="status">
               <span className="titolo">
@@ -2674,6 +2876,65 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               onElimina={() => {
                 eliminaSegmentoInline(poli, quotaInline.indice);
                 setQuotaInline(null);
+              }}
+            />
+          );
+        })()}
+
+      {/* Modifica INLINE della quota di DISTANZA oggetto–lato. */}
+      {distanzaInline &&
+        (() => {
+          const poli = annotazioni?.find(
+            (a) => a.id === distanzaInline.id && a.tipo === 'quotaPoligono'
+          ) as QuotaPoligono | undefined;
+          const v = poli && (poli.vincoli ?? []).find((x) => x.id === distanzaInline.vincoloId);
+          if (!poli || !v) return null;
+          return (
+            <QuotaInline
+              x={distanzaInline.x}
+              y={distanzaInline.y}
+              valore={v.valore ?? null}
+              unita={poli.unita}
+              riferimento={!!v.riferimento}
+              onAnnulla={() => setDistanzaInline(null)}
+              onConferma={(val) => {
+                const ok = applicaDistanzaInline(poli, distanzaInline.vincoloId, val);
+                if (!ok)
+                  mostraToast(
+                    'errore',
+                    'Distanza non modificabile: tutti gli elementi sono vincolati (o il risultato è degenere).'
+                  );
+                setDistanzaInline(null);
+              }}
+              onRiferimento={() => {
+                commit(
+                  (annotazioni ?? []).map((a) =>
+                    a.id === poli.id
+                      ? ({
+                          ...poli,
+                          vincoli: (poli.vincoli ?? []).map((x) =>
+                            x.id === distanzaInline.vincoloId ? { ...x, riferimento: true } : x
+                          )
+                        } as QuotaPoligono)
+                      : a
+                  )
+                );
+                setDistanzaInline(null);
+              }}
+              onElimina={() => {
+                commit(
+                  (annotazioni ?? []).map((a) =>
+                    a.id === poli.id
+                      ? ({
+                          ...poli,
+                          vincoli: (poli.vincoli ?? []).filter(
+                            (x) => x.id !== distanzaInline.vincoloId
+                          )
+                        } as QuotaPoligono)
+                      : a
+                  )
+                );
+                setDistanzaInline(null);
               }}
             />
           );
@@ -3375,21 +3636,24 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                         if (!A || !B) return s;
                         return { ...s, valore: arrotondaMisura(Math.hypot(B.x - A.x, B.y - A.y) / px) };
                       });
-                      commit(
-                        annotazioni.map((a) =>
-                          a.id === poli.id
-                            ? ({
-                                ...poli,
-                                punti: r.punti,
-                                segmenti: segsFinali,
-                                oggetti: riposizionaOggetti(poli.oggetti, poli.punti, r.punti, poli.origine ?? origineDefault(poli.punti)),
-                                vincoli,
-                                lati: undefined,
-                                offsetLati: undefined
-                              } as QuotaPoligono)
-                            : a
-                        )
-                      );
+                      {
+                        const oggNuovi = riposizionaOggetti(poli.oggetti, poli.punti, r.punti, poli.origine ?? origineDefault(poli.punti));
+                        commit(
+                          annotazioni.map((a) =>
+                            a.id === poli.id
+                              ? ({
+                                  ...poli,
+                                  punti: r.punti,
+                                  segmenti: segsFinali,
+                                  oggetti: oggNuovi,
+                                  vincoli: rimisuraDistanze(vincoli, r.punti, oggNuovi, px, arrotondaMisura),
+                                  lati: undefined,
+                                  offsetLati: undefined
+                                } as QuotaPoligono)
+                              : a
+                          )
+                        );
+                      }
                       mostraToast('successo', 'Angolo vincolato: la forma si è adattata.');
                     }
                   : undefined
@@ -3411,21 +3675,25 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                         if (!A || !B) return s;
                         return { ...s, valore: arrotondaMisura(Math.hypot(B.x - A.x, B.y - A.y) / px) };
                       });
-                      commit(
-                        annotazioni.map((a) =>
-                          a.id === poli.id
-                            ? ({
-                                ...poli,
-                                punti: r.punti,
-                                segmenti: segsFinali,
-                                oggetti: riposizionaOggetti(poli.oggetti, poli.punti, r.punti, poli.origine ?? origineDefault(poli.punti)),
-                                vincoli: vincoli.length ? vincoli : undefined,
-                                lati: undefined,
-                                offsetLati: undefined
-                              } as QuotaPoligono)
-                            : a
-                        )
-                      );
+                      {
+                        const oggNuovi = riposizionaOggetti(poli.oggetti, poli.punti, r.punti, poli.origine ?? origineDefault(poli.punti));
+                        const vincFinali = rimisuraDistanze(vincoli, r.punti, oggNuovi, px, arrotondaMisura);
+                        commit(
+                          annotazioni.map((a) =>
+                            a.id === poli.id
+                              ? ({
+                                  ...poli,
+                                  punti: r.punti,
+                                  segmenti: segsFinali,
+                                  oggetti: oggNuovi,
+                                  vincoli: vincFinali?.length ? vincFinali : undefined,
+                                  lati: undefined,
+                                  offsetLati: undefined
+                                } as QuotaPoligono)
+                              : a
+                          )
+                        );
+                      }
                       mostraToast('successo', 'Vincoli aggiornati: la forma si è adattata.');
                     }
                   : undefined
@@ -3444,14 +3712,26 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               }
               onOggetti={
                 foto.ePianta
-                  ? (oggetti) =>
+                  ? (oggetti) => {
+                      // gli oggetti rimossi si portano via le loro quote di distanza
+                      const vivi = new Set(oggetti.map((o) => o.id));
+                      const vincoli = (poli.vincoli ?? []).filter(
+                        (v) =>
+                          v.tipo !== 'distanza' ||
+                          v.riferimenti.every((r) => r.oggettoId == null || vivi.has(r.oggettoId))
+                      );
                       commit(
                         annotazioni.map((a) =>
                           a.id === poli.id
-                            ? ({ ...poli, oggetti: oggetti.length ? oggetti : undefined } as QuotaPoligono)
+                            ? ({
+                                ...poli,
+                                oggetti: oggetti.length ? oggetti : undefined,
+                                vincoli: vincoli.length ? vincoli : undefined
+                              } as QuotaPoligono)
                             : a
                         )
-                      )
+                      );
+                    }
                   : undefined
               }
               onRicostruisci={foto.ePianta ? () => void ricostruisciPianta(poli) : undefined}
@@ -3698,10 +3978,12 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                         if (!A || !B) return s;
                         return { ...s, valore: arrotondaMisura(Math.hypot(B.x - A.x, B.y - A.y) / px) };
                       });
+                      const oggNuovi = riposizionaOggetti(poli.oggetti, poli.punti, r.punti, poli.origine ?? origineDefault(poli.punti));
                       scriviPoligono({
                         punti: r.punti,
                         segmenti: segsFinali,
-                        oggetti: riposizionaOggetti(poli.oggetti, poli.punti, r.punti, poli.origine ?? origineDefault(poli.punti)),
+                        oggetti: oggNuovi,
+                        vincoli: rimisuraDistanze(poli.vincoli, r.punti, oggNuovi, px, arrotondaMisura),
                         unita: nuova.unita,
                         stato: nuova.stato,
                         valoreAuto: false,
@@ -3748,10 +4030,12 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                         if (!A || !B) return s;
                         return { ...s, valore: arrotondaMisura(Math.hypot(B.x - A.x, B.y - A.y) / px) };
                       });
+                      const oggNuovi = riposizionaOggetti(poli.oggetti, poli.punti, esito.punti, poli.origine ?? origineDefault(poli.punti));
                       scriviPoligono({
                         punti: esito.punti,
                         segmenti: segsFinali,
-                        oggetti: riposizionaOggetti(poli.oggetti, poli.punti, esito.punti, poli.origine ?? origineDefault(poli.punti)),
+                        oggetti: oggNuovi,
+                        vincoli: rimisuraDistanze(poli.vincoli, esito.punti, oggNuovi, px, arrotondaMisura),
                         unita: nuova.unita,
                         stato: nuova.stato,
                         valoreAuto: false,
@@ -5557,6 +5841,28 @@ function EditorPoligono({
                           onChange={(e) => patch(o.id, { y: puntoOrigine.y - num(e.target.value) * px })}
                         />
                       </label>
+                    </div>
+                    {/* ancore dell'oggetto: decidono che cosa si muove quando si
+                        modifica una quota di distanza oggetto–lato */}
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <button
+                        className={`btn${o.centroAncorato ? ' attivo' : ''}`}
+                        style={{ minHeight: 34, padding: '0 10px' }}
+                        onClick={() => patch(o.id, { centroAncorato: !o.centroAncorato || undefined })}
+                        title="Centro ancorato: il centro non si sposta (si muove la circonferenza o il lato)"
+                      >
+                        {o.centroAncorato ? '⚓ Centro fisso' : '⚓ Ancora centro'}
+                      </button>
+                      <button
+                        className={`btn${o.dimensioneBloccata ? ' attivo' : ''}`}
+                        style={{ minHeight: 34, padding: '0 10px' }}
+                        onClick={() =>
+                          patch(o.id, { dimensioneBloccata: !o.dimensioneBloccata || undefined })
+                        }
+                        title="Dimensione bloccata: raggio/diametro o base×altezza non cambiano"
+                      >
+                        {o.dimensioneBloccata ? '🔒 Dimensione' : '🔓 Blocca dimensione'}
+                      </button>
                     </div>
                   </div>
                 ))}

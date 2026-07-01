@@ -27,6 +27,7 @@ import {
 } from '../db/types';
 import { misureElemento, nomePoligono } from './calibrazione';
 import { calcolaCatene, sommaCatenaInUnita } from './catene';
+import { geomQuotaDistanza, libertaDistanza } from './parametrico';
 import { formattaMisura, formattaNumero } from '../utils/format';
 import {
   direzioneQuota,
@@ -750,6 +751,37 @@ export function primitiveQuotaPoligono(q: QuotaPoligono, etichetta?: string): Pr
         alone: ALONE
       });
     }
+  }
+
+  // QUOTE DI DISTANZA oggetto–lato (schizzo parametrico): linea tratteggiata
+  // dal bordo/centro dell'oggetto al piede sul lato; l'etichetta è ~valore~
+  // quando la quota è completamente vincolata (immodificabile).
+  for (const v of q.vincoli ?? []) {
+    if (v.tipo !== 'distanza') continue;
+    const g = geomQuotaDistanza(punti, q.oggetti, v);
+    if (!g) continue;
+    const misura = v.valore != null ? formattaMisura(v.valore, q.unita) : '?';
+    const bloccata =
+      libertaDistanza(punti, segmentiPoligono(q), q.oggetti, v, q.origine) === 'bloccata';
+    const testoDist = bloccata ? `~${misura}~` : v.riferimento ? `(${misura})` : misura;
+    prim.push({
+      kind: 'linea',
+      punti: [g.p.x, g.p.y, g.f.x, g.f.y],
+      colore,
+      spessore: Math.max(1.25, q.stile.spessore * 0.6),
+      tratteggio: [6, 4],
+      alone: ALONE
+    });
+    prim.push({
+      kind: 'testo',
+      testo: testoDist,
+      posizione: { x: g.mid.x, y: g.mid.y - q.stile.dimensioneTesto * 0.7 },
+      rotazioneDeg: 0,
+      dimensione: q.stile.dimensioneTesto * 0.9,
+      colore,
+      sfondo: null,
+      alone: ALONE
+    });
   }
 
   // ORIGINE (datum): assicella d'assi (L) al vertice origine, se definito

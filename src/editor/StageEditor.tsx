@@ -19,6 +19,7 @@ import {
 } from '../db/types';
 import { primitiveAnnotazione, primitiveCatene, latiQuotaRett } from '../geometry/primitive';
 import { geometriaQuota, posizioneEtichettaBase, posizioneEtichettaPoligono } from '../geometry/primitive';
+import { geomQuotaDistanza } from '../geometry/parametrico';
 import { disegnaPrimitiva } from '../render/renderAnnotata';
 import { puntiAggancio, snapPunto } from '../geometry/snap';
 import {
@@ -125,6 +126,9 @@ interface Props {
    *  apre la modifica INLINE del valore sul canvas, senza editor dedicato.
    *  `indice` = segmento; `cliente` = posizione in pixel schermo del tocco. */
   onQuotaInline?: (indice: number, cliente: { x: number; y: number }) => void;
+  /** tocco sull'etichetta di una quota di DISTANZA oggetto–lato dello schizzo:
+   *  apre la modifica inline (id del vincolo + posizione schermo). */
+  onDistanzaInline?: (vincoloId: string, cliente: { x: number; y: number }) => void;
   /** tocco in modalità "vincolo" (tap-tap): riporta il punto toccato in
    *  coordinate immagine, così il chiamante individua il lato più vicino. */
   onPuntoVincolo?: (p: Punto) => void;
@@ -1553,6 +1557,7 @@ export function StageEditor(p: Props) {
               vincolo={p.vincolo}
               gestoMulti={() => gestoMulti.current}
               onQuotaInline={p.onQuotaInline}
+              onDistanzaInline={p.onDistanzaInline}
             />
           )}
         </Layer>
@@ -2088,7 +2093,8 @@ function ManiglieAnnotazione({
   applicaSnap,
   vincolo,
   gestoMulti,
-  onQuotaInline
+  onQuotaInline,
+  onDistanzaInline
 }: {
   ann: Annotazione;
   raggio: number;
@@ -2103,6 +2109,8 @@ function ManiglieAnnotazione({
   gestoMulti?: () => boolean;
   /** tocco secco sull'etichetta di una quota: modifica inline del valore */
   onQuotaInline?: (indice: number, cliente: { x: number; y: number }) => void;
+  /** tocco secco sull'etichetta di una quota di distanza oggetto–lato */
+  onDistanzaInline?: (vincoloId: string, cliente: { x: number; y: number }) => void;
 }) {
   // distingue il tocco "secco" dal trascinamento: dopo un drag il click non
   // deve aprire la modifica inline (Konva può emetterlo comunque)
@@ -2390,6 +2398,27 @@ function ManiglieAnnotazione({
               />
             );
           })}
+          {/* etichette delle quote di DISTANZA oggetto–lato: tocco secco →
+              modifica inline del valore (il cerchio è solo un bersaglio) */}
+          {onDistanzaInline &&
+            (ann.vincoli ?? []).map((v) => {
+              if (v.tipo !== 'distanza') return null;
+              const g = geomQuotaDistanza(ann.punti, ann.oggetti, v);
+              if (!g) return null;
+              return (
+                <Circle
+                  key={`dist-${v.id}`}
+                  x={g.mid.x}
+                  y={g.mid.y}
+                  radius={raggio}
+                  fill="rgba(47,129,247,0.35)"
+                  stroke="#58a6ff"
+                  strokeWidth={2.5 / scala}
+                  onClick={(e) => onTapManiglia(e, (cliente) => onDistanzaInline(v.id, cliente))}
+                  onTap={(e) => onTapManiglia(e, (cliente) => onDistanzaInline(v.id, cliente))}
+                />
+              );
+            })}
           {/* maniglia del badge: spostabile liberamente, anche fuori figura */}
           {manigliaEtichetta}
         </>
