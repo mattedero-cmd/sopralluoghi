@@ -729,6 +729,13 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     setModalitaMenu((cur) => (cur === m ? cur : m));
   }, [selezioneId, annotazioni, foto]);
 
+  /** cambia il menu funzionale attivo dalla barra dedicata */
+  const cambiaMenu = useCallback((m: 'quotature' | 'disegno' | 'pianta') => {
+    setMenuAperto(null);
+    setStrumento('seleziona');
+    setModalitaMenu(m);
+  }, []);
+
 
   const commit = useCallback(
     (nuove: Annotazione[]) => {
@@ -1898,6 +1905,37 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         </button>
       </header>
 
+      {/* Selettore del menu funzionale, staccato dagli strumenti: tre pulsanti
+          separati (Quotature · Disegno · Pianta) sotto l'intestazione. */}
+      <div className="selettore-menu" role="tablist" aria-label="Menu">
+        <button
+          role="tab"
+          aria-selected={modalitaMenu === 'quotature'}
+          className={modalitaMenu === 'quotature' ? 'attivo' : ''}
+          onClick={() => cambiaMenu('quotature')}
+        >
+          <Icona nome="quota-allin" dimensione={18} /> Quotature
+        </button>
+        <button
+          role="tab"
+          aria-selected={modalitaMenu === 'disegno'}
+          className={modalitaMenu === 'disegno' ? 'attivo' : ''}
+          onClick={() => cambiaMenu('disegno')}
+        >
+          <Icona nome="disegno" dimensione={18} /> Disegno
+        </button>
+        {foto.ePianta && (
+          <button
+            role="tab"
+            aria-selected={modalitaMenu === 'pianta'}
+            className={modalitaMenu === 'pianta' ? 'attivo' : ''}
+            onClick={() => cambiaMenu('pianta')}
+          >
+            <Icona nome="griglia" dimensione={18} /> Pianta
+          </button>
+        )}
+      </div>
+
       <StageEditor
         foto={foto}
         immagine={immagine}
@@ -2626,40 +2664,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 />
               );
             })}
-          {/* selettore del menu per funzione: Quotature · Disegno · Pianta
-              (mutuamente esclusivi). "Seleziona" resta neutro e non legato. */}
-          <BtnStrumento
-            attivo={modalitaMenu === 'quotature'}
-            onClick={() => {
-              setMenuAperto(null);
-              setStrumento('seleziona');
-              setModalitaMenu('quotature');
-            }}
-            icona="quota-allin"
-            testo="Quotature"
-          />
-          <BtnStrumento
-            attivo={modalitaMenu === 'disegno'}
-            onClick={() => {
-              setMenuAperto(null);
-              setStrumento('seleziona');
-              setModalitaMenu('disegno');
-            }}
-            icona="disegno"
-            testo="Disegno"
-          />
-          {foto.ePianta && (
-            <BtnStrumento
-              attivo={modalitaMenu === 'pianta'}
-              onClick={() => {
-                setMenuAperto(null);
-                setStrumento('seleziona');
-                setModalitaMenu('pianta');
-              }}
-              icona="griglia"
-              testo="Pianta"
-            />
-          )}
+          {/* Il selettore del menu (Quotature · Disegno · Pianta) è nella
+              barra dedicata sotto l'intestazione, staccato dagli strumenti. */}
         </nav>
       </div>
 

@@ -1593,6 +1593,42 @@ h2 {
   color: #fff;
 }
 
+/* Selettore del menu funzionale (Quotature · Disegno · Pianta): barra
+   dedicata sotto l'intestazione, staccata dagli strumenti in basso. */
+.selettore-menu {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--sfondo-2);
+  border-bottom: 1px solid var(--bordo);
+  flex-shrink: 0;
+}
+
+.selettore-menu button {
+  flex: 1 1 0;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--bordo);
+  border-radius: 12px;
+  background: var(--sfondo-3);
+  color: var(--testo);
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.selettore-menu button.attivo {
+  background: var(--accento);
+  color: #fff;
+  border-color: var(--accento);
+}
+
 .input-misura {
   width: 110px;
   min-height: 44px;
