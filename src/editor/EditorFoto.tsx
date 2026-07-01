@@ -289,12 +289,10 @@ const STRUMENTI_TECNICI = new Set<Strumento>([
 const STRUMENTI_POSA_TECNICA = new Set<Strumento>(['tecSerie', 'tecParallelo', 'tecProgressiva']);
 
 /**
- * MENU SCHIZZO (§CAD) — terzo menu, separato da base e tecnico, dedicato alla
- * costruzione PARAMETRICA dello schizzo. Fase 1: struttura del menu (sezioni
- * Disegno/Quote/Vincoli/Oggetti/Pulizia) con le funzioni già disponibili
- * cablate; le altre aprono un avviso con la fase in cui arriveranno.
- * Ogni voce è uno strumento (`tool`), un comando immediato (`cmd`) o un
- * segnaposto di fase (`fase`).
+ * MENU SCHIZZO (§CAD) — terzo menu principale, dedicato alla costruzione
+ * PARAMETRICA dello schizzo. Sezioni Disegno/Quote/Vincoli/Oggetti/Pulizia con
+ * le funzioni disponibili. Ogni voce è uno strumento (`tool`), un comando
+ * immediato (`cmd`) o un suggerimento operativo (`suggerimento`).
  */
 type ComandoPianta =
   | 'snap30'
@@ -308,8 +306,6 @@ interface VocePianta {
   testo: string;
   tool?: Strumento;
   cmd?: ComandoPianta;
-  /** funzione in arrivo in una fase successiva (2..5): mostra un avviso */
-  fase?: number;
   /** suggerimento operativo mostrato come avviso (funzioni "seleziona-poi-agisci") */
   suggerimento?: string;
 }
@@ -323,14 +319,7 @@ const GRUPPI_STRUMENTI_PIANTA: Array<{
     id: 'piaDisegno',
     icona: 'disegno',
     testo: 'Disegno',
-    voci: [
-      { icona: 'disegno', testo: 'Mano libera', tool: 'schizzo' },
-      { icona: 'righello', testo: 'Linea', fase: 4 },
-      { icona: 'rettangolo', testo: 'Rettangolo', fase: 4 },
-      { icona: 'cerchio', testo: 'Cerchio', fase: 4 },
-      { icona: 'quota-allin', testo: 'Punto', fase: 4 },
-      { icona: 'quota-vert', testo: 'Asse', fase: 4 }
-    ]
+    voci: [{ icona: 'disegno', testo: 'Mano libera', tool: 'schizzo' }]
   },
   {
     id: 'piaQuote',
@@ -360,10 +349,7 @@ const GRUPPI_STRUMENTI_PIANTA: Array<{
         testo: 'Quota di riferimento',
         suggerimento:
           'Tocca un lato o una diagonale e scegli “Riferimento”: misura soltanto, non comanda il disegno.'
-      },
-      { icona: 'quota-vert', testo: 'Tra due lati', fase: 3 },
-      { icona: 'cerchio', testo: 'Diametro / Raggio', fase: 4 },
-      { icona: 'rettangolo', testo: 'Distanza oggetto–lato', fase: 4 }
+      }
     ]
   },
   {
@@ -382,9 +368,7 @@ const GRUPPI_STRUMENTI_PIANTA: Array<{
         testo: 'Orizz./Vert./Parallelo/Perp./Uguale',
         suggerimento:
           'Tocca lo schizzo e apri l’editor: nella sezione “Vincoli geometrici” scegli il vincolo e i lati; la forma si adatta.'
-      },
-      { icona: 'cerchio', testo: 'Concentrico / Tangente', fase: 4 },
-      { icona: 'quad', testo: 'Simmetrico / Punto medio', fase: 4 }
+      }
     ]
   },
   {
@@ -403,8 +387,7 @@ const GRUPPI_STRUMENTI_PIANTA: Array<{
         testo: 'Distanze dall’origine',
         suggerimento:
           'Imposta prima l’origine (datum, in basso a sinistra): gli oggetti si posizionano con le distanze da lì e le mantengono se modifichi la stanza.'
-      },
-      { icona: 'cerchio', testo: 'Vincoli oggetto (tangente/concentrico)', fase: 5 }
+      }
     ]
   },
   {
@@ -2540,10 +2523,6 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                       }
                       if (v.suggerimento) {
                         mostraToast('info', v.suggerimento);
-                        return;
-                      }
-                      if (v.fase) {
-                        mostraToast('info', `“${v.testo}” arriva nella Fase ${v.fase} del Menu Schizzo.`);
                       }
                     }}
                   >
@@ -4844,7 +4823,7 @@ function EditorPoligono({
             };
             return (
               <div className="campo">
-                <label>Vincoli geometrici (Fase 3)</label>
+                <label>Vincoli geometrici</label>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                   <select
                     value={tipoVincolo}

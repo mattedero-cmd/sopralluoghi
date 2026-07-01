@@ -463,13 +463,13 @@ export interface SegmentoQuota {
    */
   ancora?: AncoraSegmento;
   /**
-   * MENU PIANTA (Fase 2, §13): quota di RIFERIMENTO. Se true la quota misura
+   * MENU SCHIZZO (Fase 2, §13): quota di RIFERIMENTO. Se true la quota misura
    * soltanto (valore aggiornato dalla geometria) e NON comanda il disegno: il
    * solver la ignora. false/assente = quota parametrica (driving).
    */
   riferimento?: boolean;
   /**
-   * MENU PIANTA (Fase 3): quota inserita a mano (driving FISSA). Una volta
+   * MENU SCHIZZO (Fase 3): quota inserita a mano (driving FISSA). Una volta
    * impostata non si modifica da sola quando si cambiano altre quote: solo i
    * lati AUTO (derivati) si adattano. Assente/false = valore derivato.
    */
@@ -521,12 +521,12 @@ export interface QuotaPoligono extends AnnotazioneBase {
    * raddrizza lo schizzo di questa pianta. Assente = nessuno snap angolare.
    */
   snapAngolo?: number;
-  /** MENU PIANTA (Fase 3): vincoli geometrici dello schizzo parametrico */
+  /** MENU SCHIZZO (Fase 3): vincoli geometrici dello schizzo parametrico */
   vincoli?: VincoloPianta[];
   /** MENU SCHIZZO (Fase 4): oggetti dello schizzo */
   oggetti?: OggettoPianta[];
   /**
-   * MENU PIANTA (Fase 4): indice del vertice ORIGINE (datum). È il punto
+   * MENU SCHIZZO (Fase 4): indice del vertice ORIGINE (datum). È il punto
    * fisso — tipicamente in basso a sinistra — da cui si propagano le misure:
    * resta fermo durante le modifiche e le distanze degli oggetti vi si
    * riferiscono. Assente = nessuna origine impostata.
@@ -554,7 +554,7 @@ export function segmentoELato(seg: SegmentoQuota, nVertici: number): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// MENU PIANTA — schizzo parametrico (§CAD). Struttura dati additiva e
+// MENU SCHIZZO — schizzo parametrico (§CAD). Struttura dati additiva e
 // retro-compatibile (nessun bump del DB): il perimetro resta un QuotaPoligono
 // (punti = vertici, segmenti = lati/quote, ancora/bloccato = vincoli sui lati,
 // snapAngolo = angoli agganciati). Qui si dichiarano le estensioni per i
