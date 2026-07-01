@@ -66,6 +66,7 @@ import {
   riposizionaOggetti,
   risolviParametrico,
   risolviPianta,
+  semplificaPianta,
   snapAngoliPoligono,
   statoSchizzo
 } from '../geometry/parametrico';
@@ -267,6 +268,7 @@ type ComandoPianta =
   | 'snap45'
   | 'raddrizza90'
   | 'unisci'
+  | 'semplifica'
   | 'ricostruisci';
 interface VocePianta {
   icona: NomeIcona;
@@ -381,6 +383,7 @@ const GRUPPI_STRUMENTI_PIANTA: Array<{
       { icona: 'angolo', testo: 'Snap 45°', cmd: 'snap45' },
       { icona: 'angolo', testo: 'Snap 30°', cmd: 'snap30' },
       { icona: 'polilinea', testo: 'Unisci lati allineati', cmd: 'unisci' },
+      { icona: 'auto', testo: 'Semplifica (togli micro-lati)', cmd: 'semplifica' },
       { icona: 'rettangolo', testo: 'Ricostruisci dalle misure', cmd: 'ricostruisci' },
       {
         icona: 'cestino',
@@ -1544,8 +1547,19 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         mostraToast('info', 'Nessun lato allineato da unire.');
         return;
       }
-      scrivi({ punti: r.punti, segmenti: r.segmenti, origine: r.origine });
+      scrivi({ punti: r.punti, segmenti: r.segmenti, origine: r.origine, vincoli: undefined });
       mostraToast('successo', `Uniti ${r.rimossi} vertici: lati allineati fusi.`);
+      return;
+    }
+    if (cmd === 'semplifica') {
+      const r = semplificaPianta(poli.punti, segmentiPoligono(poli), poli.origine);
+      if (!r) {
+        mostraToast('info', 'Niente da semplificare: nessun lato troppo corto o allineato.');
+        return;
+      }
+      // la topologia cambia: i vincoli geometrici (riferiti a indici) vanno azzerati
+      scrivi({ punti: r.punti, segmenti: r.segmenti, origine: r.origine, vincoli: undefined });
+      mostraToast('successo', `Semplificata: rimossi ${r.rimossi} vertici superflui.`);
       return;
     }
     const passo = cmd === 'snap30' ? 30 : cmd === 'snap45' ? 45 : 90;
@@ -1939,7 +1953,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 </span>
               </div>
             );
-          const stato = statoSchizzo(poli.punti, segmentiPoligono(poli));
+          const stato = statoSchizzo(poli.punti, segmentiPoligono(poli), poli.vincoli);
           const info: Record<typeof stato, [string, string]> = {
             nonVincolato: ['Non vincolato', '#ff9500'],
             parziale: ['Parzialmente vincolato', '#ffd21e'],
@@ -2848,7 +2862,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 commitGeometria(
                   annotazioni.map((a) =>
                     a.id === poli.id
-                      ? ({ ...poli, punti: r.punti, segmenti: r.segmenti, origine: r.origine, lati: undefined, offsetLati: undefined } as QuotaPoligono)
+                      ? ({ ...poli, punti: r.punti, segmenti: r.segmenti, origine: r.origine, vincoli: undefined, lati: undefined, offsetLati: undefined } as QuotaPoligono)
                       : a
                   )
                 );
@@ -3060,7 +3074,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             commitGeometria(
               annotazioni.map((a) =>
                 a.id === poli.id
-                  ? ({ ...poli, punti: r.punti, segmenti: r.segmenti, origine: r.origine, lati: undefined, offsetLati: undefined } as QuotaPoligono)
+                  ? ({ ...poli, punti: r.punti, segmenti: r.segmenti, origine: r.origine, vincoli: undefined, lati: undefined, offsetLati: undefined } as QuotaPoligono)
                   : a
               )
             );

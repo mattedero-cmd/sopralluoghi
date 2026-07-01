@@ -10,7 +10,8 @@ import {
   costruisciVincoliPianta,
   quotaFissa,
   origineDefault,
-  riposizionaOggetti
+  riposizionaOggetti,
+  semplificaPianta
 } from '../parametrico';
 import type { Punto, SegmentoQuota } from '../../db/types';
 
@@ -470,6 +471,44 @@ describe('risolviPianta — quote che comandano il disegno (Fase 2)', () => {
   });
 });
 
+describe('semplificaPianta — pulizia geometrica (§11)', () => {
+  it('rimuove un micro-lato e fonde i collineari residui', () => {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 200, y: 0 }, // vertice collineare sul lato superiore
+      { x: 400, y: 0 },
+      { x: 401, y: 1 }, // micro-lato 2→3 (~1.4 px)
+      { x: 400, y: 300 },
+      { x: 0, y: 300 }
+    ];
+    const r = semplificaPianta(punti, [], undefined, 10);
+    expect(r).not.toBeNull();
+    expect(r!.rimossi).toBeGreaterThanOrEqual(2); // micro-lato + collineare
+    expect(r!.punti.length).toBeLessThanOrEqual(4);
+  });
+
+  it('niente da semplificare su un rettangolo pulito → null', () => {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 400, y: 0 },
+      { x: 400, y: 300 },
+      { x: 0, y: 300 }
+    ];
+    expect(semplificaPianta(punti, [], undefined, 10)).toBeNull();
+  });
+
+  it('non scende sotto i 3 vertici', () => {
+    const tri: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 3, y: 0 }, // micro-lato ma è un triangolo
+      { x: 0, y: 100 }
+    ];
+    // con 3 vertici non può rimuovere lati; fondiCollineari non tocca i triangoli
+    const r = semplificaPianta(tri, [], undefined, 10);
+    expect(r === null || r.punti.length >= 3).toBe(true);
+  });
+});
+
 describe('statoSchizzo — indicatore di vincolatura (§9)', () => {
   it('nessuna quota → non vincolato', () => {
     const { punti } = rettangolo();
@@ -482,30 +521,44 @@ describe('statoSchizzo — indicatore di vincolatura (§9)', () => {
     expect(statoSchizzo(punti, senzaValori)).toBe('nonVincolato');
   });
 
-  it('rettangolo con base+altezza quotate e angoli agganciati → completo', () => {
+  it('rettangolo con base+altezza MANUALI → completo (chiusura ricava gli altri 2)', () => {
     const { punti } = rettangolo();
     const segmenti: SegmentoQuota[] = [
-      { da: 0, a: 1, valore: 400 },
-      { da: 1, a: 2, valore: 300 },
+      { da: 0, a: 1, valore: 400, manuale: true },
+      { da: 1, a: 2, valore: 300, manuale: true },
       { da: 2, a: 3, valore: null },
       { da: 3, a: 0, valore: null }
     ];
-    // 2 lati incogniti → determinato dalla chiusura, a prescindere dallo snap
     expect(statoSchizzo(punti, segmenti)).toBe('completo');
   });
 
-  it('rettangolo con tutti i lati quotati ma senza snap → comunque completo', () => {
+  it('quote AUTO (non manuali) non vincolano → non vincolato', () => {
     const { punti } = rettangolo();
+    // valori presenti ma non manuali = derivati (auto): non contano come vincoli
     const segmenti: SegmentoQuota[] = [
       { da: 0, a: 1, valore: 400 },
       { da: 1, a: 2, valore: 300 },
       { da: 2, a: 3, valore: 400 },
       { da: 3, a: 0, valore: 300 }
     ];
-    expect(statoSchizzo(punti, segmenti)).toBe('completo');
+    expect(statoSchizzo(punti, segmenti)).toBe('nonVincolato');
   });
 
-  it('alcune quote ma forma non determinata → parziale', () => {
+  it('troppi vincoli (4 lati + 2 diagonali manuali) → sovravincolato', () => {
+    const { punti } = rettangolo();
+    const segmenti: SegmentoQuota[] = [
+      { da: 0, a: 1, valore: 400, manuale: true },
+      { da: 1, a: 2, valore: 300, manuale: true },
+      { da: 2, a: 3, valore: 400, manuale: true },
+      { da: 3, a: 0, valore: 300, manuale: true },
+      { da: 0, a: 2, valore: 500, manuale: true },
+      { da: 1, a: 3, valore: 500, manuale: true }
+    ];
+    // totale 6 > 2n−3 = 5
+    expect(statoSchizzo(punti, segmenti)).toBe('sovravincolato');
+  });
+
+  it('alcune quote manuali ma forma non determinata → parziale', () => {
     const punti: Punto[] = [
       { x: 0, y: 0 },
       { x: 500, y: 0 },
@@ -517,7 +570,8 @@ describe('statoSchizzo — indicatore di vincolatura (§9)', () => {
     const segmenti: SegmentoQuota[] = punti.map((_, i) => ({
       da: i,
       a: (i + 1) % 6,
-      valore: i === 0 ? 500 : null
+      valore: i === 0 ? 500 : null,
+      manuale: i === 0
     }));
     expect(statoSchizzo(punti, segmenti)).toBe('parziale');
   });

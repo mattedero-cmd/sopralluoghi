@@ -496,26 +496,43 @@ export function riposizionaOggetti<T extends { x: number; y: number }>(
 // ---------------------------------------------------------------------------
 
 /**
- * Stima lo stato di vincolatura del perimetro di una pianta (§9). Euristica
- * sui gradi di libertà del modello a lati orientati (le direzioni sono fissate
- * dalla geometria corrente, le lunghezze sono le incognite): la chiusura ricava
- * fino a 2 lati, quindi la forma è DETERMINATA quando i lati non quotati sono
- * ≤ 2. L'over-constrained reale (vincoli in conflitto) viene rilevato al
- * momento della modifica dal solver e segnalato lì, non da questa stima.
+ * Stima lo stato di vincolatura di una pianta (§9), con conteggio dei gradi di
+ * libertà (euristica alla CAD):
+ * - lati di perimetro FISSI (manuali/bloccati/ancorati) e DIAGONALI fisse, più i
+ *   VINCOLI geometrici, riducono i gradi di libertà;
+ * - `completo` quando i lati di perimetro liberi sono ≤ 2 (la chiusura li ricava);
+ * - `sovravincolato` quando il totale dei vincoli supera i gradi di libertà
+ *   della forma (2n − 3): probabile ridondanza/conflitto.
+ * Il conflitto REALE resta rilevato dal solver al momento della modifica.
  */
-export function statoSchizzo(punti: Punto[], segmenti: SegmentoQuota[]): StatoSchizzoPianta {
+export function statoSchizzo(
+  punti: Punto[],
+  segmenti: SegmentoQuota[],
+  vincoli?: VincoloPianta[]
+): StatoSchizzoPianta {
   const n = punti.length;
   if (n < 3) return 'nonVincolato';
-  let quotati = 0;
-  for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n;
-    const seg = segmenti.find(
-      (s) => segmentoELato(s, n) && ((s.da === i && s.a === j) || (s.da === j && s.a === i))
-    );
-    if (seg && seg.valore != null) quotati++;
+  let latiFissi = 0;
+  let diagFisse = 0;
+  for (const s of segmenti) {
+    if (!quotaFissa(s, n)) continue;
+    if (segmentoELato(s, n)) latiFissi++;
+    else diagFisse++;
   }
-  if (quotati === 0) return 'nonVincolato';
-  return n - quotati <= 2 ? 'completo' : 'parziale';
+  let geom = 0;
+  for (const v of vincoli ?? []) {
+    if (v.riferimento) continue;
+    const k = Math.max(0, v.riferimenti.length - 1);
+    if (v.tipo === 'coincidente') geom += 2;
+    else if (v.tipo === 'collineare') geom += 2 * k;
+    else if (v.tipo === 'parallelo' || v.tipo === 'perpendicolare' || v.tipo === 'ugualeLunghezza')
+      geom += k;
+    else if (v.tipo === 'orizzontale' || v.tipo === 'verticale' || v.tipo === 'angolo') geom += 1;
+  }
+  const totale = latiFissi + diagFisse + geom;
+  if (totale === 0) return 'nonVincolato';
+  if (totale > 2 * n - 3) return 'sovravincolato';
+  return n - latiFissi <= 2 ? 'completo' : 'parziale';
 }
 
 // ---------------------------------------------------------------------------
@@ -745,4 +762,65 @@ export function eliminaLatoRichiudi(
   const src = origine == null ? undefined : origine === j ? i : origine;
   const nuovaOrigine = src == null || mappa[src] < 0 ? undefined : mappa[src];
   return { punti: nuoviPunti, segmenti: nuoviSeg, origine: nuovaOrigine };
+}
+
+/**
+ * SEMPLIFICA (§11): pulisce il perimetro rimuovendo i lati troppo CORTI
+ * (collassandone i vertici) e fondendo quelli quasi COLLINEARI, così restano
+ * solo i muri significativi. Rimappa l'origine. Restituisce null se non c'è
+ * nulla da semplificare (o si scenderebbe sotto i 3 vertici).
+ */
+export function semplificaPianta(
+  punti: Punto[],
+  segmenti: SegmentoQuota[],
+  origine?: number,
+  sogliaLatoPx?: number,
+  tolleranzaGradi = 6
+): { punti: Punto[]; segmenti: SegmentoQuota[]; origine?: number; rimossi: number } | null {
+  let p = punti.slice();
+  let s = segmenti.slice();
+  let o = origine;
+  let rimossi = 0;
+  // soglia lato: default = 2% della diagonale del bounding box (min 6 px)
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const pt of p) {
+    minX = Math.min(minX, pt.x);
+    minY = Math.min(minY, pt.y);
+    maxX = Math.max(maxX, pt.x);
+    maxY = Math.max(maxY, pt.y);
+  }
+  const soglia = sogliaLatoPx ?? Math.max(6, Math.hypot(maxX - minX, maxY - minY) * 0.02);
+  // 1) rimuove i lati SOTTO soglia (il più corto), finché possibile
+  for (let guard = 0; guard < punti.length + 8 && p.length > 3; guard++) {
+    let minLen = Infinity;
+    let minI = -1;
+    for (let i = 0; i < p.length; i++) {
+      const q = p[(i + 1) % p.length];
+      const len = Math.hypot(q.x - p[i].x, q.y - p[i].y);
+      if (len < minLen) {
+        minLen = len;
+        minI = i;
+      }
+    }
+    if (minI < 0 || minLen >= soglia) break;
+    const r = eliminaLatoRichiudi(p, s, minI, o);
+    if (!r) break;
+    p = r.punti;
+    s = r.segmenti;
+    o = r.origine;
+    rimossi++;
+  }
+  // 2) fonde i lati collineari residui
+  const f = fondiCollineari(p, s, tolleranzaGradi, o);
+  if (f) {
+    p = f.punti;
+    s = f.segmenti;
+    o = f.origine;
+    rimossi += f.rimossi;
+  }
+  if (rimossi === 0) return null;
+  return { punti: p, segmenti: s, origine: o, rimossi };
 }
