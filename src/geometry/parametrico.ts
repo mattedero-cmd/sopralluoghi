@@ -333,6 +333,16 @@ export function risolviParametrico(
  * ancore e dagli eventuali vincoli angolari. `pxPerReale` converte le quote
  * reali in pixel.
  */
+/**
+ * true = la quota COMANDA la geometria (fissa): non si riquota da sola.
+ * Le DIAGONALI (tra due vertici non adiacenti) comandano sempre; i LATI solo se
+ * manuali, bloccati o ancorati. Le quote di riferimento e i valori nulli no.
+ */
+export function quotaFissa(s: SegmentoQuota, n: number): boolean {
+  if (s.riferimento || s.valore == null) return false;
+  return !segmentoELato(s, n) || Boolean(s.manuale) || Boolean(s.bloccato) || s.ancora === 'lato';
+}
+
 export function costruisciVincoliPianta(
   punti: Punto[],
   segmenti: SegmentoQuota[],
@@ -343,13 +353,15 @@ export function costruisciVincoliPianta(
   const out: VincoloGeom[] = [];
   const latoFisso = new Set<number>(); // indice del lato (i→i+1) con lunghezza HARD
   for (const s of segmenti) {
-    // solo le quote MANUALI (inserite a mano) comandano; le AUTO si adattano;
-    // le quote di RIFERIMENTO misurano soltanto
-    if (s.riferimento || !s.manuale || s.valore == null) continue;
+    // comandano le quote FISSE: diagonali, e lati manuali/bloccati/ancorati.
+    // I lati AUTO si adattano; le quote di riferimento misurano soltanto.
+    if (!quotaFissa(s, n)) continue;
     if (s.da < 0 || s.a < 0 || s.da >= n || s.a >= n || s.da === s.a) continue;
-    out.push({ tipo: 'lunghezza', a: s.da, b: s.a, valore: s.valore * pxPerReale });
-    const e = (s.da + 1) % n === s.a ? s.da : (s.a + 1) % n === s.da ? s.a : null;
-    if (e != null) latoFisso.add(e);
+    out.push({ tipo: 'lunghezza', a: s.da, b: s.a, valore: (s.valore as number) * pxPerReale });
+    if (segmentoELato(s, n)) {
+      const e = (s.da + 1) % n === s.a ? s.da : s.a;
+      latoFisso.add(e);
+    }
   }
   // preservazione DEBOLE della lunghezza dei lati NON fissi (auto/non quotati):
   // le quote non lineari (diagonali/angoli) comandano la forma per ROTAZIONE/

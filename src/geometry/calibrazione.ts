@@ -144,8 +144,11 @@ export function applicaValoriAuto(annotazioni: Annotazione[], foto: Calibrazione
     }
     if (a.tipo === 'quotaPoligono') {
       const segs = segmentiPoligono(a);
+      // in una pianta parametrica (con quote MANUALI) i lati AUTO seguono sempre
+      // la geometria, anche se valoreAuto è false (regime misto manuale/auto)
+      const haManuali = segs.some((s) => s.manuale);
       const auto = a.valoreAuto ?? segs.every((s) => s.valore === null);
-      if (!auto) return a;
+      if (!auto && !haManuali) return a;
       if (!haCalibrazione(foto)) return a;
       const nuovi = segs.map((s) => {
         // le quote inserite a mano (manuale, non di riferimento) restano fisse:
@@ -158,8 +161,9 @@ export function applicaValoriAuto(annotazioni: Annotazione[], foto: Calibrazione
         if (!m) return s;
         return { ...s, valore: arrotondaMisura(daMillimetri(inMillimetri(m.valore, m.unita), a.unita)) };
       });
-      if (a.valoreAuto === true && nuovi.every((s, i) => s.valore === segs[i].valore)) return a;
-      return { ...a, segmenti: nuovi, valoreAuto: true };
+      if (nuovi.every((s, i) => s.valore === segs[i].valore)) return a;
+      // se ci sono quote manuali il poligono resta in regime misto (valoreAuto invariato)
+      return { ...a, segmenti: nuovi, valoreAuto: haManuali ? a.valoreAuto : true };
     }
     if (a.tipo !== 'quota' && a.tipo !== 'quotaAngolo' && a.tipo !== 'quotaRaggio') return a;
     const auto = a.valoreAuto ?? a.valore === null;

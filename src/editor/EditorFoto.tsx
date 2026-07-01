@@ -60,6 +60,7 @@ import { raddrizzaStanza, ricostruisciOrtogonale } from '../geometry/schizzo';
 import {
   eliminaLatoRichiudi,
   fondiCollineari,
+  quotaFissa,
   risolviParametrico,
   risolviPianta,
   snapAngoliPoligono,
@@ -2859,7 +2860,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                       }
                       // riquota le sole quote di riferimento dalla nuova geometria
                       const segsFinali = segmentiPoligono(poli).map((s) => {
-                        if (!s.riferimento || s.valore == null) return s;
+                        if (s.valore == null || quotaFissa(s, poli.punti.length)) return s;
                         const A = r.punti[s.da];
                         const B = r.punti[s.a];
                         if (!A || !B) return s;
@@ -2894,8 +2895,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                         return;
                       }
                       const segsFinali = segmentiPoligono(poli).map((s) => {
-                        if (s.valore == null) return s;
-                        if (s.manuale && !s.riferimento) return s; // manuali intatte
+                        if (s.valore == null || quotaFissa(s, poli.punti.length)) return s;
                         const A = r.punti[s.da];
                         const B = r.punti[s.a];
                         if (!A || !B) return s;
@@ -3020,7 +3020,16 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                     </button>
                     <button
                       className={seg.riferimento ? 'attivo' : ''}
-                      onClick={() => aggiornaSeg({ riferimento: true })}
+                      onClick={() => {
+                        // diventando "di riferimento" la quota MISURA soltanto:
+                        // si aggiorna subito dalla geometria e non è più manuale
+                        const A = poli.punti[seg.da];
+                        const B = poli.punti[seg.a];
+                        const px = pxPerUnita(foto, poli.unita);
+                        const misura =
+                          px != null && A && B ? arrotondaMisura(Math.hypot(B.x - A.x, B.y - A.y) / px) : seg.valore;
+                        aggiornaSeg({ riferimento: true, valore: misura, manuale: undefined });
+                      }}
                       title="Quota di riferimento: misura soltanto, non comanda il disegno"
                     >
                       ( ) Riferimento
@@ -3147,8 +3156,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                       // le quote AUTO e di RIFERIMENTO si riquotano dalla nuova
                       // geometria; quelle MANUALI (driving) restano intatte
                       const segsFinali = nuoviSegs.map((s) => {
-                        if (s.valore == null) return s;
-                        if (s.manuale && !s.riferimento) return s;
+                        if (s.valore == null || quotaFissa(s, nLati)) return s;
                         const A = r.punti[s.da];
                         const B = r.punti[s.a];
                         if (!A || !B) return s;
@@ -3194,12 +3202,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                       // vanno riquotati dalla nuova geometria: l'etichetta deve
                       // dire la lunghezza reale, non un valore ormai incoerente.
                       const segsFinali = nuoviSegs.map((s) => {
-                        if (s.valore == null) return s;
-                        // le quote MANUALI/bloccate/ancorate (non riferimento)
-                        // restano intatte; solo le AUTO seguono la geometria
-                        const fisso =
-                          (s.manuale || s.bloccato || s.ancora === 'lato') && !s.riferimento;
-                        if (fisso) return s;
+                        // le quote FISSE (manuali/bloccate/ancorate/diagonali) restano
+                        // intatte; solo le AUTO seguono la nuova geometria
+                        if (s.valore == null || quotaFissa(s, nLati)) return s;
                         const A = esito.punti[s.da];
                         const B = esito.punti[s.a];
                         if (!A || !B) return s;
@@ -4708,8 +4713,8 @@ function EditorPoligono({
                   </div>
                 )}
                 <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
-                  Applica un vincolo tra i lati (numerati come le quote): la forma si adatta
-                  rispettando i vincoli. Ripeti per vincolare più lati insieme.
+                  Il lato k va dal vertice k al successivo (in ordine). La forma si adatta
+                  rispettando i vincoli; ripeti per vincolare più lati insieme.
                 </span>
               </div>
             );

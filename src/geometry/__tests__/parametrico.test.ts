@@ -7,7 +7,8 @@ import {
   eliminaLatoRichiudi,
   statoSchizzo,
   risolviPianta,
-  costruisciVincoliPianta
+  costruisciVincoliPianta,
+  quotaFissa
 } from '../parametrico';
 import type { Punto, SegmentoQuota } from '../../db/types';
 
@@ -139,6 +140,32 @@ describe('risolviParametrico — modifica quota → geometria', () => {
     expect(r.avvisi).toContain('sovravincolato');
     // geometria invariata
     expect(r.punti).toEqual(punti);
+  });
+});
+
+describe('quotaFissa — cosa comanda la geometria', () => {
+  it('diagonali sempre driving; lati solo se manuali/bloccati/ancorati', () => {
+    expect(quotaFissa({ da: 0, a: 2, valore: 100 }, 4)).toBe(true); // diagonale
+    expect(quotaFissa({ da: 0, a: 1, valore: 100 }, 4)).toBe(false); // lato auto
+    expect(quotaFissa({ da: 0, a: 1, valore: 100, manuale: true }, 4)).toBe(true);
+    expect(quotaFissa({ da: 0, a: 1, valore: 100, bloccato: true }, 4)).toBe(true);
+    expect(quotaFissa({ da: 0, a: 1, valore: 100, ancora: 'lato' }, 4)).toBe(true);
+    expect(quotaFissa({ da: 0, a: 2, valore: 100, riferimento: true }, 4)).toBe(false); // riferimento
+    expect(quotaFissa({ da: 0, a: 2, valore: null }, 4)).toBe(false); // senza valore
+  });
+
+  it('una diagonale LEGACY (senza manuale) genera comunque un vincolo forte', () => {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 100 },
+      { x: 0, y: 100 }
+    ];
+    const segmenti: SegmentoQuota[] = [{ da: 0, a: 2, valore: 120 }]; // diagonale, no manuale
+    const v = costruisciVincoliPianta(punti, segmenti, undefined, 1);
+    const forte = v.find((c) => c.tipo === 'lunghezza' && (c.peso ?? 1) >= 0.5);
+    expect(forte).toBeDefined();
+    expect(forte && forte.tipo === 'lunghezza' && forte.valore).toBe(120);
   });
 });
 
