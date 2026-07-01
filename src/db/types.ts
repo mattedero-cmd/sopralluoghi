@@ -525,6 +525,13 @@ export interface QuotaPoligono extends AnnotazioneBase {
   vincoli?: VincoloPianta[];
   /** MENU PIANTA (Fase 4): oggetti interni alla pianta */
   oggetti?: OggettoPianta[];
+  /**
+   * MENU PIANTA (Fase 4): indice del vertice ORIGINE (datum). È il punto
+   * fisso — tipicamente in basso a sinistra — da cui si propagano le misure:
+   * resta fermo durante le modifiche e le distanze degli oggetti vi si
+   * riferiscono. Assente = nessuna origine impostata.
+   */
+  origine?: number;
 }
 
 /** Segmenti quotati del poligono, con conversione dei record legacy (lati[]) */
@@ -603,16 +610,18 @@ export interface VincoloPianta {
   riferimento?: boolean;
 }
 
-/** Oggetto interno alla pianta (Fase 4): rettangolo, cerchio, linea, punto, asse. */
+/** Oggetto interno alla pianta (Fase 4): rettangolo o cerchio, in coordinate px. */
 export interface OggettoPianta {
   id: string;
-  tipo: 'rettangolo' | 'cerchio' | 'linea' | 'punto' | 'asse';
-  /** geometria in coordinate immagine (px): 4 vertici per il rettangolo,
-   *  centro per il cerchio, estremi per linea/asse, singolo punto per il punto */
-  punti: Punto[];
-  /** raggio in px per il cerchio */
+  tipo: 'rettangolo' | 'cerchio';
+  /** riferimento in PX: angolo in BASSO-SINISTRA del rettangolo, o CENTRO del cerchio */
+  x: number;
+  y: number;
+  /** rettangolo: larghezza e altezza in PX */
+  larghezza?: number;
+  altezza?: number;
+  /** cerchio: raggio in PX */
   raggioPx?: number;
-  rotazioneDeg?: number;
   etichetta?: string;
 }
 

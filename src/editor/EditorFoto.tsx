@@ -18,6 +18,7 @@ import type {
   SegmentoQuota,
   SottotipoQuota,
   StatoMisura,
+  OggettoPianta,
   TestoFoto,
   TipoForma,
   TipoVincoloPianta,
@@ -60,7 +61,9 @@ import { raddrizzaStanza, ricostruisciOrtogonale } from '../geometry/schizzo';
 import {
   eliminaLatoRichiudi,
   fondiCollineari,
+  origineDefault,
   quotaFissa,
+  riposizionaOggetti,
   risolviParametrico,
   risolviPianta,
   snapAngoliPoligono,
@@ -354,11 +357,19 @@ const GRUPPI_STRUMENTI_PIANTA: Array<{
     icona: 'rettangolo',
     testo: 'Oggetti',
     voci: [
-      { icona: 'rettangolo', testo: 'Inserisci rettangolo', fase: 4 },
-      { icona: 'cerchio', testo: 'Inserisci cerchio', fase: 4 },
-      { icona: 'matita', testo: 'Modifica oggetto', fase: 4 },
-      { icona: 'magnete', testo: 'Ancora oggetto', fase: 4 },
-      { icona: 'quota-allin', testo: 'Distanze dai lati', fase: 4 }
+      {
+        icona: 'rettangolo',
+        testo: 'Rettangolo / Cerchio interni',
+        suggerimento:
+          'Tocca la pianta e apri l’editor: nella sezione “Oggetti interni” inserisci un rettangolo o un cerchio e imposta le distanze dall’origine.'
+      },
+      {
+        icona: 'quota-allin',
+        testo: 'Distanze dall’origine',
+        suggerimento:
+          'Imposta prima l’origine (datum, in basso a sinistra): gli oggetti si posizionano con le distanze da lì e le mantengono se modifichi la stanza.'
+      },
+      { icona: 'cerchio', testo: 'Vincoli oggetto (tangente/concentrico)', fase: 5 }
     ]
   },
   {
@@ -1447,11 +1458,32 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       return;
     }
     const scala = { px: r.pxPerReale, reale: 1, unita: poli.unita };
+    // la geometria viene RISCALATA: gli oggetti interni vanno ricalcolati dalla
+    // loro distanza/dimensione REALE (rispetto all'origine) con la nuova scala
+    const oggettiRic = (() => {
+      if (!poli.oggetti?.length) return poli.oggetti;
+      const oldPx = pxPerUnita(foto, poli.unita);
+      const newPx = r.pxPerReale;
+      if (oldPx == null || oldPx <= 0 || newPx <= 0) return poli.oggetti;
+      const io = poli.origine != null ? poli.origine : origineDefault(poli.punti);
+      const oldO = poli.punti[io];
+      const newO = r.punti[io];
+      if (!oldO || !newO) return poli.oggetti;
+      const k = newPx / oldPx;
+      return poli.oggetti.map((o) => ({
+        ...o,
+        x: newO.x + (o.x - oldO.x) * k,
+        y: newO.y + (o.y - oldO.y) * k,
+        larghezza: o.larghezza != null ? o.larghezza * k : undefined,
+        altezza: o.altezza != null ? o.altezza * k : undefined,
+        raggioPx: o.raggioPx != null ? o.raggioPx * k : undefined
+      }));
+    })();
     // la nuova geometria è in coordinate tela, scollegata dalla prospettiva foto
     await aggiornaFoto(foto.id, { scala, piano: undefined });
     const conNuovo = annotazioni.map((a) =>
       a.id === poli.id
-        ? ({ ...a, punti: r.punti, lati: undefined, offsetLati: undefined, valoreAuto: true } as Annotazione)
+        ? ({ ...a, punti: r.punti, oggetti: oggettiRic, lati: undefined, offsetLati: undefined, valoreAuto: true } as Annotazione)
         : a
     );
     // si applicano QUI i valori con la NUOVA scala e si usa commit() diretto:
@@ -2479,26 +2511,31 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             icona="cursore"
             testo="Seleziona"
           />
-          <BtnStrumento
-            attivo={strumento === 'auto'}
-            onClick={() => {
-              setStrumento('auto');
-              setMenuAperto(null);
-            }}
-            icona="auto"
-            testo="Auto"
-          />
-          <BtnStrumento
-            attivo={menuRichiamo || !!duplicaMaster}
-            onClick={() => {
-              setStrumento('seleziona');
-              setMenuAperto(null);
-              setSelezioneId(null);
-              setMenuRichiamo(true);
-            }}
-            icona="duplica"
-            testo="Richiama"
-          />
+          {/* Auto (autoquotatura) e Richiama non servono nel Menu Pianta */}
+          {modalitaMenu !== 'pianta' && (
+            <BtnStrumento
+              attivo={strumento === 'auto'}
+              onClick={() => {
+                setStrumento('auto');
+                setMenuAperto(null);
+              }}
+              icona="auto"
+              testo="Auto"
+            />
+          )}
+          {modalitaMenu !== 'pianta' && (
+            <BtnStrumento
+              attivo={menuRichiamo || !!duplicaMaster}
+              onClick={() => {
+                setStrumento('seleziona');
+                setMenuAperto(null);
+                setSelezioneId(null);
+                setMenuRichiamo(true);
+              }}
+              icona="duplica"
+              testo="Richiama"
+            />
+          )}
           {modalitaMenu !== 'pianta' &&
             (modalitaTecnica ? GRUPPI_STRUMENTI_TECNICA : GRUPPI_STRUMENTI).map((g) => {
               const voceAtt = g.voci.find((v) => v.s === strumento);
@@ -2853,7 +2890,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                         );
                         return;
                       }
-                      const r = risolviPianta(poli.punti, segmentiPoligono(poli), vincoli, px);
+                      const r = risolviPianta(poli.punti, segmentiPoligono(poli), vincoli, px, poli.origine ?? origineDefault(poli.punti));
                       if (!r.ok) {
                         mostraToast('errore', 'Angolo in conflitto con gli altri vincoli.');
                         return;
@@ -2873,6 +2910,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                                 ...poli,
                                 punti: r.punti,
                                 segmenti: segsFinali,
+                                oggetti: riposizionaOggetti(poli.oggetti, poli.punti, r.punti, poli.origine ?? origineDefault(poli.punti)),
                                 vincoli,
                                 lati: undefined,
                                 offsetLati: undefined
@@ -2889,7 +2927,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                   ? (vincoli) => {
                       const px = pxPerUnita(foto, poli.unita);
                       if (px == null) return;
-                      const r = risolviPianta(poli.punti, segmentiPoligono(poli), vincoli, px);
+                      const r = risolviPianta(poli.punti, segmentiPoligono(poli), vincoli, px, poli.origine ?? origineDefault(poli.punti));
                       if (!r.ok) {
                         mostraToast('errore', 'Vincolo in conflitto: modifica non possibile.');
                         return;
@@ -2908,6 +2946,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                                 ...poli,
                                 punti: r.punti,
                                 segmenti: segsFinali,
+                                oggetti: riposizionaOggetti(poli.oggetti, poli.punti, r.punti, poli.origine ?? origineDefault(poli.punti)),
                                 vincoli: vincoli.length ? vincoli : undefined,
                                 lati: undefined,
                                 offsetLati: undefined
@@ -2917,6 +2956,30 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                       );
                       mostraToast('successo', 'Vincoli aggiornati: la forma si è adattata.');
                     }
+                  : undefined
+              }
+              onImpostaOrigine={
+                foto.ePianta
+                  ? (vertice) =>
+                      commit(
+                        annotazioni.map((a) =>
+                          a.id === poli.id
+                            ? ({ ...poli, origine: vertice == null ? undefined : vertice } as QuotaPoligono)
+                            : a
+                        )
+                      )
+                  : undefined
+              }
+              onOggetti={
+                foto.ePianta
+                  ? (oggetti) =>
+                      commit(
+                        annotazioni.map((a) =>
+                          a.id === poli.id
+                            ? ({ ...poli, oggetti: oggetti.length ? oggetti : undefined } as QuotaPoligono)
+                            : a
+                        )
+                      )
                   : undefined
               }
               onRicostruisci={foto.ePianta ? () => void ricostruisciPianta(poli) : undefined}
@@ -3151,7 +3214,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 ) {
                   const px = pxPerUnita(foto, poli.unita);
                   if (px != null) {
-                    const r = risolviPianta(poli.punti, nuoviSegs, poli.vincoli, px);
+                    const r = risolviPianta(poli.punti, nuoviSegs, poli.vincoli, px, poli.origine ?? origineDefault(poli.punti));
                     if (r.ok) {
                       // le quote AUTO e di RIFERIMENTO si riquotano dalla nuova
                       // geometria; quelle MANUALI (driving) restano intatte
@@ -3165,6 +3228,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                       scriviPoligono({
                         punti: r.punti,
                         segmenti: segsFinali,
+                        oggetti: riposizionaOggetti(poli.oggetti, poli.punti, r.punti, poli.origine ?? origineDefault(poli.punti)),
                         unita: nuova.unita,
                         stato: nuova.stato,
                         valoreAuto: false,
@@ -3195,7 +3259,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                   if (px != null) {
                     const esito = risolviParametrico(poli.punti, nuoviSegs, {
                       pxPerReale: px,
-                      latoModificato: edgeIdx ?? undefined
+                      latoModificato: edgeIdx ?? undefined,
+                      origine: poli.origine ?? origineDefault(poli.punti)
                     });
                     if (esito.ok) {
                       // i lati NON bloccati che la chiusura ha dovuto cambiare
@@ -3213,6 +3278,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                       scriviPoligono({
                         punti: esito.punti,
                         segmenti: segsFinali,
+                        oggetti: riposizionaOggetti(poli.oggetti, poli.punti, esito.punti, poli.origine ?? origineDefault(poli.punti)),
                         unita: nuova.unita,
                         stato: nuova.stato,
                         valoreAuto: false,
@@ -4152,6 +4218,8 @@ function EditorPoligono({
   onFondiCollineari,
   onQuotaAngolo,
   onApplicaVincoli,
+  onImpostaOrigine,
+  onOggetti,
   onRicostruisci,
   onElimina,
   onChiudi
@@ -4176,6 +4244,10 @@ function EditorPoligono({
   /** applica la nuova lista di vincoli geometrici (Fase 3) risolvendo la
    *  geometria; se in conflitto avvisa e non modifica. Solo piante. */
   onApplicaVincoli?: (vincoli: VincoloPianta[]) => void;
+  /** imposta il vertice ORIGINE (datum); null = rimuove. Solo piante. */
+  onImpostaOrigine?: (vertice: number | null) => void;
+  /** aggiorna gli oggetti interni della pianta (Fase 4). Solo piante. */
+  onOggetti?: (oggetti: OggettoPianta[]) => void;
   /** ricostruisce la forma dalle misure inserite (parametrica): solo piante */
   onRicostruisci?: () => void;
   onElimina: () => void;
@@ -4193,6 +4265,10 @@ function EditorPoligono({
   const [tipoVincolo, setTipoVincolo] = useState<TipoVincoloPianta>('orizzontale');
   const [latoVincA, setLatoVincA] = useState(0);
   const [latoVincB, setLatoVincB] = useState(1);
+  // origine (datum) e conversione px↔reale per gli oggetti (Fase 4)
+  const pxUnita = pxPerUnita(foto, poli.unita); // px per unità reale, o null
+  const idxOrigine = poli.origine != null ? poli.origine : origineDefault(poli.punti);
+  const puntoOrigine = poli.punti[idxOrigine] ?? poli.punti[0];
 
   const scriviSegmenti = (segmenti: SegmentoQuota[], extra: Partial<QuotaPoligono> = {}) =>
     onModifica({ segmenti, lati: undefined, offsetLati: undefined, valoreAuto: false, ...extra });
@@ -4324,6 +4400,47 @@ function EditorPoligono({
       ctx.fillStyle = colore;
       ctx.fillText(t, mx, my);
     });
+    // oggetti interni (rettangoli/cerchi) nell'anteprima
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = colore;
+    for (const o of poli.oggetti ?? []) {
+      if (o.tipo === 'rettangolo' && o.larghezza && o.altezza) {
+        const bl = toScreen({ x: o.x, y: o.y });
+        const tr = toScreen({ x: o.x + o.larghezza, y: o.y - o.altezza });
+        ctx.strokeRect(
+          Math.min(bl.x, tr.x),
+          Math.min(bl.y, tr.y),
+          Math.abs(tr.x - bl.x),
+          Math.abs(bl.y - tr.y)
+        );
+      } else if (o.tipo === 'cerchio' && o.raggioPx) {
+        const c = toScreen({ x: o.x, y: o.y });
+        const edge = toScreen({ x: o.x + o.raggioPx, y: o.y });
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, Math.abs(edge.x - c.x), 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+    // marcatore dell'origine (datum)
+    {
+      const io = poli.origine != null ? poli.origine : origineDefault(poli.punti);
+      const op = poli.punti[io];
+      if (op) {
+        const o = toScreen(op);
+        ctx.strokeStyle = colore;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(o.x, o.y);
+        ctx.lineTo(o.x + 12, o.y);
+        ctx.moveTo(o.x, o.y);
+        ctx.lineTo(o.x, o.y - 12);
+        ctx.stroke();
+        ctx.fillStyle = colore;
+        ctx.beginPath();
+        ctx.arc(o.x, o.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
     ctx.restore();
   }, [immagine, poli, segs, simboli, colore, n]);
 
@@ -4733,6 +4850,163 @@ function EditorPoligono({
             </span>
           </div>
         </div>
+        {onImpostaOrigine && (
+          <div className="campo">
+            <label>Origine (datum)</label>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <label style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                vertice
+                <select
+                  value={idxOrigine}
+                  onChange={(e) => onImpostaOrigine(Number(e.target.value))}
+                >
+                  {poli.punti.map((_, i) => (
+                    <option key={i} value={i}>
+                      {i + 1}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button className="btn" onClick={() => onImpostaOrigine(origineDefault(poli.punti))}>
+                ↙ Auto (basso-sx)
+              </button>
+              {poli.origine != null && (
+                <button className="btn" onClick={() => onImpostaOrigine(null)}>
+                  ✕ Rimuovi
+                </button>
+              )}
+            </div>
+            <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
+              Il punto d’origine resta fermo: da lì si propagano le misure e le distanze degli
+              oggetti interni.
+            </span>
+          </div>
+        )}
+        {onOggetti &&
+          pxUnita != null &&
+          (() => {
+            const px = pxUnita;
+            const oggetti = poli.oggetti ?? [];
+            const setOgg = (nuovi: OggettoPianta[]) => onOggetti(nuovi);
+            const aggiungi = (tipo: 'rettangolo' | 'cerchio') => {
+              const dim =
+                tipo === 'rettangolo'
+                  ? { larghezza: 100 * px, altezza: 80 * px }
+                  : { raggioPx: 40 * px };
+              setOgg([
+                ...oggetti,
+                {
+                  id: nuovoId(),
+                  tipo,
+                  x: puntoOrigine.x + 50 * px,
+                  y: puntoOrigine.y - 50 * px,
+                  ...dim
+                }
+              ]);
+            };
+            const patch = (id: string, p: Partial<OggettoPianta>) =>
+              setOgg(oggetti.map((o) => (o.id === id ? { ...o, ...p } : o)));
+            const num = (v: string) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+            return (
+              <div className="campo">
+                <label>Oggetti interni</label>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button className="btn" onClick={() => aggiungi('rettangolo')}>
+                    ▭ Rettangolo
+                  </button>
+                  <button className="btn" onClick={() => aggiungi('cerchio')}>
+                    ◯ Cerchio
+                  </button>
+                </div>
+                {oggetti.map((o, i) => (
+                  <div
+                    key={o.id}
+                    style={{
+                      border: '1px solid var(--bordo)',
+                      borderRadius: 8,
+                      padding: 8,
+                      marginTop: 8,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 6
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <strong>
+                        {o.tipo === 'rettangolo' ? '▭' : '◯'} {i + 1}
+                      </strong>
+                      <button
+                        className="btn"
+                        style={{ marginLeft: 'auto', minHeight: 32, padding: '0 8px' }}
+                        onClick={() => setOgg(oggetti.filter((x) => x.id !== o.id))}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                      {o.tipo === 'rettangolo' ? (
+                        <>
+                          <label style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                            base
+                            <input
+                              type="number"
+                              style={{ width: 68 }}
+                              value={Math.round((o.larghezza ?? 0) / px)}
+                              onChange={(e) => patch(o.id, { larghezza: num(e.target.value) * px })}
+                            />
+                          </label>
+                          <label style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                            alt.
+                            <input
+                              type="number"
+                              style={{ width: 68 }}
+                              value={Math.round((o.altezza ?? 0) / px)}
+                              onChange={(e) => patch(o.id, { altezza: num(e.target.value) * px })}
+                            />
+                          </label>
+                        </>
+                      ) : (
+                        <label style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                          raggio
+                          <input
+                            type="number"
+                            style={{ width: 68 }}
+                            value={Math.round((o.raggioPx ?? 0) / px)}
+                            onChange={(e) => patch(o.id, { raggioPx: num(e.target.value) * px })}
+                          />
+                        </label>
+                      )}
+                      <span style={{ color: 'var(--testo-2)', fontSize: 12 }}>{poli.unita}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                      <label style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                        → da orig.
+                        <input
+                          type="number"
+                          style={{ width: 68 }}
+                          value={Math.round((o.x - puntoOrigine.x) / px)}
+                          onChange={(e) => patch(o.id, { x: puntoOrigine.x + num(e.target.value) * px })}
+                        />
+                      </label>
+                      <label style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                        ↑ da orig.
+                        <input
+                          type="number"
+                          style={{ width: 68 }}
+                          value={Math.round((puntoOrigine.y - o.y) / px)}
+                          onChange={(e) => patch(o.id, { y: puntoOrigine.y - num(e.target.value) * px })}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                ))}
+                <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
+                  Distanze misurate dall’origine. Modificando la stanza (dalle quote) gli oggetti
+                  mantengono queste distanze.
+                </span>
+              </div>
+            );
+          })()}
       </div>
       <div className="eq-azioni">
         <button className="btn pericolo" onClick={onElimina}>

@@ -689,9 +689,60 @@ export function primitiveQuotaPoligono(q: QuotaPoligono, etichetta?: string): Pr
     );
   }
 
+  // OGGETTI INTERNI (Fase 4): rettangoli/cerchi disegnati dentro la pianta
+  for (const o of q.oggetti ?? []) {
+    if (o.tipo === 'rettangolo' && o.larghezza && o.altezza) {
+      // (x,y) = angolo in basso a sinistra → il rettangolo sale verso l'alto
+      prim.push({
+        kind: 'rettangolo',
+        rect: { x: o.x, y: o.y - o.altezza, width: o.larghezza, height: o.altezza },
+        colore,
+        spessore: Math.max(1.5, q.stile.spessore * 0.6)
+      });
+    } else if (o.tipo === 'cerchio' && o.raggioPx) {
+      prim.push({
+        kind: 'cerchio',
+        centro: { x: o.x, y: o.y },
+        raggio: o.raggioPx,
+        colore,
+        spessore: Math.max(1.5, q.stile.spessore * 0.6),
+        alone: ALONE
+      });
+    }
+    if (o.etichetta) {
+      const cx = o.tipo === 'rettangolo' && o.larghezza ? o.x + o.larghezza / 2 : o.x;
+      const cy = o.tipo === 'rettangolo' && o.altezza ? o.y - o.altezza / 2 : o.y;
+      prim.push({
+        kind: 'testo',
+        testo: o.etichetta,
+        posizione: { x: cx, y: cy },
+        rotazioneDeg: 0,
+        dimensione: q.stile.dimensioneTesto * 0.85,
+        colore,
+        sfondo: null,
+        alone: ALONE
+      });
+    }
+  }
+
+  // ORIGINE (datum): assicella d'assi (L) al vertice origine, se definito
+  if (q.origine != null && q.origine >= 0 && q.origine < n && punti[q.origine]) {
+    prim.push(...glifoOrigine(punti[q.origine], colore, q.stile.dimensioneTesto));
+  }
+
   // nomenclatura: badge spostabile, che esce dalla figura se è troppo piccola
   if (badge) prim.push(...badgePoligono(q, badge, colore, posizioneEtichettaPoligono(q)));
   return prim;
+}
+
+/** Simbolo dell'origine (datum): due assi corti + pallino, al vertice indicato. */
+function glifoOrigine(p: Punto, colore: string, dim: number): Primitiva[] {
+  const l = Math.max(14, dim * 0.9);
+  return [
+    { kind: 'linea', punti: [p.x, p.y, p.x + l, p.y], colore, spessore: 2.5, alone: ALONE },
+    { kind: 'linea', punti: [p.x, p.y, p.x, p.y - l], colore, spessore: 2.5, alone: ALONE },
+    { kind: 'cerchio', centro: p, raggio: Math.max(3, dim * 0.18), colore, spessore: 2, riempimento: colore }
+  ];
 }
 
 /** Badge della nomenclatura (riquadro pieno + codice bianco) di un poligono */

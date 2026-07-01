@@ -8,7 +8,9 @@ import {
   statoSchizzo,
   risolviPianta,
   costruisciVincoliPianta,
-  quotaFissa
+  quotaFissa,
+  origineDefault,
+  riposizionaOggetti
 } from '../parametrico';
 import type { Punto, SegmentoQuota } from '../../db/types';
 
@@ -140,6 +142,57 @@ describe('risolviParametrico — modifica quota → geometria', () => {
     expect(r.avvisi).toContain('sovravincolato');
     // geometria invariata
     expect(r.punti).toEqual(punti);
+  });
+});
+
+describe('origine (datum) e oggetti interni (Fase 4)', () => {
+  const quad: Punto[] = [
+    { x: 0, y: 100 }, // basso-sx
+    { x: 200, y: 100 },
+    { x: 200, y: 0 },
+    { x: 0, y: 0 }
+  ];
+
+  it('origineDefault sceglie il vertice in basso a sinistra', () => {
+    expect(origineDefault(quad)).toBe(0); // (0,100): x minima, y massima
+  });
+
+  it("costruisciVincoliPianta con origine aggiunge un vincolo 'fisso' su quel vertice", () => {
+    const v = costruisciVincoliPianta(quad, [], undefined, 1, 0);
+    const fisso = v.find((c) => c.tipo === 'fisso');
+    expect(fisso).toBeDefined();
+    expect(fisso && fisso.tipo === 'fisso' && fisso.a).toBe(0);
+  });
+
+  it("con l'origine fissata, modificando un lato l'origine resta ferma", () => {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 400, y: 0 },
+      { x: 400, y: 300 },
+      { x: 0, y: 300 }
+    ];
+    const segmenti: SegmentoQuota[] = [{ da: 0, a: 1, valore: 500, manuale: true }];
+    // origine = vertice 0
+    const r = risolviPianta(punti, segmenti, undefined, 1, 0);
+    expect(r.ok).toBe(true);
+    expect(r.punti[0].x).toBeCloseTo(0, 1);
+    expect(r.punti[0].y).toBeCloseTo(0, 1);
+  });
+
+  it('riposizionaOggetti trasla gli oggetti con lo spostamento dell’origine', () => {
+    const vecchi: Punto[] = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }];
+    const nuovi: Punto[] = [{ x: 10, y: 5 }, { x: 100, y: 0 }, { x: 100, y: 100 }];
+    const oggetti = [{ id: 'o1', tipo: 'rettangolo' as const, x: 50, y: 50 }];
+    const r = riposizionaOggetti(oggetti, vecchi, nuovi, 0);
+    expect(r?.[0].x).toBeCloseTo(60, 6); // +10
+    expect(r?.[0].y).toBeCloseTo(55, 6); // +5
+  });
+
+  it('senza origine gli oggetti restano dove sono', () => {
+    const p: Punto[] = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }];
+    const oggetti = [{ id: 'o1', tipo: 'cerchio' as const, x: 50, y: 50, raggioPx: 10 }];
+    const r = riposizionaOggetti(oggetti, p, [{ x: 20, y: 20 }, ...p.slice(1)], undefined);
+    expect(r?.[0].x).toBe(50);
   });
 });
 

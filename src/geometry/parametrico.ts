@@ -290,7 +290,7 @@ export function risolviChiusura(
 export function risolviParametrico(
   punti: Punto[],
   segmenti: SegmentoQuota[],
-  opts: { pxPerReale: number; latoModificato?: number }
+  opts: { pxPerReale: number; latoModificato?: number; origine?: number }
 ): EsitoParametrico {
   const n = punti.length;
   const scala = opts.pxPerReale > 0 ? opts.pxPerReale : 0;
@@ -318,6 +318,10 @@ export function risolviParametrico(
       else if (seg.ancora === 'centro') ancora = { centro: i };
     }
   }
+  // in assenza di ancore esplicite, l'ORIGINE (datum) resta ferma
+  if (!ancora && opts.origine != null && opts.origine >= 0 && opts.origine < n) {
+    ancora = { vertice: opts.origine };
+  }
   return risolviChiusura(punti, bersagli, bloccati, ancora);
 }
 
@@ -333,6 +337,20 @@ export function risolviParametrico(
  * ancore e dagli eventuali vincoli angolari. `pxPerReale` converte le quote
  * reali in pixel.
  */
+/** Vertice ORIGINE di default: quello in basso a sinistra (x minima, y massima). */
+export function origineDefault(punti: Punto[]): number {
+  let best = 0;
+  let score = Infinity;
+  for (let i = 0; i < punti.length; i++) {
+    const s = punti[i].x - punti[i].y; // piccolo x, grande y → punteggio minimo
+    if (s < score) {
+      score = s;
+      best = i;
+    }
+  }
+  return best;
+}
+
 /**
  * true = la quota COMANDA la geometria (fissa): non si riquota da sola.
  * Le DIAGONALI (tra due vertici non adiacenti) comandano sempre; i LATI solo se
@@ -347,11 +365,21 @@ export function costruisciVincoliPianta(
   punti: Punto[],
   segmenti: SegmentoQuota[],
   vincoliPianta: VincoloPianta[] | undefined,
-  pxPerReale: number
+  pxPerReale: number,
+  origine?: number
 ): VincoloGeom[] {
   const n = punti.length;
   const out: VincoloGeom[] = [];
   const latoFisso = new Set<number>(); // indice del lato (i→i+1) con lunghezza HARD
+  // ORIGINE (datum): resta ferma, così le misure si propagano da lì. Si aggiunge
+  // solo se NON ci sono già ancore esplicite (che fanno da riferimento fisso),
+  // per non sovravincolare la figura.
+  const haAncore = segmenti.some(
+    (s) => s.ancora === 'lato' || s.ancora === 'vertice-da' || s.ancora === 'vertice-a'
+  );
+  if (!haAncore && origine != null && origine >= 0 && origine < n) {
+    out.push({ tipo: 'fisso', a: origine, x: punti[origine].x, y: punti[origine].y });
+  }
   for (const s of segmenti) {
     // comandano le quote FISSE: diagonali, e lati manuali/bloccati/ancorati.
     // I lati AUTO si adattano; le quote di riferimento misurano soltanto.
@@ -433,12 +461,34 @@ export function risolviPianta(
   punti: Punto[],
   segmenti: SegmentoQuota[],
   vincoliPianta: VincoloPianta[] | undefined,
-  pxPerReale: number
+  pxPerReale: number,
+  origine?: number
 ): { punti: Punto[]; ok: boolean } {
-  const vincoli = costruisciVincoliPianta(punti, segmenti, vincoliPianta, pxPerReale);
+  const vincoli = costruisciVincoliPianta(punti, segmenti, vincoliPianta, pxPerReale, origine);
   if (vincoli.length === 0) return { punti: punti.slice(), ok: true };
   const r = risolviGeom(punti, vincoli);
   return { punti: r.punti, ok: r.ok };
+}
+
+/**
+ * Riposiziona gli oggetti interni dopo un cambio di geometria: gli oggetti
+ * mantengono la loro distanza dall'ORIGINE (datum) traslando insieme ad essa.
+ * Se l'origine non è definita/valida gli oggetti restano dove sono.
+ */
+export function riposizionaOggetti<T extends { x: number; y: number }>(
+  oggetti: T[] | undefined,
+  puntiVecchi: Punto[],
+  puntiNuovi: Punto[],
+  origine: number | undefined
+): T[] | undefined {
+  if (!oggetti || oggetti.length === 0) return oggetti;
+  if (origine == null || origine < 0 || origine >= puntiVecchi.length || origine >= puntiNuovi.length) {
+    return oggetti;
+  }
+  const dx = puntiNuovi[origine].x - puntiVecchi[origine].x;
+  const dy = puntiNuovi[origine].y - puntiVecchi[origine].y;
+  if (Math.abs(dx) < 1e-9 && Math.abs(dy) < 1e-9) return oggetti;
+  return oggetti.map((o) => ({ ...o, x: o.x + dx, y: o.y + dy }));
 }
 
 // ---------------------------------------------------------------------------
