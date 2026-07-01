@@ -1,4 +1,4 @@
-import type { Punto, SegmentoQuota } from '../db/types';
+import type { Punto, SegmentoQuota, StatoSchizzoPianta } from '../db/types';
 import { segmentoELato } from '../db/types';
 
 /**
@@ -313,6 +313,33 @@ export function risolviParametrico(
     }
   }
   return risolviChiusura(punti, bersagli, bloccati, ancora);
+}
+
+// ---------------------------------------------------------------------------
+// (9) Stato di vincolatura dello schizzo (indicatore visivo del Menu Pianta)
+// ---------------------------------------------------------------------------
+
+/**
+ * Stima lo stato di vincolatura del perimetro di una pianta (§9). Euristica
+ * sui gradi di libertà del modello a lati orientati (le direzioni sono fissate
+ * dalla geometria corrente, le lunghezze sono le incognite): la chiusura ricava
+ * fino a 2 lati, quindi la forma è DETERMINATA quando i lati non quotati sono
+ * ≤ 2. L'over-constrained reale (vincoli in conflitto) viene rilevato al
+ * momento della modifica dal solver e segnalato lì, non da questa stima.
+ */
+export function statoSchizzo(punti: Punto[], segmenti: SegmentoQuota[]): StatoSchizzoPianta {
+  const n = punti.length;
+  if (n < 3) return 'nonVincolato';
+  let quotati = 0;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    const seg = segmenti.find(
+      (s) => segmentoELato(s, n) && ((s.da === i && s.a === j) || (s.da === j && s.a === i))
+    );
+    if (seg && seg.valore != null) quotati++;
+  }
+  if (quotati === 0) return 'nonVincolato';
+  return n - quotati <= 2 ? 'completo' : 'parziale';
 }
 
 // ---------------------------------------------------------------------------

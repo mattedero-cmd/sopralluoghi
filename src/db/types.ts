@@ -509,6 +509,10 @@ export interface QuotaPoligono extends AnnotazioneBase {
    * raddrizza lo schizzo di questa pianta. Assente = nessuno snap angolare.
    */
   snapAngolo?: number;
+  /** MENU PIANTA (Fase 3): vincoli geometrici dello schizzo parametrico */
+  vincoli?: VincoloPianta[];
+  /** MENU PIANTA (Fase 4): oggetti interni alla pianta */
+  oggetti?: OggettoPianta[];
 }
 
 /** Segmenti quotati del poligono, con conversione dei record legacy (lati[]) */
@@ -529,6 +533,83 @@ export function segmentoELato(seg: SegmentoQuota, nVertici: number): boolean {
   const d = Math.abs(seg.da - seg.a);
   return d === 1 || d === nVertici - 1;
 }
+
+// ---------------------------------------------------------------------------
+// MENU PIANTA — schizzo parametrico (§CAD). Struttura dati additiva e
+// retro-compatibile (nessun bump del DB): il perimetro resta un QuotaPoligono
+// (punti = vertici, segmenti = lati/quote, ancora/bloccato = vincoli sui lati,
+// snapAngolo = angoli agganciati). Qui si dichiarano le estensioni per i
+// VINCOLI geometrici generali (Fase 3) e gli OGGETTI interni (Fase 4).
+// ---------------------------------------------------------------------------
+
+/** Tipo di entità selezionabile in uno schizzo pianta. */
+export type EntitaPianta =
+  | 'vertice'
+  | 'lato'
+  | 'centroLato'
+  | 'oggetto'
+  | 'centroOggetto'
+  | 'bordoOggetto'
+  | 'asseOrizzOggetto'
+  | 'asseVertOggetto';
+
+/** Riferimento a un elemento dello schizzo (perimetro o oggetto interno). */
+export interface RiferimentoPianta {
+  entita: EntitaPianta;
+  /** id dell'oggetto interno; assente = elemento del perimetro */
+  oggettoId?: string;
+  /** indice del vertice o del lato (nel perimetro o nell'oggetto) */
+  indice?: number;
+}
+
+/** Vincoli geometrici dello schizzo parametrico (Fase 3). */
+export type TipoVincoloPianta =
+  | 'orizzontale'
+  | 'verticale'
+  | 'parallelo'
+  | 'perpendicolare'
+  | 'collineare'
+  | 'coincidente'
+  | 'puntoMedio'
+  | 'simmetrico'
+  | 'ugualeLunghezza'
+  | 'ugualeRaggio'
+  | 'tangente'
+  | 'concentrico'
+  | 'fisso'
+  | 'distanza'
+  | 'angolo';
+
+export interface VincoloPianta {
+  id: string;
+  tipo: TipoVincoloPianta;
+  /** elementi coinvolti (2+ per i vincoli multi-elemento) */
+  riferimenti: RiferimentoPianta[];
+  /** valore per i vincoli dimensionali (distanza/angolo) */
+  valore?: number;
+  /** true = quota di riferimento (misura soltanto, non comanda la geometria) */
+  riferimento?: boolean;
+}
+
+/** Oggetto interno alla pianta (Fase 4): rettangolo, cerchio, linea, punto, asse. */
+export interface OggettoPianta {
+  id: string;
+  tipo: 'rettangolo' | 'cerchio' | 'linea' | 'punto' | 'asse';
+  /** geometria in coordinate immagine (px): 4 vertici per il rettangolo,
+   *  centro per il cerchio, estremi per linea/asse, singolo punto per il punto */
+  punti: Punto[];
+  /** raggio in px per il cerchio */
+  raggioPx?: number;
+  rotazioneDeg?: number;
+  etichetta?: string;
+}
+
+/** Stato di vincolatura dello schizzo (§9): usato per l'indicatore visivo. */
+export type StatoSchizzoPianta =
+  | 'nonVincolato'
+  | 'parziale'
+  | 'completo'
+  | 'sovravincolato';
 
 /** Quota radiale o di diametro: centro + punto sul bordo */
 export interface QuotaRaggio extends AnnotazioneBase {

@@ -4,7 +4,8 @@ import {
   risolviChiusura,
   snapAngoliPoligono,
   fondiCollineari,
-  eliminaLatoRichiudi
+  eliminaLatoRichiudi,
+  statoSchizzo
 } from '../parametrico';
 import type { Punto, SegmentoQuota } from '../../db/types';
 
@@ -240,6 +241,59 @@ describe('fondiCollineari — unione lati consecutivi allineati', () => {
       { x: 50, y: 80 }
     ];
     expect(fondiCollineari(punti, [], 4)).toBeNull();
+  });
+});
+
+describe('statoSchizzo — indicatore di vincolatura (§9)', () => {
+  it('nessuna quota → non vincolato', () => {
+    const { punti } = rettangolo();
+    const senzaValori: SegmentoQuota[] = [
+      { da: 0, a: 1, valore: null },
+      { da: 1, a: 2, valore: null },
+      { da: 2, a: 3, valore: null },
+      { da: 3, a: 0, valore: null }
+    ];
+    expect(statoSchizzo(punti, senzaValori)).toBe('nonVincolato');
+  });
+
+  it('rettangolo con base+altezza quotate e angoli agganciati → completo', () => {
+    const { punti } = rettangolo();
+    const segmenti: SegmentoQuota[] = [
+      { da: 0, a: 1, valore: 400 },
+      { da: 1, a: 2, valore: 300 },
+      { da: 2, a: 3, valore: null },
+      { da: 3, a: 0, valore: null }
+    ];
+    // 2 lati incogniti → determinato dalla chiusura, a prescindere dallo snap
+    expect(statoSchizzo(punti, segmenti)).toBe('completo');
+  });
+
+  it('rettangolo con tutti i lati quotati ma senza snap → comunque completo', () => {
+    const { punti } = rettangolo();
+    const segmenti: SegmentoQuota[] = [
+      { da: 0, a: 1, valore: 400 },
+      { da: 1, a: 2, valore: 300 },
+      { da: 2, a: 3, valore: 400 },
+      { da: 3, a: 0, valore: 300 }
+    ];
+    expect(statoSchizzo(punti, segmenti)).toBe('completo');
+  });
+
+  it('alcune quote ma forma non determinata → parziale', () => {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 500, y: 0 },
+      { x: 500, y: 100 },
+      { x: 300, y: 100 },
+      { x: 300, y: 300 },
+      { x: 0, y: 300 }
+    ];
+    const segmenti: SegmentoQuota[] = punti.map((_, i) => ({
+      da: i,
+      a: (i + 1) % 6,
+      valore: i === 0 ? 500 : null
+    }));
+    expect(statoSchizzo(punti, segmenti)).toBe('parziale');
   });
 });
 

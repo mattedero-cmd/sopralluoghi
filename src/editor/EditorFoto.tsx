@@ -58,7 +58,8 @@ import {
   eliminaLatoRichiudi,
   fondiCollineari,
   risolviParametrico,
-  snapAngoliPoligono
+  snapAngoliPoligono,
+  statoSchizzo
 } from '../geometry/parametrico';
 import type { AncoraSegmento } from '../db/types';
 import {
@@ -245,6 +246,120 @@ const STRUMENTI_TECNICI = new Set<Strumento>([
 /** Strumenti tecnici con posa guidata sulla foto già implementata. */
 const STRUMENTI_POSA_TECNICA = new Set<Strumento>(['tecSerie', 'tecParallelo', 'tecProgressiva']);
 
+/**
+ * MENU PIANTA (§CAD) — terzo menu, separato da base e tecnico, dedicato alla
+ * costruzione PARAMETRICA della pianta. Fase 1: struttura del menu (sezioni
+ * Disegno/Quote/Vincoli/Oggetti/Pulizia) con le funzioni già disponibili
+ * cablate; le altre aprono un avviso con la fase in cui arriveranno.
+ * Ogni voce è uno strumento (`tool`), un comando immediato (`cmd`) o un
+ * segnaposto di fase (`fase`).
+ */
+type ComandoPianta =
+  | 'snap30'
+  | 'snap45'
+  | 'raddrizza90'
+  | 'unisci'
+  | 'ricostruisci';
+interface VocePianta {
+  icona: NomeIcona;
+  testo: string;
+  tool?: Strumento;
+  cmd?: ComandoPianta;
+  /** funzione in arrivo in una fase successiva (2..5): mostra un avviso */
+  fase?: number;
+  /** suggerimento operativo mostrato come avviso (funzioni "seleziona-poi-agisci") */
+  suggerimento?: string;
+}
+const GRUPPI_STRUMENTI_PIANTA: Array<{
+  id: string;
+  icona: NomeIcona;
+  testo: string;
+  voci: VocePianta[];
+}> = [
+  {
+    id: 'piaDisegno',
+    icona: 'disegno',
+    testo: 'Disegno',
+    voci: [
+      { icona: 'disegno', testo: 'Mano libera', tool: 'schizzo' },
+      { icona: 'righello', testo: 'Linea', fase: 4 },
+      { icona: 'rettangolo', testo: 'Rettangolo', fase: 4 },
+      { icona: 'cerchio', testo: 'Cerchio', fase: 4 },
+      { icona: 'quota-allin', testo: 'Punto', fase: 4 },
+      { icona: 'quota-vert', testo: 'Asse', fase: 4 }
+    ]
+  },
+  {
+    id: 'piaQuote',
+    icona: 'quota-orizz',
+    testo: 'Quote',
+    voci: [
+      {
+        icona: 'quota-allin',
+        testo: 'Quota lato (parametrica)',
+        suggerimento:
+          'Tocca un lato della pianta per quotarlo: la quota comanda il disegno (modificandola la geometria si adatta).'
+      },
+      { icona: 'quota-orizz', testo: 'Tra due vertici', fase: 2 },
+      { icona: 'quota-vert', testo: 'Tra due lati', fase: 2 },
+      { icona: 'angolo', testo: 'Angolare', fase: 2 },
+      { icona: 'cerchio', testo: 'Diametro / Raggio', fase: 4 },
+      { icona: 'rettangolo', testo: 'Distanza oggetto–lato', fase: 4 },
+      { icona: 'quota-allin', testo: 'Quota di riferimento', fase: 2 }
+    ]
+  },
+  {
+    id: 'piaVincoli',
+    icona: 'angolo',
+    testo: 'Vincoli',
+    voci: [
+      {
+        icona: 'magnete',
+        testo: 'Blocca lato / ancora',
+        suggerimento:
+          'Tocca un lato della pianta: nell’editor del lato puoi bloccarne la lunghezza o ancorare vertice/centro/lato.'
+      },
+      { icona: 'quota-orizz', testo: 'Orizzontale', fase: 3 },
+      { icona: 'quota-vert', testo: 'Verticale', fase: 3 },
+      { icona: 'polilinea', testo: 'Parallelo', fase: 3 },
+      { icona: 'angolo', testo: 'Perpendicolare', fase: 3 },
+      { icona: 'righello', testo: 'Uguale lunghezza', fase: 3 },
+      { icona: 'cerchio', testo: 'Concentrico / Tangente', fase: 3 },
+      { icona: 'quad', testo: 'Simmetrico / Punto medio', fase: 3 }
+    ]
+  },
+  {
+    id: 'piaOggetti',
+    icona: 'rettangolo',
+    testo: 'Oggetti',
+    voci: [
+      { icona: 'rettangolo', testo: 'Inserisci rettangolo', fase: 4 },
+      { icona: 'cerchio', testo: 'Inserisci cerchio', fase: 4 },
+      { icona: 'matita', testo: 'Modifica oggetto', fase: 4 },
+      { icona: 'magnete', testo: 'Ancora oggetto', fase: 4 },
+      { icona: 'quota-allin', testo: 'Distanze dai lati', fase: 4 }
+    ]
+  },
+  {
+    id: 'piaPulizia',
+    icona: 'griglia',
+    testo: 'Pulizia',
+    voci: [
+      { icona: 'griglia', testo: 'Rendi ortogonale (90°)', cmd: 'raddrizza90' },
+      { icona: 'angolo', testo: 'Snap 45°', cmd: 'snap45' },
+      { icona: 'angolo', testo: 'Snap 30°', cmd: 'snap30' },
+      { icona: 'polilinea', testo: 'Unisci lati allineati', cmd: 'unisci' },
+      { icona: 'rettangolo', testo: 'Ricostruisci dalle misure', cmd: 'ricostruisci' },
+      {
+        icona: 'cestino',
+        testo: 'Elimina lato e richiudi',
+        suggerimento:
+          'Tocca un lato della pianta: nell’editor del lato trovi “Elimina lato e richiudi”.'
+      }
+    ]
+  }
+];
+
 /** Etichetta della catena tecnica in posa, per la barra guida. */
 const ETICHETTA_POSA_TECNICA: Partial<Record<Strumento, string>> = {
   tecSerie: 'Tocca i punti della catena, in sequenza',
@@ -306,8 +421,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [annotazioni, setAnnotazioni] = useState<Annotazione[] | null>(null);
   const [selezioneId, setSelezioneId] = useState<string | null>(null);
   const [strumento, setStrumento] = useState<Strumento>('seleziona');
-  /** modalità quotatura: base ↔ tecnica (sostituisce la toolbar) */
-  const [modalitaTecnica, setModalitaTecnica] = useState(false);
+  /** menu attivo (sostituisce la toolbar): base · tecnica · pianta */
+  const [modalitaMenu, setModalitaMenu] = useState<'base' | 'tecnica' | 'pianta'>('base');
+  const modalitaTecnica = modalitaMenu === 'tecnica';
   /** punti posati della quotatura tecnica in serie in corso (catena da generare) */
   const [puntiTecnici, setPuntiTecnici] = useState<Punto[]>([]);
   /** lettera attiva per la posa rapida delle etichette (modalità Note) */
@@ -509,13 +625,19 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     }
   }, [strumento]);
 
-  // aprendo una pianta ancora vuota, parte già con lo strumento Schizzo
+  // aprendo una pianta, si entra già nel Menu Pianta; se vuota, con lo Schizzo
   const piantaInit = useRef<string | null>(null);
   useEffect(() => {
     if (!foto || !annotazioni) return;
     if (piantaInit.current === foto.id) return;
     piantaInit.current = foto.id;
-    if (foto.ePianta && annotazioni.length === 0) setStrumento('schizzo');
+    if (foto.ePianta) {
+      setModalitaMenu('pianta');
+      if (annotazioni.length === 0) setStrumento('schizzo');
+    } else {
+      // aprendo una foto normale non si resta nel Menu Pianta (che è per le piante)
+      setModalitaMenu((m) => (m === 'pianta' ? 'base' : m));
+    }
   }, [foto, annotazioni]);
 
 
@@ -1310,6 +1432,76 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     mostraToast('successo', 'Pianta ricostruita in scala dalle misure inserite.');
   };
 
+  /** Poligoni-perimetro presenti nella pianta. */
+  const poligoniPianta = (): QuotaPoligono[] =>
+    (annotazioni ?? []).filter((a): a is QuotaPoligono => a.tipo === 'quotaPoligono');
+
+  /** Poligono-perimetro bersaglio dei comandi del Menu Pianta: quello
+   *  selezionato se è un poligono, altrimenti l'UNICO della pianta. Con più
+   *  stanze e nessuna selezione è ambiguo → null (il chiamante avvisa). */
+  const poligonoBersaglio = (): QuotaPoligono | null => {
+    const sel = (annotazioni ?? []).find(
+      (a) => a.id === selezioneId && a.tipo === 'quotaPoligono'
+    ) as QuotaPoligono | undefined;
+    if (sel) return sel;
+    const poligoni = poligoniPianta();
+    return poligoni.length === 1 ? poligoni[0] : null;
+  };
+
+  /** Esegue un comando del Menu Pianta (Pulizia/Ricostruisci) sul perimetro. */
+  const eseguiComandoPianta = (cmd: ComandoPianta) => {
+    if (!annotazioni) return;
+    const poli = poligonoBersaglio();
+    if (!poli) {
+      mostraToast(
+        'info',
+        poligoniPianta().length > 1
+          ? 'Seleziona prima la stanza su cui operare.'
+          : 'Disegna prima la pianta: Disegno → Mano libera.'
+      );
+      return;
+    }
+    const scrivi = (mod: Partial<QuotaPoligono>) => {
+      commitGeometria(
+        annotazioni.map((a) =>
+          a.id === poli.id
+            ? ({ ...poli, lati: undefined, offsetLati: undefined, ...mod } as QuotaPoligono)
+            : a
+        )
+      );
+      setSelezioneId(poli.id);
+      setStrumento('seleziona');
+    };
+    if (cmd === 'ricostruisci') {
+      void ricostruisciPianta(poli);
+      return;
+    }
+    if (cmd === 'unisci') {
+      const r = fondiCollineari(poli.punti, segmentiPoligono(poli));
+      if (!r) {
+        mostraToast('info', 'Nessun lato allineato da unire.');
+        return;
+      }
+      scrivi({ punti: r.punti, segmenti: r.segmenti });
+      mostraToast('successo', `Uniti ${r.rimossi} vertici: lati allineati fusi.`);
+      return;
+    }
+    const passo = cmd === 'snap30' ? 30 : cmd === 'snap45' ? 45 : 90;
+    let nuoviPunti = snapAngoliPoligono(poli.punti, passo, passo / 2);
+    // se la pianta è quotata e calibrata, dopo lo snap si riadattano le
+    // LUNGHEZZE alle quote esistenti (come un CAD: lo snap aggiunge il vincolo
+    // d'angolo mantenendo le quote), così le etichette restano veritiere
+    const px = foto ? pxPerUnita(foto, poli.unita) : null;
+    const segs = segmentiPoligono(poli);
+    const nLati = poli.punti.length;
+    if (px != null && segs.some((s) => segmentoELato(s, nLati) && s.valore != null)) {
+      const esito = risolviParametrico(nuoviPunti, segs, { pxPerReale: px });
+      if (esito.ok) nuoviPunti = esito.punti;
+    }
+    scrivi({ punti: nuoviPunti, snapAngolo: passo });
+    mostraToast('successo', passo === 90 ? 'Pianta resa ortogonale.' : `Lati agganciati a ${passo}°.`);
+  };
+
   /** Imposta una foto reale come riferimento (sfondo) della pianta, così lo
    *  schizzo si ricalca su una geometria ben proporzionata. Se la pianta ha
    *  già uno schizzo (tracciato su tela vuota, non allineato alla foto) lo si
@@ -1670,6 +1862,43 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           </button>
         </div>
       )}
+
+      {modalitaMenu === 'pianta' &&
+        strumento !== 'schizzo' &&
+        (() => {
+          const poli = poligonoBersaglio();
+          if (!poli)
+            return (
+              <div className="barra-etichetta" role="status">
+                <span className="hint">
+                  {poligoniPianta().length > 1
+                    ? 'Menu Pianta · seleziona una stanza per operare'
+                    : 'Menu Pianta · Disegno → Mano libera per tracciare la stanza'}
+                </span>
+              </div>
+            );
+          const stato = statoSchizzo(poli.punti, segmentiPoligono(poli));
+          const info: Record<typeof stato, [string, string]> = {
+            nonVincolato: ['Non vincolato', '#ff9500'],
+            parziale: ['Parzialmente vincolato', '#ffd21e'],
+            completo: ['Completamente vincolato', 'var(--ok)'],
+            sovravincolato: ['Sovravincolato', '#ff453a']
+          };
+          return (
+            <div className="barra-etichetta" role="status">
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <span
+                  aria-hidden
+                  style={{ width: 11, height: 11, borderRadius: 999, background: info[stato][1] }}
+                />
+                <span className="hint">Pianta: {info[stato][0]}</span>
+              </span>
+              <span className="hint" style={{ opacity: 0.65 }}>
+                Tocca un lato per quotarlo o vincolarlo
+              </span>
+            </div>
+          );
+        })()}
 
       {STRUMENTI_POSA_TECNICA.has(strumento) && (
         <div className="barra-etichetta" role="status">
@@ -2124,6 +2353,46 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           <div className="backdrop-strumenti" onClick={() => setMenuAperto(null)} />
         )}
         {menuAperto &&
+          modalitaMenu === 'pianta' &&
+          (() => {
+            const g = GRUPPI_STRUMENTI_PIANTA.find((x) => x.id === menuAperto);
+            if (!g) return null;
+            return (
+              <div className="pannello-strumenti" role="menu" aria-label={g.testo}>
+                {g.voci.map((v, i) => (
+                  <button
+                    key={i}
+                    className={`btn-strumento-grande${v.tool && strumento === v.tool ? ' attivo' : ''}`}
+                    onClick={() => {
+                      setMenuAperto(null);
+                      if (v.tool) {
+                        setStrumento(v.tool);
+                        return;
+                      }
+                      if (v.cmd) {
+                        eseguiComandoPianta(v.cmd);
+                        return;
+                      }
+                      if (v.suggerimento) {
+                        mostraToast('info', v.suggerimento);
+                        return;
+                      }
+                      if (v.fase) {
+                        mostraToast('info', `“${v.testo}” arriva nella Fase ${v.fase} del Menu Pianta.`);
+                      }
+                    }}
+                  >
+                    <span className="ico">
+                      <Icona nome={v.icona} dimensione={26} />
+                    </span>
+                    <span>{v.testo}</span>
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
+        {menuAperto &&
+          modalitaMenu !== 'pianta' &&
           (() => {
             const set = modalitaTecnica ? GRUPPI_STRUMENTI_TECNICA : GRUPPI_STRUMENTI;
             const g = set.find((x) => x.id === menuAperto);
@@ -2200,30 +2469,57 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             icona="duplica"
             testo="Richiama"
           />
-          {(modalitaTecnica ? GRUPPI_STRUMENTI_TECNICA : GRUPPI_STRUMENTI).map((g) => {
-            const voceAtt = g.voci.find((v) => v.s === strumento);
-            return (
-              <BtnStrumento
-                key={g.id}
-                attivo={!!voceAtt}
-                gruppo
-                onClick={() => setMenuAperto((m) => (m === g.id ? null : g.id))}
-                icona={voceAtt?.icona ?? g.icona}
-                testo={g.testo}
-              />
-            );
-          })}
-          {/* toggle base ↔ tecnica: sostituisce il set di strumenti */}
+          {modalitaMenu !== 'pianta' &&
+            (modalitaTecnica ? GRUPPI_STRUMENTI_TECNICA : GRUPPI_STRUMENTI).map((g) => {
+              const voceAtt = g.voci.find((v) => v.s === strumento);
+              return (
+                <BtnStrumento
+                  key={g.id}
+                  attivo={!!voceAtt}
+                  gruppo
+                  onClick={() => setMenuAperto((m) => (m === g.id ? null : g.id))}
+                  icona={voceAtt?.icona ?? g.icona}
+                  testo={g.testo}
+                />
+              );
+            })}
+          {modalitaMenu === 'pianta' &&
+            GRUPPI_STRUMENTI_PIANTA.map((g) => {
+              const attivo = g.voci.some((v) => v.tool && v.tool === strumento);
+              return (
+                <BtnStrumento
+                  key={g.id}
+                  attivo={attivo}
+                  gruppo
+                  onClick={() => setMenuAperto((m) => (m === g.id ? null : g.id))}
+                  icona={g.icona}
+                  testo={g.testo}
+                />
+              );
+            })}
+          {/* selettore del menu: base · tecnica · pianta (mutuamente esclusivi) */}
           <BtnStrumento
-            attivo={modalitaTecnica}
+            attivo={modalitaMenu === 'tecnica'}
             onClick={() => {
               setMenuAperto(null);
               setStrumento('seleziona');
-              setModalitaTecnica((v) => !v);
+              setModalitaMenu((m) => (m === 'tecnica' ? 'base' : 'tecnica'));
             }}
             icona="righello"
-            testo={modalitaTecnica ? 'Base' : 'Tecnica'}
+            testo="Tecnica"
           />
+          {foto.ePianta && (
+            <BtnStrumento
+              attivo={modalitaMenu === 'pianta'}
+              onClick={() => {
+                setMenuAperto(null);
+                setStrumento('seleziona');
+                setModalitaMenu((m) => (m === 'pianta' ? 'base' : 'pianta'));
+              }}
+              icona="griglia"
+              testo="Pianta"
+            />
+          )}
         </nav>
       </div>
 
