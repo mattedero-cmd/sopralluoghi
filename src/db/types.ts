@@ -462,6 +462,12 @@ export interface SegmentoQuota {
    * - 'lato': l'intero lato resta rigido (posizione + lunghezza).
    */
   ancora?: AncoraSegmento;
+  /**
+   * MENU PIANTA (Fase 2, §13): quota di RIFERIMENTO. Se true la quota misura
+   * soltanto (valore aggiornato dalla geometria) e NON comanda il disegno: il
+   * solver la ignora. false/assente = quota parametrica (driving).
+   */
+  riferimento?: boolean;
 }
 
 /** Tipo di ancoraggio di un lato nel solver parametrico delle piante (§12). */

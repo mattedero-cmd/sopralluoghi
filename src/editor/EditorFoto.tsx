@@ -20,7 +20,8 @@ import type {
   StatoMisura,
   TestoFoto,
   TipoForma,
-  Unita
+  Unita,
+  VincoloPianta
 } from '../db/types';
 import {
   COLORE_QUOTA,
@@ -43,6 +44,7 @@ import { ModificaEtichetta } from './ModificaEtichetta';
 import { AmbienteQuotaturaTecnica } from './AmbienteQuotaturaTecnica';
 import { calcolaCatene, sommaCatenaInUnita } from '../geometry/catene';
 import {
+  angoloGradi,
   applicaValoriAuto,
   areaReale,
   arrotondaMisura,
@@ -58,6 +60,7 @@ import {
   eliminaLatoRichiudi,
   fondiCollineari,
   risolviParametrico,
+  risolviPianta,
   snapAngoliPoligono,
   statoSchizzo
 } from '../geometry/parametrico';
@@ -300,12 +303,27 @@ const GRUPPI_STRUMENTI_PIANTA: Array<{
         suggerimento:
           'Tocca un lato della pianta per quotarlo: la quota comanda il disegno (modificandola la geometria si adatta).'
       },
-      { icona: 'quota-orizz', testo: 'Tra due vertici', fase: 2 },
-      { icona: 'quota-vert', testo: 'Tra due lati', fase: 2 },
-      { icona: 'angolo', testo: 'Angolare', fase: 2 },
+      {
+        icona: 'quota-orizz',
+        testo: 'Tra due vertici (diagonale)',
+        suggerimento:
+          'Nell’editor della pianta usa “◇ Diagonali / ＋ diagonale”, poi modifica la quota: la diagonale comanda la forma.'
+      },
+      {
+        icona: 'angolo',
+        testo: 'Angolare',
+        suggerimento:
+          'Nell’editor della pianta, sezione “Angoli”: vincola un angolo per comandarlo (la forma si adatta).'
+      },
+      {
+        icona: 'quota-allin',
+        testo: 'Quota di riferimento',
+        suggerimento:
+          'Tocca un lato o una diagonale e scegli “Riferimento”: misura soltanto, non comanda il disegno.'
+      },
+      { icona: 'quota-vert', testo: 'Tra due lati', fase: 3 },
       { icona: 'cerchio', testo: 'Diametro / Raggio', fase: 4 },
-      { icona: 'rettangolo', testo: 'Distanza oggetto–lato', fase: 4 },
-      { icona: 'quota-allin', testo: 'Quota di riferimento', fase: 2 }
+      { icona: 'rettangolo', testo: 'Distanza oggetto–lato', fase: 4 }
     ]
   },
   {
@@ -2787,6 +2805,73 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 );
                 mostraToast('successo', `Uniti ${r.rimossi} vertici: lati allineati fusi.`);
               }}
+              onQuotaAngolo={
+                // solo piante con calibrazione LINEARE (scala): con un piano
+                // prospettico la geometria non è lineare e il solver non si applica
+                foto.ePianta && pxPerUnita(foto, poli.unita) != null
+                  ? (vertice, gradi) => {
+                      const senza = (poli.vincoli ?? []).filter(
+                        (v) => !(v.tipo === 'angolo' && v.riferimenti[0]?.indice === vertice)
+                      );
+                      if (gradi == null) {
+                        // rimuove il vincolo angolare (nessuna risoluzione)
+                        commit(
+                          annotazioni.map((a) =>
+                            a.id === poli.id
+                              ? ({ ...poli, vincoli: senza.length ? senza : undefined } as QuotaPoligono)
+                              : a
+                          )
+                        );
+                        return;
+                      }
+                      const nuovoVinc: VincoloPianta = {
+                        id: nuovoId(),
+                        tipo: 'angolo',
+                        riferimenti: [{ entita: 'vertice', indice: vertice }],
+                        valore: gradi
+                      };
+                      const vincoli = [...senza, nuovoVinc];
+                      const px = pxPerUnita(foto, poli.unita);
+                      if (px == null) {
+                        // pianta non calibrata: memorizza il vincolo senza risolvere
+                        commit(
+                          annotazioni.map((a) =>
+                            a.id === poli.id ? ({ ...poli, vincoli } as QuotaPoligono) : a
+                          )
+                        );
+                        return;
+                      }
+                      const r = risolviPianta(poli.punti, segmentiPoligono(poli), vincoli, px);
+                      if (!r.ok) {
+                        mostraToast('errore', 'Angolo in conflitto con gli altri vincoli.');
+                        return;
+                      }
+                      // riquota le sole quote di riferimento dalla nuova geometria
+                      const segsFinali = segmentiPoligono(poli).map((s) => {
+                        if (!s.riferimento || s.valore == null) return s;
+                        const A = r.punti[s.da];
+                        const B = r.punti[s.a];
+                        if (!A || !B) return s;
+                        return { ...s, valore: arrotondaMisura(Math.hypot(B.x - A.x, B.y - A.y) / px) };
+                      });
+                      commit(
+                        annotazioni.map((a) =>
+                          a.id === poli.id
+                            ? ({
+                                ...poli,
+                                punti: r.punti,
+                                segmenti: segsFinali,
+                                vincoli,
+                                lati: undefined,
+                                offsetLati: undefined
+                              } as QuotaPoligono)
+                            : a
+                        )
+                      );
+                      mostraToast('successo', 'Angolo vincolato: la forma si è adattata.');
+                    }
+                  : undefined
+              }
               onRicostruisci={foto.ePianta ? () => void ricostruisciPianta(poli) : undefined}
               onElimina={() => {
                 commit(annotazioni.filter((a) => a.id !== poli.id));
@@ -2873,11 +2958,37 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             mostraToast('successo', 'Lato eliminato: figura richiusa.');
           };
           // controlli parametrici (ancore, blocco, elimina lato): solo piante, solo lati
-          const extraPianta =
-            foto.ePianta && eLato ? (
-              <>
+          const extraPianta = foto.ePianta ? (
+            <>
+              <div className="campo">
+                <label>Quota (Menu Pianta)</label>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span className="segmenti" role="group" aria-label="Tipo di quota">
+                    <button
+                      className={!seg.riferimento ? 'attivo' : ''}
+                      onClick={() => aggiornaSeg({ riferimento: false })}
+                      title="Quota parametrica: modificandola cambia la geometria"
+                    >
+                      ⟿ Parametrica
+                    </button>
+                    <button
+                      className={seg.riferimento ? 'attivo' : ''}
+                      onClick={() => aggiornaSeg({ riferimento: true })}
+                      title="Quota di riferimento: misura soltanto, non comanda il disegno"
+                    >
+                      ( ) Riferimento
+                    </button>
+                  </span>
+                </div>
+                <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
+                  {eLato
+                    ? 'Una quota parametrica comanda la forma; quella di riferimento misura soltanto.'
+                    : 'Diagonale (tra due vertici): come parametrica comanda la forma della pianta.'}
+                </span>
+              </div>
+              {eLato && (
                 <div className="campo">
-                  <label>Vincoli (pianta parametrica)</label>
+                  <label>Vincoli del lato</label>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                     <span className="segmenti" role="group" aria-label="Ancora del lato">
                       {(
@@ -2912,15 +3023,16 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                     tenerne fissa la misura quando cambi le altre quote.
                   </span>
                 </div>
-                {nLati > 3 && (
-                  <div className="campo">
-                    <button className="btn pericolo" onClick={eliminaLato}>
-                      ✂ Elimina lato e richiudi
-                    </button>
-                  </div>
-                )}
-              </>
-            ) : undefined;
+              )}
+              {eLato && nLati > 3 && (
+                <div className="campo">
+                  <button className="btn pericolo" onClick={eliminaLato}>
+                    ✂ Elimina lato e richiudi
+                  </button>
+                </div>
+              )}
+            </>
+          ) : undefined;
           return (
             <EditorQuota
               quota={quotaSeg}
@@ -2961,9 +3073,64 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                   simbolo: extra?.simbolo
                 };
                 const nuoviSegs = segs.map((s, i) => (i === rif.indice ? nuovoSeg : s));
-                // PIANTA PARAMETRICA: modificando la quota di un lato, la geometria
-                // si adatta davvero (i vertici si spostano) mantenendo la chiusura.
-                if (foto.ePianta && eLato && nuova.valore != null && nuova.unita === poli.unita) {
+                // la pianta ha vincoli NON lineari (angoli o diagonali driving)?
+                // in tal caso anche la modifica di un lato passa dal risolutore
+                // generale, così quei vincoli non vengono silenziosamente rotti.
+                const haVincoliAvanzati =
+                  (poli.vincoli ?? []).some(
+                    (v) => v.tipo === 'angolo' && !v.riferimento && v.valore != null
+                  ) ||
+                  nuoviSegs.some((s) => !segmentoELato(s, nLati) && !s.riferimento && s.valore != null);
+                // DIAGONALE / vincoli avanzati: comanda la forma via il risolutore
+                // geometrico generale (vincoli non lineari).
+                if (
+                  foto.ePianta &&
+                  (!eLato || haVincoliAvanzati) &&
+                  !nuovoSeg.riferimento &&
+                  nuova.valore != null &&
+                  nuova.unita === poli.unita
+                ) {
+                  const px = pxPerUnita(foto, poli.unita);
+                  if (px != null) {
+                    const r = risolviPianta(poli.punti, nuoviSegs, poli.vincoli, px);
+                    if (r.ok) {
+                      // le quote di RIFERIMENTO si riquotano dalla nuova geometria
+                      const segsFinali = nuoviSegs.map((s) => {
+                        if (!s.riferimento || s.valore == null) return s;
+                        const A = r.punti[s.da];
+                        const B = r.punti[s.a];
+                        if (!A || !B) return s;
+                        return { ...s, valore: arrotondaMisura(Math.hypot(B.x - A.x, B.y - A.y) / px) };
+                      });
+                      scriviPoligono({
+                        punti: r.punti,
+                        segmenti: segsFinali,
+                        unita: nuova.unita,
+                        stato: nuova.stato,
+                        valoreAuto: false,
+                        stile: nuova.stile
+                      });
+                      tornaAlPoligono();
+                      return;
+                    }
+                    mostraToast(
+                      'errore',
+                      'Modifica non possibile: la quota è in conflitto con altri vincoli.'
+                    );
+                    tornaAlPoligono();
+                    return;
+                  }
+                }
+                // PIANTA PARAMETRICA (lato semplice, senza vincoli avanzati):
+                // modello a lati orientati (chiusura), più permissivo del solver.
+                if (
+                  foto.ePianta &&
+                  eLato &&
+                  !haVincoliAvanzati &&
+                  !nuovoSeg.riferimento &&
+                  nuova.valore != null &&
+                  nuova.unita === poli.unita
+                ) {
                   const px = pxPerUnita(foto, poli.unita);
                   if (px != null) {
                     const esito = risolviParametrico(poli.punti, nuoviSegs, {
@@ -3929,6 +4096,7 @@ function EditorPoligono({
   onModificaSegmento,
   onSnapAngoli,
   onFondiCollineari,
+  onQuotaAngolo,
   onRicostruisci,
   onElimina,
   onChiudi
@@ -3947,6 +4115,9 @@ function EditorPoligono({
   onSnapAngoli: (passo: number) => void;
   /** fonde i lati consecutivi allineati in uno solo (se ce ne sono) */
   onFondiCollineari: () => void;
+  /** imposta/rimuove una quota angolare (driving) al vertice; null = rimuove.
+   *  Solo piante: comanda la forma via il risolutore geometrico. */
+  onQuotaAngolo?: (vertice: number, gradi: number | null) => void;
   /** ricostruisce la forma dalle misure inserite (parametrica): solo piante */
   onRicostruisci?: () => void;
   onElimina: () => void;
@@ -4186,6 +4357,44 @@ function EditorPoligono({
                 ◇ Diagonali
               </button>
             )}
+            {n > 4 &&
+              (() => {
+                // aggiunge una diagonale (tra due vertici) al primo paio non
+                // adiacente ancora non quotato: come parametrica comanda la forma
+                const esiste = (a: number, b: number) =>
+                  segs.some((s) => (s.da === a && s.a === b) || (s.da === b && s.a === a));
+                let coppia: [number, number] | null = null;
+                for (let a = 0; a < n && !coppia; a++) {
+                  for (let b = a + 2; b < n; b++) {
+                    if (a === 0 && b === n - 1) continue; // adiacente (chiusura)
+                    if (!esiste(a, b)) {
+                      coppia = [a, b];
+                      break;
+                    }
+                  }
+                }
+                if (!coppia) return null;
+                const [a, b] = coppia;
+                return (
+                  <button
+                    className="btn"
+                    style={{ minHeight: 44, padding: '0 12px' }}
+                    title="Aggiungi una diagonale (tra due vertici): come parametrica comanda la forma"
+                    onClick={() =>
+                      scriviSegmenti([
+                        ...segs,
+                        {
+                          da: a,
+                          a: b,
+                          valore: calibrata ? misuraSegmento(poli.punti[a], poli.punti[b], foto, poli.unita) : null
+                        }
+                      ])
+                    }
+                  >
+                    ◇ ＋ diagonale
+                  </button>
+                );
+              })()}
           </div>
         </div>
         <div className="campo">
@@ -4269,6 +4478,75 @@ function EditorPoligono({
             </span>
           )}
         </div>
+        {onQuotaAngolo && calibrata && (
+          <div className="campo">
+            <label>Angoli — quota parametrica tra due lati</label>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+                gap: 8,
+                maxHeight: '30vh',
+                overflowY: 'auto'
+              }}
+            >
+              {poli.punti.map((_, i) => {
+                const prev = (i - 1 + n) % n;
+                const succ = (i + 1) % n;
+                const ang = angoloGradi(poli.punti[i], poli.punti[prev], poli.punti[succ]);
+                const vinc = (poli.vincoli ?? []).find(
+                  (v) => v.tipo === 'angolo' && v.riferimenti[0]?.indice === i && !v.riferimento
+                );
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      border: '1px solid var(--bordo)',
+                      borderRadius: 8,
+                      padding: '4px 8px'
+                    }}
+                  >
+                    <span style={{ fontWeight: 700 }}>∠{i + 1}</span>
+                    <span style={{ color: vinc ? 'var(--ok)' : 'var(--testo-2)', flex: 1 }}>
+                      {formattaNumero(Math.round(vinc?.valore ?? ang))}°
+                    </span>
+                    <button
+                      className={`btn${vinc ? ' attivo' : ''}`}
+                      style={{ minHeight: 34, padding: '0 8px' }}
+                      title="Vincola l'angolo: modificandolo la forma si adatta"
+                      onClick={() => {
+                        const attuale = Math.round(vinc?.valore ?? ang);
+                        const risp = window.prompt(`Angolo al vertice ${i + 1} (gradi):`, String(attuale));
+                        if (risp == null) return;
+                        const g = parseFloat(risp.replace(',', '.'));
+                        if (Number.isFinite(g) && g > 0 && g < 180) onQuotaAngolo(i, g);
+                      }}
+                    >
+                      {vinc ? '✎' : 'vincola'}
+                    </button>
+                    {vinc && (
+                      <button
+                        className="btn"
+                        style={{ minHeight: 34, padding: '0 8px' }}
+                        title="Rimuovi il vincolo angolare"
+                        onClick={() => onQuotaAngolo(i, null)}
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
+              Vincola un angolo per comandarlo: modificandolo la forma si adatta rispettando gli
+              altri vincoli.
+            </span>
+          </div>
+        )}
         <div className="campo">
           <label>Colore e dimensione</label>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>

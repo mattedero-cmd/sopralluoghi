@@ -1,5 +1,6 @@
-import type { Punto, SegmentoQuota, StatoSchizzoPianta } from '../db/types';
+import type { Punto, SegmentoQuota, StatoSchizzoPianta, VincoloPianta } from '../db/types';
 import { segmentoELato } from '../db/types';
+import { risolviGeom, type VincoloGeom } from './solverGeom';
 
 /**
  * PIANTE PARAMETRICHE (§12).
@@ -313,6 +314,82 @@ export function risolviParametrico(
     }
   }
   return risolviChiusura(punti, bersagli, bloccati, ancora);
+}
+
+// ---------------------------------------------------------------------------
+// Menu Pianta (Fase 2): quote/vincoli che comandano il disegno via il
+// risolutore geometrico generale (diagonali, angoli e in genere vincoli non
+// lineari che il modello a lati orientati non gestisce).
+// ---------------------------------------------------------------------------
+
+/**
+ * Costruisce l'insieme di vincoli geometrici (px) di una pianta dai suoi
+ * segmenti quotati (lati e diagonali, escluse le quote di RIFERIMENTO), dalle
+ * ancore e dagli eventuali vincoli angolari. `pxPerReale` converte le quote
+ * reali in pixel.
+ */
+export function costruisciVincoliPianta(
+  punti: Punto[],
+  segmenti: SegmentoQuota[],
+  vincoliPianta: VincoloPianta[] | undefined,
+  pxPerReale: number
+): VincoloGeom[] {
+  const n = punti.length;
+  const out: VincoloGeom[] = [];
+  const latoQuotato = new Set<number>(); // indice del lato (i→i+1) con lunghezza HARD
+  for (const s of segmenti) {
+    if (s.riferimento || s.valore == null) continue;
+    if (s.da < 0 || s.a < 0 || s.da >= n || s.a >= n || s.da === s.a) continue;
+    out.push({ tipo: 'lunghezza', a: s.da, b: s.a, valore: s.valore * pxPerReale });
+    const e = (s.da + 1) % n === s.a ? s.da : (s.a + 1) % n === s.da ? s.a : null;
+    if (e != null) latoQuotato.add(e);
+  }
+  // preservazione DEBOLE della lunghezza dei lati non quotati: così le quote non
+  // lineari (diagonali/angoli) comandano la forma per ROTAZIONE/spostamento senza
+  // stravolgere la lunghezza dei muri (peso basso = cede al vincolo forte)
+  for (let i = 0; i < n; i++) {
+    if (latoQuotato.has(i)) continue;
+    const j = (i + 1) % n;
+    const len = Math.hypot(punti[j].x - punti[i].x, punti[j].y - punti[i].y);
+    if (len > 1e-6) out.push({ tipo: 'lunghezza', a: i, b: j, valore: len, peso: 0.02 });
+  }
+  // ancore → vertici fissi
+  for (const s of segmenti) {
+    if (s.da < 0 || s.a < 0 || s.da >= n || s.a >= n) continue;
+    if (s.ancora === 'lato') {
+      out.push({ tipo: 'fisso', a: s.da, x: punti[s.da].x, y: punti[s.da].y });
+      out.push({ tipo: 'fisso', a: s.a, x: punti[s.a].x, y: punti[s.a].y });
+    } else if (s.ancora === 'vertice-da') {
+      out.push({ tipo: 'fisso', a: s.da, x: punti[s.da].x, y: punti[s.da].y });
+    } else if (s.ancora === 'vertice-a') {
+      out.push({ tipo: 'fisso', a: s.a, x: punti[s.a].x, y: punti[s.a].y });
+    }
+  }
+  // vincoli angolari (Fase 2): angolo al vertice tra i due lati adiacenti
+  for (const v of vincoliPianta ?? []) {
+    if (v.tipo !== 'angolo' || v.riferimento || v.valore == null) continue;
+    const vert = v.riferimenti[0]?.indice;
+    if (vert == null || vert < 0 || vert >= n) continue;
+    out.push({ tipo: 'angolo', a: (vert - 1 + n) % n, v: vert, b: (vert + 1) % n, gradi: v.valore });
+  }
+  return out;
+}
+
+/**
+ * Risolve la geometria della pianta rispettando le quote/vincoli (comandano il
+ * disegno) tramite il risolutore geometrico. Restituisce i nuovi vertici o
+ * `ok:false` se i vincoli sono incompatibili (il chiamante avvisa).
+ */
+export function risolviPianta(
+  punti: Punto[],
+  segmenti: SegmentoQuota[],
+  vincoliPianta: VincoloPianta[] | undefined,
+  pxPerReale: number
+): { punti: Punto[]; ok: boolean } {
+  const vincoli = costruisciVincoliPianta(punti, segmenti, vincoliPianta, pxPerReale);
+  if (vincoli.length === 0) return { punti: punti.slice(), ok: true };
+  const r = risolviGeom(punti, vincoli);
+  return { punti: r.punti, ok: r.ok };
 }
 
 // ---------------------------------------------------------------------------

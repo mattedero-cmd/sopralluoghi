@@ -5,7 +5,9 @@ import {
   snapAngoliPoligono,
   fondiCollineari,
   eliminaLatoRichiudi,
-  statoSchizzo
+  statoSchizzo,
+  risolviPianta,
+  costruisciVincoliPianta
 } from '../parametrico';
 import type { Punto, SegmentoQuota } from '../../db/types';
 
@@ -241,6 +243,78 @@ describe('fondiCollineari — unione lati consecutivi allineati', () => {
       { x: 50, y: 80 }
     ];
     expect(fondiCollineari(punti, [], 4)).toBeNull();
+  });
+});
+
+describe('risolviPianta — quote che comandano il disegno (Fase 2)', () => {
+  it('la diagonale (tra due vertici) comanda la forma: quadrato → rombo', () => {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 100 },
+      { x: 0, y: 100 }
+    ];
+    const segmenti: SegmentoQuota[] = [
+      { da: 0, a: 1, valore: 100 },
+      { da: 1, a: 2, valore: 100 },
+      { da: 2, a: 3, valore: 100 },
+      { da: 3, a: 0, valore: 100 },
+      { da: 0, a: 2, valore: 120 } // diagonale che comanda (rombo)
+    ];
+    const r = risolviPianta(punti, segmenti, undefined, 1);
+    expect(r.ok).toBe(true);
+    expect(Math.hypot(r.punti[2].x - r.punti[0].x, r.punti[2].y - r.punti[0].y)).toBeCloseTo(120, 1);
+  });
+
+  it('le quote di riferimento non vincolano il solver', () => {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 100 },
+      { x: 0, y: 100 }
+    ];
+    const segmenti: SegmentoQuota[] = [
+      { da: 0, a: 2, valore: 999, riferimento: true } // riferimento: ignorata
+    ];
+    const v = costruisciVincoliPianta(punti, segmenti, undefined, 1);
+    // la diagonale di riferimento NON genera un vincolo forte (999)
+    expect(v.some((c) => c.tipo === 'lunghezza' && Math.round(c.valore) === 999)).toBe(false);
+    // gli unici vincoli sono la preservazione DEBOLE dei lati (peso basso)
+    expect(v.every((c) => (c.peso ?? 1) < 0.5)).toBe(true);
+  });
+
+  it('un angolo (senza quote sui lati) comanda per rotazione, non deformando i muri', () => {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 100 },
+      { x: 0, y: 100 }
+    ];
+    const vincoli = [
+      { id: 'a', tipo: 'angolo' as const, riferimenti: [{ entita: 'vertice' as const, indice: 1 }], valore: 120 }
+    ];
+    const r = risolviPianta(punti, [], vincoli, 1);
+    expect(r.ok).toBe(true);
+    // i muri restano lunghi ~100 (la preservazione debole evita il collasso)
+    const l01 = Math.hypot(r.punti[1].x - r.punti[0].x, r.punti[1].y - r.punti[0].y);
+    const l12 = Math.hypot(r.punti[2].x - r.punti[1].x, r.punti[2].y - r.punti[1].y);
+    expect(l01).toBeGreaterThan(70);
+    expect(l12).toBeGreaterThan(70);
+    expect(l01).toBeLessThan(130);
+  });
+
+  it('quota in conflitto → ok=false (nessuna deformazione errata)', () => {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 50, y: 80 }
+    ];
+    const segmenti: SegmentoQuota[] = [
+      { da: 0, a: 1, valore: 100 },
+      { da: 1, a: 2, valore: 100 },
+      { da: 2, a: 0, valore: 300 } // impossibile
+    ];
+    expect(risolviPianta(punti, segmenti, undefined, 1).ok).toBe(false);
   });
 });
 
