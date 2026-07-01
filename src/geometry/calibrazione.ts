@@ -148,6 +148,9 @@ export function applicaValoriAuto(annotazioni: Annotazione[], foto: Calibrazione
       if (!auto) return a;
       if (!haCalibrazione(foto)) return a;
       const nuovi = segs.map((s) => {
+        // le quote inserite a mano (manuale, non di riferimento) restano fisse:
+        // NON si ricalcolano; le auto e le riferimento seguono la geometria
+        if (s.manuale && !s.riferimento) return s;
         const da = a.punti[s.da];
         const ad = a.punti[s.a];
         if (!da || !ad) return s;

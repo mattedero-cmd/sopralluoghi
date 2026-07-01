@@ -64,6 +64,7 @@ describe('risolviParametrico — modifica quota → geometria', () => {
 
   it('la scala (pxPerReale) converte le quote in pixel', () => {
     const { punti, segmenti } = rettangolo();
+    segmenti.forEach((s) => (s.manuale = true)); // tutte manuali → comandano
     // stesse quote ma pxPerReale=2 → lati doppi in px
     const r = risolviParametrico(punti, segmenti, { pxPerReale: 2, latoModificato: 0 });
     expect(r.ok).toBe(true);
@@ -138,6 +139,46 @@ describe('risolviParametrico — modifica quota → geometria', () => {
     expect(r.avvisi).toContain('sovravincolato');
     // geometria invariata
     expect(r.punti).toEqual(punti);
+  });
+});
+
+describe('quote manuali FISSE, quote auto adattive', () => {
+  it('modificando un lato, un lato MANUALE adiacente non cambia; gli auto si adattano', () => {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 400, y: 0 },
+      { x: 400, y: 300 },
+      { x: 0, y: 300 }
+    ];
+    const segmenti: SegmentoQuota[] = [
+      { da: 0, a: 1, valore: 400, manuale: true }, // top: manuale (fisso)
+      { da: 1, a: 2, valore: 350 }, // right: appena modificato
+      { da: 2, a: 3, valore: null }, // bottom: auto
+      { da: 3, a: 0, valore: null } // left: auto
+    ];
+    const r = risolviParametrico(punti, segmenti, { pxPerReale: 1, latoModificato: 1 });
+    expect(r.ok).toBe(true);
+    const l = latiPx(r.punti);
+    expect(l[0]).toBeCloseTo(400, 2); // top manuale invariato
+    expect(l[1]).toBeCloseTo(350, 2); // right modificato
+    expect(l[2]).toBeCloseTo(400, 2); // bottom auto → segue top
+  });
+
+  it('nel solver generale solo le quote MANUALI sono vincoli forti (le auto no)', () => {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 100 },
+      { x: 0, y: 100 }
+    ];
+    const segmenti: SegmentoQuota[] = [
+      { da: 0, a: 1, valore: 100, manuale: true }, // forte
+      { da: 1, a: 2, valore: 100 } // auto: NON forte
+    ];
+    const v = costruisciVincoliPianta(punti, segmenti, undefined, 1);
+    const forti = v.filter((c) => (c.peso ?? 1) >= 0.5 && c.tipo === 'lunghezza');
+    expect(forti).toHaveLength(1);
+    expect(forti[0].tipo === 'lunghezza' && forti[0].valore).toBe(100);
   });
 });
 
@@ -255,11 +296,11 @@ describe('risolviPianta — quote che comandano il disegno (Fase 2)', () => {
       { x: 0, y: 100 }
     ];
     const segmenti: SegmentoQuota[] = [
-      { da: 0, a: 1, valore: 100 },
-      { da: 1, a: 2, valore: 100 },
-      { da: 2, a: 3, valore: 100 },
-      { da: 3, a: 0, valore: 100 },
-      { da: 0, a: 2, valore: 120 } // diagonale che comanda (rombo)
+      { da: 0, a: 1, valore: 100, manuale: true },
+      { da: 1, a: 2, valore: 100, manuale: true },
+      { da: 2, a: 3, valore: 100, manuale: true },
+      { da: 3, a: 0, valore: 100, manuale: true },
+      { da: 0, a: 2, valore: 120, manuale: true } // diagonale che comanda (rombo)
     ];
     const r = risolviPianta(punti, segmenti, undefined, 1);
     expect(r.ok).toBe(true);
@@ -310,9 +351,9 @@ describe('risolviPianta — quote che comandano il disegno (Fase 2)', () => {
       { x: 50, y: 80 }
     ];
     const segmenti: SegmentoQuota[] = [
-      { da: 0, a: 1, valore: 100 },
-      { da: 1, a: 2, valore: 100 },
-      { da: 2, a: 0, valore: 300 } // impossibile
+      { da: 0, a: 1, valore: 100, manuale: true },
+      { da: 1, a: 2, valore: 100, manuale: true },
+      { da: 2, a: 0, valore: 300, manuale: true } // impossibile
     ];
     expect(risolviPianta(punti, segmenti, undefined, 1).ok).toBe(false);
   });

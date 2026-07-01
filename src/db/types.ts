@@ -468,6 +468,12 @@ export interface SegmentoQuota {
    * solver la ignora. false/assente = quota parametrica (driving).
    */
   riferimento?: boolean;
+  /**
+   * MENU PIANTA (Fase 3): quota inserita a mano (driving FISSA). Una volta
+   * impostata non si modifica da sola quando si cambiano altre quote: solo i
+   * lati AUTO (derivati) si adattano. Assente/false = valore derivato.
+   */
+  manuale?: boolean;
 }
 
 /** Tipo di ancoraggio di un lato nel solver parametrico delle piante (§12). */

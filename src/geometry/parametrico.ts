@@ -302,10 +302,15 @@ export function risolviParametrico(
     const seg = segmenti.find(
       (s) => segmentoELato(s, n) && ((s.da === i && s.a === j) || (s.da === j && s.a === i))
     );
-    const val = seg && seg.valore != null && scala > 0 ? seg.valore * scala : null;
+    // un lato "comanda" (bersaglio) solo se è MANUALE (inserito a mano),
+    // bloccato/ancorato, o è quello appena modificato; i lati AUTO restano
+    // liberi e si adattano alla chiusura
+    const driving =
+      seg != null &&
+      (seg.manuale || seg.bloccato || seg.ancora === 'lato' || i === opts.latoModificato);
+    const val = driving && seg && seg.valore != null && scala > 0 ? seg.valore * scala : null;
     bersagli.push(val);
-    const hard = (seg && (seg.bloccato || seg.ancora === 'lato')) || i === opts.latoModificato;
-    bloccati.push(Boolean(hard));
+    bloccati.push(Boolean(driving));
     if (seg && seg.ancora && !ancora) {
       if (seg.ancora === 'lato') ancora = { lato: i };
       else if (seg.ancora === 'vertice-da') ancora = { vertice: seg.da };
@@ -336,19 +341,21 @@ export function costruisciVincoliPianta(
 ): VincoloGeom[] {
   const n = punti.length;
   const out: VincoloGeom[] = [];
-  const latoQuotato = new Set<number>(); // indice del lato (i→i+1) con lunghezza HARD
+  const latoFisso = new Set<number>(); // indice del lato (i→i+1) con lunghezza HARD
   for (const s of segmenti) {
-    if (s.riferimento || s.valore == null) continue;
+    // solo le quote MANUALI (inserite a mano) comandano; le AUTO si adattano;
+    // le quote di RIFERIMENTO misurano soltanto
+    if (s.riferimento || !s.manuale || s.valore == null) continue;
     if (s.da < 0 || s.a < 0 || s.da >= n || s.a >= n || s.da === s.a) continue;
     out.push({ tipo: 'lunghezza', a: s.da, b: s.a, valore: s.valore * pxPerReale });
     const e = (s.da + 1) % n === s.a ? s.da : (s.a + 1) % n === s.da ? s.a : null;
-    if (e != null) latoQuotato.add(e);
+    if (e != null) latoFisso.add(e);
   }
-  // preservazione DEBOLE della lunghezza dei lati non quotati: così le quote non
-  // lineari (diagonali/angoli) comandano la forma per ROTAZIONE/spostamento senza
-  // stravolgere la lunghezza dei muri (peso basso = cede al vincolo forte)
+  // preservazione DEBOLE della lunghezza dei lati NON fissi (auto/non quotati):
+  // le quote non lineari (diagonali/angoli) comandano la forma per ROTAZIONE/
+  // spostamento senza stravolgere i muri (peso basso = cede al vincolo forte)
   for (let i = 0; i < n; i++) {
-    if (latoQuotato.has(i)) continue;
+    if (latoFisso.has(i)) continue;
     const j = (i + 1) % n;
     const len = Math.hypot(punti[j].x - punti[i].x, punti[j].y - punti[i].y);
     if (len > 1e-6) out.push({ tipo: 'lunghezza', a: i, b: j, valore: len, peso: 0.02 });
@@ -365,12 +372,42 @@ export function costruisciVincoliPianta(
       out.push({ tipo: 'fisso', a: s.a, x: punti[s.a].x, y: punti[s.a].y });
     }
   }
-  // vincoli angolari (Fase 2): angolo al vertice tra i due lati adiacenti
+  // VINCOLI GEOMETRICI (Fase 2/3). Un riferimento 'lato' con indice i identifica
+  // lo spigolo (i → (i+1)%n); un 'vertice' identifica il vertice.
+  const spigolo = (r: { entita: string; indice?: number } | undefined): [number, number] | null => {
+    if (!r || r.indice == null || r.indice < 0 || r.indice >= n) return null;
+    return [r.indice, (r.indice + 1) % n];
+  };
+  const vertice = (r: { entita: string; indice?: number } | undefined): number | null =>
+    r && r.indice != null && r.indice >= 0 && r.indice < n ? r.indice : null;
   for (const v of vincoliPianta ?? []) {
-    if (v.tipo !== 'angolo' || v.riferimento || v.valore == null) continue;
-    const vert = v.riferimenti[0]?.indice;
-    if (vert == null || vert < 0 || vert >= n) continue;
-    out.push({ tipo: 'angolo', a: (vert - 1 + n) % n, v: vert, b: (vert + 1) % n, gradi: v.valore });
+    if (v.riferimento) continue;
+    const R = v.riferimenti;
+    if (v.tipo === 'angolo') {
+      const vert = vertice(R[0]);
+      if (vert == null || v.valore == null) continue;
+      out.push({ tipo: 'angolo', a: (vert - 1 + n) % n, v: vert, b: (vert + 1) % n, gradi: v.valore });
+    } else if (v.tipo === 'orizzontale' || v.tipo === 'verticale') {
+      const e = spigolo(R[0]);
+      if (e) out.push({ tipo: v.tipo, a: e[0], b: e[1] });
+    } else if (
+      v.tipo === 'parallelo' ||
+      v.tipo === 'perpendicolare' ||
+      v.tipo === 'collineare' ||
+      v.tipo === 'ugualeLunghezza'
+    ) {
+      // multi-elemento (§6): il primo riferimento fa da riferimento comune
+      const e0 = spigolo(R[0]);
+      if (!e0) continue;
+      for (let k = 1; k < R.length; k++) {
+        const ek = spigolo(R[k]);
+        if (ek) out.push({ tipo: v.tipo, a: e0[0], b: e0[1], c: ek[0], d: ek[1] });
+      }
+    } else if (v.tipo === 'coincidente') {
+      const va = vertice(R[0]);
+      const vb = vertice(R[1]);
+      if (va != null && vb != null && va !== vb) out.push({ tipo: 'coincidente', a: va, b: vb });
+    }
   }
   return out;
 }

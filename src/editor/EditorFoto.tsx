@@ -20,6 +20,7 @@ import type {
   StatoMisura,
   TestoFoto,
   TipoForma,
+  TipoVincoloPianta,
   Unita,
   VincoloPianta
 } from '../db/types';
@@ -337,13 +338,14 @@ const GRUPPI_STRUMENTI_PIANTA: Array<{
         suggerimento:
           'Tocca un lato della pianta: nell’editor del lato puoi bloccarne la lunghezza o ancorare vertice/centro/lato.'
       },
-      { icona: 'quota-orizz', testo: 'Orizzontale', fase: 3 },
-      { icona: 'quota-vert', testo: 'Verticale', fase: 3 },
-      { icona: 'polilinea', testo: 'Parallelo', fase: 3 },
-      { icona: 'angolo', testo: 'Perpendicolare', fase: 3 },
-      { icona: 'righello', testo: 'Uguale lunghezza', fase: 3 },
-      { icona: 'cerchio', testo: 'Concentrico / Tangente', fase: 3 },
-      { icona: 'quad', testo: 'Simmetrico / Punto medio', fase: 3 }
+      {
+        icona: 'polilinea',
+        testo: 'Orizz./Vert./Parallelo/Perp./Uguale',
+        suggerimento:
+          'Tocca la pianta e apri l’editor: nella sezione “Vincoli geometrici” scegli il vincolo e i lati; la forma si adatta.'
+      },
+      { icona: 'cerchio', testo: 'Concentrico / Tangente', fase: 4 },
+      { icona: 'quad', testo: 'Simmetrico / Punto medio', fase: 4 }
     ]
   },
   {
@@ -1402,9 +1404,18 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     if (px < 2) return;
     const scala = { px, reale: q.valore, unita: q.unita };
     await aggiornaFoto(foto.id, { scala });
-    const conAuto = annotazioni.map((a) =>
-      a.id === poli.id ? ({ ...a, valoreAuto: true } as Annotazione) : a
-    );
+    // il lato usato come scala diventa una quota MANUALE (fissa): non si
+    // ricalcola quando si modificano le altre
+    const idx = parseInt(q.id.split(':')[1] ?? '', 10);
+    const conAuto = annotazioni.map((a) => {
+      if (a.id !== poli.id) return a;
+      const p = a as QuotaPoligono;
+      const segs = segmentiPoligono(p);
+      const segmenti = Number.isFinite(idx)
+        ? segs.map((s, i) => (i === idx ? { ...s, manuale: true } : s))
+        : segs;
+      return { ...p, segmenti, lati: undefined, offsetLati: undefined, valoreAuto: true } as Annotazione;
+    });
     commit(applicaValoriAuto(conAuto, { scala, piano: foto.piano }));
     mostraToast('successo', 'Scala ricavata dal lato: gli altri lati sono ora misurati.');
   };
@@ -2872,6 +2883,42 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                     }
                   : undefined
               }
+              onApplicaVincoli={
+                foto.ePianta && pxPerUnita(foto, poli.unita) != null
+                  ? (vincoli) => {
+                      const px = pxPerUnita(foto, poli.unita);
+                      if (px == null) return;
+                      const r = risolviPianta(poli.punti, segmentiPoligono(poli), vincoli, px);
+                      if (!r.ok) {
+                        mostraToast('errore', 'Vincolo in conflitto: modifica non possibile.');
+                        return;
+                      }
+                      const segsFinali = segmentiPoligono(poli).map((s) => {
+                        if (s.valore == null) return s;
+                        if (s.manuale && !s.riferimento) return s; // manuali intatte
+                        const A = r.punti[s.da];
+                        const B = r.punti[s.a];
+                        if (!A || !B) return s;
+                        return { ...s, valore: arrotondaMisura(Math.hypot(B.x - A.x, B.y - A.y) / px) };
+                      });
+                      commit(
+                        annotazioni.map((a) =>
+                          a.id === poli.id
+                            ? ({
+                                ...poli,
+                                punti: r.punti,
+                                segmenti: segsFinali,
+                                vincoli: vincoli.length ? vincoli : undefined,
+                                lati: undefined,
+                                offsetLati: undefined
+                              } as QuotaPoligono)
+                            : a
+                        )
+                      );
+                      mostraToast('successo', 'Vincoli aggiornati: la forma si è adattata.');
+                    }
+                  : undefined
+              }
               onRicostruisci={foto.ePianta ? () => void ricostruisciPianta(poli) : undefined}
               onElimina={() => {
                 commit(annotazioni.filter((a) => a.id !== poli.id));
@@ -3070,7 +3117,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                   nota: nuova.nota,
                   abbInizio: nuova.abbInizio,
                   abbFine: nuova.abbFine,
-                  simbolo: extra?.simbolo
+                  simbolo: extra?.simbolo,
+                  // quota inserita a mano → FISSA (non si modifica da sola quando
+                  // si cambiano altre quote); solo i lati auto si adattano
+                  manuale: foto.ePianta && nuova.valore != null ? true : undefined
                 };
                 const nuoviSegs = segs.map((s, i) => (i === rif.indice ? nuovoSeg : s));
                 // la pianta ha vincoli NON lineari (angoli o diagonali driving)?
@@ -3094,9 +3144,11 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                   if (px != null) {
                     const r = risolviPianta(poli.punti, nuoviSegs, poli.vincoli, px);
                     if (r.ok) {
-                      // le quote di RIFERIMENTO si riquotano dalla nuova geometria
+                      // le quote AUTO e di RIFERIMENTO si riquotano dalla nuova
+                      // geometria; quelle MANUALI (driving) restano intatte
                       const segsFinali = nuoviSegs.map((s) => {
-                        if (!s.riferimento || s.valore == null) return s;
+                        if (s.valore == null) return s;
+                        if (s.manuale && !s.riferimento) return s;
                         const A = r.punti[s.da];
                         const B = r.punti[s.a];
                         if (!A || !B) return s;
@@ -3142,15 +3194,12 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                       // vanno riquotati dalla nuova geometria: l'etichetta deve
                       // dire la lunghezza reale, non un valore ormai incoerente.
                       const segsFinali = nuoviSegs.map((s) => {
-                        const eIdx =
-                          (s.da + 1) % nLati === s.a
-                            ? s.da
-                            : (s.a + 1) % nLati === s.da
-                              ? s.a
-                              : null;
-                        const bloccatoQ =
-                          eIdx != null && (s.bloccato || s.ancora === 'lato' || eIdx === edgeIdx);
-                        if (bloccatoQ || s.valore == null) return s;
+                        if (s.valore == null) return s;
+                        // le quote MANUALI/bloccate/ancorate (non riferimento)
+                        // restano intatte; solo le AUTO seguono la geometria
+                        const fisso =
+                          (s.manuale || s.bloccato || s.ancora === 'lato') && !s.riferimento;
+                        if (fisso) return s;
                         const A = esito.punti[s.da];
                         const B = esito.punti[s.a];
                         if (!A || !B) return s;
@@ -4097,6 +4146,7 @@ function EditorPoligono({
   onSnapAngoli,
   onFondiCollineari,
   onQuotaAngolo,
+  onApplicaVincoli,
   onRicostruisci,
   onElimina,
   onChiudi
@@ -4118,6 +4168,9 @@ function EditorPoligono({
   /** imposta/rimuove una quota angolare (driving) al vertice; null = rimuove.
    *  Solo piante: comanda la forma via il risolutore geometrico. */
   onQuotaAngolo?: (vertice: number, gradi: number | null) => void;
+  /** applica la nuova lista di vincoli geometrici (Fase 3) risolvendo la
+   *  geometria; se in conflitto avvisa e non modifica. Solo piante. */
+  onApplicaVincoli?: (vincoli: VincoloPianta[]) => void;
   /** ricostruisce la forma dalle misure inserite (parametrica): solo piante */
   onRicostruisci?: () => void;
   onElimina: () => void;
@@ -4131,6 +4184,10 @@ function EditorPoligono({
   const calibrata = haCalibrazione(foto);
   const colore = poli.stile.colore;
   const area = areaReale(poli, foto);
+  // form dei vincoli geometrici (Fase 3)
+  const [tipoVincolo, setTipoVincolo] = useState<TipoVincoloPianta>('orizzontale');
+  const [latoVincA, setLatoVincA] = useState(0);
+  const [latoVincB, setLatoVincB] = useState(1);
 
   const scriviSegmenti = (segmenti: SegmentoQuota[], extra: Partial<QuotaPoligono> = {}) =>
     onModifica({ segmenti, lati: undefined, offsetLati: undefined, valoreAuto: false, ...extra });
@@ -4547,6 +4604,116 @@ function EditorPoligono({
             </span>
           </div>
         )}
+        {onApplicaVincoli &&
+          (() => {
+            const DUE: TipoVincoloPianta[] = [
+              'parallelo',
+              'perpendicolare',
+              'ugualeLunghezza',
+              'collineare'
+            ];
+            const OPZIONI: Array<{ t: TipoVincoloPianta; testo: string }> = [
+              { t: 'orizzontale', testo: 'Orizzontale' },
+              { t: 'verticale', testo: 'Verticale' },
+              { t: 'parallelo', testo: 'Parallelo' },
+              { t: 'perpendicolare', testo: 'Perpendicolare' },
+              { t: 'ugualeLunghezza', testo: 'Uguale lunghezza' },
+              { t: 'collineare', testo: 'Collineare' }
+            ];
+            const simbolo: Partial<Record<TipoVincoloPianta, string>> = {
+              orizzontale: '─',
+              verticale: '│',
+              parallelo: '∥',
+              perpendicolare: '⊥',
+              ugualeLunghezza: '=',
+              collineare: '⋯'
+            };
+            const due = DUE.includes(tipoVincolo);
+            // clamp difensivo: n può calare (eliminazione lato) lasciando indici stantii
+            const a = Math.min(latoVincA, n - 1);
+            const b = Math.min(latoVincB, n - 1);
+            const vinciGeom = (poli.vincoli ?? []).filter((v) => v.tipo !== 'angolo');
+            const applica = () => {
+              const rif =
+                due && a !== b
+                  ? [
+                      { entita: 'lato' as const, indice: a },
+                      { entita: 'lato' as const, indice: b }
+                    ]
+                  : [{ entita: 'lato' as const, indice: a }];
+              const nuovo: VincoloPianta = { id: nuovoId(), tipo: tipoVincolo, riferimenti: rif };
+              onApplicaVincoli([...(poli.vincoli ?? []), nuovo]);
+            };
+            return (
+              <div className="campo">
+                <label>Vincoli geometrici (Fase 3)</label>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <select
+                    value={tipoVincolo}
+                    onChange={(e) => setTipoVincolo(e.target.value as TipoVincoloPianta)}
+                  >
+                    {OPZIONI.map((o) => (
+                      <option key={o.t} value={o.t}>
+                        {o.testo}
+                      </option>
+                    ))}
+                  </select>
+                  <label style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                    lato
+                    <select value={a} onChange={(e) => setLatoVincA(Number(e.target.value))}>
+                      {poli.punti.map((_, i) => (
+                        <option key={i} value={i}>
+                          {i + 1}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {due && (
+                    <label style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                      e lato
+                      <select value={b} onChange={(e) => setLatoVincB(Number(e.target.value))}>
+                        {poli.punti.map((_, i) => (
+                          <option key={i} value={i}>
+                            {i + 1}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  <button className="btn" onClick={applica} disabled={due && a === b}>
+                    ＋ Applica
+                  </button>
+                </div>
+                {vinciGeom.length > 0 && (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                    {vinciGeom.map((v) => {
+                      const li = v.riferimenti.map((r) => (r.indice ?? 0) + 1).join('–');
+                      return (
+                        <span
+                          key={v.id}
+                          className="btn"
+                          style={{ minHeight: 34, padding: '0 8px', display: 'inline-flex', gap: 6, alignItems: 'center' }}
+                        >
+                          {simbolo[v.tipo] ?? ''} lato {li}
+                          <button
+                            aria-label="Rimuovi vincolo"
+                            style={{ background: 'none', border: 'none', color: 'var(--testo-2)', cursor: 'pointer' }}
+                            onClick={() => onApplicaVincoli((poli.vincoli ?? []).filter((x) => x.id !== v.id))}
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+                <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
+                  Applica un vincolo tra i lati (numerati come le quote): la forma si adatta
+                  rispettando i vincoli. Ripeti per vincolare più lati insieme.
+                </span>
+              </div>
+            );
+          })()}
         <div className="campo">
           <label>Colore e dimensione</label>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>

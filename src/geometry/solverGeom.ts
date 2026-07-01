@@ -28,7 +28,17 @@ export type VincoloGeom =
   /** lato a→b verticale (stessa x) */
   | { tipo: 'verticale'; a: number; b: number; peso?: number }
   /** vertice a bloccato nella posizione (x,y) */
-  | { tipo: 'fisso'; a: number; x: number; y: number; peso?: number };
+  | { tipo: 'fisso'; a: number; x: number; y: number; peso?: number }
+  /** lati a→b e c→d paralleli */
+  | { tipo: 'parallelo'; a: number; b: number; c: number; d: number; peso?: number }
+  /** lati a→b e c→d perpendicolari */
+  | { tipo: 'perpendicolare'; a: number; b: number; c: number; d: number; peso?: number }
+  /** lati a→b e c→d sulla stessa retta */
+  | { tipo: 'collineare'; a: number; b: number; c: number; d: number; peso?: number }
+  /** |a→b| = |c→d| (stessa lunghezza) */
+  | { tipo: 'ugualeLunghezza'; a: number; b: number; c: number; d: number; peso?: number }
+  /** vertici a e b coincidenti */
+  | { tipo: 'coincidente'; a: number; b: number; peso?: number };
 
 export interface EsitoGeom {
   punti: Punto[];
@@ -85,6 +95,31 @@ function residuiVincoli(x: number[], vincoli: VincoloGeom[]): number[] {
       cos = Math.max(-1, Math.min(1, cos));
       const ang = Math.acos(cos); // [0, π] (angolo non orientato)
       r.push((ang - v.gradi * GRADI) * w);
+    } else if (v.tipo === 'ugualeLunghezza') {
+      const l1 = Math.hypot(px(v.b) - px(v.a), py(v.b) - py(v.a));
+      const l2 = Math.hypot(px(v.d) - px(v.c), py(v.d) - py(v.c));
+      r.push((l1 - l2) * w);
+    } else if (v.tipo === 'coincidente') {
+      r.push((px(v.a) - px(v.b)) * w);
+      r.push((py(v.a) - py(v.b)) * w);
+    } else if (v.tipo === 'parallelo' || v.tipo === 'perpendicolare') {
+      const e1x = px(v.b) - px(v.a);
+      const e1y = py(v.b) - py(v.a);
+      const e2x = px(v.d) - px(v.c);
+      const e2y = py(v.d) - py(v.c);
+      const l1 = Math.max(Math.hypot(e1x, e1y), 1e-9);
+      // residuo in PIXEL (proiezione di e2 lungo la direzione critica), così è
+      // confrontabile con la tolleranza di convergenza espressa in px
+      if (v.tipo === 'parallelo') r.push(((e1x * e2y - e1y * e2x) / l1) * w);
+      else r.push(((e1x * e2x + e1y * e2y) / l1) * w);
+    } else if (v.tipo === 'collineare') {
+      const abx = px(v.b) - px(v.a);
+      const aby = py(v.b) - py(v.a);
+      const lab = Math.max(Math.hypot(abx, aby), 1e-9);
+      const distRetta = (X: number, Y: number) =>
+        ((X - px(v.a)) * aby - (Y - py(v.a)) * abx) / lab;
+      r.push(distRetta(px(v.c), py(v.c)) * w);
+      r.push(distRetta(px(v.d), py(v.d)) * w);
     }
   }
   return r;

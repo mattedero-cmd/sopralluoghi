@@ -127,6 +127,59 @@ describe('risolviGeom — angolo con lati liberi non collassa i bracci', () => {
   });
 });
 
+describe('risolviGeom — vincoli geometrici (Fase 3)', () => {
+  it('perpendicolare: raddrizza un angolo storto a 90°', () => {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 110, y: 90 } // spigolo 1→2 storto
+    ];
+    const vincoli: VincoloGeom[] = [
+      { tipo: 'fisso', a: 0, x: 0, y: 0 },
+      { tipo: 'fisso', a: 1, x: 100, y: 0 },
+      { tipo: 'perpendicolare', a: 0, b: 1, c: 1, d: 2 }
+    ];
+    const r = risolviGeom(punti, vincoli);
+    expect(r.ok).toBe(true);
+    expect(angolo(r.punti[0], r.punti[1], r.punti[2])).toBeCloseTo(90, 0);
+  });
+
+  it('parallelo: rende due lati paralleli', () => {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 90, y: 100 },
+      { x: 10, y: 90 } // lato 2→3 non parallelo a 0→1
+    ];
+    const vincoli: VincoloGeom[] = [
+      { tipo: 'fisso', a: 0, x: 0, y: 0 },
+      { tipo: 'fisso', a: 1, x: 100, y: 0 },
+      { tipo: 'parallelo', a: 0, b: 1, c: 3, d: 2 } // 3→2 parallelo a 0→1
+    ];
+    const r = risolviGeom(punti, vincoli);
+    expect(r.ok).toBe(true);
+    // il lato 3→2 diventa orizzontale (parallelo a 0→1): stessa y agli estremi
+    expect(r.punti[3].y).toBeCloseTo(r.punti[2].y, 1);
+  });
+
+  it('ugualeLunghezza: pareggia due lati', () => {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 200, y: 0 }, // lato lungo 200
+      { x: 200, y: 100 } // lato lungo 100
+    ];
+    const vincoli: VincoloGeom[] = [
+      { tipo: 'fisso', a: 0, x: 0, y: 0 },
+      { tipo: 'ugualeLunghezza', a: 0, b: 1, c: 1, d: 2 }
+    ];
+    const r = risolviGeom(punti, vincoli);
+    expect(r.ok).toBe(true);
+    const l1 = dist(r.punti[0], r.punti[1]);
+    const l2 = dist(r.punti[1], r.punti[2]);
+    expect(l1).toBeCloseTo(l2, 0);
+  });
+});
+
 describe('risolviGeom — vincoli incompatibili', () => {
   it('lati che violano la disuguaglianza triangolare → ok=false', () => {
     const punti: Punto[] = [
