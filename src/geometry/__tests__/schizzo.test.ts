@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { semplificaTracciato, raddrizzaStanza, squadra } from '../schizzo';
+import { semplificaTracciato, raddrizzaStanza, squadra, ricostruisciOrtogonale } from '../schizzo';
 import type { Punto } from '../../db/types';
+
+function lunghezzeReali(punti: Punto[], pxPerReale: number): number[] {
+  const n = punti.length;
+  return punti.map((p, i) => {
+    const q = punti[(i + 1) % n];
+    return Math.hypot(q.x - p.x, q.y - p.y) / pxPerReale;
+  });
+}
 
 describe('semplificaTracciato — Douglas-Peucker', () => {
   it('riduce molti punti su una retta ai soli estremi', () => {
@@ -88,5 +96,68 @@ describe('squadra — ortogonalizzazione a squadro', () => {
     expect(q[2].y).toBeCloseTo(q[3].y);
     // lato 3→0 verticale
     expect(q[3].x).toBeCloseTo(q[0].x);
+  });
+});
+
+describe('ricostruisciOrtogonale — ricostruzione parametrica dalle misure', () => {
+  // stanza a L disegnata a mano (proporzioni imprecise), in senso orario
+  const grezzo: Punto[] = [
+    { x: 100, y: 100 }, // v0
+    { x: 600, y: 110 }, // v1 top → destra
+    { x: 605, y: 180 }, // v2 giù
+    { x: 680, y: 175 }, // v3 rientro → destra
+    { x: 675, y: 500 }, // v4 giù
+    { x: 90, y: 510 } // v5 basso → sinistra (poi risale a v0)
+  ];
+
+  it('deriva i lati ignoti dalla chiusura (L-shape)', () => {
+    // note: top 503, destra-alta 20, basso 553, sinistra 235; i due lati del
+    // rientro (indici 2 e 3) sono ignoti e vanno derivati
+    const reali = [503, 20, null, null, 553, 235];
+    const r = ricostruisciOrtogonale(grezzo, reali, 2000, 1500);
+    expect(r).not.toBeNull();
+    const lung = lunghezzeReali(r!.punti, r!.pxPerReale);
+    expect(lung[0]).toBeCloseTo(503, 1);
+    expect(lung[1]).toBeCloseTo(20, 1);
+    expect(lung[2]).toBeCloseTo(50, 1); // rientro orizzontale: 553 − 503
+    expect(lung[3]).toBeCloseTo(215, 1); // rientro verticale: 235 − 20
+    expect(lung[4]).toBeCloseTo(553, 1);
+    expect(lung[5]).toBeCloseTo(235, 1);
+  });
+
+  it('il poligono ricostruito è chiuso (i lati tornano al punto di partenza)', () => {
+    const reali = [503, 20, null, null, 553, 235];
+    const r = ricostruisciOrtogonale(grezzo, reali, 2000, 1500)!;
+    // somma degli spostamenti reali H e V ≈ 0 (chiusura)
+    const lung = lunghezzeReali(r.punti, r.pxPerReale);
+    // H: +503 +50 −553 = 0 ; V: +20 +215 −235 = 0
+    expect(lung[0] + lung[2] - lung[4]).toBeCloseTo(0, 1);
+    expect(lung[1] + lung[3] - lung[5]).toBeCloseTo(0, 1);
+  });
+
+  it('rifiuta la ricostruzione se un intero asse è privo di misure (poligono piatto)', () => {
+    const rett: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 400, y: 5 },
+      { x: 405, y: 300 },
+      { x: 5, y: 295 }
+    ];
+    // entrambi i lati orizzontali senza misura → larghezza indeterminata
+    expect(ricostruisciOrtogonale(rett, [null, 300, null, 300], 2000, 1500)).toBeNull();
+  });
+
+  it('un rettangolo con tutti i lati noti mantiene le misure', () => {
+    const rett: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 400, y: 5 },
+      { x: 405, y: 300 },
+      { x: 5, y: 295 }
+    ];
+    const r = ricostruisciOrtogonale(rett, [500, 300, 500, 300], 2000, 1500)!;
+    const lung = lunghezzeReali(r.punti, r.pxPerReale);
+    expect(lung[0]).toBeCloseTo(500, 1);
+    expect(lung[1]).toBeCloseTo(300, 1);
+    expect(lung[2]).toBeCloseTo(500, 1);
+    expect(lung[3]).toBeCloseTo(300, 1);
   });
 });

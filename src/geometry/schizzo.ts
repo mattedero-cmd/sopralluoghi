@@ -149,6 +149,90 @@ function rimuoviCollineari(vertici: Punto[], epsilon: number): Punto[] {
 }
 
 /**
+ * Ricostruzione PARAMETRICA di una stanza rettilinea dalle misure inserite.
+ * Ogni lato è portato a orizzontale/verticale; i lati con misura nota
+ * (`reali[i]`) fanno da vincolo, quelli ignoti (null) vengono ricavati dalla
+ * CHIUSURA del poligono (per ogni asse la somma delle proiezioni è zero):
+ * - 1 ignoto sull'asse → determinato esattamente;
+ * - ≥2 ignoti → ripartiti in proporzione alla lunghezza disegnata;
+ * - 0 ignoti ma non torna → l'errore è distribuito sui lati noti.
+ * La forma reale viene poi scalata per riempire la tela e centrata.
+ * Restituisce anche `pxPerReale` (px per unità reale) per impostare la scala.
+ * Pensata per stanze a soli angoli retti (rettangoli, L, T…).
+ */
+export function ricostruisciOrtogonale(
+  punti: Punto[],
+  reali: (number | null)[],
+  larghezzaCanvas: number,
+  altezzaCanvas: number
+): { punti: Punto[]; pxPerReale: number } | null {
+  const n = punti.length;
+  if (n < 3 || reali.length !== n) return null;
+
+  // 1) asse (orizz/vert), segno geometrico e misura nota di ogni lato
+  const lati = punti.map((p, i) => {
+    const q = punti[(i + 1) % n];
+    const dx = q.x - p.x;
+    const dy = q.y - p.y;
+    const horiz = Math.abs(dx) >= Math.abs(dy);
+    const segno = (horiz ? Math.sign(dx) : Math.sign(dy)) || 1;
+    return { horiz, segno, reale: reali[i], pxLen: Math.hypot(dx, dy) };
+  });
+
+  // 2) spostamento con segno di ogni lato, risolvendo la chiusura per asse
+  const segnato = new Array<number>(n).fill(0);
+  for (const horiz of [true, false]) {
+    const gruppo = lati.map((l, i) => ({ l, i })).filter((x) => x.l.horiz === horiz);
+    const noti = gruppo.filter((x) => x.l.reale !== null);
+    const ignoti = gruppo.filter((x) => x.l.reale === null);
+    let somma = 0;
+    for (const x of noti) {
+      segnato[x.i] = x.l.segno * (x.l.reale as number);
+      somma += segnato[x.i];
+    }
+    if (ignoti.length === 1) {
+      segnato[ignoti[0].i] = -somma;
+    } else if (ignoti.length >= 2) {
+      const totPx = ignoti.reduce((s, x) => s + x.l.pxLen, 0) || 1;
+      for (const x of ignoti) segnato[x.i] = -somma * (x.l.pxLen / totPx);
+    } else if (Math.abs(somma) > 1e-6) {
+      const totAbs = noti.reduce((s, x) => s + Math.abs(segnato[x.i]), 0) || 1;
+      for (const x of noti) segnato[x.i] -= somma * (Math.abs(segnato[x.i]) / totAbs);
+    }
+  }
+
+  // 3) percorre il contorno in coordinate reali
+  const reale: Punto[] = [];
+  let cx = 0;
+  let cy = 0;
+  for (let i = 0; i < n; i++) {
+    reale.push({ x: cx, y: cy });
+    if (lati[i].horiz) cx += segnato[i];
+    else cy += segnato[i];
+  }
+
+  // 4) scala per riempire la tela (~80%) e centra
+  const xs = reale.map((p) => p.x);
+  const ys = reale.map((p) => p.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const largR = maxX - minX;
+  const altR = maxY - minY;
+  // se un intero asse è privo di misure note collassa a zero (poligono piatto
+  // degenere): niente informazione per ricostruirlo → si rifiuta. Una stanza
+  // chiusa ha sempre estensione su entrambi gli assi.
+  if (largR < 1e-6 || altR < 1e-6) return null;
+  const estensione = Math.max(largR, altR);
+  const pxPerReale = (0.8 * Math.min(larghezzaCanvas, altezzaCanvas)) / estensione;
+  const offX = (larghezzaCanvas - largR * pxPerReale) / 2 - minX * pxPerReale;
+  const offY = (altezzaCanvas - altR * pxPerReale) / 2 - minY * pxPerReale;
+  const puntiPx = reale.map((p) => ({ x: p.x * pxPerReale + offX, y: p.y * pxPerReale + offY }));
+  return { punti: puntiPx, pxPerReale };
+}
+
+/**
  * Ortogonalizzazione "a squadro": porta ogni lato all'orizzontale o alla
  * verticale più vicina, mantenendo il poligono chiuso. Utile per le stanze
  * rettangolari; opzionale.

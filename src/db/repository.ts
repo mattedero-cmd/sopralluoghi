@@ -378,6 +378,34 @@ export async function creaPiantaDaFoto(progettoId: ID, sorgente: Foto): Promise<
   });
 }
 
+/**
+ * Imposta (o sostituisce) la FOTO DI RIFERIMENTO di una pianta esistente:
+ * copia immagine, miniatura, dimensioni e calibrazione della foto sorgente
+ * nella pianta, così lo schizzo si può ricalcare sopra una geometria reale.
+ * `aggiornaFoto` non tocca `origine`/`origineTipo`, quindi qui si scrive
+ * direttamente la tabella. Le annotazioni esistenti restano invariate.
+ */
+export async function impostaSfondoPianta(piantaId: ID, sorgente: Foto): Promise<void> {
+  const blobO = blobOrigine(sorgente);
+  const blobM = blobMiniatura(sorgente);
+  const origine = await blobO.arrayBuffer();
+  const miniatura = await blobM.arrayBuffer();
+  await scrivi('impostare la foto di riferimento', () =>
+    db.foto.update(piantaId, {
+      origine,
+      origineTipo: blobO.type || sorgente.origineTipo || 'image/jpeg',
+      miniatura,
+      miniaturaTipo: blobM.type || sorgente.miniaturaTipo || 'image/jpeg',
+      larghezzaPx: sorgente.larghezzaPx,
+      altezzaPx: sorgente.altezzaPx,
+      scala: sorgente.scala ? { ...sorgente.scala } : null,
+      piano: sorgente.piano ?? null,
+      sfondoNascosto: false,
+      modificataIl: ora()
+    })
+  );
+}
+
 export async function aggiornaFoto(
   id: ID,
   modifiche: Partial<Omit<Foto, 'id' | 'progettoId' | 'origine' | 'origineTipo' | 'creataIl'>>

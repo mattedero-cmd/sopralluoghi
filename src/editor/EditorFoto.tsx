@@ -29,11 +29,11 @@ import {
   segmentiPoligono,
   segmentoELato
 } from '../db/types';
-import { aggiornaFoto, aggiungiFoto, eliminaFoto, leggiImpostazioni, salvaAnnotazione, salvaAnnotazioniFoto } from '../db/repository';
+import { aggiornaFoto, aggiungiFoto, eliminaFoto, impostaSfondoPianta, leggiImpostazioni, salvaAnnotazione, salvaAnnotazioniFoto } from '../db/repository';
 import { blobOrigine, caricaImmagine, fotoIllegibile, importaFoto } from '../utils/image';
 import { caricaDettaglio } from '../utils/immaginiCallout';
 import { naviga } from '../router';
-import { ConfermaDialog, Modale, StatoApp, type RichiestaConferma } from '../components/comuni';
+import { ConfermaDialog, ImmagineBlob, Modale, StatoApp, type RichiestaConferma } from '../components/comuni';
 import { mostraToast } from '../state/toast';
 import { StageEditor, type ModalitaVincolo, type Strumento } from './StageEditor';
 import { FabbricaAnnotazioni } from './fabbrica';
@@ -52,7 +52,7 @@ import {
 } from '../geometry/calibrazione';
 import { etichettaPoligono, nomeFormaPoligono, simboliPoligono, versiSegmento } from '../geometry/primitive';
 import { ricalcolaTecniche } from '../geometry/quotaTecnica';
-import { raddrizzaStanza, squadra } from '../geometry/schizzo';
+import { raddrizzaStanza, ricostruisciOrtogonale, squadra } from '../geometry/schizzo';
 import {
   codiceCompletoForma,
   codiceLocaleForma,
@@ -351,6 +351,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [menuRichiamo, setMenuRichiamo] = useState(false);
   /** griglia di verifica sul piano calibrato (controllo visivo della scala) */
   const [mostraGriglia, setMostraGriglia] = useState(false);
+  /** picker della foto di riferimento (sfondo) per una pianta */
+  const [pickerSfondo, setPickerSfondo] = useState(false);
   /** poligono proposto dall'autoquotatura (base + altezza), da confermare */
   const [proposta, setProposta] = useState<QuotaPoligono | null>(null);
   /** angoli del quadrilatero rilevato (per l'opzione cerchio) */
@@ -993,8 +995,11 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       mostraToast('info', 'Schizzo non riconosciuto: traccia il contorno chiuso della stanza.');
       return;
     }
-    creaEseleziona(fabbrica.poligonoLati(vertici, annotazioni));
-    setStrumento('seleziona');
+    // resta nello strumento Schizzo: si possono aggiungere elementi consecutivi
+    // (stanze, muri interni); si quotano poi selezionandoli
+    const s = fabbrica.poligonoLati(vertici, annotazioni);
+    commit([...annotazioni, s]);
+    setSelezioneId(s.id);
   };
 
   const creaForma = (forma: TipoForma, punti: Punto[]) => {
@@ -1237,6 +1242,70 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     mostraToast('successo', 'Scala ricavata dal lato: gli altri lati sono ora misurati.');
   };
 
+  /** Ricostruzione parametrica della pianta (§12): il poligono viene ridisegnato
+   *  ad angoli retti rispettando i lati quotati; i lati senza misura si ricavano
+   *  dalla chiusura. La geometria non corrisponde più ai pixel della foto, quindi
+   *  si azzera l'eventuale piano prospettico e si imposta una scala lineare. */
+  const ricostruisciPianta = async (poli: QuotaPoligono) => {
+    if (!foto || !annotazioni) return;
+    const segs = segmentiPoligono(poli);
+    const nLati = poli.punti.length;
+    const reali = poli.punti.map((_, i) => {
+      const j = (i + 1) % nLati;
+      const seg = segs.find((s) => (s.da === i && s.a === j) || (s.da === j && s.a === i));
+      return seg && seg.valore !== null ? seg.valore : null;
+    });
+    if (reali.every((v) => v === null)) {
+      mostraToast('errore', 'Inserisci almeno una misura di un lato prima di ricostruire.');
+      return;
+    }
+    const r = ricostruisciOrtogonale(poli.punti, reali, foto.larghezzaPx, foto.altezzaPx);
+    if (!r) {
+      mostraToast(
+        'errore',
+        'Misure insufficienti: serve almeno un lato quotato in orizzontale e uno in verticale.'
+      );
+      return;
+    }
+    const scala = { px: r.pxPerReale, reale: 1, unita: poli.unita };
+    // la nuova geometria è in coordinate tela, scollegata dalla prospettiva foto
+    await aggiornaFoto(foto.id, { scala, piano: undefined });
+    const conNuovo = annotazioni.map((a) =>
+      a.id === poli.id
+        ? ({ ...a, punti: r.punti, lati: undefined, offsetLati: undefined, valoreAuto: true } as Annotazione)
+        : a
+    );
+    // si applicano QUI i valori con la NUOVA scala e si usa commit() diretto:
+    // commitGeometria rifarebbe applicaValoriAuto con la `foto` di closure ancora
+    // vecchia (scala/piano non ancora propagati da useLiveQuery), sovrascrivendo
+    // le misure appena calcolate con quelle della vecchia calibrazione.
+    commit(applicaValoriAuto(conNuovo, { scala, piano: undefined }));
+    mostraToast('successo', 'Pianta ricostruita in scala dalle misure inserite.');
+  };
+
+  /** Imposta una foto reale come riferimento (sfondo) della pianta, così lo
+   *  schizzo si ricalca su una geometria ben proporzionata. Se la pianta ha
+   *  già uno schizzo (tracciato su tela vuota, non allineato alla foto) lo si
+   *  azzera per ridisegnarlo sulla base reale — l'operazione è annullabile. */
+  const applicaSfondo = async (sorgente: Foto) => {
+    if (!foto) return;
+    setPickerSfondo(false);
+    try {
+      await impostaSfondoPianta(foto.id, sorgente);
+      // ricarica subito lo sfondo (l'effetto che carica l'immagine è ancorato
+      // all'id foto e non scatta al cambio di origine)
+      cacheAnalisi.current = null;
+      const img = await caricaImmagine(blobOrigine(sorgente));
+      setImmagine(img);
+      if (annotazioni && annotazioni.length > 0) commit([]);
+      setSelezioneId(null);
+      setStrumento('schizzo');
+      mostraToast('successo', 'Foto di riferimento impostata: ricalca lo schizzo sulla foto.');
+    } catch (e) {
+      mostraToast('errore', e instanceof Error ? e.message : 'Foto di riferimento non impostata.');
+    }
+  };
+
   const esporta = async () => {
     if (!foto || !annotazioni) return;
     salvaOra();
@@ -1443,6 +1512,16 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             onClick={() => setMostraGriglia((g) => !g)}
           >
             <Icona nome="griglia" />
+          </button>
+        )}
+        {foto.ePianta && (
+          <button
+            className="btn icona"
+            aria-label="Foto di riferimento"
+            title="Usa una foto reale come riferimento per lo schizzo"
+            onClick={() => setPickerSfondo(true)}
+          >
+            <Icona nome="fotocamera" />
           </button>
         )}
         {foto.ePianta && (
@@ -2159,6 +2238,50 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           onChiudi={() => setSchedaNote(false)}
         />
       )}
+      {pickerSfondo &&
+        (() => {
+          // niente piante, né la foto stessa, né foto danneggiate (origine vuota):
+          // impostarne una svuoterebbe la pianta rendendola illeggibile
+          const candidati = (fotoProgetto ?? []).filter(
+            (f) => !f.ePianta && f.id !== foto.id && !fotoIllegibile(f)
+          );
+          const haSchizzo = (annotazioni?.length ?? 0) > 0;
+          return (
+            <Modale titolo="Foto di riferimento" onChiudi={() => setPickerSfondo(false)}>
+              <p style={{ color: 'var(--testo-2)', marginTop: 0 }}>
+                Scegli una foto del progetto: diventa lo sfondo della pianta, così ricalchi lo
+                schizzo su una geometria già proporzionata. Potrai nasconderla in qualsiasi momento.
+              </p>
+              {haSchizzo && (
+                <p style={{ color: '#ff9500', fontWeight: 700, fontSize: 13 }}>
+                  ⚠ La pianta ha già uno schizzo: impostando la foto verrà rimosso per ridisegnarlo
+                  sulla foto (puoi annullare con ↶).
+                </p>
+              )}
+              {candidati.length === 0 ? (
+                <p style={{ color: 'var(--testo-2)' }}>
+                  Nessuna foto disponibile nel progetto. Scatta o importa una foto, poi riprova.
+                </p>
+              ) : (
+                <div
+                  className="griglia-foto-scelta"
+                  style={{ marginTop: 8, maxHeight: '52vh', overflowY: 'auto' }}
+                >
+                  {candidati.map((f) => (
+                    <button
+                      key={f.id}
+                      className="cella-foto"
+                      title={f.didascalia || 'Foto'}
+                      onClick={() => void applicaSfondo(f)}
+                    >
+                      <ImmagineBlob dati={f.miniatura} tipo={f.miniaturaTipo} alt={f.didascalia || 'Foto'} />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </Modale>
+          );
+        })()}
       {schedaScala && (
         <SchedaScala
           px={schedaScala.px}
@@ -2290,6 +2413,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                   )
                 )
               }
+              onRicostruisci={foto.ePianta ? () => void ricostruisciPianta(poli) : undefined}
               onElimina={() => {
                 commit(annotazioni.filter((a) => a.id !== poli.id));
                 setSelezioneId(null);
@@ -3275,6 +3399,7 @@ function EditorPoligono({
   onModifica,
   onModificaSegmento,
   onSquadra,
+  onRicostruisci,
   onElimina,
   onChiudi
 }: {
@@ -3290,6 +3415,8 @@ function EditorPoligono({
   onModificaSegmento: (indice: number) => void;
   /** raddrizza il poligono ad angoli retti (orizzontale/verticale) */
   onSquadra: () => void;
+  /** ricostruisce la forma dalle misure inserite (parametrica): solo piante */
+  onRicostruisci?: () => void;
   onElimina: () => void;
   onChiudi: () => void;
 }) {
@@ -3569,13 +3696,30 @@ function EditorPoligono({
         )}
         <div className="campo">
           <label>Forma</label>
-          <button
-            className="btn"
-            onClick={onSquadra}
-            title="Porta i lati a orizzontale/verticale (angoli retti): utile per le piante"
-          >
-            ⊾ Squadra ad angolo retto
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              className="btn"
+              onClick={onSquadra}
+              title="Porta i lati a orizzontale/verticale (angoli retti): utile per le piante"
+            >
+              ⊾ Squadra ad angolo retto
+            </button>
+            {onRicostruisci && (
+              <button
+                className="btn"
+                onClick={onRicostruisci}
+                title="Ridisegna la pianta rispettando le misure inserite; i lati senza misura si ricavano dalla chiusura"
+              >
+                ⧉ Ricostruisci dalle misure
+              </button>
+            )}
+          </div>
+          {onRicostruisci && (
+            <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
+              Inserisci le misure dei lati che conosci: la pianta viene ridisegnata in scala e i
+              lati mancanti si calcolano automaticamente.
+            </span>
+          )}
         </div>
         <div className="campo">
           <label>Colore e dimensione</label>
