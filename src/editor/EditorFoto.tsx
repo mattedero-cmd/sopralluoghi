@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import type {
@@ -45,6 +45,7 @@ import { calcolaCatene, sommaCatenaInUnita } from '../geometry/catene';
 import {
   applicaValoriAuto,
   areaReale,
+  arrotondaMisura,
   haCalibrazione,
   misuraSegmento,
   misureRettangolo,
@@ -52,7 +53,14 @@ import {
 } from '../geometry/calibrazione';
 import { etichettaPoligono, nomeFormaPoligono, simboliPoligono, versiSegmento } from '../geometry/primitive';
 import { ricalcolaTecniche } from '../geometry/quotaTecnica';
-import { raddrizzaStanza, ricostruisciOrtogonale, squadra } from '../geometry/schizzo';
+import { raddrizzaStanza, ricostruisciOrtogonale } from '../geometry/schizzo';
+import {
+  eliminaLatoRichiudi,
+  fondiCollineari,
+  risolviParametrico,
+  snapAngoliPoligono
+} from '../geometry/parametrico';
+import type { AncoraSegmento } from '../db/types';
 import {
   codiceCompletoForma,
   codiceLocaleForma,
@@ -108,6 +116,18 @@ function orientaFormato(
 function formattaAreaM2(v: number): string {
   const t = v >= 1 ? v.toFixed(2) : v >= 0.01 ? v.toFixed(3) : v.toFixed(4);
   return `${t.replace('.', ',')} m²`;
+}
+
+/**
+ * Pixel per una unità reale (`unita`), per il solver parametrico delle piante.
+ * Vale solo con scala LINEARE (niente piano prospettico, che è non lineare).
+ * Restituisce null se la pianta non è calibrata linearmente.
+ */
+function pxPerUnita(foto: Foto, unita: Unita): number | null {
+  if (foto.piano || !foto.scala || foto.scala.px <= 0) return null;
+  const mmScala = inMillimetri(foto.scala.reale, foto.scala.unita);
+  if (mmScala <= 0) return null;
+  return (foto.scala.px / mmScala) * inMillimetri(1, unita);
 }
 
 /**
@@ -353,6 +373,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [mostraGriglia, setMostraGriglia] = useState(false);
   /** picker della foto di riferimento (sfondo) per una pianta */
   const [pickerSfondo, setPickerSfondo] = useState(false);
+  /** passo di snap angolare (gradi) applicato allo schizzo pianta: 0 = libero */
+  const [snapSchizzo, setSnapSchizzo] = useState<number>(45);
   /** poligono proposto dall'autoquotatura (base + altezza), da confermare */
   const [proposta, setProposta] = useState<QuotaPoligono | null>(null);
   /** angoli del quadrilatero rilevato (per l'opzione cerchio) */
@@ -990,15 +1012,20 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     for (let i = 0; i + 1 < puntiFlat.length; i += 2) {
       punti.push({ x: puntiFlat[i], y: puntiFlat[i + 1] });
     }
-    const vertici = raddrizzaStanza(punti);
+    let vertici = raddrizzaStanza(punti);
     if (!vertici) {
       mostraToast('info', 'Schizzo non riconosciuto: traccia il contorno chiuso della stanza.');
       return;
     }
+    // snap angolare (30/45/90°): aggancia i lati al passo scelto e richiude,
+    // evitando i micro-segmenti storti del tratto a mano libera. La tolleranza
+    // passo/2 aggancia ogni lato al multiplo più vicino (l'utente ha scelto il
+    // passo apposta; "libero" = nessuno snap)
+    if (snapSchizzo > 0) vertici = snapAngoliPoligono(vertici, snapSchizzo, snapSchizzo / 2);
     // resta nello strumento Schizzo: si possono aggiungere elementi consecutivi
     // (stanze, muri interni); si quotano poi selezionandoli
     const s = fabbrica.poligonoLati(vertici, annotazioni);
-    commit([...annotazioni, s]);
+    commit([...annotazioni, { ...s, snapAngolo: snapSchizzo > 0 ? snapSchizzo : undefined }]);
     setSelezioneId(s.id);
   };
 
@@ -1610,6 +1637,34 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           <button className="btn primario" onClick={() => setLegendaAperta(true)}>
             <Icona nome="documento" dimensione={18} /> Legenda
           </button>
+          <button className="btn" onClick={() => setStrumento('seleziona')}>
+            <Icona nome="check" dimensione={18} /> Fine
+          </button>
+        </div>
+      )}
+
+      {strumento === 'schizzo' && (
+        <div className="barra-etichetta" role="status">
+          <span className="hint">Traccia il contorno chiuso della stanza · snap:</span>
+          <span className="segmenti" role="group" aria-label="Snap angolare dello schizzo">
+            {(
+              [
+                [0, 'libero'],
+                [30, '30°'],
+                [45, '45°'],
+                [90, '90°']
+              ] as const
+            ).map(([v, etichetta]) => (
+              <button
+                key={v}
+                className={snapSchizzo === v ? 'attivo' : ''}
+                onClick={() => setSnapSchizzo(v)}
+                title={v === 0 ? 'Nessuno snap angolare' : `Aggancia i lati a multipli di ${v}°`}
+              >
+                {etichetta}
+              </button>
+            ))}
+          </span>
           <button className="btn" onClick={() => setStrumento('seleziona')}>
             <Icona nome="check" dimensione={18} /> Fine
           </button>
@@ -2404,15 +2459,38 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 )
               }
               onModificaSegmento={(indice) => setQuotaInModifica({ tipo: 'segmento', id: poli.id, indice })}
-              onSquadra={() =>
+              onSnapAngoli={(passo) =>
+                // pulsante esplicito: tolleranza = passo/2 → aggancia TUTTI i lati
+                // al multiplo più vicino (non solo quelli già quasi allineati)
                 commitGeometria(
                   annotazioni.map((a) =>
                     a.id === poli.id
-                      ? ({ ...poli, punti: squadra(poli.punti), lati: undefined, offsetLati: undefined } as QuotaPoligono)
+                      ? ({
+                          ...poli,
+                          punti: snapAngoliPoligono(poli.punti, passo, passo / 2),
+                          snapAngolo: passo,
+                          lati: undefined,
+                          offsetLati: undefined
+                        } as QuotaPoligono)
                       : a
                   )
                 )
               }
+              onFondiCollineari={() => {
+                const r = fondiCollineari(poli.punti, segmentiPoligono(poli));
+                if (!r) {
+                  mostraToast('info', 'Nessun lato allineato da unire.');
+                  return;
+                }
+                commitGeometria(
+                  annotazioni.map((a) =>
+                    a.id === poli.id
+                      ? ({ ...poli, punti: r.punti, segmenti: r.segmenti, lati: undefined, offsetLati: undefined } as QuotaPoligono)
+                      : a
+                  )
+                );
+                mostraToast('successo', `Uniti ${r.rimossi} vertici: lati allineati fusi.`);
+              }}
               onRicostruisci={foto.ePianta ? () => void ricostruisciPianta(poli) : undefined}
               onElimina={() => {
                 commit(annotazioni.filter((a) => a.id !== poli.id));
@@ -2469,11 +2547,90 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             ...poli,
             segmenti: segs.map((s) => ({ ...s, simbolo: undefined }))
           })[rif.indice];
+          // indice del LATO (spigolo i→i+1) rappresentato dal segmento; null = diagonale
+          const nLati = poli.punti.length;
+          const edgeIdx =
+            (seg.da + 1) % nLati === seg.a ? seg.da : (seg.a + 1) % nLati === seg.da ? seg.a : null;
+          const eLato = edgeIdx != null;
+          // aggiorna un campo del segmento corrente e committa subito (ancore/blocco)
+          const aggiornaSeg = (patch: Partial<SegmentoQuota>) =>
+            scriviPoligono({ segmenti: segs.map((s, i) => (i === rif.indice ? { ...s, ...patch } : s)) });
+          // elimina il LATO e richiudi la figura (pianta parametrica)
+          const eliminaLato = () => {
+            if (edgeIdx == null) return;
+            const r = eliminaLatoRichiudi(poli.punti, segs, edgeIdx);
+            if (!r) {
+              // scenderebbe sotto i 3 vertici → si elimina l'intera forma
+              commit(annotazioni.filter((a) => a.id !== poli.id));
+              setSelezioneId(null);
+              setQuotaInModifica(null);
+              return;
+            }
+            commitGeometria(
+              annotazioni.map((a) =>
+                a.id === poli.id
+                  ? ({ ...poli, punti: r.punti, segmenti: r.segmenti, lati: undefined, offsetLati: undefined } as QuotaPoligono)
+                  : a
+              )
+            );
+            tornaAlPoligono();
+            mostraToast('successo', 'Lato eliminato: figura richiusa.');
+          };
+          // controlli parametrici (ancore, blocco, elimina lato): solo piante, solo lati
+          const extraPianta =
+            foto.ePianta && eLato ? (
+              <>
+                <div className="campo">
+                  <label>Vincoli (pianta parametrica)</label>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span className="segmenti" role="group" aria-label="Ancora del lato">
+                      {(
+                        [
+                          ['none', '—'],
+                          ['vertice-da', 'vertice'],
+                          ['centro', 'centro'],
+                          ['lato', 'lato']
+                        ] as const
+                      ).map(([v, etichetta]) => (
+                        <button
+                          key={v}
+                          className={(seg.ancora ?? 'none') === v ? 'attivo' : ''}
+                          onClick={() =>
+                            aggiornaSeg({ ancora: v === 'none' ? undefined : (v as AncoraSegmento) })
+                          }
+                        >
+                          {etichetta}
+                        </button>
+                      ))}
+                    </span>
+                    <button
+                      className={`btn${seg.bloccato ? ' attivo' : ''}`}
+                      onClick={() => aggiornaSeg({ bloccato: !seg.bloccato })}
+                      title="Blocca la lunghezza di questo lato: non si adatta quando modifichi altre quote"
+                    >
+                      {seg.bloccato ? '🔒 Bloccato' : '🔓 Blocca lunghezza'}
+                    </button>
+                  </div>
+                  <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
+                    Ancora un punto e la figura si riadatta attorno a quello; blocca un lato per
+                    tenerne fissa la misura quando cambi le altre quote.
+                  </span>
+                </div>
+                {nLati > 3 && (
+                  <div className="campo">
+                    <button className="btn pericolo" onClick={eliminaLato}>
+                      ✂ Elimina lato e richiudi
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : undefined;
           return (
             <EditorQuota
               quota={quotaSeg}
               immagine={immagine}
               nomenclatura={{ simbolo: seg.simbolo ?? '', auto: simboloAuto }}
+              extra={extraPianta}
               onCalibraDaQuota={
                 // con un piano prospettico i lati sono già misurati
                 // dall'omografia: la scala lineare sarebbe ignorata → niente pulsante
@@ -2508,6 +2665,78 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                   simbolo: extra?.simbolo
                 };
                 const nuoviSegs = segs.map((s, i) => (i === rif.indice ? nuovoSeg : s));
+                // PIANTA PARAMETRICA: modificando la quota di un lato, la geometria
+                // si adatta davvero (i vertici si spostano) mantenendo la chiusura.
+                if (foto.ePianta && eLato && nuova.valore != null && nuova.unita === poli.unita) {
+                  const px = pxPerUnita(foto, poli.unita);
+                  if (px != null) {
+                    const esito = risolviParametrico(poli.punti, nuoviSegs, {
+                      pxPerReale: px,
+                      latoModificato: edgeIdx ?? undefined
+                    });
+                    if (esito.ok) {
+                      // i lati NON bloccati che la chiusura ha dovuto cambiare
+                      // vanno riquotati dalla nuova geometria: l'etichetta deve
+                      // dire la lunghezza reale, non un valore ormai incoerente.
+                      const segsFinali = nuoviSegs.map((s) => {
+                        const eIdx =
+                          (s.da + 1) % nLati === s.a
+                            ? s.da
+                            : (s.a + 1) % nLati === s.da
+                              ? s.a
+                              : null;
+                        const bloccatoQ =
+                          eIdx != null && (s.bloccato || s.ancora === 'lato' || eIdx === edgeIdx);
+                        if (bloccatoQ || s.valore == null) return s;
+                        const A = esito.punti[s.da];
+                        const B = esito.punti[s.a];
+                        if (!A || !B) return s;
+                        return { ...s, valore: arrotondaMisura(Math.hypot(B.x - A.x, B.y - A.y) / px) };
+                      });
+                      scriviPoligono({
+                        punti: esito.punti,
+                        segmenti: segsFinali,
+                        unita: nuova.unita,
+                        stato: nuova.stato,
+                        valoreAuto: false,
+                        stile: nuova.stile
+                      });
+                      tornaAlPoligono();
+                      return;
+                    }
+                    if (esito.avvisi.includes('sovravincolato'))
+                      mostraToast(
+                        'errore',
+                        'Troppi vincoli: la figura non può chiudersi. Sblocca un lato o togli un’ancora.'
+                      );
+                    else if (esito.avvisi.includes('lunghezza-negativa'))
+                      mostraToast(
+                        'errore',
+                        'Misura non compatibile con la forma: un lato risulterebbe di lunghezza nulla.'
+                      );
+                    // fallthrough: salva comunque il valore, senza spostare la geometria
+                  } else if (!foto.scala && !foto.piano) {
+                    // pianta non calibrata: questa quota FISSA la scala e misura
+                    // subito gli altri lati dalla geometria (come "Usa come scala")
+                    const pxLen = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+                    if (pxLen > 1 && nuova.valore > 0) {
+                      const scala = { px: pxLen, reale: nuova.valore, unita: nuova.unita };
+                      void aggiornaFoto(foto.id, { scala });
+                      const conAuto = annotazioni.map((a) =>
+                        a.id === poli.id
+                          ? ({ ...poli, segmenti: nuoviSegs, unita: nuova.unita, stato: nuova.stato, stile: nuova.stile, valoreAuto: true, lati: undefined, offsetLati: undefined } as Annotazione)
+                          : a
+                      );
+                      commit(applicaValoriAuto(conAuto, { scala, piano: undefined }));
+                      mostraToast(
+                        'successo',
+                        'Scala della pianta impostata da questo lato: ora modificando le quote la geometria si adatta.'
+                      );
+                      tornaAlPoligono();
+                      return;
+                    }
+                  }
+                }
                 // valore/offset/posizione/nota → segmento; unità/stato/colore → poligono
                 scriviPoligono({
                   segmenti: nuoviSegs,
@@ -2559,6 +2788,7 @@ function EditorQuota({
   quota,
   immagine,
   nomenclatura,
+  extra,
   onSalva,
   onCalibraDaQuota,
   onElimina,
@@ -2570,6 +2800,8 @@ function EditorQuota({
    *  il simbolo (b, h, B, D…). `auto` è il simbolo dedotto, mostrato come
    *  segnaposto; `simbolo` è l'eventuale override già impostato. */
   nomenclatura?: { simbolo: string; auto: string };
+  /** controlli aggiuntivi (es. vincoli/ancore delle piante parametriche) */
+  extra?: ReactNode;
   onSalva: (q: Quota, extra?: { simbolo?: string }) => void;
   /** se presente, mostra "Usa come scala": ricava la calibrazione da questa
    *  misura (utile sulle piante non calibrate) */
@@ -2874,6 +3106,7 @@ function EditorQuota({
             </span>
           </div>
         </div>
+        {extra}
       </div>
       <div className="eq-azioni">
         <button className="btn pericolo" onClick={onElimina}>
@@ -3398,7 +3631,8 @@ function EditorPoligono({
   onNumero,
   onModifica,
   onModificaSegmento,
-  onSquadra,
+  onSnapAngoli,
+  onFondiCollineari,
   onRicostruisci,
   onElimina,
   onChiudi
@@ -3413,8 +3647,10 @@ function EditorPoligono({
   onNumero: (n: number) => void;
   onModifica: (m: Partial<QuotaPoligono>) => void;
   onModificaSegmento: (indice: number) => void;
-  /** raddrizza il poligono ad angoli retti (orizzontale/verticale) */
-  onSquadra: () => void;
+  /** aggancia i lati al passo angolare indicato (90/45/30°) e richiude */
+  onSnapAngoli: (passo: number) => void;
+  /** fonde i lati consecutivi allineati in uno solo (se ce ne sono) */
+  onFondiCollineari: () => void;
   /** ricostruisce la forma dalle misure inserite (parametrica): solo piante */
   onRicostruisci?: () => void;
   onElimina: () => void;
@@ -3696,14 +3932,29 @@ function EditorPoligono({
         )}
         <div className="campo">
           <label>Forma</label>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, color: 'var(--testo-2)' }}>Raddrizza:</span>
+            <span className="segmenti" role="group" aria-label="Snap angolare">
+              {[90, 45, 30].map((p) => (
+                <button
+                  key={p}
+                  className={poli.snapAngolo === p ? 'attivo' : ''}
+                  title={`Aggancia i lati a multipli di ${p}° e richiudi`}
+                  onClick={() => onSnapAngoli(p)}
+                >
+                  {p}°
+                </button>
+              ))}
+            </span>
             <button
               className="btn"
-              onClick={onSquadra}
-              title="Porta i lati a orizzontale/verticale (angoli retti): utile per le piante"
+              onClick={onFondiCollineari}
+              title="Unisci in un solo lato i lati consecutivi allineati (rimuove i vertici inutili)"
             >
-              ⊾ Squadra ad angolo retto
+              ⇥ Unisci lati allineati
             </button>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
             {onRicostruisci && (
               <button
                 className="btn"
@@ -3717,7 +3968,8 @@ function EditorPoligono({
           {onRicostruisci && (
             <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
               Inserisci le misure dei lati che conosci: la pianta viene ridisegnata in scala e i
-              lati mancanti si calcolano automaticamente.
+              lati mancanti si calcolano automaticamente. Modificando una quota, la geometria si
+              adatta mantenendo la figura chiusa.
             </span>
           )}
         </div>

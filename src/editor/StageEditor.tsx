@@ -2281,6 +2281,59 @@ function ManiglieAnnotazione({
               return { ...ann, lati: undefined, offsetLati: undefined, segmenti: nuovi };
             });
           })}
+          {/* glifi delle ancore/vincoli (piante parametriche): marcatori non
+              trascinabili, visibili solo mentre l'elemento è selezionato */}
+          {segs.map((seg, i) => {
+            if (!seg.ancora) return null;
+            const a = punti[seg.da];
+            const b = punti[seg.a];
+            if (!a || !b) return null;
+            const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+            const p = seg.ancora === 'vertice-da' ? a : seg.ancora === 'vertice-a' ? b : mid;
+            const gr = raggio * 0.7;
+            const colA = ann.stile.colore || '#00A896';
+            const key = `anc-${i}`;
+            if (seg.ancora === 'centro') {
+              return (
+                <Line
+                  key={key}
+                  points={[p.x, p.y - gr, p.x + gr, p.y, p.x, p.y + gr, p.x - gr, p.y]}
+                  closed
+                  fill="#ffffff"
+                  stroke={colA}
+                  strokeWidth={2.5 / scala}
+                  listening={false}
+                />
+              );
+            }
+            if (seg.ancora === 'lato') {
+              return (
+                <Rect
+                  key={key}
+                  x={p.x - gr}
+                  y={p.y - gr}
+                  width={gr * 2}
+                  height={gr * 2}
+                  fill="#ffffff"
+                  stroke={colA}
+                  strokeWidth={2.5 / scala}
+                  listening={false}
+                />
+              );
+            }
+            return (
+              <Circle
+                key={key}
+                x={p.x}
+                y={p.y}
+                radius={gr}
+                fill="#ffffff"
+                stroke={colA}
+                strokeWidth={2.5 / scala}
+                listening={false}
+              />
+            );
+          })}
           {/* maniglia del badge: spostabile liberamente, anche fuori figura */}
           {manigliaEtichetta}
         </>

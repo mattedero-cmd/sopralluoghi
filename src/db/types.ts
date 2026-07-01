@@ -448,7 +448,24 @@ export interface SegmentoQuota {
   /** abbondanze ai due estremi (al vertice `da` e al vertice `a`) */
   abbInizio?: number;
   abbFine?: number;
+  /**
+   * PIANTE PARAMETRICHE (§12): blocca la lunghezza reale di questo lato nel
+   * solver di chiusura. Quando si modifica un'altra quota, un lato bloccato
+   * non si adatta: l'aggiustamento ricade sui lati liberi. Assente = libero.
+   */
+  bloccato?: boolean;
+  /**
+   * PIANTE PARAMETRICHE (§12): ancoraggio del lato/estremi nel solver. Fissa
+   * un punto invariante attorno a cui la figura si riadatta:
+   * - 'vertice-da'/'vertice-a': il vertice indicato non si muove;
+   * - 'centro': il centro del lato resta fermo (crescita simmetrica);
+   * - 'lato': l'intero lato resta rigido (posizione + lunghezza).
+   */
+  ancora?: AncoraSegmento;
 }
+
+/** Tipo di ancoraggio di un lato nel solver parametrico delle piante (§12). */
+export type AncoraSegmento = 'vertice-da' | 'vertice-a' | 'centro' | 'lato';
 
 /** Abbondanza totale di un segmento/quota (somma dei due estremi) */
 export function abbondanzaTotale(s: { abbInizio?: number; abbFine?: number }): number {
@@ -487,6 +504,11 @@ export interface QuotaPoligono extends AnnotazioneBase {
   valoreAuto?: boolean;
   unita: Unita;
   stato: StatoMisura;
+  /**
+   * PIANTE (§12): passo di snap angolare (gradi, es. 30/45/90) usato quando si
+   * raddrizza lo schizzo di questa pianta. Assente = nessuno snap angolare.
+   */
+  snapAngolo?: number;
 }
 
 /** Segmenti quotati del poligono, con conversione dei record legacy (lati[]) */
