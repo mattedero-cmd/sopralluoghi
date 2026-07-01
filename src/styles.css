@@ -809,13 +809,57 @@ h2 {
 }
 
 /* Ambiente di modifica dedicato alla quota: foto in trasparenza + controlli */
+/* Editor di elemento (quota · lato · poligono · nota…): NON è più una schermata
+   separata a tutto schermo, ma un pannello/foglio ancorato in basso. Il canvas
+   principale resta visibile sopra: si continua a vedere il disegno, le quote e
+   la foto/report su cui si lavora mentre si modifica l'elemento selezionato. */
 .editor-quota {
   position: fixed;
-  inset: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: auto;
+  height: 82vh;
+  max-height: 82vh;
   z-index: 60;
   display: flex;
   flex-direction: column;
   background: var(--sfondo);
+  border-top-left-radius: 18px;
+  border-top-right-radius: 18px;
+  box-shadow: 0 -10px 34px rgba(0, 0, 0, 0.4);
+  padding-top: 10px;
+}
+
+/* maniglia del foglio (affordance visiva che è un pannello, non una schermata) */
+.editor-quota::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bordo);
+}
+
+/* schermi ampi (tablet/desktop): pannello centrato, non a tutta larghezza */
+@media (min-width: 720px) {
+  .editor-quota {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    width: 640px;
+    max-width: calc(100vw - 32px);
+    height: 84vh;
+    max-height: 84vh;
+    border-radius: 18px;
+    bottom: 16px;
+  }
+  .editor-quota::before {
+    background: transparent;
+  }
 }
 
 .eq-anteprima {
