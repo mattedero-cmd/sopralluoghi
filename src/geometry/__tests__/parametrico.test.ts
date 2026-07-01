@@ -188,6 +188,37 @@ describe('origine (datum) e oggetti interni (Fase 4)', () => {
     expect(r?.[0].y).toBeCloseTo(55, 6); // +5
   });
 
+  it('fondiCollineari rimappa l’origine quando un vertice prima di essa viene fuso', () => {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 200, y: 0 }, // collineare (verrà rimosso, indice 1)
+      { x: 400, y: 0 },
+      { x: 400, y: 300 },
+      { x: 0, y: 300 } // datum, indice 4
+    ];
+    const r = fondiCollineari(punti, [], 4, 4);
+    expect(r).not.toBeNull();
+    expect(r!.punti).toHaveLength(4);
+    expect(r!.origine).toBe(3); // 4 → 3 dopo la fusione dell'indice 1
+  });
+
+  it('eliminaLatoRichiudi rimappa l’origine (o torna al default se il datum sparisce)', () => {
+    const punti: Punto[] = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 200, y: 50 },
+      { x: 150, y: 200 },
+      { x: 0, y: 150 }
+    ];
+    // origine = vertice 4: eliminando il lato 1 (rimuove il vertice 2) resta valida → 3
+    const r = eliminaLatoRichiudi(punti, [], 1, 4);
+    expect(r).not.toBeNull();
+    expect(r!.origine).toBe(3);
+    // origine = vertice 2 (quello rimosso/collassato) → collassa sul vertice i=1 → 1
+    const r2 = eliminaLatoRichiudi(punti, [], 1, 2);
+    expect(r2!.origine).toBe(1);
+  });
+
   it('senza origine gli oggetti restano dove sono', () => {
     const p: Punto[] = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }];
     const oggetti = [{ id: 'o1', tipo: 'cerchio' as const, x: 50, y: 50, raggioPx: 10 }];

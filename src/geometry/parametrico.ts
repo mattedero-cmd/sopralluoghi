@@ -586,8 +586,9 @@ function indiceLatoAvanti(seg: SegmentoQuota, n: number): number | null {
 export function fondiCollineari(
   punti: Punto[],
   segmenti: SegmentoQuota[],
-  tolleranzaGradi = 4
-): { punti: Punto[]; segmenti: SegmentoQuota[]; rimossi: number } | null {
+  tolleranzaGradi = 4,
+  origine?: number
+): { punti: Punto[]; segmenti: SegmentoQuota[]; rimossi: number; origine?: number } | null {
   const n = punti.length;
   if (n < 4) return null;
   // indici originali sopravvissuti, in ordine
@@ -672,7 +673,11 @@ export function fondiCollineari(
     if (nd >= 0 && na >= 0 && nd !== na && !giaPresente(nd, na))
       nuoviSeg.push({ ...seg, da: nd, a: na });
   }
-  return { punti: nuoviPunti, segmenti: nuoviSeg, rimossi };
+  // rimappa l'ORIGINE (indice vertice): se il vertice datum è stato fuso via,
+  // torna al default (undefined → basso-sx ricalcolato)
+  const nuovaOrigine =
+    origine == null || mappa[origine] < 0 ? undefined : mappa[origine];
+  return { punti: nuoviPunti, segmenti: nuoviSeg, rimossi, origine: nuovaOrigine };
 }
 
 // ---------------------------------------------------------------------------
@@ -692,8 +697,9 @@ function isLatoTra(seg: SegmentoQuota, i: number, j: number): boolean {
 export function eliminaLatoRichiudi(
   punti: Punto[],
   segmenti: SegmentoQuota[],
-  indiceLato: number
-): { punti: Punto[]; segmenti: SegmentoQuota[] } | null {
+  indiceLato: number,
+  origine?: number
+): { punti: Punto[]; segmenti: SegmentoQuota[]; origine?: number } | null {
   const n = punti.length;
   if (n < 4) return null;
   const i = ((indiceLato % n) + n) % n;
@@ -734,5 +740,9 @@ export function eliminaLatoRichiudi(
     if (nd < 0 || na < 0 || nd === na || giaPresente(nd, na)) continue;
     nuoviSeg.push({ ...seg, da: nd, a: na });
   }
-  return { punti: nuoviPunti, segmenti: nuoviSeg };
+  // rimappa l'ORIGINE: se il datum era il vertice rimosso (j) collassa su i;
+  // se resta valido si sposta al nuovo indice, altrimenti torna al default
+  const src = origine == null ? undefined : origine === j ? i : origine;
+  const nuovaOrigine = src == null || mappa[src] < 0 ? undefined : mappa[src];
+  return { punti: nuoviPunti, segmenti: nuoviSeg, origine: nuovaOrigine };
 }

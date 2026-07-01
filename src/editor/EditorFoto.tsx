@@ -1539,12 +1539,12 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       return;
     }
     if (cmd === 'unisci') {
-      const r = fondiCollineari(poli.punti, segmentiPoligono(poli));
+      const r = fondiCollineari(poli.punti, segmentiPoligono(poli), 4, poli.origine);
       if (!r) {
         mostraToast('info', 'Nessun lato allineato da unire.');
         return;
       }
-      scrivi({ punti: r.punti, segmenti: r.segmenti });
+      scrivi({ punti: r.punti, segmenti: r.segmenti, origine: r.origine });
       mostraToast('successo', `Uniti ${r.rimossi} vertici: lati allineati fusi.`);
       return;
     }
@@ -2840,7 +2840,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 )
               }
               onFondiCollineari={() => {
-                const r = fondiCollineari(poli.punti, segmentiPoligono(poli));
+                const r = fondiCollineari(poli.punti, segmentiPoligono(poli), 4, poli.origine);
                 if (!r) {
                   mostraToast('info', 'Nessun lato allineato da unire.');
                   return;
@@ -2848,7 +2848,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 commitGeometria(
                   annotazioni.map((a) =>
                     a.id === poli.id
-                      ? ({ ...poli, punti: r.punti, segmenti: r.segmenti, lati: undefined, offsetLati: undefined } as QuotaPoligono)
+                      ? ({ ...poli, punti: r.punti, segmenti: r.segmenti, origine: r.origine, lati: undefined, offsetLati: undefined } as QuotaPoligono)
                       : a
                   )
                 );
@@ -3049,7 +3049,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           // elimina il LATO e richiudi la figura (pianta parametrica)
           const eliminaLato = () => {
             if (edgeIdx == null) return;
-            const r = eliminaLatoRichiudi(poli.punti, segs, edgeIdx);
+            const r = eliminaLatoRichiudi(poli.punti, segs, edgeIdx, poli.origine);
             if (!r) {
               // scenderebbe sotto i 3 vertici → si elimina l'intera forma
               commit(annotazioni.filter((a) => a.id !== poli.id));
@@ -3060,7 +3060,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             commitGeometria(
               annotazioni.map((a) =>
                 a.id === poli.id
-                  ? ({ ...poli, punti: r.punti, segmenti: r.segmenti, lati: undefined, offsetLati: undefined } as QuotaPoligono)
+                  ? ({ ...poli, punti: r.punti, segmenti: r.segmenti, origine: r.origine, lati: undefined, offsetLati: undefined } as QuotaPoligono)
                   : a
               )
             );
