@@ -2350,10 +2350,16 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               quota={quotaSeg}
               immagine={immagine}
               nomenclatura={{ simbolo: seg.simbolo ?? '', auto: simboloAuto }}
-              onCalibraDaQuota={(q) => {
-                void calibraDaLatoPoligono(poli, q);
-                tornaAlPoligono();
-              }}
+              onCalibraDaQuota={
+                // con un piano prospettico i lati sono già misurati
+                // dall'omografia: la scala lineare sarebbe ignorata → niente pulsante
+                foto.piano
+                  ? undefined
+                  : (q) => {
+                      void calibraDaLatoPoligono(poli, q);
+                      tornaAlPoligono();
+                    }
+              }
               onChiudi={tornaAlPoligono}
               onElimina={() => {
                 const nuovi = segs.filter((_, i) => i !== rif.indice);
