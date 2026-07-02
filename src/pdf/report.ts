@@ -1282,35 +1282,98 @@ function tabellaRiassuntiva(
     }
   });
 
-  if (righe.length === 0) return [];
-  return [
-    {
-      text: 'Riepilogo delle misure',
-      style: 'h1',
-      tocItem: true,
-      pageBreak: 'before'
-    } as Content,
-    {
-      table: {
-        headerRows: 1,
-        dontBreakRows: true,
-        widths: ['auto', 'auto', 'auto', '*', 'auto', 'auto', 'auto'],
-        body: [
-          [
-            { text: 'Cod.', style: 'th' },
-            { text: 'Foto', style: 'th' },
-            { text: 'Elemento', style: 'th' },
-            { text: 'Misure', style: 'th' },
-            { text: 'Taglio', style: 'th' },
-            { text: 'Superficie', style: 'th' },
-            { text: 'Stato', style: 'th' }
-          ],
-          ...righe
-        ]
-      },
-      layout: righeRiepilogo
+  // --- Riepilogo delle LEGENDE: tutte le etichette del report, aggregate per
+  // lettera+descrizione (la stessa lettera con descrizioni diverse in foto
+  // diverse resta su righe distinte), con le foto in cui compaiono.
+  const legende: Array<{ lettera: string; descrizione: string; quantita: number; foto: string[] }> =
+    [];
+  fotoList.forEach((f, indice) => {
+    const nomeFoto = f.didascalia || `Foto ${indice + 1}`;
+    for (const v of vociLegenda(annotazioniPerFoto.get(f.id) ?? [])) {
+      const gia = legende.find(
+        (x) => x.lettera === v.lettera && x.descrizione === (v.descrizione || '')
+      );
+      if (gia) {
+        gia.quantita += v.quantita;
+        if (!gia.foto.includes(nomeFoto)) gia.foto.push(nomeFoto);
+      } else {
+        legende.push({
+          lettera: v.lettera,
+          descrizione: v.descrizione || '',
+          quantita: v.quantita,
+          foto: [nomeFoto]
+        });
+      }
     }
-  ];
+  });
+  legende.sort((a, b) => confrontaEtichetta(a.lettera, b.lettera));
+
+  if (righe.length === 0 && legende.length === 0) return [];
+  const out: Content[] = [];
+  if (righe.length > 0) {
+    out.push(
+      {
+        text: 'Riepilogo delle misure',
+        style: 'h1',
+        tocItem: true,
+        pageBreak: 'before'
+      } as Content,
+      {
+        table: {
+          headerRows: 1,
+          dontBreakRows: true,
+          widths: ['auto', 'auto', 'auto', '*', 'auto', 'auto', 'auto'],
+          body: [
+            [
+              { text: 'Cod.', style: 'th' },
+              { text: 'Foto', style: 'th' },
+              { text: 'Elemento', style: 'th' },
+              { text: 'Misure', style: 'th' },
+              { text: 'Taglio', style: 'th' },
+              { text: 'Superficie', style: 'th' },
+              { text: 'Stato', style: 'th' }
+            ],
+            ...righe
+          ]
+        },
+        layout: righeRiepilogo
+      }
+    );
+  }
+  if (legende.length > 0) {
+    out.push(
+      {
+        text: 'Riepilogo delle legende',
+        style: righe.length > 0 ? 'h2' : 'h1',
+        tocItem: true,
+        // senza tabella misure la sezione apre comunque la pagina del riepilogo
+        ...(righe.length > 0 ? { margin: [0, 14, 0, 4] } : { pageBreak: 'before' })
+      } as Content,
+      {
+        table: {
+          headerRows: 1,
+          dontBreakRows: true,
+          widths: ['auto', '*', 'auto', 'auto'],
+          body: [
+            [
+              { text: 'Cod.', style: 'th' },
+              { text: 'Descrizione', style: 'th' },
+              { text: 'Q.tà', style: 'th', alignment: 'center' },
+              { text: 'Foto', style: 'th' }
+            ],
+            ...legende.map((v) => [
+              { text: v.lettera, style: 'td', bold: true, alignment: 'center', noWrap: true },
+              { text: v.descrizione || '—', style: 'td' },
+              { text: String(v.quantita), style: 'td', alignment: 'center', noWrap: true },
+              { text: v.foto.join(', '), fontSize: 8.5, color: GRIGIO_CHIARO }
+            ])
+          ]
+        },
+        layout: righeRiepilogo
+      } as Content
+    );
+  }
+  return out;
 }
 
 /**
