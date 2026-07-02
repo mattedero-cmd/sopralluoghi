@@ -856,6 +856,8 @@ export interface QuotaTecnica extends AnnotazioneBase {
   etichetta?: string;
   /** terminatore della linea di quota: freccia (default) o tacca obliqua */
   terminatore?: 'freccia' | 'tacca';
+  /** serie: mostra il TOTALE della catena sul disegno e nel riepilogo PDF */
+  mostraTotale?: boolean;
   /** linee di estensione visibili (default true) */
   estensioniVisibili?: boolean;
   /** distacco delle estensioni dall'oggetto (px); assente = default dallo spessore */

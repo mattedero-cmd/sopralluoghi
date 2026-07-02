@@ -46,6 +46,47 @@ describe('rigaMisuraTecnica — riepilogo PDF delle quote tecniche', () => {
     expect(rigaMisuraTecnica(base({ sottotipo: 'serie', quote: [] }))).toBeNull();
   });
 
+  it('serie con "Mostra totale": il totale entra nella riga', () => {
+    const r = rigaMisuraTecnica(
+      base({
+        sottotipo: 'serie',
+        mostraTotale: true,
+        quote: [
+          { p1: { x: 0, y: 0 }, p2: { x: 1, y: 0 }, valore: 50, orientamento: 'allineata', offset: 0 },
+          { p1: { x: 1, y: 0 }, p2: { x: 2, y: 0 }, valore: 30, orientamento: 'allineata', offset: 0 }
+        ]
+      })
+    );
+    expect(r!.reale).toBe('50 · 30 — Tot. 80 cm');
+  });
+
+  it('serie con totale e misura mancante → "Tot. ?"', () => {
+    const r = rigaMisuraTecnica(
+      base({
+        sottotipo: 'serie',
+        mostraTotale: true,
+        quote: [
+          { p1: { x: 0, y: 0 }, p2: { x: 1, y: 0 }, valore: 50, orientamento: 'allineata', offset: 0 },
+          { p1: { x: 1, y: 0 }, p2: { x: 2, y: 0 }, valore: null, orientamento: 'allineata', offset: 0 }
+        ]
+      })
+    );
+    expect(r!.reale).toBe('50 · ? — Tot. ? cm');
+  });
+
+  it('parallelo: il totale NON si applica (solo serie)', () => {
+    const r = rigaMisuraTecnica(
+      base({
+        sottotipo: 'parallelo',
+        mostraTotale: true,
+        quote: [
+          { p1: { x: 0, y: 0 }, p2: { x: 1, y: 0 }, valore: 50, orientamento: 'allineata', offset: 0 }
+        ]
+      })
+    );
+    expect(r!.reale).toBe('50 cm');
+  });
+
   it('foro: ⌀ con etichetta', () => {
     const r = rigaMisuraTecnica(
       base({

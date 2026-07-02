@@ -102,7 +102,8 @@ export function AmbienteQuotaturaTecnica({
   const isForo = quota.sottotipo === 'foro';
   const isSmusso = quota.sottotipo === 'smusso';
   const isFilettatura = quota.sottotipo === 'filettatura';
-  const isCatena = isParallelo || isProgressiva || quota.sottotipo === 'serie';
+  const isSerie = quota.sottotipo === 'serie';
+  const isCatena = isParallelo || isProgressiva || isSerie;
   const hasUnita = isCatena || isForo || isSmusso;
   const haTerminatori = quota.sottotipo === 'serie' || isParallelo;
   const foro = quota.foro;
@@ -552,6 +553,20 @@ export function AmbienteQuotaturaTecnica({
               </button>
             </div>
           </>
+        )}
+
+        {/* Totale della catena (solo quote in serie) */}
+        {isSerie && (
+          <label className="fisc-check qt-riga">
+            <input
+              type="checkbox"
+              checked={!!quota.mostraTotale}
+              onChange={(e) =>
+                onModifica({ ...quota, mostraTotale: e.target.checked || undefined })
+              }
+            />
+            Mostra il totale della catena
+          </label>
         )}
 
         {/* Nel PDF */}

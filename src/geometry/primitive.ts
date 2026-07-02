@@ -1208,6 +1208,25 @@ function primitiveSerie(q: QuotaTecnica): Primitiva[] {
     });
   }
 
+  // 4) TOTALE della catena (opzionale): sotto la linea di quota, centrato.
+  //    '?' se qualche misura manca ancora.
+  if (q.mostraTotale) {
+    const completa = q.quote.every((s) => s.valore != null);
+    const tot = q.quote.reduce((acc, s) => acc + (s.valore ?? 0), 0);
+    const testo = `Tot. ${completa ? formattaMisura(tot, q.unita) : '?'}`;
+    const centroCatena = scala(somma(primoPiede, ultimoPiede), 0.5);
+    prim.push({
+      kind: 'testo',
+      testo,
+      posizione: somma(centroCatena, scala(sopraVett, -dimTesto * 1.1)),
+      rotazioneDeg: angolo,
+      dimensione: dimTesto,
+      colore,
+      sfondo: null,
+      alone: ALONE
+    });
+  }
+
   return prim;
 }
 

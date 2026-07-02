@@ -36,7 +36,16 @@ export function rigaMisuraTecnica(a: QuotaTecnica): RigaTecnica | null {
     case 'progressiva': {
       if (a.quote.length === 0) return null;
       const valori = a.quote.map((q) => f(q.valore)).join(' · ');
-      return { forma: NOME_CATENA[a.sottotipo], reale: `${valori} ${a.unita}`, stato };
+      // quota in serie con "Mostra totale" attivo: il totale entra nel riepilogo
+      const totale =
+        a.sottotipo === 'serie' && a.mostraTotale
+          ? ` — Tot. ${
+              a.quote.every((q) => q.valore != null)
+                ? formattaNumero(a.quote.reduce((acc, q) => acc + (q.valore ?? 0), 0))
+                : '?'
+            }`
+          : '';
+      return { forma: NOME_CATENA[a.sottotipo], reale: `${valori}${totale} ${a.unita}`, stato };
     }
     case 'foro': {
       if (!a.foro) return null;
