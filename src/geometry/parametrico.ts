@@ -555,8 +555,11 @@ function estensioneLungo(o: OggettoDistanza, dir: Punto): number {
 }
 
 /**
- * Geometria della quota di distanza per il vincolo `v` (tipo 'distanza' con
- * riferimenti [oggetto, lato]). Null se i riferimenti non sono validi.
+ * Geometria della quota di distanza per il vincolo `v` (tipo 'distanza').
+ * Riferimenti ammessi: PUNTO↔PUNTO (vertice, centro-lato, centro/bordo
+ * oggetto — di oggetti e del perimetro), PUNTO↔LATO (perpendicolare) e il
+ * caso classico bordo/centro oggetto ↔ lato. Null se i riferimenti non
+ * sono validi (o lato↔lato, che non è una distanza puntuale).
  */
 export function geomQuotaDistanza(
   punti: Punto[],
@@ -564,29 +567,77 @@ export function geomQuotaDistanza(
   v: VincoloPianta
 ): GeomDistanza | null {
   if (v.tipo !== 'distanza') return null;
-  const rifO = v.riferimenti.find((r) => r.oggettoId != null);
-  const rifL = v.riferimenti.find((r) => r.entita === 'lato' && r.oggettoId == null);
-  if (!rifO || !rifL || rifL.indice == null) return null;
-  const o = (oggetti ?? []).find((x) => x.id === rifO.oggettoId);
-  const n = punti.length;
-  if (!o || rifL.indice < 0 || rifL.indice >= n) return null;
-  const a = punti[rifL.indice];
-  const b = punti[(rifL.indice + 1) % n];
-  const lung = Math.hypot(b.x - a.x, b.y - a.y);
-  if (lung < 1e-6) return null;
-  const dir = { x: (b.x - a.x) / lung, y: (b.y - a.y) / lung };
-  const nrm = { x: -dir.y, y: dir.x };
-  const c = centroOggetto(o);
-  const sC = (c.x - a.x) * nrm.x + (c.y - a.y) * nrm.y;
-  const segno = sC >= 0 ? 1 : -1;
-  const nvo = { x: nrm.x * segno, y: nrm.y * segno }; // verso l'oggetto
-  const distC = sC * segno;
-  const dalBordo = rifO.entita !== 'centroOggetto';
-  const ext = dalBordo ? estensioneLungo(o, nvo) : 0;
-  const dPx = distC - ext;
-  const p = { x: c.x - nvo.x * ext, y: c.y - nvo.y * ext };
-  const f = { x: p.x - nvo.x * dPx, y: p.y - nvo.y * dPx };
-  return { p, f, mid: { x: (p.x + f.x) / 2, y: (p.y + f.y) / 2 }, dPx, nvo };
+  const [r0, r1] = v.riferimenti;
+  if (!r0 || !r1) return null;
+  const eLato = (r: RiferimentoPianta) => r.entita === 'lato';
+  if (eLato(r0) && eLato(r1)) return null;
+
+  // --- PUNTO ↔ LATO (perpendicolare al lato) --------------------------------
+  if (eLato(r0) || eLato(r1)) {
+    const rL = eLato(r0) ? r0 : r1;
+    const rP = eLato(r0) ? r1 : r0;
+    const L = lineaRiferimento(punti, oggetti, rL);
+    if (!L) return null;
+    const lung = Math.hypot(L.b.x - L.a.x, L.b.y - L.a.y);
+    if (lung < 1e-6) return null;
+    const dir = { x: (L.b.x - L.a.x) / lung, y: (L.b.y - L.a.y) / lung };
+    const nrm = { x: -dir.y, y: dir.x };
+    if (rP.entita === 'centroOggetto' || rP.entita === 'bordoOggetto') {
+      // caso classico: centro/bordo dell'oggetto rispetto alla retta del lato
+      const o = (oggetti ?? []).find((x) => x.id === rP.oggettoId);
+      if (!o) return null;
+      const c = centroOggetto(o);
+      const sC = (c.x - L.a.x) * nrm.x + (c.y - L.a.y) * nrm.y;
+      const segno = sC >= 0 ? 1 : -1;
+      const nvo = { x: nrm.x * segno, y: nrm.y * segno }; // verso l'oggetto
+      const distC = sC * segno;
+      const ext = rP.entita === 'bordoOggetto' ? estensioneLungo(o, nvo) : 0;
+      const dPx = distC - ext;
+      const p = { x: c.x - nvo.x * ext, y: c.y - nvo.y * ext };
+      const f = { x: p.x - nvo.x * dPx, y: p.y - nvo.y * dPx };
+      return { p, f, mid: { x: (p.x + f.x) / 2, y: (p.y + f.y) / 2 }, dPx, nvo };
+    }
+    const P = puntoRiferimento(punti, oggetti, rP);
+    if (!P) return null;
+    const s = (P.x - L.a.x) * nrm.x + (P.y - L.a.y) * nrm.y;
+    const segno = s >= 0 ? 1 : -1;
+    const nvo = { x: nrm.x * segno, y: nrm.y * segno }; // verso il punto
+    const dPx = s * segno;
+    const f = { x: P.x - nvo.x * dPx, y: P.y - nvo.y * dPx };
+    return { p: P, f, mid: { x: (P.x + f.x) / 2, y: (P.y + f.y) / 2 }, dPx, nvo };
+  }
+
+  // --- PUNTO ↔ PUNTO ---------------------------------------------------------
+  // il "bordo" di un oggetto in una distanza puntuale è il punto del bordo
+  // rivolto VERSO l'altro estremo
+  const centroDi = (r: RiferimentoPianta): Punto | null =>
+    r.entita === 'bordoOggetto'
+      ? (() => {
+          const o = (oggetti ?? []).find((x) => x.id === r.oggettoId);
+          return o ? centroOggetto(o) : null;
+        })()
+      : puntoRiferimento(punti, oggetti, r);
+  const c0 = centroDi(r0);
+  const c1 = centroDi(r1);
+  if (!c0 || !c1) return null;
+  const estremo = (r: RiferimentoPianta, da: Punto, verso: Punto): Punto | null => {
+    if (r.entita !== 'bordoOggetto') return da;
+    const o = (oggetti ?? []).find((x) => x.id === r.oggettoId);
+    if (!o) return null;
+    const lung = Math.hypot(verso.x - da.x, verso.y - da.y);
+    if (lung < 1e-6) return da;
+    const dir = { x: (verso.x - da.x) / lung, y: (verso.y - da.y) / lung };
+    const ext = estensioneLungo(o, dir);
+    return { x: da.x + dir.x * ext, y: da.y + dir.y * ext };
+  };
+  const A = estremo(r0, c0, c1);
+  const B = estremo(r1, c1, c0);
+  if (!A || !B) return null;
+  const d = Math.hypot(A.x - B.x, A.y - B.y);
+  // direzione da B verso A: spostando il "proprietario" di A lungo nvo la
+  // distanza cresce (con estremi coincidenti si usa l'asse X per convenzione)
+  const nvo = d > 1e-6 ? { x: (A.x - B.x) / d, y: (A.y - B.y) / d } : { x: 1, y: 0 };
+  return { p: A, f: B, mid: { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 }, dPx: d, nvo };
 }
 
 /** Che cosa si muove modificando la quota di distanza. */
@@ -626,6 +677,17 @@ export function latoMuovibile(
   return true;
 }
 
+/** il vincolo distanza è nel caso CLASSICO bordo/centro oggetto ↔ lato? */
+function casoClassicoDistanza(v: VincoloPianta): { rifO: RiferimentoPianta; rifL: RiferimentoPianta } | null {
+  const [r0, r1] = v.riferimenti;
+  if (!r0 || !r1) return null;
+  const rifL = r0.entita === 'lato' ? r0 : r1.entita === 'lato' ? r1 : null;
+  const rifO = rifL === r0 ? r1 : r0;
+  if (!rifL || rifL.oggettoId != null) return null;
+  if (rifO.entita !== 'centroOggetto' && rifO.entita !== 'bordoOggetto') return null;
+  return { rifO, rifL };
+}
+
 /** Grado di libertà della quota di distanza `v`. */
 export function libertaDistanza(
   punti: Punto[],
@@ -635,22 +697,41 @@ export function libertaDistanza(
   origine?: number
 ): LibertaDistanza {
   if (v.tipo !== 'distanza') return 'bloccata';
-  const rifO = v.riferimenti.find((r) => r.oggettoId != null);
-  const rifL = v.riferimenti.find((r) => r.entita === 'lato' && r.oggettoId == null);
-  const o = (oggetti ?? []).find((x) => x.id === rifO?.oggettoId);
-  if (!o || !rifL || rifL.indice == null) return 'bloccata';
-  const centroLibero = !o.centroAncorato;
-  const dimLibera = !o.dimensioneBloccata;
-  const muro = () => latoMuovibile(punti, segmenti, rifL.indice as number, origine);
-  if (rifO?.entita === 'centroOggetto') {
-    // distanza dal CENTRO: la dimensione non c'entra
-    if (centroLibero) return 'oggetto';
+  const classico = casoClassicoDistanza(v);
+  if (classico) {
+    const { rifO, rifL } = classico;
+    const o = (oggetti ?? []).find((x) => x.id === rifO.oggettoId);
+    if (!o || rifL.indice == null) return 'bloccata';
+    const centroLibero = !o.centroAncorato;
+    const dimLibera = !o.dimensioneBloccata;
+    const muro = () => latoMuovibile(punti, segmenti, rifL.indice as number, origine);
+    if (rifO.entita === 'centroOggetto') {
+      // distanza dal CENTRO: la dimensione non c'entra
+      if (centroLibero) return 'oggetto';
+      return muro() ? 'lato' : 'bloccata';
+    }
+    // distanza dal BORDO
+    if (centroLibero) return 'oggetto'; // (anche con dimensione bloccata: si sposta il centro)
+    if (dimLibera && o.tipo === 'cerchio') return 'dimensione';
     return muro() ? 'lato' : 'bloccata';
   }
-  // distanza dal BORDO
-  if (centroLibero) return 'oggetto'; // (anche con dimensione bloccata: si sposta il centro)
-  if (dimLibera && o.tipo === 'cerchio') return 'dimensione';
-  return muro() ? 'lato' : 'bloccata';
+  // GENERALE (punto↔punto, punto↔lato): si trasla un oggetto libero, oppure
+  // il lato del perimetro come ultima risorsa
+  const [r0, r1] = v.riferimenti;
+  if (!r0 || !r1) return 'bloccata';
+  const oggDi = (r: RiferimentoPianta) =>
+    r.oggettoId != null ? (oggetti ?? []).find((x) => x.id === r.oggettoId) : undefined;
+  const o0 = oggDi(r0);
+  const o1 = oggDi(r1);
+  if ((o0 && !o0.centroAncorato) || (o1 && !o1.centroAncorato)) return 'oggetto';
+  const rL =
+    r0.entita === 'lato' && r0.oggettoId == null
+      ? r0
+      : r1.entita === 'lato' && r1.oggettoId == null
+        ? r1
+        : null;
+  if (rL && rL.indice != null && latoMuovibile(punti, segmenti, rL.indice, origine)) return 'lato';
+  return 'bloccata';
 }
 
 /**
@@ -670,35 +751,78 @@ export function applicaDistanza<T extends OggettoDistanza>(
   if (!g) return null;
   const lib = libertaDistanza(punti, segmenti, oggetti, v, origine);
   if (lib === 'bloccata') return null;
-  const rifO = v.riferimenti.find((r) => r.oggettoId != null)!;
   const delta = dTargetPx - g.dPx;
-  if (lib === 'oggetto') {
-    // trasla l'intero oggetto lungo la normale (via dal lato = distanza cresce)
+  const classico = casoClassicoDistanza(v);
+  if (classico) {
+    const { rifO, rifL } = classico;
+    if (lib === 'oggetto') {
+      // trasla l'intero oggetto lungo la normale (via dal lato = distanza cresce)
+      return {
+        oggetti: (oggetti ?? []).map((o) =>
+          o.id === rifO.oggettoId ? { ...o, x: o.x + g.nvo.x * delta, y: o.y + g.nvo.y * delta } : o
+        )
+      };
+    }
+    if (lib === 'dimensione') {
+      // centro fermo: cambia il raggio (la circonferenza si avvicina/allontana)
+      const o = (oggetti ?? []).find((x) => x.id === rifO.oggettoId);
+      const rNuovo = (o?.raggioPx ?? 0) - delta;
+      if (rNuovo <= 1) return null;
+      return {
+        oggetti: (oggetti ?? []).map((x) => (x.id === rifO.oggettoId ? { ...x, raggioPx: rNuovo } : x))
+      };
+    }
+    // 'lato': trasla il muro lungo la normale (verso l'oggetto = distanza cala)
+    const idx = rifL.indice as number;
+    const n = punti.length;
+    const w = -delta; // spostamento del muro lungo nvo
     return {
-      oggetti: (oggetti ?? []).map((o) =>
-        o.id === rifO.oggettoId ? { ...o, x: o.x + g.nvo.x * delta, y: o.y + g.nvo.y * delta } : o
+      punti: punti.map((pt, i) =>
+        i === idx || i === (idx + 1) % n ? { x: pt.x + g.nvo.x * w, y: pt.y + g.nvo.y * w } : pt
       )
     };
   }
-  if (lib === 'dimensione') {
-    // centro fermo: cambia il raggio (la circonferenza si avvicina/allontana)
-    const o = (oggetti ?? []).find((x) => x.id === rifO.oggettoId);
-    const rNuovo = (o?.raggioPx ?? 0) - delta;
-    if (rNuovo <= 1) return null;
+  // GENERALE (punto↔punto, punto↔lato): trasla l'oggetto libero; il segno
+  // dipende da quale estremo possiede (nvo cresce la distanza per il "lato A")
+  const [r0, r1] = v.riferimenti;
+  const oggDi = (r: RiferimentoPianta) =>
+    r.oggettoId != null ? (oggetti ?? []).find((x) => x.id === r.oggettoId) : undefined;
+  const o0 = oggDi(r0);
+  const o1 = oggDi(r1);
+  const rP = r0.entita === 'lato' ? r1 : r0; // l'estremo "punto" (per punto↔lato)
+  const segnoDi = (r: RiferimentoPianta) => {
+    if (r0.entita === 'lato' || r1.entita === 'lato') return r === rP ? 1 : -1;
+    return r === r0 ? 1 : -1; // punto↔punto: nvo è orientata da B (r1) verso A (r0)
+  };
+  const mover =
+    o0 && !o0.centroAncorato
+      ? { id: o0.id, segno: segnoDi(r0) }
+      : o1 && !o1.centroAncorato
+        ? { id: o1.id, segno: segnoDi(r1) }
+        : null;
+  if (mover) {
+    const k = delta * mover.segno;
     return {
-      oggetti: (oggetti ?? []).map((x) => (x.id === rifO.oggettoId ? { ...x, raggioPx: rNuovo } : x))
+      oggetti: (oggetti ?? []).map((o) =>
+        o.id === mover.id ? { ...o, x: o.x + g.nvo.x * k, y: o.y + g.nvo.y * k } : o
+      )
     };
   }
-  // 'lato': trasla il muro lungo la normale (verso l'oggetto = distanza cala)
-  const rifL = v.riferimenti.find((r) => r.entita === 'lato' && r.oggettoId == null)!;
-  const idx = rifL.indice as number;
+  // 'lato': trasla il muro del perimetro (verso il punto = distanza cala)
+  const rL =
+    r0.entita === 'lato' && r0.oggettoId == null
+      ? r0
+      : r1.entita === 'lato' && r1.oggettoId == null
+        ? r1
+        : null;
+  if (!rL || rL.indice == null) return null;
   const n = punti.length;
-  const va = idx;
-  const vb = (idx + 1) % n;
-  const w = -delta; // spostamento del muro lungo nvo
+  const w = -delta;
   return {
     punti: punti.map((pt, i) =>
-      i === va || i === vb ? { x: pt.x + g.nvo.x * w, y: pt.y + g.nvo.y * w } : pt
+      i === rL.indice || i === ((rL.indice as number) + 1) % n
+        ? { x: pt.x + g.nvo.x * w, y: pt.y + g.nvo.y * w }
+        : pt
     )
   };
 }

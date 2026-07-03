@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import type {
@@ -405,9 +405,9 @@ const GRUPPI_STRUMENTI_PIANTA: Array<{
       // elimina), trascinamento = spostamento
       { icona: 'rettangolo', testo: 'Rettangolo (disegna)', tool: 'oggRett' },
       { icona: 'cerchio', testo: 'Cerchio (disegna)', tool: 'oggCerchio' },
-      // quota di distanza oggetto–lato: tap-tap (oggetto, poi lato); il valore
-      // si modifica poi toccando la sua etichetta sul canvas
-      { icona: 'quota-allin', testo: 'Distanza oggetto–lato', vincolo: 'distanza' }
+      // quota di distanza punto-a-punto: due tocchi su punti (pallini rossi) o
+      // lati; toccando poi la sua etichetta il valore COMANDA il disegno
+      { icona: 'quota-allin', testo: 'Quota distanza (2 punti)', vincolo: 'distanza' }
     ]
   },
   {
@@ -570,7 +570,6 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     picks: number[];
     /** riferimenti ricchi (punti/lati, anche di oggetto) per i vincoli tra entità */
     refs?: RiferimentoPianta[];
-    oggettoPick?: { oggettoId: string; entita: 'centroOggetto' | 'bordoOggetto' };
   } | null>(null);
   /** modifica inline di una quota di distanza oggetto–lato (id vincolo) */
   const [distanzaInline, setDistanzaInline] = useState<{
@@ -1078,7 +1077,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const entitaPiuVicina = (
     poli: QuotaPoligono,
     p: Punto,
-    modo: 'punto' | 'lato' | 'misto'
+    modo: 'punto' | 'lato' | 'misto' | 'tutto'
   ): { rif: RiferimentoPianta; genere: 'punto' | 'lato' } => {
     const n = poli.punti.length;
     let puntoRif: RiferimentoPianta | null = null;
@@ -1135,6 +1134,11 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     }
     if (modo === 'punto' && puntoRif) return { rif: puntoRif, genere: 'punto' };
     if (modo === 'lato') return { rif: latoRif, genere: 'lato' };
+    if (modo === 'tutto') {
+      // il punto vince a pari distanza (i pallini rossi si mirano di proposito)
+      if (puntoRif && puntoD <= latoD + 0.5) return { rif: puntoRif, genere: 'punto' };
+      return { rif: latoRif, genere: 'lato' };
+    }
     // 'misto': vince l'entità strettamente più vicina (punto oggetto vs lato perimetro)
     if (puntoRif && puntoD < latoD) return { rif: puntoRif, genere: 'punto' };
     return { rif: latoRif, genere: 'lato' };
@@ -1245,15 +1249,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       mostraToast('info', 'Seleziona prima lo schizzo su cui applicare il vincolo.');
       return;
     }
-    if (tipo === 'distanza') {
-      if (!poli.oggetti?.length) {
-        mostraToast('info', 'Disegna prima un oggetto (Oggetti → Rettangolo / Cerchio).');
-        return;
-      }
-      if (pxPerUnita(foto, poli.unita) == null) {
-        mostraToast('info', 'Calibra prima la scala: la distanza è una misura reale.');
-        return;
-      }
+    if (tipo === 'distanza' && pxPerUnita(foto, poli.unita) == null) {
+      mostraToast('info', 'Calibra prima la scala: la distanza è una misura reale.');
+      return;
     }
     if (tipo === 'eliminaLato' && poli.punti.length <= 3) {
       mostraToast('info', 'Servono almeno 4 lati per eliminarne uno e richiudere la figura.');
@@ -1347,6 +1345,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         mostraToast('errore', 'Impossibile richiudere la figura senza questo lato.');
         return;
       }
+      const vt = vincoliDopoTopologia(poli.vincoli);
       commitGeometria(
         annotazioni.map((a) =>
           a.id === poli.id
@@ -1355,62 +1354,64 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 punti: r.punti,
                 segmenti: r.segmenti,
                 origine: r.origine,
-                vincoli: undefined,
+                vincoli: vt.validi,
                 lati: undefined,
                 offsetLati: undefined
               } as QuotaPoligono)
             : a
         )
       );
-      mostraToast('successo', 'Lato eliminato: figura richiusa.');
+      mostraToast(
+        'successo',
+        'Lato eliminato: figura richiusa.' +
+          (vt.persi ? ` ${vt.persi} vincoli sui lati sono decaduti.` : '')
+      );
       return;
     }
-    // QUOTA DI DISTANZA oggetto–lato: primo tocco = oggetto (centro o bordo),
-    // secondo tocco = lato; si crea la quota con la misura corrente.
+    // QUOTA DI DISTANZA punto-a-punto (o punto↔lato): due tocchi su qualsiasi
+    // punto selezionabile (vertice, centro-lato, centro/bordo oggetto — i
+    // pallini rossi) o su un lato; la quota nasce con la misura corrente e,
+    // modificata, COMANDA il disegno spostando l'elemento libero.
     if (vincoloArmato.tipo === 'distanza') {
-      if (!vincoloArmato.oggettoPick) {
-        const oggetti = poli.oggetti ?? [];
-        if (!oggetti.length) {
-          annullaVincolo();
-          return;
-        }
-        let best = oggetti[0];
-        let bestD = Infinity;
-        for (const o of oggetti) {
+      const ent = entitaPiuVicina(poli, p, 'tutto');
+      let rif = ent.rif;
+      // tocco lontano dal centro di un cerchio → si intende il BORDO
+      if (rif.entita === 'centroOggetto') {
+        const o = (poli.oggetti ?? []).find((x) => x.id === rif.oggettoId);
+        if (o?.tipo === 'cerchio') {
           const c = centroOggetto(o);
-          const d = Math.hypot(p.x - c.x, p.y - c.y);
-          if (d < bestD) {
-            bestD = d;
-            best = o;
+          if (Math.hypot(p.x - c.x, p.y - c.y) > (o.raggioPx ?? 0) * 0.5) {
+            rif = { entita: 'bordoOggetto', oggettoId: o.id };
           }
         }
-        const ext =
-          best.tipo === 'cerchio'
-            ? (best.raggioPx ?? 0)
-            : Math.min(best.larghezza ?? 0, best.altezza ?? 0) / 2;
-        // tocco vicino al centro → distanza dal CENTRO; altrimenti dal BORDO
-        const entita = bestD < ext * 0.5 ? 'centroOggetto' : 'bordoOggetto';
-        setVincoloArmato({ ...vincoloArmato, oggettoPick: { oggettoId: best.id, entita } });
+      }
+      const refs = [...(vincoloArmato.refs ?? []), rif];
+      if (refs.length < 2) {
+        setVincoloArmato({ ...vincoloArmato, refs });
         return;
       }
-      const lato = latoPiuVicino(poli, p);
+      const [rA, rB] = refs;
+      if (rA.entita === 'lato' && rB.entita === 'lato') {
+        mostraToast('info', 'Almeno un estremo dev’essere un PUNTO (pallino rosso).');
+        return;
+      }
+      const stesso =
+        rA.entita === rB.entita && rA.oggettoId === rB.oggettoId && rA.indice === rB.indice;
+      const stessoOggetto = rA.oggettoId != null && rA.oggettoId === rB.oggettoId;
+      if (stesso || stessoOggetto) {
+        mostraToast('info', 'Tocca un secondo elemento di un ALTRO oggetto o del perimetro.');
+        return;
+      }
       const px = pxPerUnita(foto, poli.unita);
       if (px == null) {
         annullaVincolo();
         return;
       }
-      const nuovo: VincoloPianta = {
-        id: nuovoId(),
-        tipo: 'distanza',
-        riferimenti: [
-          { entita: vincoloArmato.oggettoPick.entita, oggettoId: vincoloArmato.oggettoPick.oggettoId },
-          { entita: 'lato', indice: lato }
-        ]
-      };
+      const nuovo: VincoloPianta = { id: nuovoId(), tipo: 'distanza', riferimenti: refs };
       const g = geomQuotaDistanza(poli.punti, poli.oggetti, nuovo);
       if (!g) {
         annullaVincolo();
-        mostraToast('errore', 'Impossibile misurare la distanza tra oggetto e lato.');
+        mostraToast('errore', 'Impossibile misurare la distanza tra i due elementi.');
         return;
       }
       nuovo.valore = arrotondaMisura(g.dPx / px);
@@ -1423,7 +1424,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       );
       setVincoloArmato(null);
       setStrumento('seleziona');
-      mostraToast('successo', 'Quota distanza creata: tocca la sua etichetta per modificarla.');
+      mostraToast('successo', 'Quota creata: tocca la sua etichetta per comandare il disegno.');
       return;
     }
     // --- VINCOLI TRA ENTITÀ (punti e lati, anche di oggetto): coincidente,
@@ -1601,6 +1602,62 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const annullaVincolo = () => {
     setVincoloArmato(null);
     setStrumento('seleziona');
+  };
+
+  /** Punti SELEZIONABILI del comando armato (mostrati in rosso sul canvas):
+   *  vertici, centri-lato e centri secondo ciò che il comando può toccare. */
+  const puntiSelezionabiliArmati = (): Punto[] | null => {
+    if (!vincoloArmato || !annotazioni) return null;
+    const poli = annotazioni.find(
+      (a) => a.id === vincoloArmato.id && a.tipo === 'quotaPoligono'
+    ) as QuotaPoligono | undefined;
+    if (!poli) return null;
+    const t = vincoloArmato.tipo;
+    const out: Punto[] = [];
+    const n = poli.punti.length;
+    const aggiungi = (rif: RiferimentoPianta) => {
+      const q = puntoRiferimento(poli.punti, poli.oggetti, rif);
+      if (q) out.push(q);
+    };
+    const verticiPerimetro = () => {
+      for (let i = 0; i < n; i++) aggiungi({ entita: 'vertice', indice: i });
+    };
+    const puntiPerimetro = () => {
+      for (let i = 0; i < n; i++) {
+        aggiungi({ entita: 'vertice', indice: i });
+        aggiungi({ entita: 'centroLato', indice: i });
+      }
+    };
+    const puntiOggetti = () => {
+      for (const o of poli.oggetti ?? []) {
+        aggiungi({ entita: 'centroOggetto', oggettoId: o.id });
+        if (o.tipo !== 'rettangolo') continue;
+        for (let i = 0; i < 4; i++) {
+          aggiungi({ entita: 'vertice', oggettoId: o.id, indice: i });
+          aggiungi({ entita: 'centroLato', oggettoId: o.id, indice: i });
+        }
+      }
+    };
+    if (t === 'diagonale' || t === 'angoloVertice') {
+      verticiPerimetro();
+      return out;
+    }
+    if (t === 'coincidente' || t === 'distanza') {
+      puntiPerimetro();
+      puntiOggetti();
+      return out;
+    }
+    if (t === 'orizzontale' || t === 'verticale') {
+      // primo tocco: lato del perimetro o PUNTO di un oggetto; secondo: punti
+      if (vincoloArmato.refs?.length) {
+        puntiPerimetro();
+        puntiOggetti();
+      } else {
+        puntiOggetti();
+      }
+      return out.length ? out : null;
+    }
+    return null; // collineare/eliminaLato/parallelo/…: si toccano i lati
   };
 
   /** Arma un'uguaglianza "=Ln" a partire dalla quota di un lato: il lato
@@ -1820,6 +1877,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     const vincoli = (poli.vincoli ?? []).filter((v) =>
       v.riferimenti.every((r) => r.oggettoId == null || r.oggettoId !== ogg.id)
     );
+    const viaConLui = (poli.vincoli ?? []).length - vincoli.length;
+    if (viaConLui > 0)
+      mostraToast('info', `Con l’oggetto sono stati rimossi anche ${viaConLui} vincoli/quote collegati.`);
     commit(
       annotazioni.map((a) =>
         a.id === poli.id
@@ -2603,6 +2663,17 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     return poligoni.length === 1 ? poligoni[0] : null;
   };
 
+  /** Vincoli che sopravvivono a un cambio di TOPOLOGIA del perimetro (i vertici
+   *  vengono reindicizzati): restano quelli che riferiscono SOLO oggetti; gli
+   *  altri decadono e l'utente viene avvisato (niente rimozioni silenziose). */
+  const vincoliDopoTopologia = (
+    vincoli: VincoloPianta[] | undefined
+  ): { validi: VincoloPianta[] | undefined; persi: number } => {
+    const tutti = vincoli ?? [];
+    const validi = tutti.filter((v) => v.riferimenti.every((r) => r.oggettoId != null));
+    return { validi: validi.length ? validi : undefined, persi: tutti.length - validi.length };
+  };
+
   /** Esegue un comando del Menu Schizzo (Pulizia/Ricostruisci) sul perimetro. */
   const eseguiComandoPianta = (cmd: ComandoPianta) => {
     if (!annotazioni) return;
@@ -2650,12 +2721,24 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     if (cmd === 'togliVincoli') {
       const distanze = (poli.vincoli ?? []).filter((v) => v.tipo === 'distanza');
       const rimossi = (poli.vincoli ?? []).length - distanze.length;
-      if (rimossi === 0) {
-        mostraToast('info', 'Nessun vincolo geometrico da rimuovere.');
+      // si liberano anche BLOCCHI e ANCORE dei lati (stanno nel gruppo Vincoli):
+      // senza questo lo schizzo resterebbe rigido e i vincoli sembrerebbero attivi
+      const segsLiberi = segmentiPoligono(poli).map((s) =>
+        s.bloccato || s.ancora ? { ...s, bloccato: undefined, ancora: undefined } : s
+      );
+      const liberati = segmentiPoligono(poli).filter((s) => s.bloccato || s.ancora).length;
+      if (rimossi === 0 && liberati === 0) {
+        mostraToast('info', 'Nessun vincolo geometrico, blocco o ancora da rimuovere.');
         return;
       }
-      scrivi({ vincoli: distanze.length ? distanze : undefined });
-      mostraToast('successo', `Rimossi ${rimossi} vincoli geometrici (le quote di distanza restano).`);
+      scrivi({
+        vincoli: distanze.length ? distanze : undefined,
+        segmenti: segsLiberi
+      });
+      mostraToast(
+        'successo',
+        `Rimossi ${rimossi} vincoli e liberati ${liberati} lati bloccati/ancorati (le quote di distanza restano).`
+      );
       return;
     }
     if (cmd === 'unisci') {
@@ -2664,8 +2747,13 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         mostraToast('info', 'Nessun lato allineato da unire.');
         return;
       }
-      scrivi({ punti: r.punti, segmenti: r.segmenti, origine: r.origine, vincoli: undefined });
-      mostraToast('successo', `Uniti ${r.rimossi} vertici: lati allineati fusi.`);
+      const vt = vincoliDopoTopologia(poli.vincoli);
+      scrivi({ punti: r.punti, segmenti: r.segmenti, origine: r.origine, vincoli: vt.validi });
+      mostraToast(
+        'successo',
+        `Uniti ${r.rimossi} vertici: lati allineati fusi.` +
+          (vt.persi ? ` ${vt.persi} vincoli sui lati sono decaduti (indici cambiati).` : '')
+      );
       return;
     }
     if (cmd === 'semplifica') {
@@ -2674,9 +2762,15 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         mostraToast('info', 'Niente da semplificare: nessun lato troppo corto o allineato.');
         return;
       }
-      // la topologia cambia: i vincoli geometrici (riferiti a indici) vanno azzerati
-      scrivi({ punti: r.punti, segmenti: r.segmenti, origine: r.origine, vincoli: undefined });
-      mostraToast('successo', `Semplificata: rimossi ${r.rimossi} vertici superflui.`);
+      // la topologia cambia: i vincoli sui LATI (riferiti a indici) decadono;
+      // quelli tra soli oggetti restano validi
+      const vt = vincoliDopoTopologia(poli.vincoli);
+      scrivi({ punti: r.punti, segmenti: r.segmenti, origine: r.origine, vincoli: vt.validi });
+      mostraToast(
+        'successo',
+        `Semplificata: rimossi ${r.rimossi} vertici superflui.` +
+          (vt.persi ? ` ${vt.persi} vincoli sui lati sono decaduti.` : '')
+      );
       return;
     }
     const passo = cmd === 'snap30' ? 30 : cmd === 'snap45' ? 45 : 90;
@@ -3036,6 +3130,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           setQuotaInline({ id: selezionata.id, indice, x: cliente.x, y: cliente.y });
         }}
         onPuntoVincolo={onPuntoVincolo}
+        puntiSelezionabili={strumento === 'vincolo' ? puntiSelezionabiliArmati() : null}
         onDistanzaInline={(vincoloId, cliente) => {
           if (!selezionata || selezionata.tipo !== 'quotaPoligono') return;
           const v = (selezionata.vincoli ?? []).find((x) => x.id === vincoloId);
@@ -3393,7 +3488,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             perpendicolare: 'Perpendicolare',
             ugualeLunghezza: 'Uguale lunghezza',
             collineare: 'Collineare',
-            distanza: 'Distanza oggetto–lato',
+            distanza: 'Quota distanza',
             diagonale: 'Diagonale',
             angoloVertice: 'Angolo',
             eliminaLato: 'Elimina lato'
@@ -3402,9 +3497,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           const nRefs = vincoloArmato.refs?.length ?? 0;
           const passo =
             vincoloArmato.tipo === 'distanza'
-              ? vincoloArmato.oggettoPick
-                ? 'ora tocca il lato'
-                : 'tocca l’oggetto (centro o bordo)'
+              ? nRefs === 0
+                ? 'tocca il primo punto (pallino rosso) o un lato'
+                : 'tocca il secondo punto o un lato'
               : vincoloArmato.tipo === 'diagonale'
                 ? vincoloArmato.picks.length === 0
                   ? 'tocca il primo vertice'
@@ -4981,10 +5076,28 @@ function QuotaInline({
 }) {
   const [txt, setTxt] = useState(valore != null ? String(valore) : '');
   const ref = useRef<HTMLInputElement>(null);
+  const pannello = useRef<HTMLDivElement>(null);
+  /** correzione misurata per restare interamente nello schermo */
+  const [aggiusta, setAggiusta] = useState({ dx: 0, dy: 0 });
   useEffect(() => {
     ref.current?.focus();
     ref.current?.select();
   }, []);
+  useLayoutEffect(() => {
+    // il pannello è ancorato al punto toccato: vicino ai bordi si misura la
+    // sua dimensione REALE e lo si rientra tutto nello schermo
+    const el = pannello.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const M = 8;
+    let dx = 0;
+    let dy = 0;
+    if (r.left < M) dx = M - r.left;
+    else if (r.right > window.innerWidth - M) dx = window.innerWidth - M - r.right;
+    if (r.top < M) dy = M - r.top;
+    else if (r.bottom > window.innerHeight - M) dy = window.innerHeight - M - r.bottom;
+    if (dx !== 0 || dy !== 0) setAggiusta((a) => ({ dx: a.dx + dx, dy: a.dy + dy }));
+  }, [x, y]);
   const conferma = () => {
     const v = parseFloat(txt.replace(',', '.'));
     if (!Number.isFinite(v) || v <= 0) {
@@ -4993,13 +5106,18 @@ function QuotaInline({
     }
     onConferma(v);
   };
-  // tiene il campo dentro lo schermo, sopra il punto toccato
-  const left = Math.max(96, Math.min(window.innerWidth - 96, x));
-  const top = Math.max(76, y);
+  const left = x + aggiusta.dx;
+  const top = Math.max(76, y) + aggiusta.dy;
   return (
     <>
       <div className="quota-inline-backdrop" onClick={onAnnulla} />
-      <div className="quota-inline" style={{ left, top }} role="dialog" aria-label="Modifica quota">
+      <div
+        ref={pannello}
+        className="quota-inline"
+        style={{ left, top }}
+        role="dialog"
+        aria-label="Modifica quota"
+      >
         <div className="qi-riga">
           <input
             ref={ref}

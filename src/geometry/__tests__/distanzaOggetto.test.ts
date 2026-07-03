@@ -138,6 +138,88 @@ describe('quota di distanza oggetto–lato (Fase 4 schizzo)', () => {
     expect(out?.[0].valore).toBeCloseTo(75); // 150 px / 2 px-per-unità
   });
 
+  it('PUNTO↔PUNTO: centro cerchio ↔ vertice del perimetro (misura e comando)', () => {
+    const v: VincoloPianta = {
+      id: 'pp',
+      tipo: 'distanza',
+      riferimenti: [
+        { entita: 'centroOggetto', oggettoId: 'o1' },
+        { entita: 'vertice', indice: 0 } // (0,0)
+      ]
+    };
+    const g = geomQuotaDistanza(PUNTI, [cerchio()], v);
+    expect(g!.dPx).toBeCloseTo(Math.hypot(200, 200));
+    // il cerchio è libero: si sposta LUNGO la congiungente fino alla distanza voluta
+    const r = applicaDistanza(PUNTI, NESSUNA_QUOTA, [cerchio()], v, 100);
+    const o = r!.oggetti![0];
+    expect(Math.hypot(o.x, o.y)).toBeCloseTo(100);
+    // resta sulla stessa direzione (45°)
+    expect(o.x).toBeCloseTo(o.y);
+  });
+
+  it('PUNTO↔PUNTO tra due oggetti: si muove il primo libero', () => {
+    const rett: OggettoDistanza = {
+      id: 'o2',
+      tipo: 'rettangolo',
+      x: 300,
+      y: 380,
+      larghezza: 100,
+      altezza: 60
+    };
+    const v: VincoloPianta = {
+      id: 'pp2',
+      tipo: 'distanza',
+      riferimenti: [
+        { entita: 'centroOggetto', oggettoId: 'o1' },
+        { entita: 'centroLato', oggettoId: 'o2', indice: 2 } // centro lato ALTO (350, 320)
+      ]
+    };
+    const g = geomQuotaDistanza(PUNTI, [cerchio(), rett], v);
+    expect(g!.dPx).toBeCloseTo(Math.hypot(200 - 350, 200 - 320));
+    const r = applicaDistanza(PUNTI, NESSUNA_QUOTA, [cerchio(), rett], v, 50);
+    const oc = r!.oggetti!.find((o) => o.id === 'o1')!;
+    expect(Math.hypot(oc.x - 350, oc.y - 320)).toBeCloseTo(50);
+  });
+
+  it('PUNTO(perimetro)↔LATO(oggetto): si muove l’oggetto proprietario del lato', () => {
+    const rett: OggettoDistanza = {
+      id: 'o2',
+      tipo: 'rettangolo',
+      x: 300,
+      y: 380,
+      larghezza: 100,
+      altezza: 60
+    };
+    const v: VincoloPianta = {
+      id: 'pl',
+      tipo: 'distanza',
+      riferimenti: [
+        { entita: 'centroLato', indice: 0 }, // centro del lato alto del perimetro (200,0)
+        { entita: 'lato', oggettoId: 'o2', indice: 2 } // lato alto del rettangolo (y=320)
+      ]
+    };
+    const g = geomQuotaDistanza(PUNTI, [rett], v);
+    expect(g!.dPx).toBeCloseTo(320);
+    const r = applicaDistanza(PUNTI, NESSUNA_QUOTA, [rett], v, 200);
+    const o = r!.oggetti![0];
+    expect(o.y - (o.altezza ?? 0)).toBeCloseTo(200); // lato alto a y=200
+    expect(o.x).toBeCloseTo(300); // niente deriva laterale
+  });
+
+  it('PUNTO↔PUNTO con oggetto ancorato → bloccata (nessun muro coinvolto)', () => {
+    const v: VincoloPianta = {
+      id: 'pp3',
+      tipo: 'distanza',
+      riferimenti: [
+        { entita: 'centroOggetto', oggettoId: 'o1' },
+        { entita: 'vertice', indice: 0 }
+      ]
+    };
+    const ogg = [cerchio({ centroAncorato: true })];
+    expect(libertaDistanza(PUNTI, NESSUNA_QUOTA, ogg, v)).toBe('bloccata');
+    expect(applicaDistanza(PUNTI, NESSUNA_QUOTA, ogg, v, 100)).toBeNull();
+  });
+
   it('distanza dal centro con centro ancorato → si muove il lato (se libero)', () => {
     const ogg = [cerchio({ centroAncorato: true })];
     expect(libertaDistanza(PUNTI, NESSUNA_QUOTA, ogg, vCentro, 2)).toBe('lato');

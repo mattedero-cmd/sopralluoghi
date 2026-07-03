@@ -138,6 +138,9 @@ interface Props {
    *  coordinate immagine (per trovare lato/vertice/oggetto più vicino) e in
    *  pixel schermo (per ancorare eventuali campi inline). */
   onPuntoVincolo?: (p: Punto, cliente: { x: number; y: number }) => void;
+  /** punti SELEZIONABILI del comando armato (vertici, centri-lato, centri):
+   *  disegnati come pallini rossi, discreti ma visibili. */
+  puntiSelezionabili?: Punto[] | null;
   /** oggetto dello schizzo DISEGNATO sul canvas (strumenti oggRett/oggCerchio):
    *  rettangolo → i due angoli; cerchio → centro e bordo. */
   onNuovoOggettoPianta?: (tipo: 'rettangolo' | 'cerchio', a: Punto, b: Punto) => void;
@@ -1322,6 +1325,20 @@ export function StageEditor(p: Props) {
                 );
               });
             })}
+          {/* punti SELEZIONABILI del comando armato: pallini rossi, discreti
+              ma ben visibili (vertici, centri-lato, centri oggetto) */}
+          {p.puntiSelezionabili?.map((pt, i) => (
+            <Circle
+              key={`sel-${i}`}
+              x={pt.x}
+              y={pt.y}
+              radius={Math.max(3.5 / vista.scala, 2)}
+              fill="#e5534b"
+              stroke="#ffffff"
+              strokeWidth={1.2 / vista.scala}
+              listening={false}
+            />
+          ))}
           {/* evidenziazione delle misure concatenate, sopra le quote */}
           <Shape
             listening={false}
