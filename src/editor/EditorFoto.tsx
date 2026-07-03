@@ -16,6 +16,7 @@ import type {
   QuotaRettangolo,
   Rettangolo,
   SegmentoQuota,
+  RiferimentoPianta,
   SottotipoQuota,
   StatoMisura,
   TipoAnnotazione,
@@ -61,12 +62,14 @@ import { ricalcolaTecniche } from '../geometry/quotaTecnica';
 import { raddrizzaStanza, ricostruisciOrtogonale } from '../geometry/schizzo';
 import {
   applicaDistanza,
+  applicaVincoliOggetti,
   centroOggetto,
   eliminaLatoRichiudi,
   fondiCollineari,
   geomQuotaDistanza,
   libertaDistanza,
   origineDefault,
+  puntoRiferimento,
   quotaFissa,
   rimisuraDistanze,
   riposizionaOggetti,
@@ -374,13 +377,15 @@ const GRUPPI_STRUMENTI_PIANTA: Array<{
     icona: 'angolo',
     testo: 'Vincoli',
     voci: [
-      // vincoli a tocchi (tap-tap): premi, poi tocca il/i lato/i sullo schizzo
-      { icona: 'quota-orizz', testo: 'Orizzontale', vincolo: 'orizzontale' },
-      { icona: 'quota-vert', testo: 'Verticale', vincolo: 'verticale' },
+      // vincoli a tocchi (tap-tap): premi, poi tocca lati o PUNTI (vertice,
+      // centro-lato, centro oggetto) — anche tra oggetti diversi e col perimetro
+      { icona: 'mirino', testo: 'Coincidente (2 punti)', vincolo: 'coincidente' },
+      { icona: 'quota-orizz', testo: 'Orizzontale (lato o 2 punti)', vincolo: 'orizzontale' },
+      { icona: 'quota-vert', testo: 'Verticale (lato o 2 punti)', vincolo: 'verticale' },
+      { icona: 'quota-allin', testo: 'Collineare / complanare', vincolo: 'collineare' },
       { icona: 'polilinea', testo: 'Parallelo', vincolo: 'parallelo' },
       { icona: 'angolo', testo: 'Perpendicolare', vincolo: 'perpendicolare' },
       { icona: 'righello', testo: 'Uguale lunghezza', vincolo: 'ugualeLunghezza' },
-      { icona: 'quota-allin', testo: 'Collineare', vincolo: 'collineare' },
       {
         icona: 'magnete',
         testo: 'Blocca lato / ancora',
@@ -563,6 +568,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     id: string;
     tipo: TipoArmato;
     picks: number[];
+    /** riferimenti ricchi (punti/lati, anche di oggetto) per i vincoli tra entità */
+    refs?: RiferimentoPianta[];
     oggettoPick?: { oggettoId: string; entita: 'centroOggetto' | 'bordoOggetto' };
   } | null>(null);
   /** modifica inline di una quota di distanza oggetto–lato (id vincolo) */
@@ -898,12 +905,18 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     if (foto.ePianta && px != null && (!eLato || haVincoliAvanzati)) {
       const r = risolviPianta(poli.punti, nuoviSegs, poli.vincoli, px, origine);
       if (!r.ok) return false;
-      const oggNuovi = riposizionaOggetti(poli.oggetti, poli.punti, r.punti, origine);
+      const ass = assestaOggetti(
+        poli,
+        r.punti,
+        riposizionaOggetti(poli.oggetti, poli.punti, r.punti, origine),
+        poli.vincoli,
+        nuoviSegs
+      );
       scrivi({
-        punti: r.punti,
-        segmenti: riquota(nuoviSegs, r.punti),
-        oggetti: oggNuovi,
-        vincoli: rimisuraDistanze(poli.vincoli, r.punti, oggNuovi, px, arrotondaMisura),
+        punti: ass.punti,
+        segmenti: riquota(nuoviSegs, ass.punti),
+        oggetti: ass.oggetti,
+        vincoli: rimisuraDistanze(poli.vincoli, ass.punti, ass.oggetti, px, arrotondaMisura),
         valoreAuto: false
       });
       return true;
@@ -916,12 +929,18 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         origine
       });
       if (!esito.ok) return false;
-      const oggNuovi = riposizionaOggetti(poli.oggetti, poli.punti, esito.punti, origine);
+      const ass = assestaOggetti(
+        poli,
+        esito.punti,
+        riposizionaOggetti(poli.oggetti, poli.punti, esito.punti, origine),
+        poli.vincoli,
+        nuoviSegs
+      );
       scrivi({
-        punti: esito.punti,
-        segmenti: riquota(nuoviSegs, esito.punti),
-        oggetti: oggNuovi,
-        vincoli: rimisuraDistanze(poli.vincoli, esito.punti, oggNuovi, px, arrotondaMisura),
+        punti: ass.punti,
+        segmenti: riquota(nuoviSegs, ass.punti),
+        oggetti: ass.oggetti,
+        vincoli: rimisuraDistanze(poli.vincoli, ass.punti, ass.oggetti, px, arrotondaMisura),
         valoreAuto: false
       });
       return true;
@@ -1050,6 +1069,77 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     return best;
   };
 
+  /** Entità dello schizzo più vicina al tocco, secondo la MODALITÀ richiesta:
+   *  - 'punto': solo punti (vertice, centro-lato, centro oggetto — perimetro e oggetti);
+   *  - 'lato': solo lati (perimetro e lati dei rettangoli);
+   *  - 'misto': lati del PERIMETRO in competizione coi punti degli OGGETTI
+   *    (per orizz./vert.: un lato = vincolo classico, un punto = allineamento).
+   *  Niente soglie in pixel: vince sempre l'entità più vicina del genere ammesso. */
+  const entitaPiuVicina = (
+    poli: QuotaPoligono,
+    p: Punto,
+    modo: 'punto' | 'lato' | 'misto'
+  ): { rif: RiferimentoPianta; genere: 'punto' | 'lato' } => {
+    const n = poli.punti.length;
+    let puntoRif: RiferimentoPianta | null = null;
+    let puntoD = Infinity;
+    let latoRif: RiferimentoPianta = { entita: 'lato', indice: 0 };
+    let latoD = Infinity;
+    const vuolePunti = modo !== 'lato';
+    const vuoleLati = modo !== 'punto';
+    const provaPunto = (rif: RiferimentoPianta) => {
+      const q = puntoRiferimento(poli.punti, poli.oggetti, rif);
+      if (!q) return;
+      const d = Math.hypot(p.x - q.x, p.y - q.y);
+      if (d < puntoD) {
+        puntoD = d;
+        puntoRif = rif;
+      }
+    };
+    const provaLato = (rif: RiferimentoPianta, a: Punto, b: Punto) => {
+      const d = distanzaPuntoSegmento(p, a, b);
+      if (d < latoD) {
+        latoD = d;
+        latoRif = rif;
+      }
+    };
+    for (let i = 0; i < n; i++) {
+      // in 'misto' i punti del perimetro non competono col lato: un tocco sul
+      // lato deve dare il vincolo classico, non rubarlo il centro-lato
+      if (vuolePunti && modo !== 'misto') {
+        provaPunto({ entita: 'vertice', indice: i });
+        provaPunto({ entita: 'centroLato', indice: i });
+      }
+      if (vuoleLati) provaLato({ entita: 'lato', indice: i }, poli.punti[i], poli.punti[(i + 1) % n]);
+    }
+    for (const o of poli.oggetti ?? []) {
+      if (vuolePunti) provaPunto({ entita: 'centroOggetto', oggettoId: o.id });
+      if (o.tipo !== 'rettangolo') continue;
+      const w = o.larghezza ?? 0;
+      const h = o.altezza ?? 0;
+      const c = [
+        { x: o.x, y: o.y },
+        { x: o.x + w, y: o.y },
+        { x: o.x + w, y: o.y - h },
+        { x: o.x, y: o.y - h }
+      ];
+      for (let i = 0; i < 4; i++) {
+        if (vuolePunti) {
+          provaPunto({ entita: 'vertice', oggettoId: o.id, indice: i });
+          provaPunto({ entita: 'centroLato', oggettoId: o.id, indice: i });
+        }
+        // in 'misto' i lati degli oggetti non servono (sono già dritti)
+        if (vuoleLati && modo !== 'misto')
+          provaLato({ entita: 'lato', oggettoId: o.id, indice: i }, c[i], c[(i + 1) % 4]);
+      }
+    }
+    if (modo === 'punto' && puntoRif) return { rif: puntoRif, genere: 'punto' };
+    if (modo === 'lato') return { rif: latoRif, genere: 'lato' };
+    // 'misto': vince l'entità strettamente più vicina (punto oggetto vs lato perimetro)
+    if (puntoRif && puntoD < latoD) return { rif: puntoRif, genere: 'punto' };
+    return { rif: latoRif, genere: 'lato' };
+  };
+
   /** Applica una lista di vincoli allo schizzo: se calibrato risolve e adatta
    *  la forma (false se in conflitto), altrimenti memorizza senza risolvere. */
   const applicaVincoliSchizzo = (poli: QuotaPoligono, vincoli: VincoloPianta[]): boolean => {
@@ -1070,28 +1160,34 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     const r = risolviPianta(poli.punti, segsSolve, vincoli, pxSolve, origine);
     if (!r.ok) return false;
     const nLati = poli.punti.length;
-    // le quote reali si riquotano solo se c'è una scala vera
+    const ass = assestaOggetti(
+      poli,
+      r.punti,
+      riposizionaOggetti(poli.oggetti, poli.punti, r.punti, origine),
+      vincoli
+    );
+    // le quote reali si riquotano solo se c'è una scala vera, e SEMPRE sulla
+    // geometria finale (l'assestamento degli oggetti può spostare un muro)
     const segsFinali =
       px == null
         ? segmentiPoligono(poli)
         : segmentiPoligono(poli).map((s) => {
             if (s.valore == null || quotaFissa(s, nLati)) return s;
-            const A = r.punti[s.da];
-            const B = r.punti[s.a];
+            const A = ass.punti[s.da];
+            const B = ass.punti[s.a];
             if (!A || !B) return s;
             return { ...s, valore: arrotondaMisura(Math.hypot(B.x - A.x, B.y - A.y) / px) };
           });
-    const oggNuovi = riposizionaOggetti(poli.oggetti, poli.punti, r.punti, origine);
     const vincoliFinali =
-      px != null ? rimisuraDistanze(vincoli, r.punti, oggNuovi, px, arrotondaMisura) : vincoli;
+      px != null ? rimisuraDistanze(vincoli, ass.punti, ass.oggetti, px, arrotondaMisura) : vincoli;
     commit(
       annotazioni.map((a) =>
         a.id === poli.id
           ? ({
               ...poli,
-              punti: r.punti,
+              punti: ass.punti,
               segmenti: segsFinali,
-              oggetti: oggNuovi,
+              oggetti: ass.oggetti,
               vincoli: vincoliFinali?.length ? vincoliFinali : undefined,
               lati: undefined,
               offsetLati: undefined,
@@ -1101,6 +1197,44 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       )
     );
     return true;
+  };
+
+  /** Riapplica i vincoli TRA OGGETTI (coincidente/allineamenti/collineare con
+   *  riferimenti-oggetto) dopo un cambio di geometria: gli oggetti liberi si
+   *  riportano al loro posto. Restituisce punti/oggetti assestati. */
+  const assestaOggetti = (
+    poli: QuotaPoligono,
+    punti: Punto[],
+    oggetti: OggettoPianta[] | undefined,
+    vincoli: VincoloPianta[] | undefined,
+    segs?: SegmentoQuota[]
+  ): { punti: Punto[]; oggetti: OggettoPianta[] | undefined } => {
+    const r = applicaVincoliOggetti(
+      punti,
+      segs ?? segmentiPoligono(poli),
+      oggetti,
+      vincoli,
+      poli.origine ?? origineDefault(punti)
+    );
+    return r ? { punti: r.punti, oggetti: r.oggetti } : { punti, oggetti };
+  };
+
+  /** riquota le quote AUTO dei lati dalla geometria `punti` (quelle FISSE
+   *  restano); undefined se non c'è scala (niente da riquotare) */
+  const riquotaAutoDaPunti = (
+    poli: QuotaPoligono,
+    punti: Punto[],
+    px: number | null
+  ): SegmentoQuota[] | undefined => {
+    if (px == null) return undefined;
+    const nLati = poli.punti.length;
+    return segmentiPoligono(poli).map((s) => {
+      if (s.valore == null || quotaFissa(s, nLati)) return s;
+      const A = punti[s.da];
+      const B = punti[s.a];
+      if (!A || !B) return s;
+      return { ...s, valore: arrotondaMisura(Math.hypot(B.x - A.x, B.y - A.y) / px) };
+    });
   };
 
   /** Arma un'azione tap-tap sul poligono bersaglio (selezionato o unico). */
@@ -1292,6 +1426,138 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       mostraToast('successo', 'Quota distanza creata: tocca la sua etichetta per modificarla.');
       return;
     }
+    // --- VINCOLI TRA ENTITÀ (punti e lati, anche di oggetto): coincidente,
+    // allineamento orizzontale/verticale tra punti, collineare/complanare.
+    if (
+      vincoloArmato.tipo === 'coincidente' ||
+      vincoloArmato.tipo === 'orizzontale' ||
+      vincoloArmato.tipo === 'verticale' ||
+      vincoloArmato.tipo === 'collineare'
+    ) {
+      const tipoV = vincoloArmato.tipo;
+      // modalità del picker: COINCIDENTE vuole punti; COLLINEARE vuole lati;
+      // ORIZZ./VERT. al primo tocco accettano un lato del PERIMETRO (vincolo
+      // classico) o un punto di un OGGETTO (allineamento); al secondo, punti.
+      const eAllineamento = tipoV === 'orizzontale' || tipoV === 'verticale';
+      const modo: 'punto' | 'lato' | 'misto' =
+        tipoV === 'coincidente'
+          ? 'punto'
+          : tipoV === 'collineare'
+            ? 'lato'
+            : vincoloArmato.refs?.length
+              ? 'punto'
+              : 'misto';
+      const ent = entitaPiuVicina(poli, p, modo);
+      if (eAllineamento && !vincoloArmato.refs?.length && ent.genere === 'lato') {
+        // lato del perimetro: vincolo classico immediato (raddrizza il lato)
+        const nuovo: VincoloPianta = { id: nuovoId(), tipo: tipoV, riferimenti: [ent.rif] };
+        const ok = applicaVincoliSchizzo(poli, [...(poli.vincoli ?? []), nuovo]);
+        setVincoloArmato(null);
+        setStrumento('seleziona');
+        if (!ok) mostraToast('errore', 'Vincolo in conflitto con gli altri: non applicato.');
+        else mostraToast('successo', 'Vincolo applicato: la forma si è adattata.');
+        return;
+      }
+      const refs = [...(vincoloArmato.refs ?? []), ent.rif];
+      if (refs.length < 2) {
+        setVincoloArmato({ ...vincoloArmato, refs });
+        return;
+      }
+      const [rA, rB] = refs;
+      // stesso elemento, o due elementi dello STESSO oggetto rigido (che non
+      // può soddisfare un vincolo interno traslando): si resta in attesa
+      const stesso =
+        rA.entita === rB.entita && rA.oggettoId === rB.oggettoId && rA.indice === rB.indice;
+      const stessoOggetto = rA.oggettoId != null && rA.oggettoId === rB.oggettoId;
+      if (stesso || stessoOggetto) {
+        mostraToast(
+          'info',
+          stessoOggetto && !stesso
+            ? 'Tocca un elemento di un ALTRO oggetto o del perimetro: un vincolo interno a un oggetto rigido non ha effetto.'
+            : 'Tocca un secondo elemento diverso dal primo.'
+        );
+        return;
+      }
+      const conOggetti = refs.some((r) => r.oggettoId != null);
+      // solo perimetro: la coincidenza LM vale tra VERTICI — l'avviso arriva
+      // PRIMA di disarmare, così si può ancora toccare un elemento valido
+      if (!conOggetti && tipoV === 'coincidente' && refs.some((r) => r.entita !== 'vertice')) {
+        mostraToast(
+          'info',
+          'Tra elementi del perimetro la coincidenza vale tra VERTICI; tocca un vertice o un punto di un oggetto.'
+        );
+        return;
+      }
+      const nuovo: VincoloPianta = { id: nuovoId(), tipo: tipoV, riferimenti: refs };
+      setVincoloArmato(null);
+      setStrumento('seleziona');
+      if (!conOggetti) {
+        // solo perimetro: coincidente/collineare passano dal risolutore LM
+        const ok = applicaVincoliSchizzo(poli, [...(poli.vincoli ?? []), nuovo]);
+        if (!ok) mostraToast('errore', 'Vincolo in conflitto con gli altri: non applicato.');
+        else mostraToast('successo', 'Vincolo applicato: la forma si è adattata.');
+        return;
+      }
+      // livello OGGETTI: applica subito con la proiezione (traslazioni rigide)
+      const segsPoli = segmentiPoligono(poli);
+      const tutti = [...(poli.vincoli ?? []), nuovo];
+      const r = applicaVincoliOggetti(
+        poli.punti,
+        segsPoli,
+        poli.oggetti,
+        tutti,
+        poli.origine ?? origineDefault(poli.punti)
+      );
+      // si giudica solo il vincolo NUOVO: eventuali vincoli preesistenti già
+      // insoddisfatti non devono bloccare (né farsi attribuire) questo
+      if (!r || r.fallitiIds.includes(nuovo.id)) {
+        mostraToast(
+          'errore',
+          tipoV === 'collineare'
+            ? 'Vincolo non applicabile: lati non paralleli (gli oggetti non ruotano) o tutto ancorato.'
+            : 'Vincolo non applicabile: gli elementi coinvolti sono tutti ancorati.'
+        );
+        return;
+      }
+      if (r.fallitiIds.length > 0) {
+        mostraToast(
+          'info',
+          `${r.fallitiIds.length} vincoli preesistenti non risultano soddisfatti (elementi ancorati o in conflitto).`
+        );
+      }
+      const px = pxPerUnita(foto, poli.unita);
+      // se il MURO si è spostato, le quote auto dei lati si riquotano
+      const nLatiPoli = poli.punti.length;
+      const segsFinali =
+        r.punti !== poli.punti && px != null
+          ? segsPoli.map((s) => {
+              if (s.valore == null || quotaFissa(s, nLatiPoli)) return s;
+              const A = r.punti[s.da];
+              const B = r.punti[s.a];
+              if (!A || !B) return s;
+              return { ...s, valore: arrotondaMisura(Math.hypot(B.x - A.x, B.y - A.y) / px) };
+            })
+          : undefined;
+      const vincoliFinali =
+        px != null ? rimisuraDistanze(tutti, r.punti, r.oggetti, px, arrotondaMisura) : tutti;
+      commit(
+        annotazioni.map((a) =>
+          a.id === poli.id
+            ? ({
+                ...poli,
+                punti: r.punti,
+                ...(segsFinali ? { segmenti: segsFinali } : {}),
+                oggetti: r.oggetti,
+                vincoli: vincoliFinali,
+                lati: undefined,
+                offsetLati: undefined
+              } as QuotaPoligono)
+            : a
+        )
+      );
+      mostraToast('successo', 'Vincolo applicato: gli elementi si sono allineati.');
+      return;
+    }
     const i = latoPiuVicino(poli, p);
     const binario = VINCOLI_BINARI.includes(vincoloArmato.tipo);
     const richiesti = binario ? 2 : 1;
@@ -1372,8 +1638,14 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       origine
     );
     if (!esito) return false;
-    const puntiNuovi = esito.punti ?? poli.punti;
-    const oggettiNuovi = esito.oggetti ?? poli.oggetti;
+    const ass = assestaOggetti(
+      poli,
+      esito.punti ?? poli.punti,
+      esito.oggetti ?? poli.oggetti,
+      poli.vincoli
+    );
+    const puntiNuovi = ass.punti;
+    const oggettiNuovi = ass.oggetti;
     const nLati = poli.punti.length;
     // se si è mosso il LATO, i lati adiacenti auto si riquotano
     const segsFinali = esito.punti
@@ -1473,37 +1745,64 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     const sel = oggettoSelezionato();
     if (!sel || !annotazioni || !foto) return;
     const { poli, ogg } = sel;
-    const oggNuovi = (poli.oggetti ?? []).map((o) => (o.id === ogg.id ? { ...o, ...patch } : o));
+    const patched = (poli.oggetti ?? []).map((o) => (o.id === ogg.id ? { ...o, ...patch } : o));
+    const ass = assestaOggetti(poli, poli.punti, patched, poli.vincoli);
     const px = pxPerUnita(foto, poli.unita);
     const vincoli =
       px != null
-        ? rimisuraDistanze(poli.vincoli, poli.punti, oggNuovi, px, arrotondaMisura)
+        ? rimisuraDistanze(poli.vincoli, ass.punti, ass.oggetti, px, arrotondaMisura)
         : poli.vincoli;
+    // se l'assestamento ha spostato un muro, le quote auto si riquotano
+    const muroMosso = ass.punti !== poli.punti;
+    const segsNuovi = muroMosso ? riquotaAutoDaPunti(poli, ass.punti, px) : undefined;
     commit(
       annotazioni.map((a) =>
-        a.id === poli.id ? ({ ...poli, oggetti: oggNuovi, vincoli } as QuotaPoligono) : a
+        a.id === poli.id
+          ? ({
+              ...poli,
+              punti: ass.punti,
+              oggetti: ass.oggetti,
+              vincoli,
+              ...(segsNuovi ? { segmenti: segsNuovi } : {}),
+              ...(muroMosso ? { lati: undefined, offsetLati: undefined } : {})
+            } as QuotaPoligono)
+          : a
       )
     );
   };
 
-  /** spostamento dell'oggetto trascinato sul canvas */
+  /** spostamento dell'oggetto trascinato sul canvas: i vincoli tra oggetti
+   *  restano validi (l'oggetto trascinato "aggancia" di nuovo la posizione) */
   const spostaOggetto = (annId: string, oggettoId: string, dx: number, dy: number) => {
     if (!annotazioni || !foto) return;
     const poli = annotazioni.find((a) => a.id === annId && a.tipo === 'quotaPoligono') as
       | QuotaPoligono
       | undefined;
     if (!poli) return;
-    const oggNuovi = (poli.oggetti ?? []).map((o) =>
+    const spostati = (poli.oggetti ?? []).map((o) =>
       o.id === oggettoId ? { ...o, x: o.x + dx, y: o.y + dy } : o
     );
+    const ass = assestaOggetti(poli, poli.punti, spostati, poli.vincoli);
     const px = pxPerUnita(foto, poli.unita);
     const vincoli =
       px != null
-        ? rimisuraDistanze(poli.vincoli, poli.punti, oggNuovi, px, arrotondaMisura)
+        ? rimisuraDistanze(poli.vincoli, ass.punti, ass.oggetti, px, arrotondaMisura)
         : poli.vincoli;
+    // se l'assestamento ha spostato un muro, le quote auto si riquotano
+    const muroMosso = ass.punti !== poli.punti;
+    const segsNuovi = muroMosso ? riquotaAutoDaPunti(poli, ass.punti, px) : undefined;
     commit(
       annotazioni.map((a) =>
-        a.id === poli.id ? ({ ...poli, oggetti: oggNuovi, vincoli } as QuotaPoligono) : a
+        a.id === poli.id
+          ? ({
+              ...poli,
+              punti: ass.punti,
+              oggetti: ass.oggetti,
+              vincoli,
+              ...(segsNuovi ? { segmenti: segsNuovi } : {}),
+              ...(muroMosso ? { lati: undefined, offsetLati: undefined } : {})
+            } as QuotaPoligono)
+          : a
       )
     );
     setSelezioneId(annId);
@@ -1516,9 +1815,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     if (!sel || !annotazioni) return;
     const { poli, ogg } = sel;
     const oggNuovi = (poli.oggetti ?? []).filter((o) => o.id !== ogg.id);
-    const vincoli = (poli.vincoli ?? []).filter(
-      (v) =>
-        v.tipo !== 'distanza' || v.riferimenti.every((r) => r.oggettoId == null || r.oggettoId !== ogg.id)
+    // l'oggetto eliminato si porta via TUTTI i suoi vincoli (distanze,
+    // coincidenze, allineamenti, collinearità): niente riferimenti rotti
+    const vincoli = (poli.vincoli ?? []).filter((v) =>
+      v.riferimenti.every((r) => r.oggettoId == null || r.oggettoId !== ogg.id)
     );
     commit(
       annotazioni.map((a) =>
@@ -3086,6 +3386,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       {vincoloArmato &&
         (() => {
           const nomi: Partial<Record<TipoArmato, string>> = {
+            coincidente: 'Coincidente',
             orizzontale: 'Orizzontale',
             verticale: 'Verticale',
             parallelo: 'Parallelo',
@@ -3098,6 +3399,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             eliminaLato: 'Elimina lato'
           };
           const binario = VINCOLI_BINARI.includes(vincoloArmato.tipo as TipoVincoloPianta);
+          const nRefs = vincoloArmato.refs?.length ?? 0;
           const passo =
             vincoloArmato.tipo === 'distanza'
               ? vincoloArmato.oggettoPick
@@ -3111,11 +3413,23 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                   ? 'tocca il vertice dell’angolo'
                   : vincoloArmato.tipo === 'eliminaLato'
                     ? 'tocca il lato da eliminare'
-                    : vincoloArmato.picks.length === 0
-                      ? binario
-                        ? 'tocca il primo lato'
-                        : 'tocca il lato'
-                      : 'tocca il secondo lato';
+                    : vincoloArmato.tipo === 'coincidente'
+                      ? nRefs === 0
+                        ? 'tocca il primo punto (vertice, centro-lato, centro)'
+                        : 'tocca il secondo punto'
+                      : vincoloArmato.tipo === 'orizzontale' || vincoloArmato.tipo === 'verticale'
+                        ? nRefs === 0
+                          ? 'tocca un lato del perimetro, o un punto per allineare'
+                          : 'tocca il secondo punto'
+                        : vincoloArmato.tipo === 'collineare'
+                          ? nRefs === 0
+                            ? 'tocca il primo lato (anche di un rettangolo)'
+                            : 'tocca il secondo lato'
+                          : vincoloArmato.picks.length === 0
+                            ? binario
+                              ? 'tocca il primo lato'
+                              : 'tocca il lato'
+                            : 'tocca il secondo lato';
           return (
             <div className="barra-duplica" role="status">
               <span className="titolo">
@@ -4137,16 +4451,21 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                         return { ...s, valore: arrotondaMisura(Math.hypot(B.x - A.x, B.y - A.y) / px) };
                       });
                       {
-                        const oggNuovi = riposizionaOggetti(poli.oggetti, poli.punti, r.punti, poli.origine ?? origineDefault(poli.punti));
+                        const ass = assestaOggetti(
+                          poli,
+                          r.punti,
+                          riposizionaOggetti(poli.oggetti, poli.punti, r.punti, poli.origine ?? origineDefault(poli.punti)),
+                          vincoli
+                        );
                         commit(
                           annotazioni.map((a) =>
                             a.id === poli.id
                               ? ({
                                   ...poli,
-                                  punti: r.punti,
+                                  punti: ass.punti,
                                   segmenti: segsFinali,
-                                  oggetti: oggNuovi,
-                                  vincoli: rimisuraDistanze(vincoli, r.punti, oggNuovi, px, arrotondaMisura),
+                                  oggetti: ass.oggetti,
+                                  vincoli: rimisuraDistanze(vincoli, ass.punti, ass.oggetti, px, arrotondaMisura),
                                   lati: undefined,
                                   offsetLati: undefined
                                 } as QuotaPoligono)
@@ -4176,16 +4495,21 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                         return { ...s, valore: arrotondaMisura(Math.hypot(B.x - A.x, B.y - A.y) / px) };
                       });
                       {
-                        const oggNuovi = riposizionaOggetti(poli.oggetti, poli.punti, r.punti, poli.origine ?? origineDefault(poli.punti));
-                        const vincFinali = rimisuraDistanze(vincoli, r.punti, oggNuovi, px, arrotondaMisura);
+                        const ass = assestaOggetti(
+                          poli,
+                          r.punti,
+                          riposizionaOggetti(poli.oggetti, poli.punti, r.punti, poli.origine ?? origineDefault(poli.punti)),
+                          vincoli
+                        );
+                        const vincFinali = rimisuraDistanze(vincoli, ass.punti, ass.oggetti, px, arrotondaMisura);
                         commit(
                           annotazioni.map((a) =>
                             a.id === poli.id
                               ? ({
                                   ...poli,
-                                  punti: r.punti,
+                                  punti: ass.punti,
                                   segmenti: segsFinali,
-                                  oggetti: oggNuovi,
+                                  oggetti: ass.oggetti,
                                   vincoli: vincFinali?.length ? vincFinali : undefined,
                                   lati: undefined,
                                   offsetLati: undefined
@@ -4213,12 +4537,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               onOggetti={
                 foto.ePianta
                   ? (oggetti) => {
-                      // gli oggetti rimossi si portano via le loro quote di distanza
+                      // gli oggetti rimossi si portano via TUTTI i loro vincoli
                       const vivi = new Set(oggetti.map((o) => o.id));
-                      const vincoli = (poli.vincoli ?? []).filter(
-                        (v) =>
-                          v.tipo !== 'distanza' ||
-                          v.riferimenti.every((r) => r.oggettoId == null || vivi.has(r.oggettoId))
+                      const vincoli = (poli.vincoli ?? []).filter((v) =>
+                        v.riferimenti.every((r) => r.oggettoId == null || vivi.has(r.oggettoId))
                       );
                       commit(
                         annotazioni.map((a) =>

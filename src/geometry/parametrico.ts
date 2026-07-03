@@ -1,4 +1,11 @@
-import type { Punto, SegmentoQuota, StatoSchizzoPianta, VincoloPianta } from '../db/types';
+import type {
+  Punto,
+  RiferimentoPianta,
+  SegmentoQuota,
+  StatoSchizzoPianta,
+  TipoVincoloPianta,
+  VincoloPianta
+} from '../db/types';
 import { segmentoELato } from '../db/types';
 import { risolviGeom, type VincoloGeom } from './solverGeom';
 
@@ -422,6 +429,9 @@ export function costruisciVincoliPianta(
     r && r.indice != null && r.indice >= 0 && r.indice < n ? r.indice : null;
   for (const v of vincoliPianta ?? []) {
     if (v.riferimento) continue;
+    // i vincoli del LIVELLO OGGETTI (riferimenti con oggettoId) sono gestiti da
+    // applicaVincoliOggetti: qui verrebbero letti come indici del perimetro
+    if (v.riferimenti.some((r) => r.oggettoId != null)) continue;
     const R = v.riferimenti;
     if (v.tipo === 'angolo') {
       const vert = vertice(R[0]);
@@ -712,6 +722,240 @@ export function rimisuraDistanze(
 }
 
 // ---------------------------------------------------------------------------
+// VINCOLI TRA OGGETTI (stile Inventor): coincidente, allineamento orizzontale/
+// verticale tra PUNTI (vertice, centro-lato, centro oggetto) e collinearità/
+// complanarità tra LATI, anche tra oggetti diversi e col perimetro.
+// Gli oggetti non ruotano: i vincoli si soddisfano con TRASLAZIONI rigide
+// dell'oggetto libero (o del lato del perimetro, se tutto il resto è ancorato),
+// iterate per far convergere le catene (es. cerchio sul rettangolo sulla base).
+// ---------------------------------------------------------------------------
+
+/** vertice i del rettangolo: 0=basso-sx, 1=basso-dx, 2=alto-dx, 3=alto-sx */
+function verticeRettangolo(o: OggettoDistanza, i: number): Punto | null {
+  if (o.tipo !== 'rettangolo') return null;
+  const w = o.larghezza ?? 0;
+  const h = o.altezza ?? 0;
+  const c = [
+    { x: o.x, y: o.y },
+    { x: o.x + w, y: o.y },
+    { x: o.x + w, y: o.y - h },
+    { x: o.x, y: o.y - h }
+  ];
+  return c[((i % 4) + 4) % 4] ?? null;
+}
+
+/** Punto di un riferimento (vertice / centro-lato / centro), anche di oggetto. */
+export function puntoRiferimento(
+  punti: Punto[],
+  oggetti: OggettoDistanza[] | undefined,
+  r: RiferimentoPianta
+): Punto | null {
+  const n = punti.length;
+  if (r.oggettoId == null) {
+    if (r.indice == null || r.indice < 0 || r.indice >= n) return null;
+    if (r.entita === 'vertice') return punti[r.indice];
+    if (r.entita === 'centroLato') {
+      const a = punti[r.indice];
+      const b = punti[(r.indice + 1) % n];
+      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    }
+    return null;
+  }
+  const o = (oggetti ?? []).find((x) => x.id === r.oggettoId);
+  if (!o) return null;
+  if (r.entita === 'centroOggetto') return centroOggetto(o);
+  if (o.tipo !== 'rettangolo' || r.indice == null) return null;
+  if (r.entita === 'vertice') return verticeRettangolo(o, r.indice);
+  if (r.entita === 'centroLato') {
+    const a = verticeRettangolo(o, r.indice);
+    const b = verticeRettangolo(o, r.indice + 1);
+    return a && b ? { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } : null;
+  }
+  return null;
+}
+
+/** Segmento di un riferimento 'lato' (perimetro o lato di un rettangolo). */
+export function lineaRiferimento(
+  punti: Punto[],
+  oggetti: OggettoDistanza[] | undefined,
+  r: RiferimentoPianta
+): { a: Punto; b: Punto } | null {
+  if (r.entita !== 'lato' || r.indice == null) return null;
+  if (r.oggettoId == null) {
+    const n = punti.length;
+    if (r.indice < 0 || r.indice >= n) return null;
+    return { a: punti[r.indice], b: punti[(r.indice + 1) % n] };
+  }
+  const o = (oggetti ?? []).find((x) => x.id === r.oggettoId);
+  if (!o || o.tipo !== 'rettangolo') return null;
+  const a = verticeRettangolo(o, r.indice);
+  const b = verticeRettangolo(o, r.indice + 1);
+  return a && b ? { a, b } : null;
+}
+
+/** tipi di vincolo gestiti dal livello oggetti (con almeno un riferimento-oggetto) */
+const TIPI_VINCOLO_OGGETTI: TipoVincoloPianta[] = [
+  'coincidente',
+  'orizzontale',
+  'verticale',
+  'collineare'
+];
+
+/** il vincolo `v` appartiene al livello oggetti? */
+export function eVincoloOggetti(v: VincoloPianta): boolean {
+  return (
+    !v.riferimento &&
+    TIPI_VINCOLO_OGGETTI.includes(v.tipo) &&
+    v.riferimenti.length >= 2 &&
+    v.riferimenti.some((r) => r.oggettoId != null)
+  );
+}
+
+export interface EsitoVincoliOggetti<T extends OggettoDistanza> {
+  punti: Punto[];
+  oggetti: T[];
+  /** vincoli soddisfatti (residuo nullo sulla geometria FINALE) */
+  applicati: number;
+  /** vincoli NON soddisfatti (tutto ancorato, lati non paralleli, riferimenti rotti, conflitti) */
+  falliti: number;
+  /** id dei vincoli non soddisfatti (per distinguere il nuovo dai preesistenti) */
+  fallitiIds: string[];
+}
+
+/**
+ * Applica i vincoli tra oggetti traslando l'elemento LIBERO di ciascuno:
+ * l'oggetto del primo riferimento se non ancorato, altrimenti quello del
+ * secondo; per la collinearità, come ultima risorsa, il LATO del perimetro
+ * (se muovibile). Itera più passate per far convergere le catene.
+ * Restituisce null se non ci sono vincoli del livello oggetti.
+ */
+export function applicaVincoliOggetti<T extends OggettoDistanza>(
+  punti0: Punto[],
+  segmenti: SegmentoQuota[],
+  oggetti0: T[] | undefined,
+  vincoli: VincoloPianta[] | undefined,
+  origine?: number
+): EsitoVincoliOggetti<T> | null {
+  const attivi = (vincoli ?? []).filter(eVincoloOggetti);
+  if (attivi.length === 0 || !oggetti0 || oggetti0.length === 0) return null;
+  let punti = punti0;
+  let oggetti = oggetti0;
+
+  const spostaOggetto = (id: string, dx: number, dy: number) => {
+    oggetti = oggetti.map((o) => (o.id === id ? { ...o, x: o.x + dx, y: o.y + dy } : o));
+  };
+  const oggettoDi = (r: RiferimentoPianta): T | undefined =>
+    r.oggettoId != null ? oggetti.find((o) => o.id === r.oggettoId) : undefined;
+
+  /** delta che porta l'elemento di rA sul bersaglio di rB, per il vincolo `v`
+   *  sulla geometria CORRENTE (null = riferimenti rotti / lati non paralleli) */
+  const deltaVerso = (
+    v: VincoloPianta,
+    rA: RiferimentoPianta,
+    rB: RiferimentoPianta
+  ): Punto | null => {
+    if (v.tipo === 'collineare') {
+      const LA = lineaRiferimento(punti, oggetti, rA);
+      const LB = lineaRiferimento(punti, oggetti, rB);
+      if (!LA || !LB) return null;
+      const lA = Math.hypot(LA.b.x - LA.a.x, LA.b.y - LA.a.y);
+      const lB = Math.hypot(LB.b.x - LB.a.x, LB.b.y - LB.a.y);
+      if (lA < 1e-6 || lB < 1e-6) return null;
+      const dA = { x: (LA.b.x - LA.a.x) / lA, y: (LA.b.y - LA.a.y) / lA };
+      const dB = { x: (LB.b.x - LB.a.x) / lB, y: (LB.b.y - LB.a.y) / lB };
+      // gli oggetti non ruotano: la collinearità vale solo tra lati PARALLELI
+      if (Math.abs(dA.x * dB.y - dA.y * dB.x) > 0.12) return null;
+      const nB = { x: -dB.y, y: dB.x };
+      const midA = { x: (LA.a.x + LA.b.x) / 2, y: (LA.a.y + LA.b.y) / 2 };
+      const dist = (midA.x - LB.a.x) * nB.x + (midA.y - LB.a.y) * nB.y;
+      return { x: -nB.x * dist, y: -nB.y * dist };
+    }
+    const A = puntoRiferimento(punti, oggetti, rA);
+    const B = puntoRiferimento(punti, oggetti, rB);
+    if (!A || !B) return null;
+    if (v.tipo === 'orizzontale') return { x: 0, y: B.y - A.y }; // stessa Y
+    if (v.tipo === 'verticale') return { x: B.x - A.x, y: 0 }; // stessa X
+    return { x: B.x - A.x, y: B.y - A.y }; // coincidente
+  };
+
+  // le catene convergono un anello per passata: le passate scalano col numero
+  // di vincoli (l'uscita anticipata tiene economico il caso comune)
+  const passate = Math.max(6, attivi.length + 2);
+  for (let passata = 0; passata < passate; passata++) {
+    let maxSpostamento = 0;
+    for (const v of attivi) {
+      const [r0, r1] = v.riferimenti;
+      if (!r0 || !r1) continue;
+      // 1) muove l'oggetto del primo riferimento, se libero
+      const o0 = oggettoDi(r0);
+      const o1 = oggettoDi(r1);
+      let delta: Punto | null = null;
+      if (o0 && !o0.centroAncorato && o0.id !== o1?.id) {
+        delta = deltaVerso(v, r0, r1);
+        if (delta) {
+          spostaOggetto(o0.id, delta.x, delta.y);
+          maxSpostamento = Math.max(maxSpostamento, Math.hypot(delta.x, delta.y));
+          continue;
+        }
+      }
+      // 2) altrimenti quello del secondo
+      if (o1 && !o1.centroAncorato && o1.id !== o0?.id) {
+        delta = deltaVerso(v, r1, r0);
+        if (delta) {
+          spostaOggetto(o1.id, delta.x, delta.y);
+          maxSpostamento = Math.max(maxSpostamento, Math.hypot(delta.x, delta.y));
+          continue;
+        }
+      }
+      // 3) collineare con tutto ancorato: trasla il LATO del perimetro se libero
+      if (v.tipo === 'collineare') {
+        const rPerim = r0.oggettoId == null ? r0 : r1.oggettoId == null ? r1 : null;
+        const rAltro = rPerim === r0 ? r1 : r0;
+        if (
+          rPerim &&
+          rPerim.entita === 'lato' &&
+          rPerim.indice != null &&
+          latoMuovibile(punti, segmenti, rPerim.indice, origine)
+        ) {
+          const d = deltaVerso(v, rPerim, rAltro);
+          if (d && (Math.abs(d.x) > 1e-9 || Math.abs(d.y) > 1e-9)) {
+            const va = rPerim.indice;
+            const vb = (rPerim.indice + 1) % punti.length;
+            punti = punti.map((pt, i) =>
+              i === va || i === vb ? { x: pt.x + d.x, y: pt.y + d.y } : pt
+            );
+            maxSpostamento = Math.max(maxSpostamento, Math.hypot(d.x, d.y));
+          }
+        }
+      }
+    }
+    if (maxSpostamento < 0.01) break;
+  }
+
+  // VERIFICA FINALE: i "soddisfatti" si giudicano sul residuo della geometria
+  // FINALE (mai sull'essere riusciti a muovere qualcosa): i conflitti tra
+  // vincoli e le catene non convergute risultano così FALLITI, e i vincoli
+  // temporaneamente violati durante le passate non restano segnati per errore.
+  const falliti = new Set<string>();
+  for (const v of attivi) {
+    const [r0, r1] = v.riferimenti;
+    if (!r0 || !r1) {
+      falliti.add(v.id);
+      continue;
+    }
+    const residuo = deltaVerso(v, r0, r1);
+    if (!residuo || Math.hypot(residuo.x, residuo.y) >= 0.5) falliti.add(v.id);
+  }
+  return {
+    punti,
+    oggetti,
+    applicati: attivi.length - falliti.size,
+    falliti: falliti.size,
+    fallitiIds: [...falliti]
+  };
+}
+
+// ---------------------------------------------------------------------------
 // (9) Stato di vincolatura dello schizzo (indicatore visivo del Menu Pianta)
 // ---------------------------------------------------------------------------
 
@@ -742,6 +986,8 @@ export function statoSchizzo(
   let geom = 0;
   for (const v of vincoli ?? []) {
     if (v.riferimento) continue;
+    // i vincoli del livello OGGETTI non consumano gradi di libertà del perimetro
+    if (v.riferimenti.some((r) => r.oggettoId != null)) continue;
     const k = Math.max(0, v.riferimenti.length - 1);
     if (v.tipo === 'coincidente') geom += 2;
     else if (v.tipo === 'collineare') geom += 2 * k;
