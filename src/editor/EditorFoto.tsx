@@ -35,8 +35,15 @@ import {
   segmentiPoligono,
   segmentoELato
 } from '../db/types';
-import { aggiornaFoto, aggiungiFoto, eliminaFoto, impostaSfondoPianta, leggiImpostazioni, salvaAnnotazione, salvaAnnotazioniFoto } from '../db/repository';
-import { blobOrigine, caricaImmagine, fotoIllegibile, importaFoto, type ImmagineDisegnabile } from '../utils/image';
+import { aggiornaFoto, aggiungiFoto, eliminaFoto, impostaSfondoPianta, incorporaCensureFoto, leggiImpostazioni, salvaAnnotazione, salvaAnnotazioniFoto } from '../db/repository';
+import {
+  blobOrigine,
+  canvasInBlob,
+  caricaImmagine,
+  fotoIllegibile,
+  importaFoto,
+  type ImmagineDisegnabile
+} from '../utils/image';
 import { immagineCensurata, miniaturaCensurata } from '../utils/censura';
 import { caricaDettaglio } from '../utils/immaginiCallout';
 import { naviga } from '../router';
@@ -593,6 +600,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [nomePianta, setNomePianta] = useState<string | null>(null);
   /** modalità PRIVACY: riquadri di oscuramento dei volti visibili e modificabili */
   const [modoVolti, setModoVolti] = useState(false);
+  /** richiesta di conferma per le operazioni irreversibili (oscuramento definitivo) */
+  const [conferma, setConferma] = useState<RichiestaConferma | null>(null);
   /** rilevamento volti in corso (bottone in attesa) */
   const [voltiInCorso, setVoltiInCorso] = useState(false);
   /** oggetto dello schizzo selezionato come entità A SÉ STANTE */
@@ -933,6 +942,63 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     } finally {
       setVoltiInCorso(false);
     }
+  };
+
+  /**
+   * Rende DEFINITIVO l'oscuramento: riscrive i pixel archiviati con la
+   * versione oscurata e cancella le regioni. Il volto sparisce dal
+   * dispositivo (quindi anche da backup e sincronizzazione), ma non si
+   * torna indietro: si chiede conferma.
+   */
+  const rendiCensuraDefinitiva = () => {
+    if (!foto || !immagineOriginale || !foto.censure?.length) return;
+    const quanti = foto.censure.length;
+    setConferma({
+      titolo: 'Rendere definitivo l’oscuramento?',
+      messaggio:
+        `I ${quanti} riquadr${quanti === 1 ? 'o verrà applicato' : 'i verranno applicati'} ` +
+        'direttamente alla foto archiviata: il volto non resterà sul dispositivo e non finirà ' +
+        'in backup o sincronizzazione. L’operazione NON è reversibile — controlla che i ' +
+        'riquadri coprano tutto il necessario e nulla di utile.',
+      testoConferma: 'Rendi definitivo',
+      onConferma: () => void (async () => {
+        try {
+          const tela = immagineCensurata(
+            immagineOriginale,
+            foto.larghezzaPx,
+            foto.altezzaPx,
+            foto.censure
+          );
+          if (!(tela instanceof HTMLCanvasElement)) throw new Error('copia non generata');
+          const grande = await canvasInBlob(tela, 'image/jpeg', 0.92);
+          const piccola = await miniaturaCensurata(
+            immagineOriginale,
+            foto.larghezzaPx,
+            foto.altezzaPx,
+            foto.censure
+          );
+          await incorporaCensureFoto(
+            foto.id,
+            await grande.arrayBuffer(),
+            await piccola.arrayBuffer()
+          );
+          // la foto in archivio è cambiata: si ricarica il bitmap mostrato
+          cacheAnalisi.current = null;
+          const aggiornata = await caricaImmagine(
+            new Blob([await grande.arrayBuffer()], { type: 'image/jpeg' })
+          );
+          setImmagine(aggiornata);
+          setModoVolti(false);
+          setStrumento('seleziona');
+          mostraToast('successo', 'Oscuramento reso definitivo: l’originale non contiene più i volti.');
+        } catch (e) {
+          mostraToast(
+            'errore',
+            e instanceof Error ? e.message : 'Oscuramento definitivo non riuscito.'
+          );
+        }
+      })()
+    });
   };
 
   /** crea un'annotazione e la seleziona */
@@ -2343,9 +2409,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const creaFotoDettaglio = async (et: Etichetta, file: File): Promise<string | null> => {
     if (!foto) return null;
     try {
-      const { fotoLatoMax, censuraVoltiAuto } = await leggiImpostazioni();
+      const { fotoLatoMax, censuraVoltiAuto, censuraVoltiPermanente } = await leggiImpostazioni();
       const dati = await importaFoto(file, fotoLatoMax, {
-        censuraVolti: censuraVoltiAuto !== false
+        censuraVolti: censuraVoltiAuto !== false,
+        incorporaCensure: censuraVoltiAuto !== false && censuraVoltiPermanente === true
       });
       const nuova = await aggiungiFoto(foto.progettoId, {
         ...dati,
@@ -3540,6 +3607,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           );
         })()}
 
+      <ConfermaDialog richiesta={conferma} onChiudi={() => setConferma(null)} />
+
       {menuEtichetta && (
         <MenuCircolareEtichette
           centro={{ x: menuEtichetta.x, y: menuEtichetta.y }}
@@ -3614,6 +3683,15 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           <button className="btn" disabled={voltiInCorso} onClick={() => void cercaVolti()}>
             <Icona nome="auto" dimensione={18} /> {voltiInCorso ? 'Ricerca…' : 'Cerca volti'}
           </button>
+          {!!foto.censure?.length && (
+            <button
+              className="btn"
+              title="Applica l’oscuramento alla foto archiviata: il volto sparisce dal dispositivo (irreversibile)"
+              onClick={rendiCensuraDefinitiva}
+            >
+              <Icona nome="magnete" dimensione={18} /> Rendi definitivo
+            </button>
+          )}
           <button
             className="btn primario"
             onClick={() => {

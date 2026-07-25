@@ -944,6 +944,14 @@ export interface Impostazioni {
    * togliere o aggiungere a mano.
    */
   censuraVoltiAuto: boolean;
+  /**
+   * PRIVACY (più severa): oscura i volti DIRETTAMENTE nei pixel archiviati,
+   * già all'importazione. Il volto non resta sul dispositivo e non finisce
+   * in backup o sincronizzazione, ma l'operazione è irreversibile e non
+   * lascia nulla da rivedere. Con l'interruttore spento (predefinito) la
+   * foto originale è conservata e l'oscuramento resta correggibile.
+   */
+  censuraVoltiPermanente?: boolean;
   /** IVA predefinita per i nuovi preventivi (LEGACY; vedi `fiscale.ivaDefault`) */
   ivaDefault: number;
   /** Impostazioni fiscali per i preventivi (regime, IVA, ritenuta, cassa, bollo) */

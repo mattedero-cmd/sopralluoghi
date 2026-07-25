@@ -181,6 +181,26 @@ export function ImpostazioniPage() {
           viene modificata: puoi togliere o aggiungere riquadri dall’editor, con «Volti». Nessun
           rilevamento è infallibile: controlla sempre le foto prima di consegnare un report.
         </span>
+        {imp.censuraVoltiAuto !== false && (
+          <>
+            <label className="fisc-check campo" style={{ marginLeft: 16 }}>
+              <input
+                type="checkbox"
+                checked={imp.censuraVoltiPermanente === true}
+                onChange={(e) => aggiorna({ censuraVoltiPermanente: e.target.checked })}
+              />
+              Oscuramento definitivo già all’importazione
+            </label>
+            <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: -4, marginLeft: 16 }}>
+              Più severo: i volti vengono cancellati dai pixel archiviati, quindi non restano sul
+              dispositivo e non finiscono in backup o sincronizzazione.{' '}
+              <strong>Non è reversibile</strong> e non lascia riquadri da rivedere: se il
+              rilevamento sbaglia, quella parte di foto è persa. Con l’interruttore spento puoi
+              comunque rendere definitivo l’oscuramento foto per foto, dall’editor, dopo averlo
+              verificato.
+            </span>
+          </>
+        )}
 
         <h2>Report PDF</h2>
         <div className="campo">

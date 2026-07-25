@@ -374,7 +374,11 @@ export async function creaPiantaDaFoto(progettoId: ID, sorgente: Foto): Promise<
     scala: sorgente.scala ? { ...sorgente.scala } : null,
     piano: sorgente.piano ?? null,
     ePianta: true,
-    sfondoNascosto: false
+    sfondoNascosto: false,
+    // PRIVACY: copiando i pixel si copiano anche le regioni oscurate, altrimenti
+    // lo sfondo della pianta mostrerebbe i volti scoperti
+    censure: sorgente.censure?.map((c) => ({ ...c })),
+    voltiCercati: sorgente.voltiCercati
   });
 }
 
@@ -401,6 +405,37 @@ export async function impostaSfondoPianta(piantaId: ID, sorgente: Foto): Promise
       scala: sorgente.scala ? { ...sorgente.scala } : null,
       piano: sorgente.piano ?? null,
       sfondoNascosto: false,
+      // PRIVACY: le regioni oscurate seguono i pixel della foto di riferimento
+      censure: sorgente.censure?.map((c) => ({ ...c })),
+      voltiCercati: sorgente.voltiCercati,
+      modificataIl: ora()
+    })
+  );
+}
+
+/**
+ * PRIVACY — rende DEFINITIVO l'oscuramento: riscrive i pixel archiviati con
+ * la versione già oscurata e cancella le regioni (non c'è più nulla da
+ * applicare, né da togliere). Da qui in poi il volto non esiste più sul
+ * dispositivo, quindi non può finire in un backup né in una sincronizzazione.
+ *
+ * Operazione IRREVERSIBILE: è l'unico punto in cui `origine` viene riscritto
+ * dopo l'acquisizione, ed è volutamente separato da `aggiornaFoto` (che i
+ * pixel non li tocca per contratto).
+ */
+export async function incorporaCensureFoto(
+  id: ID,
+  origine: ArrayBuffer,
+  miniatura: ArrayBuffer
+): Promise<void> {
+  await scrivi('rendere definitivo l’oscuramento dei volti', () =>
+    db.foto.update(id, {
+      origine,
+      origineTipo: 'image/jpeg',
+      miniatura,
+      miniaturaTipo: 'image/jpeg',
+      censure: undefined,
+      voltiCercati: true,
       modificataIl: ora()
     })
   );

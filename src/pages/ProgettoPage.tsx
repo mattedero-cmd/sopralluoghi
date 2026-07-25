@@ -89,11 +89,12 @@ export function ProgettoPage({ id }: { id: string }) {
     setImportInCorso(true);
     let importate = 0;
     try {
-      const { fotoLatoMax, censuraVoltiAuto } = await leggiImpostazioni();
+      const { fotoLatoMax, censuraVoltiAuto, censuraVoltiPermanente } = await leggiImpostazioni();
       for (const file of Array.from(files)) {
         try {
           const dati = await importaFoto(file, fotoLatoMax, {
-            censuraVolti: censuraVoltiAuto !== false
+            censuraVolti: censuraVoltiAuto !== false,
+            incorporaCensure: censuraVoltiAuto !== false && censuraVoltiPermanente === true
           });
           await aggiungiFoto(id, {
             ...dati,
