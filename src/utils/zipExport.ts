@@ -1,7 +1,8 @@
 import JSZip from 'jszip';
 import { db } from '../db/db';
 import type { Cartella, Foto, Progetto } from '../db/types';
-import { fotoIllegibile } from './image';
+import { blobOrigine, canvasInBlob, caricaImmagine, fotoIllegibile } from './image';
+import { haCensure, immagineCensurata } from './censura';
 import { etichettaFoto } from '../geometry/nomenclatura';
 import {
   generaReportCartella,
@@ -15,7 +16,8 @@ import { nomeFileSicuro } from './share';
  * Esportazione ZIP: PDF di riepilogo + foto ORIGINALI (pulite, senza quote né
  * annotazioni) in JPG, organizzate nella stessa struttura di cartelle del
  * progetto. Le foto pulite sono gli originali archiviati (`foto.origine`), mai
- * toccati dall'editor — quindi senza alcuna sovrapposizione.
+ * toccati dall'editor — quindi senza alcuna sovrapposizione. Unica eccezione:
+ * i VOLTI oscurati, che restano tali anche qui (lo ZIP si consegna).
  */
 
 /** Nome di file/cartella sicuro per i percorsi dello ZIP (no slash, accenti…) */
@@ -37,13 +39,44 @@ async function fotoDiProgetto(progettoId: string): Promise<Foto[]> {
     .sort((a, b) => a.ordine - b.ordine);
 }
 
+/**
+ * Byte della foto "pulita" da mettere nello ZIP: l'originale senza quote né
+ * disegni, ma con i VOLTI OSCURATI se la foto ha regioni di censura.
+ *
+ * In caso di errore NON si ripiega sull'originale: lo ZIP è un file che si
+ * consegna, e consegnare un volto scoperto per un errore tecnico sarebbe il
+ * modo peggiore di fallire. Meglio interrompere con un messaggio chiaro.
+ */
+async function bytesFotoPulita(f: Foto): Promise<ArrayBuffer | Blob> {
+  if (!haCensure(f)) return f.origine;
+  const etichetta = f.didascalia || 'senza didascalia';
+  let tela: HTMLCanvasElement;
+  try {
+    const img = await caricaImmagine(blobOrigine(f));
+    const censurata = immagineCensurata(img, f.larghezzaPx, f.altezzaPx, f.censure);
+    if (!(censurata instanceof HTMLCanvasElement)) {
+      throw new Error('copia non generata');
+    }
+    tela = censurata;
+  } catch {
+    throw new Error(
+      `Impossibile oscurare i volti della foto «${etichetta}»: esportazione interrotta per sicurezza.`
+    );
+  }
+  return canvasInBlob(tela, 'image/jpeg', 0.9);
+}
+
 /** Aggiunge le foto pulite (una lista) in una directory dello ZIP */
-function aggiungiFoto(zip: JSZip, prefisso: string, foto: Foto[], letteraDi: (f: Foto) => string): void {
-  foto.forEach((f) => {
+async function aggiungiFoto(
+  zip: JSZip,
+  prefisso: string,
+  foto: Foto[],
+  letteraDi: (f: Foto) => string
+): Promise<void> {
+  for (const f of foto) {
     const nome = nomeFileSicuro(`${letteraDi(f)} - ${f.didascalia || 'foto'}`, 'jpg');
-    // origine = JPEG originale, senza quote/disegni/annotazioni
-    zip.file(`${prefisso}${nome}`, f.origine);
-  });
+    zip.file(`${prefisso}${nome}`, await bytesFotoPulita(f));
+  }
 }
 
 /**
@@ -51,11 +84,16 @@ function aggiungiFoto(zip: JSZip, prefisso: string, foto: Foto[], letteraDi: (f:
  * SEZIONI (Piano 1, Piano 2…). Senza sezioni, le foto vanno tutte nel prefisso.
  * La lettera della foto è quella dell'INTERO progetto (coerente col PDF).
  */
-function aggiungiFotoProgetto(zip: JSZip, prefisso: string, progetto: Progetto, foto: Foto[]): void {
+async function aggiungiFotoProgetto(
+  zip: JSZip,
+  prefisso: string,
+  progetto: Progetto,
+  foto: Foto[]
+): Promise<void> {
   const letteraDi = (f: Foto) => etichettaFoto(f, foto);
   const sezioni = [...(progetto.sezioni ?? [])].sort((a, b) => a.ordine - b.ordine);
   if (sezioni.length === 0) {
-    aggiungiFoto(zip, prefisso, foto, letteraDi);
+    await aggiungiFoto(zip, prefisso, foto, letteraDi);
     return;
   }
   const ids = new Set(sezioni.map((s) => s.id));
@@ -66,10 +104,10 @@ function aggiungiFotoProgetto(zip: JSZip, prefisso: string, progetto: Progetto, 
     let nome = segmentoSicuro(s.etichetta ? `${s.etichetta} ${s.nome}` : s.nome, 'Sezione');
     while (usati.has(nome)) nome = `${nome}_`;
     usati.add(nome);
-    aggiungiFoto(zip, `${prefisso}${nome}/`, lista, letteraDi);
+    await aggiungiFoto(zip, `${prefisso}${nome}/`, lista, letteraDi);
   }
   const senza = foto.filter((f) => !f.sezioneId || !ids.has(f.sezioneId));
-  if (senza.length > 0) aggiungiFoto(zip, `${prefisso}Senza_sezione/`, senza, letteraDi);
+  if (senza.length > 0) await aggiungiFoto(zip, `${prefisso}Senza_sezione/`, senza, letteraDi);
 }
 
 /**
@@ -90,7 +128,7 @@ export async function esportaProgettoZip(
 
   avanzamento?.('Foto originali…');
   const foto = await fotoDiProgetto(progetto.id);
-  aggiungiFotoProgetto(zip, radice, progetto, foto);
+  await aggiungiFotoProgetto(zip, radice, progetto, foto);
 
   avanzamento?.('Compressione…');
   return zip.generateAsync(
@@ -130,7 +168,7 @@ export async function esportaCartellaZip(
       let nome = segmentoSicuro(p.nome, 'Progetto');
       while (usati.has(nome)) nome = `${nome}_`;
       usati.add(nome);
-      aggiungiFotoProgetto(zip, `${prefisso}${nome}/`, p, foto);
+      await aggiungiFotoProgetto(zip, `${prefisso}${nome}/`, p, foto);
     }
     for (const c of figlie(folder.id)) {
       let nome = segmentoSicuro(c.nome, 'Cartella');

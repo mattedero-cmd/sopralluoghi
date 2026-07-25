@@ -43,7 +43,9 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // `bin` e `json`: pesi del modello per il rilevamento dei volti, che
+        // deve funzionare anche in cantiere senza rete
+        globPatterns: ['**/*.{js,css,html,svg,png,woff2,bin,json}'],
         // pdfmake con i font incorporati supera il limite predefinito di 2 MiB
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
         navigateFallback: '/index.html',
@@ -62,7 +64,10 @@ export default defineConfig({
       output: {
         manualChunks: {
           pdf: ['pdfmake/build/pdfmake', 'pdfmake/build/vfs_fonts'],
-          konva: ['konva', 'react-konva']
+          konva: ['konva', 'react-konva'],
+          // rilevatore di volti: caricato solo quando serve (import dinamico),
+          // così non pesa sull'avvio dell'app
+          volti: ['@vladmandic/face-api']
         }
       }
     }

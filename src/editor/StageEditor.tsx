@@ -13,6 +13,7 @@ import {
   type Foto,
   type PianoProspettiva,
   type Punto,
+  type RegioneCensura,
   type Rettangolo,
   type SottotipoQuota,
   type TipoForma
@@ -21,6 +22,7 @@ import { primitiveAnnotazione, primitiveCatene, latiQuotaRett } from '../geometr
 import { geometriaQuota, posizioneEtichettaBase, posizioneEtichettaPoligono } from '../geometry/primitive';
 import { geomQuotaDistanza } from '../geometry/parametrico';
 import { disegnaPrimitiva } from '../render/renderAnnotata';
+import type { ImmagineDisegnabile } from '../utils/image';
 import { puntiAggancio, snapPunto } from '../geometry/snap';
 import {
   circumcentro,
@@ -67,6 +69,8 @@ export type Strumento =
   // schizzo parametrico: DISEGNO degli oggetti interni (trascina sul canvas)
   | 'oggRett'
   | 'oggCerchio'
+  // privacy: riquadri di oscuramento dei volti (si tracciano come rettangoli)
+  | 'censura'
   // forme di disegno generiche (menu generico, Fase 1b)
   | 'forLinea'
   | 'forRett'
@@ -100,6 +104,7 @@ function strumentoDuePunti(s: Strumento): boolean {
     s === 'forCerchio' ||
     s === 'oggRett' ||
     s === 'oggCerchio' ||
+    s === 'censura' ||
     s === 'tecSmusso'
   );
 }
@@ -109,7 +114,7 @@ export type ModalitaVincolo = 'off' | 'orto' | 'angolo15';
 
 interface Props {
   foto: Foto;
-  immagine: HTMLImageElement;
+  immagine: ImmagineDisegnabile;
   annotazioni: Annotazione[];
   /** codice locale (es. A1) di una forma, calcolato con la numerazione del progetto */
   codiceForma: (a: Annotazione) => string;
@@ -141,6 +146,13 @@ interface Props {
   /** punti SELEZIONABILI del comando armato (vertici, centri-lato, centri):
    *  disegnati come pallini rossi, discreti ma visibili. */
   puntiSelezionabili?: Punto[] | null;
+  /** PRIVACY: regioni oscurate della foto, mostrate e modificabili solo
+   *  mentre è attivo lo strumento «censura» */
+  censure?: RegioneCensura[];
+  /** nuovo riquadro di oscuramento tracciato sulla foto */
+  onNuovaCensura?: (p1: Punto, p2: Punto) => void;
+  /** tocco su un riquadro esistente: lo toglie */
+  onRimuoviCensura?: (id: string) => void;
   /** oggetto dello schizzo DISEGNATO sul canvas (strumenti oggRett/oggCerchio):
    *  rettangolo → i due angoli; cerchio → centro e bordo. */
   onNuovoOggettoPianta?: (tipo: 'rettangolo' | 'cerchio', a: Punto, b: Punto) => void;
@@ -796,6 +808,7 @@ export function StageEditor(p: Props) {
             break;
           case 'forRett':
           case 'oggRett':
+          case 'censura':
             setBozza({ tipo: 'forRett', p1: punto, p2: punto });
             break;
           case 'forCerchio':
@@ -833,9 +846,10 @@ export function StageEditor(p: Props) {
           p.onNuovaForma('linea', [b.p1, b.p2]);
           break;
         case 'forRett':
-          // lo stesso trascinamento disegna una forma libera oppure un
-          // OGGETTO dello schizzo, a seconda dello strumento attivo
+          // lo stesso trascinamento disegna una forma libera, un OGGETTO
+          // dello schizzo o un riquadro di oscuramento, secondo lo strumento
           if (p.strumento === 'oggRett') p.onNuovoOggettoPianta?.('rettangolo', b.p1, b.p2);
+          else if (p.strumento === 'censura') p.onNuovaCensura?.(b.p1, b.p2);
           else p.onNuovaForma('rettangolo', [b.p1, b.p2]);
           break;
         case 'forCerchio':
@@ -1325,6 +1339,32 @@ export function StageEditor(p: Props) {
                 );
               });
             })}
+          {/* PRIVACY: riquadri di oscuramento. I pixel sono già oscurati
+              nell'immagine mostrata; qui si disegna solo il contorno, mentre
+              è attivo lo strumento «censura», per poterli togliere con un
+              tocco o aggiungerne di nuovi trascinando. */}
+          {p.strumento === 'censura' &&
+            (p.censure ?? []).map((c) => (
+              <Rect
+                key={`cens-${c.id}`}
+                x={c.x}
+                y={c.y}
+                width={c.larghezza}
+                height={c.altezza}
+                stroke={c.auto ? '#00A896' : '#e5534b'}
+                strokeWidth={2.5 / vista.scala}
+                dash={[8 / vista.scala, 6 / vista.scala]}
+                fill="rgba(229,83,75,0.10)"
+                onClick={(e) => {
+                  e.cancelBubble = true;
+                  p.onRimuoviCensura?.(c.id);
+                }}
+                onTap={(e) => {
+                  e.cancelBubble = true;
+                  p.onRimuoviCensura?.(c.id);
+                }}
+              />
+            ))}
           {/* punti SELEZIONABILI del comando armato: pallini rossi, discreti
               ma ben visibili (vertici, centri-lato, centri oggetto) */}
           {p.puntiSelezionabili?.map((pt, i) => (
@@ -1742,7 +1782,7 @@ function Lente({
   vista,
   contenitore
 }: {
-  immagine: HTMLImageElement;
+  immagine: ImmagineDisegnabile;
   annotazioni: Annotazione[];
   bozza: Annotazione | null;
   punto: Punto;
@@ -1915,7 +1955,7 @@ function AnnotazioneShape({
   onTrascinata
 }: {
   ann: Annotazione;
-  immagine: HTMLImageElement;
+  immagine: ImmagineDisegnabile;
   /** foto-dettaglio già caricata (solo per i callout con foto scattata) */
   immagineDettaglio?: CanvasImageSource | null;
   /** codice/etichetta calcolato della forma (nomenclatura strutturata) */

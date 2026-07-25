@@ -1,5 +1,6 @@
 import exifr from 'exifr';
-import type { Foto, Geotag } from '../db/types';
+import type { Foto, Geotag, RegioneCensura } from '../db/types';
+import { disegnaCensure } from './censura';
 
 /** Lato massimo predefinito dell'immagine archiviata (configurabile) */
 const LATO_MAX = 2560;
@@ -19,7 +20,18 @@ export interface FotoImportata {
   altezzaPx: number;
   dataScatto: number;
   geotag: Geotag | null;
+  /** volti rilevati da oscurare (privacy); vuoto se il rilevamento è spento */
+  censure?: RegioneCensura[];
+  /** true se il rilevamento automatico è stato effettivamente eseguito */
+  voltiCercati?: boolean;
 }
+
+/**
+ * Sorgente disegnabile di una foto: l'immagine decodificata oppure una tela
+ * derivata (es. la copia con i volti oscurati). Le due sono intercambiabili
+ * per canvas e Konva.
+ */
+export type ImmagineDisegnabile = HTMLImageElement | HTMLCanvasElement;
 
 /** true se il contenuto della foto è assente o perso (record danneggiato) */
 export function fotoIllegibile(f: Pick<Foto, 'origine' | 'danneggiata'>): boolean {
@@ -56,7 +68,21 @@ export function blobMiniatura(f: Pick<Foto, 'miniatura' | 'miniaturaTipo'>): Blo
  * l'orientamento, ridimensiona al lato massimo e genera la miniatura.
  * Da qui in poi il blob archiviato non viene mai più modificato.
  */
-export async function importaFoto(file: File | Blob, latoMax = LATO_MAX): Promise<FotoImportata> {
+export async function importaFoto(
+  file: File | Blob,
+  latoMax = LATO_MAX,
+  opzioni?: {
+    /** cerca i volti e prepara le regioni da oscurare (privacy) */
+    censuraVolti?: boolean;
+    /**
+     * incorpora l'oscuramento direttamente nei pixel archiviati, invece di
+     * tenerlo come regione modificabile. Serve per le immagini DERIVATE che
+     * non hanno un editor proprio (es. l'inserto di un callout), dove non
+     * esisterebbe modo di applicare la censura al momento del disegno.
+     */
+    incorporaCensure?: boolean;
+  }
+): Promise<FotoImportata> {
   if (file.size > MAX_FILE_BYTE) {
     throw new Error('Foto troppo grande (oltre 80 MB): riduci la risoluzione e riprova.');
   }
@@ -83,16 +109,46 @@ export async function importaFoto(file: File | Blob, latoMax = LATO_MAX): Promis
   const bitmap = await decodificaImmagine(file);
   try {
     const principale = await ridimensiona(bitmap, latoMax, QUALITA_JPEG);
-    const miniatura = await ridimensiona(bitmap, LATO_MINIATURA, QUALITA_MINIATURA);
+
+    // PRIVACY: i volti si cercano qui, con l'immagine già decodificata. Le
+    // regioni sono espresse nei pixel dell'immagine archiviata. L'originale
+    // NON viene alterato: l'oscuramento avviene al disegno (editor, PDF,
+    // export) e nella miniatura, che è un derivato rigenerabile.
+    let censure: RegioneCensura[] = [];
+    let voltiCercati = false;
+    if (opzioni?.censuraVolti) {
+      try {
+        const { rilevaVolti } = await import('../geometry/volti');
+        censure = await rilevaVolti(bitmap, principale.larghezza, principale.altezza);
+        voltiCercati = true;
+      } catch {
+        // modello non disponibile (prima apertura offline) o rilevatore non
+        // supportato: la foto si importa lo stesso, la censura resta manuale
+      }
+    }
+
+    const riferimento = censure.length
+      ? { censure, larghezzaRiferimento: principale.larghezza }
+      : undefined;
+    // immagini derivate senza editor: l'oscuramento entra nei pixel salvati
+    const archiviata =
+      riferimento && opzioni?.incorporaCensure
+        ? await ridimensiona(bitmap, latoMax, QUALITA_JPEG, riferimento)
+        : principale;
+    const miniatura = await ridimensiona(bitmap, LATO_MINIATURA, QUALITA_MINIATURA, riferimento);
     return {
-      origine: await principale.blob.arrayBuffer(),
+      origine: await archiviata.blob.arrayBuffer(),
       origineTipo: 'image/jpeg',
       miniatura: await miniatura.blob.arrayBuffer(),
       miniaturaTipo: 'image/jpeg',
       larghezzaPx: principale.larghezza,
       altezzaPx: principale.altezza,
       dataScatto,
-      geotag
+      geotag,
+      // se l'oscuramento è già nei pixel non si tramanda come regione: non
+      // sarebbe più togliibile e verrebbe applicato una seconda volta
+      censure: censure.length && !opzioni?.incorporaCensure ? censure : undefined,
+      voltiCercati
     };
   } finally {
     bitmap.close?.();
@@ -123,7 +179,9 @@ async function decodificaImmagine(file: Blob): Promise<ImageBitmap> {
 async function ridimensiona(
   bitmap: ImageBitmap,
   latoMax: number,
-  qualita: number
+  qualita: number,
+  /** se presente, la copia prodotta esce già con i volti oscurati */
+  censura?: { censure: RegioneCensura[]; larghezzaRiferimento: number }
 ): Promise<{ blob: Blob; larghezza: number; altezza: number }> {
   const fattore = Math.min(1, latoMax / Math.max(bitmap.width, bitmap.height));
   const larghezza = Math.max(1, Math.round(bitmap.width * fattore));
@@ -135,6 +193,20 @@ async function ridimensiona(
   if (!ctx) throw new Error('Canvas non disponibile su questo dispositivo.');
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(bitmap, 0, 0, larghezza, altezza);
+  if (censura?.censure.length) {
+    // le regioni sono nei pixel dell'immagine archiviata: qui si convertono
+    // nella scala di QUESTA copia (la miniatura è più piccola)
+    const scala = larghezza / Math.max(1, censura.larghezzaRiferimento);
+    const sorgente = document.createElement('canvas');
+    sorgente.width = Math.max(1, Math.round(censura.larghezzaRiferimento));
+    sorgente.height = Math.max(1, Math.round((bitmap.height / bitmap.width) * sorgente.width));
+    const sctx = sorgente.getContext('2d');
+    if (sctx) {
+      sctx.imageSmoothingQuality = 'high';
+      sctx.drawImage(bitmap, 0, 0, sorgente.width, sorgente.height);
+      disegnaCensure(ctx, sorgente, censura.censure, sorgente.width, sorgente.height, scala);
+    }
+  }
   const blob = await canvasInBlob(canvas, 'image/jpeg', qualita);
   return { blob, larghezza, altezza };
 }

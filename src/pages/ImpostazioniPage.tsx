@@ -167,6 +167,20 @@ export function ImpostazioniPage() {
             <option value="3200">3200 px — massima (occupa più spazio)</option>
           </select>
         </div>
+        <label className="fisc-check campo">
+          <input
+            type="checkbox"
+            checked={imp.censuraVoltiAuto !== false}
+            onChange={(e) => aggiorna({ censuraVoltiAuto: e.target.checked })}
+          />
+          Oscura automaticamente i volti nelle foto (privacy)
+        </label>
+        <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: -4 }}>
+          I volti vengono cercati sul dispositivo (nessun invio a servizi esterni) e oscurati
+          nell’editor, nelle miniature, nel PDF e nelle immagini condivise. La foto originale non
+          viene modificata: puoi togliere o aggiungere riquadri dall’editor, con «Volti». Nessun
+          rilevamento è infallibile: controlla sempre le foto prima di consegnare un report.
+        </span>
 
         <h2>Report PDF</h2>
         <div className="campo">

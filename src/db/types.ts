@@ -215,8 +215,32 @@ export interface Foto {
    * a piacere dopo aver tracciato la geometria.
    */
   sfondoNascosto?: boolean;
+  /**
+   * PRIVACY (§volti): regioni della foto da oscurare (volti rilevati
+   * automaticamente all'importazione e riquadri aggiunti a mano). Le
+   * coordinate sono in PIXEL DELL'ORIGINALE, come le annotazioni.
+   * L'originale non viene mai alterato: la censura si applica al momento
+   * del disegno (editor, miniatura, PDF, immagine condivisa, export foto).
+   */
+  censure?: RegioneCensura[];
+  /** true quando il rilevamento automatico dei volti è già stato eseguito */
+  voltiCercati?: boolean;
   creataIl: number;
   modificataIl: number;
+}
+
+/**
+ * Regione oscurata di una foto (volto o area sensibile). In pixel
+ * dell'immagine originale, come le annotazioni.
+ */
+export interface RegioneCensura {
+  id: ID;
+  x: number;
+  y: number;
+  larghezza: number;
+  altezza: number;
+  /** true = trovata dal rilevamento automatico dei volti */
+  auto?: boolean;
 }
 
 /** Collegamento di una foto di dettaglio all'etichetta di origine. */
@@ -913,6 +937,13 @@ export interface Impostazioni {
   stileDefault: Stile;
   /** Lato massimo delle foto archiviate, in px (qualità vs spazio) */
   fotoLatoMax: number;
+  /**
+   * PRIVACY: cerca automaticamente i volti nelle foto importate e li oscura
+   * (nell'editor, nelle miniature, nel PDF e nelle immagini condivise).
+   * L'originale archiviato resta intatto: le regioni si possono sempre
+   * togliere o aggiungere a mano.
+   */
+  censuraVoltiAuto: boolean;
   /** IVA predefinita per i nuovi preventivi (LEGACY; vedi `fiscale.ivaDefault`) */
   ivaDefault: number;
   /** Impostazioni fiscali per i preventivi (regime, IVA, ritenuta, cassa, bollo) */
@@ -982,6 +1013,7 @@ export const IMPOSTAZIONI_DEFAULT: Impostazioni = {
   fattoreDimensione: 1,
   stileDefault: { colore: '#ff3b30', spessore: 3, dimensioneTesto: 28 },
   fotoLatoMax: 2560,
+  censuraVoltiAuto: true,
   ivaDefault: 22,
   fiscale: {
     regime: 'forfettario',

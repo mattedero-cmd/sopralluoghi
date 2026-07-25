@@ -1149,6 +1149,23 @@ h2 {
   opacity: 1;
 }
 
+/* pallino sul pulsante: la foto ha regioni oscurate (volti) */
+.btn.icona.con-pallino {
+  position: relative;
+}
+
+.btn.icona.con-pallino::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ok, #2ea043);
+  border: 1.5px solid var(--sfondo, #10141a);
+}
+
 /* stato PERSISTENTE attivo (es. ancora/blocco dell'oggetto dello schizzo) */
 .azione-flottante.attivo {
   background: var(--accento, #2f81f7);

@@ -9,6 +9,7 @@ import type {
   Impostazioni,
   PosizioneTesto,
   Punto,
+  RegioneCensura,
   Quota,
   QuotaAngolare,
   QuotaPoligono,
@@ -35,7 +36,8 @@ import {
   segmentoELato
 } from '../db/types';
 import { aggiornaFoto, aggiungiFoto, eliminaFoto, impostaSfondoPianta, leggiImpostazioni, salvaAnnotazione, salvaAnnotazioniFoto } from '../db/repository';
-import { blobOrigine, caricaImmagine, fotoIllegibile, importaFoto } from '../utils/image';
+import { blobOrigine, caricaImmagine, fotoIllegibile, importaFoto, type ImmagineDisegnabile } from '../utils/image';
+import { immagineCensurata, miniaturaCensurata } from '../utils/censura';
 import { caricaDettaglio } from '../utils/immaginiCallout';
 import { naviga } from '../router';
 import { ConfermaDialog, ImmagineBlob, Modale, StatoApp, type RichiestaConferma } from '../components/comuni';
@@ -482,7 +484,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   );
   // cartelle: solo per comporre il percorso (prefisso dei codici, es. P1)
   const tutteCartelle = useLiveQuery(() => db.cartelle.toArray(), []);
-  const [immagine, setImmagine] = useState<HTMLImageElement | null>(null);
+  /** foto originale decodificata (pixel intatti): serve all'analisi dei bordi */
+  const [immagineOriginale, setImmagine] = useState<HTMLImageElement | null>(null);
   const [impostazioni, setImpostazioni] = useState<Impostazioni>(IMPOSTAZIONI_DEFAULT);
   const [annotazioni, setAnnotazioni] = useState<Annotazione[] | null>(null);
   const [selezioneId, setSelezioneId] = useState<string | null>(null);
@@ -588,6 +591,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   } | null>(null);
   /** dialogo compatto "Nome / numero stanza" (sostituisce l'editor dedicato) */
   const [nomePianta, setNomePianta] = useState<string | null>(null);
+  /** modalità PRIVACY: riquadri di oscuramento dei volti visibili e modificabili */
+  const [modoVolti, setModoVolti] = useState(false);
+  /** rilevamento volti in corso (bottone in attesa) */
+  const [voltiInCorso, setVoltiInCorso] = useState(false);
   /** oggetto dello schizzo selezionato come entità A SÉ STANTE */
   const [oggettoSel, setOggettoSel] = useState<{ annId: string; oggettoId: string } | null>(null);
   /** dialogo compatto per le dimensioni dell'oggetto selezionato */
@@ -645,19 +652,36 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [foto?.id]);
 
+  /**
+   * PRIVACY: quello che si VEDE (e che finisce in export e PDF) è sempre la
+   * copia con i volti oscurati. Si ricalcola quando cambiano le censure, così
+   * aggiungere o togliere un riquadro si vede subito sul canvas.
+   */
+  const immagine = useMemo(
+    () =>
+      immagineOriginale && foto
+        ? immagineCensurata(immagineOriginale, foto.larghezzaPx, foto.altezzaPx, foto.censure)
+        : immagineOriginale,
+    // dipende SOLO da ciò che cambia i pixel: rifare la copia a ogni modifica
+    // della foto (didascalia, note…) sarebbe uno spreco su immagini grandi
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [immagineOriginale, foto?.censure, foto?.larghezzaPx, foto?.altezzaPx]
+  );
+
   // Analisi dell'immagine (bordi + autoquotatura): costruita una volta
-  // per foto, alla prima richiesta, e riusata da entrambe le funzioni
+  // per foto, alla prima richiesta, e riusata da entrambe le funzioni.
+  // Usa l'ORIGINALE: il mosaico della censura falserebbe i contorni.
   const ottieniAnalisi = useCallback((): RicercaBordi | null => {
-    if (!immagine || !foto) return null;
-    if (cacheAnalisi.current?.img === immagine) return cacheAnalisi.current.analisi;
+    if (!immagineOriginale || !foto) return null;
+    if (cacheAnalisi.current?.img === immagineOriginale) return cacheAnalisi.current.analisi;
     try {
-      const analisi = new RicercaBordi(immagine, foto.larghezzaPx, foto.altezzaPx);
-      cacheAnalisi.current = { img: immagine, analisi };
+      const analisi = new RicercaBordi(immagineOriginale, foto.larghezzaPx, foto.altezzaPx);
+      cacheAnalisi.current = { img: immagineOriginale, analisi };
       return analisi;
     } catch {
       return null;
     }
-  }, [immagine, foto]);
+  }, [immagineOriginale, foto]);
 
   const ricercaBordi = useMemo(
     () => (bordiAttivo ? ottieniAnalisi() : null),
@@ -830,6 +854,85 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     setStrumento('seleziona');
     // si apre subito l'ambiente di modifica dedicato alla quota
     setQuotaInModifica({ tipo: 'quota', id: q.id });
+  };
+
+  // -------------------------------------------------------------------------
+  // PRIVACY — riquadri di oscuramento dei volti. Le regioni sono un dato della
+  // FOTO (non un'annotazione): valgono ovunque la foto si veda o esca dall'app
+  // e non possono essere nascoste da un layer. L'originale resta intatto.
+  // -------------------------------------------------------------------------
+
+  /** salva le regioni e riallinea la miniatura (che è un derivato) */
+  const salvaCensure = useCallback(
+    async (nuove: RegioneCensura[]) => {
+      if (!foto) return;
+      const modifiche: Parameters<typeof aggiornaFoto>[1] = {
+        censure: nuove.length ? nuove : undefined
+      };
+      if (immagineOriginale) {
+        try {
+          const blob = await miniaturaCensurata(
+            immagineOriginale,
+            foto.larghezzaPx,
+            foto.altezzaPx,
+            nuove
+          );
+          modifiche.miniatura = await blob.arrayBuffer();
+          modifiche.miniaturaTipo = 'image/jpeg';
+        } catch {
+          // miniatura non rigenerata: resta la precedente (nell'elenco
+          // potrebbe mancare l'ultimo riquadro aggiunto a mano)
+        }
+      }
+      await aggiornaFoto(foto.id, modifiche);
+    },
+    [foto, immagineOriginale]
+  );
+
+  /** riquadro tracciato a mano sulla foto */
+  const creaCensura = (p1: Punto, p2: Punto) => {
+    if (!foto) return;
+    const x = Math.max(0, Math.min(p1.x, p2.x));
+    const y = Math.max(0, Math.min(p1.y, p2.y));
+    const larghezza = Math.min(foto.larghezzaPx - x, Math.abs(p2.x - p1.x));
+    const altezza = Math.min(foto.altezzaPx - y, Math.abs(p2.y - p1.y));
+    if (larghezza < 4 || altezza < 4) return;
+    const nuova: RegioneCensura = {
+      id: nuovoId(),
+      x: Math.round(x),
+      y: Math.round(y),
+      larghezza: Math.round(larghezza),
+      altezza: Math.round(altezza)
+    };
+    void salvaCensure([...(foto.censure ?? []), nuova]);
+  };
+
+  const rimuoviCensura = (idCensura: string) => {
+    if (!foto) return;
+    void salvaCensure((foto.censure ?? []).filter((c) => c.id !== idCensura));
+  };
+
+  /** (ri)cerca i volti sulla foto corrente, conservando i riquadri manuali */
+  const cercaVolti = async () => {
+    if (!foto || !immagineOriginale || voltiInCorso) return;
+    setVoltiInCorso(true);
+    try {
+      const { rilevaVolti } = await import('../geometry/volti');
+      const trovati = await rilevaVolti(immagineOriginale, foto.larghezzaPx, foto.altezzaPx);
+      const manuali = (foto.censure ?? []).filter((c) => !c.auto);
+      await salvaCensure([...manuali, ...trovati]);
+      await aggiornaFoto(foto.id, { voltiCercati: true });
+      mostraToast(
+        trovati.length ? 'successo' : 'info',
+        trovati.length
+          ? `${trovati.length} volt${trovati.length === 1 ? 'o oscurato' : 'i oscurati'}. Controlla e aggiungi a mano ciò che manca.`
+          : 'Nessun volto rilevato. Se ce ne sono, tracciali a mano: nessun rilevamento è infallibile.'
+      );
+    } catch (e) {
+      mostraToast('errore', e instanceof Error ? e.message : 'Rilevamento dei volti non riuscito.');
+    } finally {
+      setVoltiInCorso(false);
+    }
   };
 
   /** crea un'annotazione e la seleziona */
@@ -2240,8 +2343,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const creaFotoDettaglio = async (et: Etichetta, file: File): Promise<string | null> => {
     if (!foto) return null;
     try {
-      const { fotoLatoMax } = await leggiImpostazioni();
-      const dati = await importaFoto(file, fotoLatoMax);
+      const { fotoLatoMax, censuraVoltiAuto } = await leggiImpostazioni();
+      const dati = await importaFoto(file, fotoLatoMax, {
+        censuraVolti: censuraVoltiAuto !== false
+      });
       const nuova = await aggiungiFoto(foto.progettoId, {
         ...dati,
         // nessuna didascalia automatica: il titolo "Dettaglio X" nel PDF è
@@ -3013,6 +3118,22 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         <button className="btn icona" aria-label="Note della foto" onClick={() => setSchedaNote(true)}>
           <Icona nome="documento" />
         </button>
+        {!foto.ePianta && (
+          <button
+            className={`btn icona${modoVolti ? ' attivo' : ''}${foto.censure?.length ? ' con-pallino' : ''}`}
+            aria-label="Volti oscurati (privacy)"
+            title="Volti oscurati: controlla, aggiungi o togli i riquadri"
+            onClick={() => {
+              const attiva = !modoVolti;
+              setModoVolti(attiva);
+              setStrumento(attiva ? 'censura' : 'seleziona');
+              setSelezioneId(null);
+              setMenuAperto(null);
+            }}
+          >
+            <Icona nome="persone" />
+          </button>
+        )}
         {foto.piano && (
           <button
             className={`btn icona${mostraGriglia ? ' attivo' : ''}`}
@@ -3131,6 +3252,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         }}
         onPuntoVincolo={onPuntoVincolo}
         puntiSelezionabili={strumento === 'vincolo' ? puntiSelezionabiliArmati() : null}
+        censure={foto.censure}
+        onNuovaCensura={creaCensura}
+        onRimuoviCensura={rimuoviCensura}
         onDistanzaInline={(vincoloId, cliente) => {
           if (!selezionata || selezionata.tipo !== 'quotaPoligono') return;
           const v = (selezionata.vincoli ?? []).find((x) => x.id === vincoloId);
@@ -3475,6 +3599,31 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             onCalibraDaQuota={(q) => void calibraDaQuota(q)}
           />
         )
+      )}
+
+      {/* PRIVACY: barra della modalità «Volti» — stato, ricerca e uscita. */}
+      {modoVolti && (
+        <div className="barra-duplica" role="group" aria-label="Volti oscurati">
+          <span className="titolo">
+            <Icona nome="persone" dimensione={18} />{' '}
+            {foto.censure?.length
+              ? `${foto.censure.length} riquadr${foto.censure.length === 1 ? 'o' : 'i'} · tocca per togliere, trascina per aggiungere`
+              : 'Nessun riquadro · trascina sulla foto per oscurare, o cerca i volti'}
+          </span>
+          <span className="spazio" />
+          <button className="btn" disabled={voltiInCorso} onClick={() => void cercaVolti()}>
+            <Icona nome="auto" dimensione={18} /> {voltiInCorso ? 'Ricerca…' : 'Cerca volti'}
+          </button>
+          <button
+            className="btn primario"
+            onClick={() => {
+              setModoVolti(false);
+              setStrumento('seleziona');
+            }}
+          >
+            <Icona nome="check" dimensione={18} /> Fine
+          </button>
+        </div>
       )}
 
       {/* Vincolo armato (tap-tap): guida al tocco del/i lato/i, con Annulla. */}
@@ -5335,7 +5484,7 @@ function EditorQuota({
   onChiudi
 }: {
   quota: Quota;
-  immagine: HTMLImageElement;
+  immagine: ImmagineDisegnabile;
   /** presente solo per i lati di un poligono: permette di correggere a mano
    *  il simbolo (b, h, B, D…). `auto` è il simbolo dedotto, mostrato come
    *  segnaposto; `simbolo` è l'eventuale override già impostato. */
@@ -5685,7 +5834,7 @@ function EditorCerchio({
 }: {
   raggio: QuotaRaggio;
   foto: Foto;
-  immagine: HTMLImageElement;
+  immagine: ImmagineDisegnabile;
   onSalva: (q: QuotaRaggio) => void;
   onElimina: () => void;
   onChiudi: () => void;
@@ -5952,7 +6101,7 @@ function EditorAngolo({
 }: {
   angolo: QuotaAngolare;
   foto: Foto;
-  immagine: HTMLImageElement;
+  immagine: ImmagineDisegnabile;
   onSalva: (q: QuotaAngolare) => void;
   onElimina: () => void;
   onChiudi: () => void;
@@ -6183,7 +6332,7 @@ function EditorPoligono({
 }: {
   poli: QuotaPoligono;
   foto: Foto;
-  immagine: HTMLImageElement;
+  immagine: ImmagineDisegnabile;
   /** codice automatico corrente (es. "P1.A1") */
   codice: string;
   /** numero della forma nella sequenza condivisa (per il riordino manuale) */
@@ -8172,7 +8321,7 @@ function EditorTesto({
   onChiudi
 }: {
   testo: TestoFoto;
-  immagine: HTMLImageElement;
+  immagine: ImmagineDisegnabile;
   onSalva: (t: TestoFoto) => void;
   onElimina: () => void;
   onChiudi: () => void;
@@ -8380,7 +8529,7 @@ function EditorCallout({
   onChiudi
 }: {
   callout: Callout;
-  immagine: HTMLImageElement;
+  immagine: ImmagineDisegnabile;
   onSalva: (c: Callout) => void;
   onElimina: () => void;
   onChiudi: () => void;
@@ -8491,7 +8640,12 @@ function EditorCallout({
     if (!file) return;
     setCaricando(true);
     try {
-      const imp = await importaFoto(file, 1280);
+      // l'inserto è un'immagine derivata mostrata dentro il callout: non ha
+      // un editor proprio, quindi l'oscuramento dei volti entra nei pixel
+      const imp = await importaFoto(file, 1280, {
+        censuraVolti: true,
+        incorporaCensure: true
+      });
       setFotoDettaglio(imp.origine);
       // l'inserto prende l'aspetto della foto, mantenendo la larghezza
       setInserto((ins) => ({

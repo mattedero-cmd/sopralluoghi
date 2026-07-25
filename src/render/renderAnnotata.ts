@@ -2,6 +2,7 @@ import type { Annotazione, Callout, Foto } from '../db/types';
 import { primitiveAnnotazione, primitiveCatene, type Primitiva } from '../geometry/primitive';
 import { vociLegenda } from '../geometry/nomenclatura';
 import { blobOrigine, canvasInBlob, caricaImmagine } from '../utils/image';
+import { immagineCensurata } from '../utils/censura';
 import { caricaDettaglio } from './../utils/immaginiCallout';
 
 /**
@@ -23,7 +24,11 @@ export async function renderFotoAnnotata(
    *  così l'immagine contiene tutto, legenda compresa. */
   opzioni?: { legenda?: boolean }
 ): Promise<Blob> {
-  const img = await caricaImmagine(blobOrigine(foto));
+  const originale = await caricaImmagine(blobOrigine(foto));
+  // PRIVACY: da qui in avanti si lavora SOLO sulla copia con i volti
+  // oscurati — anche gli ingrandimenti dei callout (primitiva 'ritaglio')
+  // ricampionano questa, così un volto non può riaffiorare nell'inserto.
+  const img = immagineCensurata(originale, foto.larghezzaPx, foto.altezzaPx, foto.censure);
   const canvas = document.createElement('canvas');
   canvas.width = foto.larghezzaPx;
   canvas.height = foto.altezzaPx;
