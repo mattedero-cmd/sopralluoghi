@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Stage, Layer, Image as KonvaImage, Shape, Circle, Rect, Line } from 'react-konva';
+import { Stage, Layer, Image as KonvaImage, Shape, Circle, Ellipse, Rect, Line } from 'react-konva';
 import type Konva from 'konva';
 
 /** true con mouse/trackpad (puntatore fine): la lente di ingrandimento, utile
@@ -23,6 +23,7 @@ import { geometriaQuota, posizioneEtichettaBase, posizioneEtichettaPoligono } fr
 import { geomQuotaDistanza } from '../geometry/parametrico';
 import { disegnaPrimitiva } from '../render/renderAnnotata';
 import type { ImmagineDisegnabile } from '../utils/image';
+import { DEBORDO_CENSURA } from '../utils/censura';
 import { puntiAggancio, snapPunto } from '../geometry/snap';
 import {
   circumcentro,
@@ -1367,16 +1368,15 @@ export function StageEditor(p: Props) {
               tocco o aggiungerne di nuovi trascinando. */}
           {p.strumento === 'censura' &&
             (p.censure ?? []).map((c) => (
-              <Rect
+              <Ellipse
                 key={`cens-${c.id}`}
-                x={c.x}
-                y={c.y}
-                width={c.larghezza}
-                height={c.altezza}
+                x={c.x + c.larghezza / 2}
+                y={c.y + c.altezza / 2}
+                radiusX={(c.larghezza / 2) * DEBORDO_CENSURA}
+                radiusY={(c.altezza / 2) * DEBORDO_CENSURA}
                 stroke={c.auto ? '#00A896' : '#e5534b'}
                 strokeWidth={2.5 / vista.scala}
                 dash={[8 / vista.scala, 6 / vista.scala]}
-                fill="rgba(229,83,75,0.10)"
                 // la rimozione è gestita dal pointerdown dello Stage (che
                 // arriva prima del click): qui il contorno è solo visivo
                 listening={false}

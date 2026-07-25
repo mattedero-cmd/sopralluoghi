@@ -8,13 +8,23 @@ import type { Foto, RegioneCensura } from '../db/types';
  * (editor, miniature, PDF, immagine condivisa, export foto). Così una
  * rilevazione sbagliata si corregge sempre, senza aver perso l'immagine.
  *
- * Resa: mosaico (pixelatura). È irreversibile all'occhio, si legge subito
- * come "oscurato di proposito" e, a differenza della sfocatura, non lascia
- * intuire i lineamenti.
+ * Resa: SFOCATURA su area OVALE (la forma naturale di un volto).
+ *
+ * La sfocatura non è solo un effetto grafico: prima l'area viene ridotta a
+ * pochi pixel e poi riportata in scala interpolata. È la riduzione a
+ * distruggere davvero l'informazione — una sfocatura "morbida" applicata ai
+ * pixel originali sarebbe in parte ricostruibile. Il risultato all'occhio è
+ * un blur pulito, ma il volto non è più nei dati.
  */
 
-/** quanti blocchi di mosaico lungo il lato maggiore della regione */
-const BLOCCHI = 10;
+/** lato in pixel a cui si riduce l'area prima di riportarla in scala */
+const LATO_RIDOTTO = 14;
+
+/**
+ * L'ovale deborda un poco dal riquadro: un'ellisse inscritta lascerebbe
+ * scoperti gli angoli (orecchie, mento, capelli ai lati).
+ */
+export const DEBORDO_CENSURA = 1.08;
 
 /** regione valida e non degenere */
 function regioneUtile(r: RegioneCensura): boolean {
@@ -27,7 +37,7 @@ export function haCensure(foto: Pick<Foto, 'censure'>): boolean {
 }
 
 /**
- * Disegna il mosaico sulle regioni indicate, campionando da `sorgente`.
+ * Sfoca le regioni indicate (area ovale), campionando da `sorgente`.
  *
  * - le coordinate delle regioni sono in PIXEL DELL'ORIGINALE;
  * - `scala` converte dai pixel dell'originale a quelli del canvas di
@@ -48,35 +58,49 @@ export function disegnaCensure(
 
   for (const r of censure) {
     if (!regioneUtile(r)) continue;
-    // la regione va ritagliata nei limiti dell'immagine: drawImage con un
-    // rettangolo sorgente fuori dai bordi non disegnerebbe nulla
-    const sx = Math.max(0, Math.min(larghezzaSorgente, r.x));
-    const sy = Math.max(0, Math.min(altezzaSorgente, r.y));
-    const sw = Math.max(0, Math.min(larghezzaSorgente - sx, r.larghezza - (sx - r.x)));
-    const sh = Math.max(0, Math.min(altezzaSorgente - sy, r.altezza - (sy - r.y)));
+    // ovale iscritto nel riquadro (con un po' di debordo)
+    const cx = r.x + r.larghezza / 2;
+    const cy = r.y + r.altezza / 2;
+    const rx = (r.larghezza / 2) * DEBORDO_CENSURA;
+    const ry = (r.altezza / 2) * DEBORDO_CENSURA;
+
+    // area da sfocare = rettangolo che contiene l'ovale, ritagliato nei limiti
+    // dell'immagine (drawImage con sorgente fuori dai bordi non disegna nulla)
+    const sx = Math.max(0, Math.floor(cx - rx));
+    const sy = Math.max(0, Math.floor(cy - ry));
+    const sw = Math.min(larghezzaSorgente, Math.ceil(cx + rx)) - sx;
+    const sh = Math.min(altezzaSorgente, Math.ceil(cy + ry)) - sy;
     if (sw < 1 || sh < 1) continue;
 
-    const dx = sx * scala;
-    const dy = sy * scala;
-    const dw = Math.max(1, sw * scala);
-    const dh = Math.max(1, sh * scala);
-
-    // 1) si riduce la regione a pochi blocchi…
-    const pw = Math.max(1, Math.round(BLOCCHI * Math.min(1, sw / Math.max(sw, sh))));
-    const ph = Math.max(1, Math.round(BLOCCHI * Math.min(1, sh / Math.max(sw, sh))));
+    // 1) riduzione a pochi pixel: è questo passaggio a cancellare il volto
+    const f = Math.min(1, LATO_RIDOTTO / Math.max(sw, sh));
+    const pw = Math.max(1, Math.round(sw * f));
+    const ph = Math.max(1, Math.round(sh * f));
     tmp.width = pw;
     tmp.height = ph;
     tctx.clearRect(0, 0, pw, ph);
     tctx.imageSmoothingEnabled = true;
+    tctx.imageSmoothingQuality = 'high';
     tctx.drawImage(sorgente, sx, sy, sw, sh, 0, 0, pw, ph);
 
-    // 2) …e si ridisegna ingrandita senza interpolazione: mosaico
+    // 2) ritorno in scala interpolato + sfocatura, dentro l'ovale
+    const dw = Math.max(1, sw * scala);
+    const dh = Math.max(1, sh * scala);
+    const sfocatura = Math.max(2, Math.min(dw, dh) / 9);
     ctx.save();
-    ctx.imageSmoothingEnabled = false;
     ctx.beginPath();
-    ctx.rect(dx, dy, dw, dh);
+    ctx.ellipse(cx * scala, cy * scala, rx * scala, ry * scala, 0, 0, Math.PI * 2);
     ctx.clip();
-    ctx.drawImage(tmp, 0, 0, pw, ph, dx, dy, dw, dh);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    // se `filter` non è supportato (WebView vecchie) resta la sfocatura data
+    // dall'interpolazione: l'area è comunque irriconoscibile
+    ctx.filter = `blur(${sfocatura}px)`;
+    // si disegna un po' oltre i bordi: la sfocatura sfuma sui margini
+    // dell'immagine disegnata, e senza margine l'ovale mostrerebbe un alone
+    // nitido nei punti in cui tocca il rettangolo
+    const m = sfocatura * 2;
+    ctx.drawImage(tmp, 0, 0, pw, ph, sx * scala - m, sy * scala - m, dw + m * 2, dh + m * 2);
     ctx.restore();
   }
 }
