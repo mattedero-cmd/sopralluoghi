@@ -26,12 +26,14 @@ const LATO_ANALISI = 640;
 
 /**
  * Margine attorno al riquadro del volto. Il rilevatore restituisce un
- * riquadro stretto sul viso: allargandolo si coprono anche capelli, mento e
- * orecchie, che rendono comunque riconoscibile la persona.
+ * riquadro stretto sul viso: un po' di margine copre fronte, mento e
+ * orecchie senza invadere lo sfondo. Resta contenuto perché l'oscuramento
+ * sfuma anche oltre il riquadro (vedi SFUMATURA in utils/censura), quindi la
+ * copertura effettiva è più ampia di quella disegnata.
  */
-const MARGINE_X = 0.22;
-const MARGINE_SOPRA = 0.34;
-const MARGINE_SOTTO = 0.18;
+const MARGINE_X = 0.08;
+const MARGINE_SOPRA = 0.20;
+const MARGINE_SOTTO = 0.10;
 
 /** libreria caricata una sola volta (import dinamico) */
 let libreria: Promise<typeof import('@vladmandic/face-api')> | null = null;

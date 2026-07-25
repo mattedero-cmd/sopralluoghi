@@ -23,7 +23,6 @@ import { geometriaQuota, posizioneEtichettaBase, posizioneEtichettaPoligono } fr
 import { geomQuotaDistanza } from '../geometry/parametrico';
 import { disegnaPrimitiva } from '../render/renderAnnotata';
 import type { ImmagineDisegnabile } from '../utils/image';
-import { DEBORDO_CENSURA } from '../utils/censura';
 import { puntiAggancio, snapPunto } from '../geometry/snap';
 import {
   circumcentro,
@@ -1372,8 +1371,8 @@ export function StageEditor(p: Props) {
                 key={`cens-${c.id}`}
                 x={c.x + c.larghezza / 2}
                 y={c.y + c.altezza / 2}
-                radiusX={(c.larghezza / 2) * DEBORDO_CENSURA}
-                radiusY={(c.altezza / 2) * DEBORDO_CENSURA}
+                radiusX={c.larghezza / 2}
+                radiusY={c.altezza / 2}
                 stroke={c.auto ? '#00A896' : '#e5534b'}
                 strokeWidth={2.5 / vista.scala}
                 dash={[8 / vista.scala, 6 / vista.scala]}

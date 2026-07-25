@@ -21,10 +21,14 @@ import type { Foto, RegioneCensura } from '../db/types';
 const LATO_RIDOTTO = 14;
 
 /**
- * L'ovale deborda un poco dal riquadro: un'ellisse inscritta lascerebbe
- * scoperti gli angoli (orecchie, mento, capelli ai lati).
+ * Quanto si estende la sfumatura OLTRE il riquadro memorizzato.
+ *
+ * Il riquadro (l'ovale che si vede tratteggiato nell'editor) è la zona
+ * SFOCATA AL 100%. Da lì la sfocatura si spegne gradualmente fino a questo
+ * raggio: senza dissolvenza il bordo dell'ovale si vedrebbe come un taglio
+ * netto sulla foto.
  */
-export const DEBORDO_CENSURA = 1.08;
+const SFUMATURA = 1.35;
 
 /** regione valida e non degenere */
 function regioneUtile(r: RegioneCensura): boolean {
@@ -55,21 +59,24 @@ export function disegnaCensure(
   const tmp = document.createElement('canvas');
   const tctx = tmp.getContext('2d');
   if (!tctx) return;
+  // strato d'appoggio: ci si costruisce la sfocatura con la sua maschera
+  // sfumata, e solo dopo la si posa sulla foto
+  const strato = document.createElement('canvas');
 
   for (const r of censure) {
     if (!regioneUtile(r)) continue;
-    // ovale iscritto nel riquadro (con un po' di debordo)
     const cx = r.x + r.larghezza / 2;
     const cy = r.y + r.altezza / 2;
-    const rx = (r.larghezza / 2) * DEBORDO_CENSURA;
-    const ry = (r.altezza / 2) * DEBORDO_CENSURA;
+    // nucleo = ovale del riquadro (sfocato pieno); esterno = fine della sfumatura
+    const rxE = (r.larghezza / 2) * SFUMATURA;
+    const ryE = (r.altezza / 2) * SFUMATURA;
 
-    // area da sfocare = rettangolo che contiene l'ovale, ritagliato nei limiti
-    // dell'immagine (drawImage con sorgente fuori dai bordi non disegna nulla)
-    const sx = Math.max(0, Math.floor(cx - rx));
-    const sy = Math.max(0, Math.floor(cy - ry));
-    const sw = Math.min(larghezzaSorgente, Math.ceil(cx + rx)) - sx;
-    const sh = Math.min(altezzaSorgente, Math.ceil(cy + ry)) - sy;
+    // area sorgente da campionare, ritagliata nei limiti dell'immagine
+    // (drawImage con rettangolo sorgente fuori dai bordi non disegna nulla)
+    const sx = Math.max(0, Math.floor(cx - rxE));
+    const sy = Math.max(0, Math.floor(cy - ryE));
+    const sw = Math.min(larghezzaSorgente, Math.ceil(cx + rxE)) - sx;
+    const sh = Math.min(altezzaSorgente, Math.ceil(cy + ryE)) - sy;
     if (sw < 1 || sh < 1) continue;
 
     // 1) riduzione a pochi pixel: è questo passaggio a cancellare il volto
@@ -83,25 +90,48 @@ export function disegnaCensure(
     tctx.imageSmoothingQuality = 'high';
     tctx.drawImage(sorgente, sx, sy, sw, sh, 0, 0, pw, ph);
 
-    // 2) ritorno in scala interpolato + sfocatura, dentro l'ovale
+    // 2) sullo strato: ritorno in scala interpolato + sfocatura
+    const dx = sx * scala;
+    const dy = sy * scala;
     const dw = Math.max(1, sw * scala);
     const dh = Math.max(1, sh * scala);
-    const sfocatura = Math.max(2, Math.min(dw, dh) / 9);
-    ctx.save();
-    ctx.beginPath();
-    ctx.ellipse(cx * scala, cy * scala, rx * scala, ry * scala, 0, 0, Math.PI * 2);
-    ctx.clip();
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
+    strato.width = Math.max(1, Math.ceil(dw));
+    strato.height = Math.max(1, Math.ceil(dh));
+    const sc = strato.getContext('2d');
+    if (!sc) continue;
+    sc.clearRect(0, 0, strato.width, strato.height);
+    sc.imageSmoothingEnabled = true;
+    sc.imageSmoothingQuality = 'high';
+    const sfocatura = Math.max(2, Math.min(dw, dh) / 12);
     // se `filter` non è supportato (WebView vecchie) resta la sfocatura data
     // dall'interpolazione: l'area è comunque irriconoscibile
-    ctx.filter = `blur(${sfocatura}px)`;
-    // si disegna un po' oltre i bordi: la sfocatura sfuma sui margini
-    // dell'immagine disegnata, e senza margine l'ovale mostrerebbe un alone
-    // nitido nei punti in cui tocca il rettangolo
+    sc.filter = `blur(${sfocatura}px)`;
+    // si disegna oltre i bordi dello strato: la sfocatura sfuma sui margini
+    // dell'immagine disegnata, che così restano fuori campo
     const m = sfocatura * 2;
-    ctx.drawImage(tmp, 0, 0, pw, ph, sx * scala - m, sy * scala - m, dw + m * 2, dh + m * 2);
-    ctx.restore();
+    sc.drawImage(tmp, 0, 0, pw, ph, -m, -m, dw + m * 2, dh + m * 2);
+    sc.filter = 'none';
+
+    // 3) maschera ovale con DISSOLVENZA: piena sul nucleo, spenta all'esterno.
+    // È questo passaggio a togliere il bordo netto.
+    sc.globalCompositeOperation = 'destination-in';
+    sc.save();
+    // spazio normalizzato: raggio 1 = fine della sfumatura, così un gradiente
+    // circolare diventa ellittico e segue la forma del viso
+    sc.translate(cx * scala - dx, cy * scala - dy);
+    sc.scale(Math.max(0.01, rxE * scala), Math.max(0.01, ryE * scala));
+    const nucleo = Math.min(0.97, 1 / SFUMATURA);
+    const g = sc.createRadialGradient(0, 0, 0, 0, 0, 1);
+    g.addColorStop(0, 'rgba(0,0,0,1)');
+    g.addColorStop(nucleo, 'rgba(0,0,0,1)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    sc.fillStyle = g;
+    sc.fillRect(-1.2, -1.2, 2.4, 2.4);
+    sc.restore();
+    sc.globalCompositeOperation = 'source-over';
+
+    // 4) la sfocatura sfumata si posa sulla foto
+    ctx.drawImage(strato, dx, dy);
   }
 }
 
