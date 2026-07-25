@@ -3676,8 +3676,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           <span className="titolo">
             <Icona nome="persone" dimensione={18} />{' '}
             {foto.censure?.length
-              ? `${foto.censure.length} riquadr${foto.censure.length === 1 ? 'o' : 'i'} · tocca per togliere, trascina per aggiungere`
-              : 'Nessun riquadro · trascina sulla foto per oscurare, o cerca i volti'}
+              ? `${foto.censure.length} riquadr${foto.censure.length === 1 ? 'o' : 'i'} · tocca dentro per togliere · due tocchi (angolo e angolo) per aggiungere`
+              : 'Due tocchi sulla foto — angolo e angolo — per oscurare un’area, oppure «Cerca volti»'}
           </span>
           <span className="spazio" />
           <button className="btn" disabled={voltiInCorso} onClick={() => void cercaVolti()}>

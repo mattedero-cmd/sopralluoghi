@@ -598,6 +598,28 @@ export function StageEditor(p: Props) {
       return;
     }
 
+    // PRIVACY: con lo strumento «censura» un tocco DENTRO un riquadro
+    // esistente lo toglie. Va gestito qui, prima degli strumenti a due punti:
+    // il pointerdown arriva sullo Stage prima del click sulla forma, e senza
+    // questo controllo il tocco avvierebbe il tracciamento di un rettangolo
+    // nuovo invece di rimuovere quello toccato.
+    // Se un rettangolo è già in tracciamento, il tocco lo chiude (non rimuove).
+    if (p.strumento === 'censura' && !puntoFisso(bozza)) {
+      const sopra = [...(p.censure ?? [])]
+        .reverse()
+        .find(
+          (c) =>
+            pos.x >= c.x &&
+            pos.x <= c.x + c.larghezza &&
+            pos.y >= c.y &&
+            pos.y <= c.y + c.altezza
+        );
+      if (sopra) {
+        p.onRimuoviCensura?.(sopra.id);
+        return;
+      }
+    }
+
     // strumenti a due punti: ogni punto si fissa al rilascio
     if (strumentoDuePunti(p.strumento)) {
       const punto = elaboraPuntoDue(pos);
@@ -1355,14 +1377,9 @@ export function StageEditor(p: Props) {
                 strokeWidth={2.5 / vista.scala}
                 dash={[8 / vista.scala, 6 / vista.scala]}
                 fill="rgba(229,83,75,0.10)"
-                onClick={(e) => {
-                  e.cancelBubble = true;
-                  p.onRimuoviCensura?.(c.id);
-                }}
-                onTap={(e) => {
-                  e.cancelBubble = true;
-                  p.onRimuoviCensura?.(c.id);
-                }}
+                // la rimozione è gestita dal pointerdown dello Stage (che
+                // arriva prima del click): qui il contorno è solo visivo
+                listening={false}
               />
             ))}
           {/* punti SELEZIONABILI del comando armato: pallini rossi, discreti
