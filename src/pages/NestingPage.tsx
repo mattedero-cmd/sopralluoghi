@@ -28,10 +28,15 @@ const CHIAVE_SALVATAGGIO = 'nesting.v1';
 /** supporto: lastre uguali a volontà, oppure un rotolo di lunghezza data */
 type ModoSupporto = 'lastre' | 'bobina';
 
+/** direzione della venatura del materiale (o assenza) */
+type Venatura = 'nessuna' | 'orizzontale' | 'verticale';
+
 interface StatoNesting extends ParametriNesting {
   modo?: ModoSupporto;
   /** larghezza del rotolo (mm) e metri disponibili */
   bobina?: { larghezza: number; metri: number };
+  /** venatura del materiale: vincola il verso dei pezzi e si vede nel disegno */
+  venatura?: Venatura;
   pezzi: PezzoNesting[];
 }
 
@@ -126,6 +131,30 @@ const ESEMPIO: StatoNesting = {
   ]
 };
 
+/**
+ * Righe della venatura dentro un pezzo. Il "filo" appartiene al MATERIALE:
+ * resta parallelo alla lastra e non gira insieme al pezzo — è proprio per
+ * questo che si vede a colpo d'occhio se un pezzo è impaginato controvena.
+ */
+function righeVenatura(
+  pc: { x: number; y: number; larghezza: number; altezza: number },
+  venatura: Venatura,
+  passo: number
+): number[][] {
+  const righe: number[][] = [];
+  if (passo <= 0) return righe;
+  if (venatura === 'orizzontale') {
+    for (let y = pc.y + passo; y < pc.y + pc.altezza; y += passo) {
+      righe.push([pc.x, y, pc.x + pc.larghezza, y]);
+    }
+  } else if (venatura === 'verticale') {
+    for (let x = pc.x + passo; x < pc.x + pc.larghezza; x += passo) {
+      righe.push([x, pc.y, x, pc.y + pc.altezza]);
+    }
+  }
+  return righe;
+}
+
 /** tinte ben distanziate sulla ruota dei colori (angolo d'oro) */
 function prossimaTinta(indice: number): number {
   return Math.round((indice * 137.508) % 360);
@@ -166,6 +195,19 @@ export function NestingPage() {
 
   const modo: ModoSupporto = stato.modo ?? 'lastre';
   const bobina = stato.bobina ?? { larghezza: 1000, metri: 50 };
+  const venatura: Venatura = stato.venatura ?? 'nessuna';
+  const orientamenti = useMemo(() => stato.orientamenti ?? {}, [stato.orientamenti]);
+
+  /** gira di 90° una singola copia già impaginata e ricalcola */
+  const giraPezzo = (chiave: string, eraRuotato: boolean) =>
+    setStato((s) => {
+      const nuovi = { ...(s.orientamenti ?? {}) };
+      const richiesto = !eraRuotato;
+      // tornare al verso che il calcolo sceglierebbe da solo = togliere il vincolo
+      if (nuovi[chiave] === richiesto) delete nuovi[chiave];
+      else nuovi[chiave] = richiesto;
+      return { ...s, orientamenti: nuovi };
+    });
 
   /** parametri effettivi: la bobina è un'unica "lastra" lunga quanto il rotolo */
   const parametri = useMemo<ParametriNesting>(
@@ -176,15 +218,26 @@ export function NestingPage() {
             lama: stato.lama,
             abbondanza: stato.abbondanza,
             margine: stato.margine,
-            massimoLastre: 1
+            massimoLastre: 1,
+            orientamenti
           }
         : {
             lastra: stato.lastra,
             lama: stato.lama,
             abbondanza: stato.abbondanza,
-            margine: stato.margine
+            margine: stato.margine,
+            orientamenti
           },
-    [modo, bobina.larghezza, bobina.metri, stato.lastra, stato.lama, stato.abbondanza, stato.margine]
+    [
+      modo,
+      bobina.larghezza,
+      bobina.metri,
+      stato.lastra,
+      stato.lama,
+      stato.abbondanza,
+      stato.margine,
+      orientamenti
+    ]
   );
 
   const esito = useMemo(() => calcolaNesting(parametri, stato.pezzi), [parametri, stato.pezzi]);
@@ -228,7 +281,8 @@ export function NestingPage() {
           larghezza: 400,
           altezza: 300,
           quantita: 1,
-          ruotabile: true,
+          // con la venatura attiva il verso conta: il pezzo nasce vincolato
+          ruotabile: (s.venatura ?? 'nessuna') === 'nessuna',
           tinta: prossimaTinta(s.pezzi.length)
         }
       ]
@@ -351,6 +405,36 @@ export function NestingPage() {
             </label>
           </div>
         )}
+
+        <div className="nest-venatura">
+          <span className="et">Venatura del materiale</span>
+          <div className="segmenti" role="group" aria-label="Venatura del materiale">
+            <button
+              className={venatura === 'nessuna' ? 'attivo' : ''}
+              onClick={() => setStato((s) => ({ ...s, venatura: 'nessuna' }))}
+            >
+              Nessuna
+            </button>
+            <button
+              className={venatura === 'orizzontale' ? 'attivo' : ''}
+              onClick={() => setStato((s) => ({ ...s, venatura: 'orizzontale' }))}
+            >
+              ↔ Orizzontale
+            </button>
+            <button
+              className={venatura === 'verticale' ? 'attivo' : ''}
+              onClick={() => setStato((s) => ({ ...s, venatura: 'verticale' }))}
+            >
+              ↕ Verticale
+            </button>
+          </div>
+          {venatura !== 'nessuna' && (
+            <small>
+              Togli la spunta «Ruota» ai pezzi che devono seguire la venatura. Nell’anteprima
+              tocca un pezzo per girarlo di 90°.
+            </small>
+          )}
+        </div>
 
         {/* --- Abbondanze ----------------------------------------------- */}
         <h2 className="nest-titolo">Abbondanze</h2>
@@ -521,6 +605,17 @@ export function NestingPage() {
               />
             </div>
 
+            {Object.keys(orientamenti).length > 0 && (
+              <div className="riga-pulsanti" style={{ marginBottom: 12 }}>
+                <button
+                  className="btn"
+                  onClick={() => setStato((s) => ({ ...s, orientamenti: {} }))}
+                >
+                  ↺ Togli i {Object.keys(orientamenti).length} versi imposti a mano
+                </button>
+              </div>
+            )}
+
             {scartatiRaggruppati.length > 0 && (
               <div className="nest-avviso">
                 <strong>
@@ -548,6 +643,9 @@ export function NestingPage() {
                 parametri={parametri}
                 pezzi={stato.pezzi}
                 bobina={modo === 'bobina'}
+                venatura={venatura}
+                imposti={orientamenti}
+                onGira={giraPezzo}
                 legenda={i === 0}
               />
             ))}
@@ -631,6 +729,9 @@ function Lastra({
   parametri,
   pezzi,
   bobina,
+  venatura,
+  imposti,
+  onGira,
   legenda
 }: {
   indice: number;
@@ -638,6 +739,9 @@ function Lastra({
   parametri: ParametriNesting;
   pezzi: PezzoNesting[];
   bobina: boolean;
+  venatura: Venatura;
+  imposti: Record<string, boolean>;
+  onGira: (chiave: string, eraRuotato: boolean) => void;
   legenda: boolean;
 }) {
   const L = parametri.lastra.larghezza;
@@ -751,7 +855,21 @@ function Lastra({
             largo(dimSola, misura) <= pc.altezza * 0.94 &&
             dimSola * 1.5 <= pc.larghezza;
           return (
-            <g key={i}>
+            <g
+              key={i}
+              role="button"
+              tabIndex={0}
+              aria-label={`${pc.nome || 'pezzo'} ${misura}: gira di 90°`}
+              style={{ cursor: 'pointer' }}
+              onClick={() => onGira(pc.chiave, pc.ruotato)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onGira(pc.chiave, pc.ruotato);
+                }
+              }}
+            >
+              <title>{`${pc.nome || 'Pezzo'} ${misura} — tocca per girare di 90°`}</title>
               <rect
                 x={pc.x}
                 y={pc.y}
@@ -760,9 +878,31 @@ function Lastra({
                 rx={1.5}
                 fill={tintaSfondo(pc.tinta)}
                 stroke={tintaBordo(pc.tinta)}
-                strokeWidth={1.5}
+                strokeWidth={imposti[pc.chiave] != null ? 3 : 1.5}
                 vectorEffect="non-scaling-stroke"
               />
+              {/* venatura: righe parallele nel verso del materiale, ritagliate
+                  dentro il pezzo. Sono i "fili" del legno, quindi seguono la
+                  lastra e NON girano col pezzo. */}
+              {venatura !== 'nessuna' && (
+                <g clipPath={`url(#taglio-${indice}-${i})`} opacity={0.28}>
+                  <clipPath id={`taglio-${indice}-${i}`}>
+                    <rect x={pc.x} y={pc.y} width={pc.larghezza} height={pc.altezza} rx={1.5} />
+                  </clipPath>
+                  {righeVenatura(pc, venatura, Math.max(inUnita(7), 12)).map((l, k) => (
+                    <line
+                      key={k}
+                      x1={l[0]}
+                      y1={l[1]}
+                      x2={l[2]}
+                      y2={l[3]}
+                      stroke="#3a2a18"
+                      strokeWidth={1}
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  ))}
+                </g>
+              )}
               {conNome ? (
                 <>
                   {/* testo scuro fisso: i riempimenti sono pastello chiari in

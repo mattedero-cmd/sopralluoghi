@@ -259,6 +259,73 @@ describe('bobina — una sola lastra e lunghezza consumata', () => {
   });
 });
 
+describe('verso imposto a mano (venatura)', () => {
+  it('ogni copia ha una chiave stabile idPezzo#indice', () => {
+    const e = calcolaNesting(PIANA, [
+      pezzo({ id: 'anta', larghezza: 300, altezza: 200, quantita: 3 })
+    ]);
+    const chiavi = e.lastre[0].piazzamenti.map((p) => p.chiave).sort();
+    expect(chiavi).toEqual(['anta#0', 'anta#1', 'anta#2']);
+  });
+
+  it('imporre il verso ruotato gira il pezzo anche se sarebbe stato diritto', () => {
+    const libero = calcolaNesting(PIANA, [
+      pezzo({ id: 'a', larghezza: 400, altezza: 200, quantita: 1, ruotabile: false })
+    ]);
+    expect(libero.lastre[0].piazzamenti[0].ruotato).toBe(false);
+    expect(libero.lastre[0].piazzamenti[0].larghezza).toBe(400);
+
+    const imposto = calcolaNesting({ ...PIANA, orientamenti: { 'a#0': true } }, [
+      pezzo({ id: 'a', larghezza: 400, altezza: 200, quantita: 1, ruotabile: false })
+    ]);
+    const pc = imposto.lastre[0].piazzamenti[0];
+    expect(pc.ruotato).toBe(true);
+    // l'ingombro è scambiato, la misura finita no
+    expect(pc.larghezza).toBe(200);
+    expect(pc.altezza).toBe(400);
+    expect(pc.larghezzaFinita).toBe(400);
+  });
+
+  it('imporre il verso diritto impedisce la rotazione automatica', () => {
+    const par: ParametriNesting = {
+      lastra: { larghezza: 1000, altezza: 300 },
+      lama: 0,
+      abbondanza: 0,
+      margine: 0
+    };
+    // da solo entrerebbe solo girato
+    const auto = calcolaNesting(par, [
+      pezzo({ id: 'b', larghezza: 250, altezza: 900, quantita: 1, ruotabile: true })
+    ]);
+    expect(auto.lastre[0].piazzamenti[0].ruotato).toBe(true);
+
+    const forzato = calcolaNesting({ ...par, orientamenti: { 'b#0': false } }, [
+      pezzo({ id: 'b', larghezza: 250, altezza: 900, quantita: 1, ruotabile: true })
+    ]);
+    // imposto diritto: non entra più e finisce fra gli scarti
+    expect(forzato.lastre).toHaveLength(0);
+    expect(forzato.scartati).toHaveLength(1);
+  });
+
+  it('il verso imposto vale solo per la copia indicata', () => {
+    const e = calcolaNesting({ ...PIANA, orientamenti: { 'c#1': true } }, [
+      pezzo({ id: 'c', larghezza: 300, altezza: 150, quantita: 3, ruotabile: false })
+    ]);
+    const per = new Map(e.lastre[0].piazzamenti.map((p) => [p.chiave, p.ruotato]));
+    expect(per.get('c#0')).toBe(false);
+    expect(per.get('c#1')).toBe(true);
+    expect(per.get('c#2')).toBe(false);
+  });
+
+  it('chiavi che non corrispondono a nessuna copia non danno fastidio', () => {
+    const e = calcolaNesting({ ...PIANA, orientamenti: { 'sparito#7': true } }, [
+      pezzo({ id: 'd', larghezza: 200, altezza: 200, quantita: 2 })
+    ]);
+    expect(e.lastre[0].piazzamenti).toHaveLength(2);
+    expect(e.scartati).toHaveLength(0);
+  });
+});
+
 describe('passoGriglia', () => {
   it('sceglie passi tondi', () => {
     expect(passoGriglia(1)).toBe(1);

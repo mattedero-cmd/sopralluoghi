@@ -46,6 +46,12 @@ export interface ParametriNesting {
    * altro pezzo" ma resta fuori. Assente = quantità illimitata.
    */
   massimoLastre?: number;
+  /**
+   * Orientamento IMPOSTO a mano per singola copia (`chiave` → ruotato sì/no).
+   * Vince sul calcolo: si prova solo quel verso, anche se il pezzo sarebbe
+   * libero di girare. È così che si corregge un pezzo impaginato controvena.
+   */
+  orientamenti?: Record<string, boolean>;
 }
 
 /** pezzo piazzato su una lastra, in coordinate della lastra */
@@ -62,6 +68,12 @@ export interface Piazzamento {
   tinta: number;
   /** true = piazzato girato di 90° */
   ruotato: boolean;
+  /**
+   * Identità stabile della singola copia del pezzo (`idPezzo#indice`). Serve
+   * per imporre a mano l'orientamento di UN pezzo dall'anteprima: il
+   * riferimento sopravvive al ricalcolo, che rimescola le posizioni.
+   */
+  chiave: string;
 }
 
 export interface LastraNesting {
@@ -183,9 +195,12 @@ export function calcolaNesting(par: ParametriNesting, pezzi: PezzoNesting[]): Es
   const binA = utileA + lama;
 
   interface Istanza {
+    chiave: string;
     nome: string;
     tinta: number;
     ruotabile: boolean;
+    /** verso imposto a mano: true ruotato, false diritto, undefined libero */
+    imposto?: boolean;
     finitaL: number;
     finitaA: number;
     packL: number;
@@ -195,10 +210,15 @@ export function calcolaNesting(par: ParametriNesting, pezzi: PezzoNesting[]): Es
   for (const p of pezzi) {
     const q = Math.max(0, Math.round(p.quantita) || 0);
     for (let i = 0; i < q; i++) {
+      const chiave = `${p.id}#${i}`;
+      const imposto = par.orientamenti?.[chiave];
       istanze.push({
+        chiave,
         nome: p.nome,
         tinta: p.tinta,
-        ruotabile: p.ruotabile,
+        // con un verso imposto il pezzo non è più libero di girare
+        ruotabile: imposto == null ? p.ruotabile : false,
+        imposto: imposto ?? undefined,
         finitaL: p.larghezza,
         finitaA: p.altezza,
         packL: p.larghezza + abbondanza + lama,
@@ -213,8 +233,12 @@ export function calcolaNesting(par: ParametriNesting, pezzi: PezzoNesting[]): Es
   const scartati: PezzoScartato[] = [];
 
   for (const it of istanze) {
-    const entra = it.packL <= binL && it.packA <= binA;
-    const entraGirato = it.ruotabile && it.packA <= binL && it.packL <= binA;
+    // con un verso imposto si prova SOLO quello: le misure d'ingombro sono
+    // già scambiate e la rotazione automatica è disattivata
+    const usaL = it.imposto ? it.packA : it.packL;
+    const usaA = it.imposto ? it.packL : it.packA;
+    const entra = usaL <= binL && usaA <= binA;
+    const entraGirato = it.ruotabile && usaA <= binL && usaL <= binA;
     if (!entra && !entraGirato) {
       scartati.push({ nome: it.nome, larghezzaFinita: it.finitaL, altezzaFinita: it.finitaA });
       continue;
@@ -223,7 +247,7 @@ export function calcolaNesting(par: ParametriNesting, pezzi: PezzoNesting[]): Es
     let migliore: Posizione | null = null;
     let lastraScelta: Contenitore | null = null;
     for (const c of lastre) {
-      const pos = c.cercaPosizione(it.packL, it.packA, it.ruotabile);
+      const pos = c.cercaPosizione(usaL, usaA, it.ruotabile);
       if (pos && (!migliore || pos.punteggio < migliore.punteggio)) {
         migliore = pos;
         lastraScelta = c;
@@ -237,7 +261,7 @@ export function calcolaNesting(par: ParametriNesting, pezzi: PezzoNesting[]): Es
       }
       const nuova = new Contenitore(binL, binA);
       lastre.push(nuova);
-      migliore = nuova.cercaPosizione(it.packL, it.packA, it.ruotabile);
+      migliore = nuova.cercaPosizione(usaL, usaA, it.ruotabile);
       lastraScelta = nuova;
     }
     if (!migliore || !lastraScelta) continue;
@@ -252,7 +276,9 @@ export function calcolaNesting(par: ParametriNesting, pezzi: PezzoNesting[]): Es
       altezzaFinita: it.finitaA,
       nome: it.nome,
       tinta: it.tinta,
-      ruotato: migliore.ruotato
+      // con un verso imposto è quello a dire se il pezzo è girato
+      ruotato: it.imposto ?? migliore.ruotato,
+      chiave: it.chiave
     });
   }
 

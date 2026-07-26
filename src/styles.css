@@ -2883,3 +2883,29 @@ a {
     border-color: #999;
   }
 }
+
+/* venatura del materiale: selettore sotto le misure del supporto */
+.nest-venatura {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.nest-venatura .et {
+  font-size: 12px;
+  color: var(--testo-2);
+}
+
+.nest-venatura small {
+  color: var(--testo-2);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+/* nel disegno del nesting il tocco vale sull'intero pezzo: testi e venature
+   non devono intercettarlo al posto del rettangolo */
+.nest-svg text,
+.nest-svg line {
+  pointer-events: none;
+}
