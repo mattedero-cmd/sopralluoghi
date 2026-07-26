@@ -52,7 +52,24 @@ export interface ParametriNesting {
    * libero di girare. È così che si corregge un pezzo impaginato controvena.
    */
   orientamenti?: Record<string, boolean>;
+  /**
+   * Ordine con cui i pezzi vengono provati. Cambia il risultato: nessun
+   * ordine è il migliore su tutte le liste, per questo `calcolaNestingMigliore`
+   * li prova tutti e tiene il più efficiente. Assente = per area decrescente.
+   */
+  ordinamento?: Ordinamento;
 }
+
+/** criteri di ordinamento dei pezzi prima dell'impacchettamento */
+export type Ordinamento = 'area' | 'latoLungo' | 'altezza' | 'larghezza' | 'perimetro';
+
+export const ORDINAMENTI: Ordinamento[] = [
+  'area',
+  'latoLungo',
+  'altezza',
+  'larghezza',
+  'perimetro'
+];
 
 /** pezzo piazzato su una lastra, in coordinate della lastra */
 export interface Piazzamento {
@@ -226,8 +243,30 @@ export function calcolaNesting(par: ParametriNesting, pezzi: PezzoNesting[]): Es
       });
     }
   }
-  // dal più grande al più piccolo: i grandi trovano posto finché c'è spazio
-  istanze.sort((a, b) => b.packL * b.packA - a.packL * a.packA);
+  // dal più grande al più piccolo: i grandi trovano posto finché c'è spazio.
+  // «grande» però si può misurare in più modi, e il migliore dipende dalla
+  // lista: vedi calcolaNestingMigliore.
+  const peso = (i: Istanza): number => {
+    switch (par.ordinamento) {
+      case 'latoLungo':
+        return Math.max(i.packL, i.packA);
+      case 'altezza':
+        return i.packA;
+      case 'larghezza':
+        return i.packL;
+      case 'perimetro':
+        return i.packL + i.packA;
+      default:
+        return i.packL * i.packA;
+    }
+  };
+  // a pari peso decide l'area, poi il lato lungo: l'ordine resta deterministico
+  istanze.sort(
+    (a, b) =>
+      peso(b) - peso(a) ||
+      b.packL * b.packA - a.packL * a.packA ||
+      Math.max(b.packL, b.packA) - Math.max(a.packL, a.packA)
+  );
 
   const lastre: Contenitore[] = [];
   const scartati: PezzoScartato[] = [];
@@ -283,6 +322,60 @@ export function calcolaNesting(par: ParametriNesting, pezzi: PezzoNesting[]): Es
   }
 
   return { lastre: lastre.map((c) => ({ piazzamenti: c.piazzamenti })), scartati };
+}
+
+/**
+ * Quanto è buono un risultato, in ordine di importanza:
+ * 1. pezzi piazzati (più ce ne stanno, meglio è);
+ * 2. lastre usate (meno materiale aperto);
+ * 3. lunghezza occupata (su bobina è il metraggio, su lastra è lo spazio
+ *    che resta libero in fondo all'ultima: un ritaglio intero vale più di
+ *    tanti sfridi sparsi).
+ *
+ * Numeri più bassi sono migliori.
+ */
+function qualita(e: EsitoNesting): [number, number, number] {
+  let piazzati = 0;
+  let occupata = 0;
+  for (const l of e.lastre) {
+    piazzati += l.piazzamenti.length;
+    let fine = 0;
+    for (const pc of l.piazzamenti) fine = Math.max(fine, pc.y + pc.altezza);
+    occupata += fine;
+  }
+  return [-piazzati, e.lastre.length, occupata];
+}
+
+/**
+ * IMPACCHETTAMENTO MIGLIORE.
+ *
+ * Nessun ordine di inserimento è il migliore su tutte le liste: lo stesso
+ * insieme di pezzi può occupare una lastra in meno solo perché si è partiti
+ * dai più alti invece che dai più grandi. Qui si prova ogni ordine e si tiene
+ * il risultato migliore — il programma cerca da sé, senza chiedere nulla.
+ *
+ * A parità di qualità vince il primo ordine provato, così il risultato è
+ * sempre lo stesso a parità di dati.
+ */
+export function calcolaNestingMigliore(
+  par: ParametriNesting,
+  pezzi: PezzoNesting[]
+): EsitoNesting {
+  /** confronto lessicografico: <0 se «a» è meglio di «b» */
+  const confronta = (a: [number, number, number], b: [number, number, number]) =>
+    a[0] - b[0] || a[1] - b[1] || (Math.abs(a[2] - b[2]) < 1e-9 ? 0 : a[2] - b[2]);
+
+  let migliore: EsitoNesting | null = null;
+  let punteggio: [number, number, number] | null = null;
+  for (const ordinamento of ORDINAMENTI) {
+    const e = calcolaNesting({ ...par, ordinamento }, pezzi);
+    const q = qualita(e);
+    if (!punteggio || confronta(q, punteggio) < 0) {
+      migliore = e;
+      punteggio = q;
+    }
+  }
+  return migliore ?? { lastre: [], scartati: [] };
 }
 
 /** Riepilogo per le statistiche mostrate accanto al disegno. */

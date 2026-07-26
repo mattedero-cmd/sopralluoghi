@@ -79,6 +79,19 @@ export function parametriDi(m: MaterialeNesting): ParametriNesting {
   };
 }
 
+/**
+ * I pezzi come vanno passati al motore.
+ *
+ * Senza venatura il verso di un pezzo non ha alcun significato fisico: il
+ * programma è libero di girarlo per impacchettare meglio, e la spunta «Ruota»
+ * del singolo pezzo non ha più nulla da vincolare. Con una venatura invece
+ * comanda la spunta, pezzo per pezzo.
+ */
+export function pezziDi(m: MaterialeNesting): PezzoNesting[] {
+  if (m.venatura !== 'nessuna') return m.pezzi;
+  return m.pezzi.map((p) => (p.ruotabile ? p : { ...p, ruotabile: true }));
+}
+
 /** com'è fatto il supporto, in una riga (intestazioni, PDF, elenchi) */
 export function etichettaSupporto(m: MaterialeNesting): string {
   if (m.modo === 'bobina') {

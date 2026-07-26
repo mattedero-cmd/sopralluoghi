@@ -4,6 +4,7 @@ import {
   materialeNuovo,
   migraDocumento,
   parametriDi,
+  pezziDi,
   pezziRichiesti
 } from '../documentoNesting';
 
@@ -134,5 +135,31 @@ describe('migraDocumento', () => {
     expect(migraDocumento(null)).toBeNull();
     expect(migraDocumento('ciao')).toBeNull();
     expect(migraDocumento({})).toBeNull();
+  });
+});
+
+describe('pezziDi', () => {
+  const conVerso = (m: ReturnType<typeof materialeNuovo>) => ({
+    ...m,
+    pezzi: [
+      { id: 'a', nome: 'Anta', larghezza: 600, altezza: 400, quantita: 1, ruotabile: false, tinta: 0 },
+      { id: 'b', nome: 'Ripiano', larghezza: 500, altezza: 300, quantita: 1, ruotabile: true, tinta: 0 }
+    ]
+  });
+
+  it('senza venatura tutti i pezzi sono liberi di girare', () => {
+    const m = conVerso(materialeNuovo('m1', 'Legno'));
+    expect(pezziDi(m).map((p) => p.ruotabile)).toEqual([true, true]);
+  });
+
+  it('con la venatura comanda la spunta del pezzo', () => {
+    const m = { ...conVerso(materialeNuovo('m1', 'Legno')), venatura: 'verticale' as const };
+    expect(pezziDi(m).map((p) => p.ruotabile)).toEqual([false, true]);
+  });
+
+  it('non altera i pezzi salvati', () => {
+    const m = conVerso(materialeNuovo('m1', 'Legno'));
+    pezziDi(m);
+    expect(m.pezzi[0].ruotabile).toBe(false);
   });
 });

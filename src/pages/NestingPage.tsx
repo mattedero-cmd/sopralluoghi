@@ -4,7 +4,7 @@ import { Modale, StatoApp } from '../components/comuni';
 import { Icona } from '../components/Icona';
 import { nuovoId } from '../utils/id';
 import {
-  calcolaNesting,
+  calcolaNestingMigliore,
   lunghezzaUsata,
   passoGriglia,
   riepilogaNesting,
@@ -19,6 +19,7 @@ import {
   materialeNuovo,
   migraDocumento,
   parametriDi,
+  pezziDi,
   pezziRichiesti,
   type DocumentoNesting,
   type MaterialeNesting,
@@ -264,10 +265,16 @@ export function NestingPage() {
     }));
 
   const parametri = useMemo(() => parametriDi(mat), [mat]);
-  const esito = useMemo(() => calcolaNesting(parametri, mat.pezzi), [parametri, mat.pezzi]);
+  // senza venatura i pezzi si girano liberamente: è il motore a scegliere il
+  // verso, provando più ordini di inserimento e tenendo il migliore
+  const pezziCalcolo = useMemo(() => pezziDi(mat), [mat]);
+  const esito = useMemo(
+    () => calcolaNestingMigliore(parametri, pezziCalcolo),
+    [parametri, pezziCalcolo]
+  );
   const riepilogo = useMemo(
-    () => riepilogaNesting(parametri, mat.pezzi, esito),
-    [parametri, mat.pezzi, esito]
+    () => riepilogaNesting(parametri, pezziCalcolo, esito),
+    [parametri, pezziCalcolo, esito]
   );
 
   /** consumo del rotolo: quanto materiale serve davvero */
@@ -632,12 +639,11 @@ export function NestingPage() {
               ↕ Verticale
             </button>
           </div>
-          {mat.venatura !== 'nessuna' && (
-            <small>
-              Togli la spunta «Ruota» ai pezzi che devono seguire la venatura. Nell’anteprima
-              tocca un pezzo per girarlo di 90°.
-            </small>
-          )}
+          <small>
+            {mat.venatura === 'nessuna'
+              ? 'Senza venatura il verso non conta: il programma gira i pezzi da solo e sceglie l’impacchettamento più efficiente.'
+              : 'Togli la spunta «Ruota» ai pezzi che devono seguire la venatura. Nell’anteprima tocca un pezzo per girarlo di 90°.'}
+          </small>
         </div>
 
         {/* --- Abbondanze ----------------------------------------------- */}
@@ -713,11 +719,19 @@ export function NestingPage() {
                     valore={p.quantita}
                     onCambia={(v) => aggiornaPezzo(p.id, { quantita: v })}
                   />
+                  {/* senza venatura la rotazione è sempre libera: la spunta
+                      non avrebbe nulla da vincolare */}
                   <span className="nest-ruota">
                     <input
                       type="checkbox"
                       aria-label="Rotazione di 90° consentita"
-                      checked={p.ruotabile}
+                      checked={mat.venatura === 'nessuna' ? true : p.ruotabile}
+                      disabled={mat.venatura === 'nessuna'}
+                      title={
+                        mat.venatura === 'nessuna'
+                          ? 'Senza venatura i pezzi si girano sempre'
+                          : 'Rotazione di 90° consentita'
+                      }
                       onChange={(e) => aggiornaPezzo(p.id, { ruotabile: e.target.checked })}
                     />
                   </span>
@@ -860,7 +874,7 @@ export function NestingPage() {
 
         <p className="nest-nota">
           Nesting <strong>libero</strong> (MaxRects, Best-Area-Fit), calcolato per ogni essenza
-          separatamente. La <em>resa</em> è l’area dei pezzi finiti sull’area del materiale usato;
+          separatamente provando più ordini di inserimento e tenendo il più efficiente. La <em>resa</em> è l’area dei pezzi finiti sull’area del materiale usato;
           lo <em>sfrido</em> comprende lama, abbondanze e margini. Il rotolo viene
           impaginato come una striscia unica; il PDF può poi spezzarlo in blocchi maneggevoli,
           tagliando solo dove non passa nessun pezzo. Misure in millimetri.

@@ -2,7 +2,7 @@ import type { Content, TDocumentDefinitions, TableCell } from 'pdfmake/interface
 import { pdfMake } from './engine';
 import { impaginaLastra, riassuntoLastra, type AreaPagina } from './disegnoNesting';
 import {
-  calcolaNesting,
+  calcolaNestingMigliore,
   lunghezzaUsata,
   riepilogaNesting,
   type EsitoNesting,
@@ -13,6 +13,7 @@ import { OPZIONI_PDF_PREDEFINITE, type OpzioniPdfNesting } from './opzioni';
 import {
   etichettaSupporto,
   parametriDi,
+  pezziDi,
   type DocumentoNesting,
   type MaterialeNesting
 } from '../utils/documentoNesting';
@@ -313,8 +314,11 @@ export async function generaPdfNesting(
 
   for (const m of doc.materiali) {
     const par = parametriDi(m);
-    const esito = calcolaNesting(par, m.pezzi);
-    const riep = riepilogaNesting(par, m.pezzi, esito);
+    // stessi pezzi e stesso motore dell'anteprima: il PDF non può mostrare
+    // una disposizione diversa da quella che si vede a schermo
+    const pezzi = pezziDi(m);
+    const esito = calcolaNestingMigliore(par, pezzi);
+    const riep = riepilogaNesting(par, pezzi, esito);
     const fogli = fogliDi(m, esito, opzioni);
     const usataTotale = esito.lastre.reduce((s, l) => s + lunghezzaUsata(l, m.margine), 0);
 

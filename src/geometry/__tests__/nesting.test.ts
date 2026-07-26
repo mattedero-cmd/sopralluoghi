@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   calcolaNesting,
+  calcolaNestingMigliore,
   passoGriglia,
   lunghezzaUsata,
   riepilogaNesting,
@@ -337,5 +338,86 @@ describe('passoGriglia', () => {
   it('regge valori non validi', () => {
     expect(passoGriglia(0)).toBe(1);
     expect(passoGriglia(-5)).toBe(1);
+  });
+});
+
+describe('calcolaNestingMigliore', () => {
+  const par = {
+    lastra: { larghezza: 2000, altezza: 1000 },
+    lama: 0,
+    abbondanza: 0,
+    margine: 0
+  };
+
+  it('non è mai peggio dell’ordine predefinito', () => {
+    const liste: PezzoNesting[][] = [
+      [
+        { id: 'a', nome: 'A', larghezza: 900, altezza: 400, quantita: 4, ruotabile: true, tinta: 0 },
+        { id: 'b', nome: 'B', larghezza: 600, altezza: 600, quantita: 3, ruotabile: true, tinta: 0 },
+        { id: 'c', nome: 'C', larghezza: 300, altezza: 950, quantita: 5, ruotabile: true, tinta: 0 }
+      ],
+      [
+        { id: 'a', nome: 'A', larghezza: 1990, altezza: 200, quantita: 5, ruotabile: false, tinta: 0 },
+        { id: 'b', nome: 'B', larghezza: 500, altezza: 500, quantita: 6, ruotabile: true, tinta: 0 }
+      ],
+      [
+        { id: 'a', nome: 'A', larghezza: 700, altezza: 330, quantita: 12, ruotabile: true, tinta: 0 },
+        { id: 'b', nome: 'B', larghezza: 250, altezza: 990, quantita: 7, ruotabile: true, tinta: 0 },
+        { id: 'c', nome: 'C', larghezza: 480, altezza: 480, quantita: 9, ruotabile: true, tinta: 0 }
+      ]
+    ];
+    for (const pezzi of liste) {
+      const base = calcolaNesting(par, pezzi);
+      const meglio = calcolaNestingMigliore(par, pezzi);
+      const conta = (e: typeof base) =>
+        e.lastre.reduce((n, l) => n + l.piazzamenti.length, 0);
+      expect(conta(meglio)).toBeGreaterThanOrEqual(conta(base));
+      if (conta(meglio) === conta(base)) {
+        expect(meglio.lastre.length).toBeLessThanOrEqual(base.lastre.length);
+      }
+    }
+  });
+
+  it('è deterministico: stessi dati, stesso risultato', () => {
+    const pezzi: PezzoNesting[] = [
+      { id: 'a', nome: 'A', larghezza: 900, altezza: 400, quantita: 4, ruotabile: true, tinta: 0 },
+      { id: 'b', nome: 'B', larghezza: 620, altezza: 610, quantita: 3, ruotabile: true, tinta: 0 }
+    ];
+    const uno = JSON.stringify(calcolaNestingMigliore(par, pezzi));
+    const due = JSON.stringify(calcolaNestingMigliore(par, pezzi));
+    expect(uno).toBe(due);
+  });
+
+  it('i pezzi non si sovrappongono, qualunque ordine vinca', () => {
+    const pezzi: PezzoNesting[] = [
+      { id: 'a', nome: 'A', larghezza: 640, altezza: 470, quantita: 7, ruotabile: true, tinta: 0 },
+      { id: 'b', nome: 'B', larghezza: 310, altezza: 880, quantita: 5, ruotabile: true, tinta: 0 },
+      { id: 'c', nome: 'C', larghezza: 205, altezza: 205, quantita: 11, ruotabile: true, tinta: 0 }
+    ];
+    const e = calcolaNestingMigliore({ ...par, lama: 3, margine: 10 }, pezzi);
+    for (const l of e.lastre) {
+      for (let i = 0; i < l.piazzamenti.length; i++) {
+        for (let j = i + 1; j < l.piazzamenti.length; j++) {
+          const a = l.piazzamenti[i];
+          const b = l.piazzamenti[j];
+          const separati =
+            a.x + a.larghezza <= b.x + 1e-9 ||
+            b.x + b.larghezza <= a.x + 1e-9 ||
+            a.y + a.altezza <= b.y + 1e-9 ||
+            b.y + b.altezza <= a.y + 1e-9;
+          expect(separati).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('rispetta comunque i versi imposti a mano', () => {
+    const pezzi: PezzoNesting[] = [
+      { id: 'a', nome: 'A', larghezza: 800, altezza: 300, quantita: 2, ruotabile: true, tinta: 0 }
+    ];
+    const e = calcolaNestingMigliore({ ...par, orientamenti: { 'a#0': true } }, pezzi);
+    const imposto = e.lastre.flatMap((l) => l.piazzamenti).find((p) => p.chiave === 'a#0');
+    expect(imposto?.ruotato).toBe(true);
+    expect(imposto?.larghezza).toBe(300);
   });
 });
