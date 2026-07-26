@@ -40,6 +40,12 @@ export interface ParametriNesting {
   abbondanza: number;
   /** distanza dai bordi della lastra, su tutti i lati */
   margine: number;
+  /**
+   * Numero massimo di lastre utilizzabili. Serve per la BOBINA: il materiale
+   * è uno solo e di lunghezza data, quindi ciò che non entra non "apre un
+   * altro pezzo" ma resta fuori. Assente = quantità illimitata.
+   */
+  massimoLastre?: number;
 }
 
 /** pezzo piazzato su una lastra, in coordinate della lastra */
@@ -224,6 +230,11 @@ export function calcolaNesting(par: ParametriNesting, pezzi: PezzoNesting[]): Es
       }
     }
     if (!migliore) {
+      // con un tetto al numero di lastre (bobina) ciò che non entra resta fuori
+      if (par.massimoLastre != null && lastre.length >= par.massimoLastre) {
+        scartati.push({ nome: it.nome, larghezzaFinita: it.finitaL, altezzaFinita: it.finitaA });
+        continue;
+      }
       const nuova = new Contenitore(binL, binA);
       lastre.push(nuova);
       migliore = nuova.cercaPosizione(it.packL, it.packA, it.ruotabile);
@@ -283,6 +294,21 @@ export function riepilogaNesting(
     resa,
     sfrido: areaTotale > 0 ? 100 - resa : 0
   };
+}
+
+/**
+ * BOBINA — quanto materiale viene davvero consumato.
+ *
+ * Su un rotolo la larghezza è fissa e ciò che conta è quanta LUNGHEZZA si
+ * usa: è il punto in cui si taglia, cioè la fine del pezzo più lontano, più
+ * il margine da lasciare in coda. Restituisce millimetri; 0 se non è stato
+ * piazzato nulla.
+ */
+export function lunghezzaUsata(lastra: LastraNesting | undefined, margine: number): number {
+  if (!lastra || lastra.piazzamenti.length === 0) return 0;
+  let fine = 0;
+  for (const pc of lastra.piazzamenti) fine = Math.max(fine, pc.y + pc.altezza);
+  return fine + margine;
 }
 
 /** passo "tondo" (1, 2, 5 ×10^n) per la griglia di riferimento del disegno */

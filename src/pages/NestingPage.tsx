@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { naviga } from '../router';
 import { Modale, StatoApp } from '../components/comuni';
 import { Icona } from '../components/Icona';
 import { nuovoId } from '../utils/id';
 import {
   calcolaNesting,
+  lunghezzaUsata,
   passoGriglia,
   riepilogaNesting,
   type LastraNesting,
@@ -24,8 +25,91 @@ import { formattaNumero } from '../utils/format';
 
 const CHIAVE_SALVATAGGIO = 'nesting.v1';
 
+/** supporto: lastre uguali a volontà, oppure un rotolo di lunghezza data */
+type ModoSupporto = 'lastre' | 'bobina';
+
 interface StatoNesting extends ParametriNesting {
+  modo?: ModoSupporto;
+  /** larghezza del rotolo (mm) e metri disponibili */
+  bobina?: { larghezza: number; metri: number };
   pezzi: PezzoNesting[];
+}
+
+/**
+ * Campo numerico che si lascia MODIFICARE davvero.
+ *
+ * Un campo controllato che rinormalizza a ogni battuta impedisce di cancellare
+ * l'ultima cifra: svuotandolo il valore tornerebbe subito al minimo. Qui il
+ * testo digitato vive per conto suo, il valore esce solo quando è valido e la
+ * normalizzazione avviene all'uscita dal campo.
+ */
+function CampoNumero({
+  valore,
+  onCambia,
+  min = 0,
+  intero,
+  etichetta,
+  classe
+}: {
+  valore: number;
+  onCambia: (v: number) => void;
+  min?: number;
+  intero?: boolean;
+  etichetta?: string;
+  classe?: string;
+}) {
+  const [testo, setTesto] = useState(() => String(valore));
+  const [inModifica, setInModifica] = useState(false);
+
+  // se il valore cambia da fuori (esempio, incolla, svuota) e non si sta
+  // scrivendo, il campo si riallinea
+  useEffect(() => {
+    if (!inModifica) setTesto(String(valore));
+  }, [valore, inModifica]);
+
+  return (
+    <input
+      type="text"
+      inputMode={intero ? 'numeric' : 'decimal'}
+      aria-label={etichetta}
+      className={classe}
+      value={testo}
+      onFocus={(e) => {
+        setInModifica(true);
+        e.currentTarget.select();
+      }}
+      onChange={(e) => {
+        const t = e.target.value;
+        setTesto(t); // si può svuotare: nessuna correzione mentre si scrive
+        const n = parseFloat(t.replace(',', '.'));
+        if (Number.isFinite(n) && n >= min) onCambia(intero ? Math.round(n) : n);
+      }}
+      onBlur={() => {
+        setInModifica(false);
+        const n = parseFloat(testo.replace(',', '.'));
+        const v = Number.isFinite(n) ? Math.max(min, intero ? Math.round(n) : n) : min;
+        onCambia(v);
+        setTesto(String(v));
+      }}
+    />
+  );
+}
+
+/** larghezza in pixel di un elemento, per dimensionare i testi dell'SVG */
+function useLarghezza() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [larghezza, setLarghezza] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    setLarghezza(el.getBoundingClientRect().width);
+    const osservatore = new ResizeObserver((voci) => {
+      setLarghezza(voci[0].contentRect.width);
+    });
+    osservatore.observe(el);
+    return () => osservatore.disconnect();
+  }, []);
+  return [ref, larghezza] as const;
 }
 
 const ESEMPIO: StatoNesting = {
@@ -80,11 +164,52 @@ export function NestingPage() {
     }
   }, [stato]);
 
-  const esito = useMemo(() => calcolaNesting(stato, stato.pezzi), [stato]);
-  const riepilogo = useMemo(
-    () => riepilogaNesting(stato, stato.pezzi, esito),
-    [stato, esito]
+  const modo: ModoSupporto = stato.modo ?? 'lastre';
+  const bobina = stato.bobina ?? { larghezza: 1000, metri: 50 };
+
+  /** parametri effettivi: la bobina è un'unica "lastra" lunga quanto il rotolo */
+  const parametri = useMemo<ParametriNesting>(
+    () =>
+      modo === 'bobina'
+        ? {
+            lastra: { larghezza: bobina.larghezza, altezza: Math.max(1, bobina.metri * 1000) },
+            lama: stato.lama,
+            abbondanza: stato.abbondanza,
+            margine: stato.margine,
+            massimoLastre: 1
+          }
+        : {
+            lastra: stato.lastra,
+            lama: stato.lama,
+            abbondanza: stato.abbondanza,
+            margine: stato.margine
+          },
+    [modo, bobina.larghezza, bobina.metri, stato.lastra, stato.lama, stato.abbondanza, stato.margine]
   );
+
+  const esito = useMemo(() => calcolaNesting(parametri, stato.pezzi), [parametri, stato.pezzi]);
+  const riepilogo = useMemo(
+    () => riepilogaNesting(parametri, stato.pezzi, esito),
+    [parametri, stato.pezzi, esito]
+  );
+
+  /** consumo del rotolo: quanto materiale serve davvero */
+  const consumo = useMemo(() => {
+    if (modo !== 'bobina') return null;
+    const usatiMm = lunghezzaUsata(esito.lastre[0], stato.margine);
+    const usatiM = usatiMm / 1000;
+    const areaConsumata = bobina.larghezza * usatiMm;
+    let areaPezzi = 0;
+    for (const pc of esito.lastre[0]?.piazzamenti ?? []) {
+      areaPezzi += pc.larghezzaFinita * pc.altezzaFinita;
+    }
+    return {
+      usatiM,
+      rimanentiM: Math.max(0, bobina.metri - usatiM),
+      // resa sul materiale EFFETTIVAMENTE consumato, non sull'intero rotolo
+      resa: areaConsumata > 0 ? (areaPezzi / areaConsumata) * 100 : 0
+    };
+  }, [modo, esito, stato.margine, bobina.larghezza, bobina.metri]);
 
   const aggiornaPezzo = (id: string, modifiche: Partial<PezzoNesting>) =>
     setStato((s) => ({
@@ -168,82 +293,91 @@ export function NestingPage() {
       <main className="contenuto nest">
         {/* --- Supporto ------------------------------------------------- */}
         <h2 className="nest-titolo">Supporto da tagliare</h2>
-        <div className="nest-campi">
-          <label className="campo">
-            <span>Larghezza (mm)</span>
-            <input
-              type="number"
-              min={1}
-              inputMode="decimal"
-              value={stato.lastra.larghezza}
-              onChange={(e) =>
-                setStato((s) => ({
-                  ...s,
-                  lastra: { ...s.lastra, larghezza: Math.max(1, Number(e.target.value) || 0) }
-                }))
-              }
-            />
-          </label>
-          <label className="campo">
-            <span>Altezza (mm)</span>
-            <input
-              type="number"
-              min={1}
-              inputMode="decimal"
-              value={stato.lastra.altezza}
-              onChange={(e) =>
-                setStato((s) => ({
-                  ...s,
-                  lastra: { ...s.lastra, altezza: Math.max(1, Number(e.target.value) || 0) }
-                }))
-              }
-            />
-          </label>
+        <div className="segmenti" role="group" aria-label="Tipo di supporto">
+          <button
+            className={modo === 'lastre' ? 'attivo' : ''}
+            onClick={() => setStato((s) => ({ ...s, modo: 'lastre' }))}
+          >
+            Lastre
+          </button>
+          <button
+            className={modo === 'bobina' ? 'attivo' : ''}
+            onClick={() => setStato((s) => ({ ...s, modo: 'bobina' }))}
+          >
+            Bobina
+          </button>
         </div>
+        {modo === 'lastre' ? (
+          <div className="nest-campi">
+            <label className="campo">
+              <span>Larghezza (mm)</span>
+              <CampoNumero
+                valore={stato.lastra.larghezza}
+                min={1}
+                onCambia={(v) =>
+                  setStato((s) => ({ ...s, lastra: { ...s.lastra, larghezza: v } }))
+                }
+              />
+            </label>
+            <label className="campo">
+              <span>Altezza (mm)</span>
+              <CampoNumero
+                valore={stato.lastra.altezza}
+                min={1}
+                onCambia={(v) => setStato((s) => ({ ...s, lastra: { ...s.lastra, altezza: v } }))}
+              />
+            </label>
+          </div>
+        ) : (
+          <div className="nest-campi">
+            <label className="campo">
+              <span>Larghezza bobina (mm)</span>
+              <CampoNumero
+                valore={bobina.larghezza}
+                min={1}
+                onCambia={(v) =>
+                  setStato((s) => ({ ...s, bobina: { ...bobina, larghezza: v } }))
+                }
+              />
+            </label>
+            <label className="campo">
+              <span>Metri disponibili</span>
+              <CampoNumero
+                valore={bobina.metri}
+                min={0.1}
+                onCambia={(v) => setStato((s) => ({ ...s, bobina: { ...bobina, metri: v } }))}
+              />
+              <small>Lunghezza totale sul rotolo</small>
+            </label>
+          </div>
+        )}
 
         {/* --- Abbondanze ----------------------------------------------- */}
         <h2 className="nest-titolo">Abbondanze</h2>
         <div className="nest-campi tre">
           <label className="campo">
             <span>Lama (mm)</span>
-            <input
-              type="number"
-              min={0}
-              step={0.1}
-              inputMode="decimal"
-              value={stato.lama}
-              onChange={(e) =>
-                setStato((s) => ({ ...s, lama: Math.max(0, Number(e.target.value) || 0) }))
-              }
+            <CampoNumero
+              valore={stato.lama}
+              onCambia={(v) => setStato((s) => ({ ...s, lama: v }))}
             />
             <small>Taglio consumato tra i pezzi</small>
           </label>
           <label className="campo">
             <span>Abbondanza (mm)</span>
-            <input
-              type="number"
-              min={0}
-              step={0.5}
-              inputMode="decimal"
-              value={stato.abbondanza}
-              onChange={(e) =>
-                setStato((s) => ({ ...s, abbondanza: Math.max(0, Number(e.target.value) || 0) }))
-              }
+            <CampoNumero
+              valore={stato.abbondanza}
+              onCambia={(v) => setStato((s) => ({ ...s, abbondanza: v }))}
             />
             <small>Extra sommato alle misure</small>
           </label>
           <label className="campo">
             <span>Margine (mm)</span>
-            <input
-              type="number"
-              min={0}
-              inputMode="decimal"
-              value={stato.margine}
-              onChange={(e) =>
-                setStato((s) => ({ ...s, margine: Math.max(0, Number(e.target.value) || 0) }))
-              }
+            <CampoNumero
+              valore={stato.margine}
+              onCambia={(v) => setStato((s) => ({ ...s, margine: v }))}
             />
-            <small>Su tutti i lati della lastra</small>
+            <small>{modo === 'bobina' ? 'Dai bordi del rotolo' : 'Su tutti i lati'}</small>
           </label>
         </div>
 
@@ -275,40 +409,27 @@ export function NestingPage() {
                   onChange={(e) => aggiornaPezzo(p.id, { nome: e.target.value })}
                 />
                 <span className="nest-misure">
-                  <input
-                    type="number"
-                    aria-label="Larghezza"
-                    className="c"
+                  <CampoNumero
+                    etichetta="Larghezza"
+                    classe="c"
                     min={1}
-                    inputMode="decimal"
-                    value={p.larghezza}
-                    onChange={(e) =>
-                      aggiornaPezzo(p.id, { larghezza: Math.max(1, Number(e.target.value) || 0) })
-                    }
+                    valore={p.larghezza}
+                    onCambia={(v) => aggiornaPezzo(p.id, { larghezza: v })}
                   />
-                  <input
-                    type="number"
-                    aria-label="Altezza"
-                    className="c"
+                  <CampoNumero
+                    etichetta="Altezza"
+                    classe="c"
                     min={1}
-                    inputMode="decimal"
-                    value={p.altezza}
-                    onChange={(e) =>
-                      aggiornaPezzo(p.id, { altezza: Math.max(1, Number(e.target.value) || 0) })
-                    }
+                    valore={p.altezza}
+                    onCambia={(v) => aggiornaPezzo(p.id, { altezza: v })}
                   />
-                  <input
-                    type="number"
-                    aria-label="Quantità"
-                    className="c"
+                  <CampoNumero
+                    etichetta="Quantità"
+                    classe="c"
                     min={1}
-                    inputMode="numeric"
-                    value={p.quantita}
-                    onChange={(e) =>
-                      aggiornaPezzo(p.id, {
-                        quantita: Math.max(1, Math.round(Number(e.target.value) || 1))
-                      })
-                    }
+                    intero
+                    valore={p.quantita}
+                    onCambia={(v) => aggiornaPezzo(p.id, { quantita: v })}
                   />
                   <span className="nest-ruota">
                     <input
@@ -350,19 +471,46 @@ export function NestingPage() {
         ) : (
           <>
             <div className="nest-statistiche">
-              <Statistica etichetta="Lastre usate" valore={String(riepilogo.lastreUsate)} />
-              <Statistica
-                etichetta="Resa"
-                valore={formattaNumero(Math.round(riepilogo.resa * 10) / 10)}
-                unita="%"
-                barra={{ valore: riepilogo.resa, buona: true }}
-              />
-              <Statistica
-                etichetta="Sfrido"
-                valore={formattaNumero(Math.round(riepilogo.sfrido * 10) / 10)}
-                unita="%"
-                barra={{ valore: riepilogo.sfrido, buona: false }}
-              />
+              {consumo ? (
+                <>
+                  <Statistica
+                    etichetta="Metri usati"
+                    valore={formattaNumero(Math.round(consumo.usatiM * 100) / 100)}
+                    unita="m"
+                    barra={{
+                      valore: bobina.metri > 0 ? (consumo.usatiM / bobina.metri) * 100 : 0,
+                      buona: true
+                    }}
+                  />
+                  <Statistica
+                    etichetta="Metri rimanenti"
+                    valore={formattaNumero(Math.round(consumo.rimanentiM * 100) / 100)}
+                    unita="m"
+                  />
+                  <Statistica
+                    etichetta="Resa sul consumato"
+                    valore={formattaNumero(Math.round(consumo.resa * 10) / 10)}
+                    unita="%"
+                    barra={{ valore: consumo.resa, buona: true }}
+                  />
+                </>
+              ) : (
+                <>
+                  <Statistica etichetta="Lastre usate" valore={String(riepilogo.lastreUsate)} />
+                  <Statistica
+                    etichetta="Resa"
+                    valore={formattaNumero(Math.round(riepilogo.resa * 10) / 10)}
+                    unita="%"
+                    barra={{ valore: riepilogo.resa, buona: true }}
+                  />
+                  <Statistica
+                    etichetta="Sfrido"
+                    valore={formattaNumero(Math.round(riepilogo.sfrido * 10) / 10)}
+                    unita="%"
+                    barra={{ valore: riepilogo.sfrido, buona: false }}
+                  />
+                </>
+              )}
               <Statistica
                 etichetta="Pezzi piazzati"
                 valore={
@@ -377,11 +525,11 @@ export function NestingPage() {
               <div className="nest-avviso">
                 <strong>
                   {esito.scartati.length}{' '}
-                  {esito.scartati.length === 1 ? 'pezzo non entra' : 'pezzi non entrano'} nella
-                  lastra
+                  {esito.scartati.length === 1 ? 'pezzo non entra' : 'pezzi non entrano'}
                 </strong>{' '}
-                nemmeno da soli, con abbondanze e margini. Riduci le misure o ingrandisci il
-                supporto.
+                {modo === 'bobina'
+                  ? 'nella bobina: o sono più larghi del rotolo, o i metri disponibili non bastano.'
+                  : 'nella lastra nemmeno da soli, con abbondanze e margini. Riduci le misure o ingrandisci il supporto.'}
                 <ul>
                   {scartatiRaggruppati.map((s, i) => (
                     <li key={i}>
@@ -397,7 +545,9 @@ export function NestingPage() {
                 key={i}
                 indice={i}
                 lastra={lastra}
-                stato={stato}
+                parametri={parametri}
+                pezzi={stato.pezzi}
+                bobina={modo === 'bobina'}
                 legenda={i === 0}
               />
             ))}
@@ -478,17 +628,24 @@ function Statistica({
 function Lastra({
   indice,
   lastra,
-  stato,
+  parametri,
+  pezzi,
+  bobina,
   legenda
 }: {
   indice: number;
   lastra: LastraNesting;
-  stato: StatoNesting;
+  parametri: ParametriNesting;
+  pezzi: PezzoNesting[];
+  bobina: boolean;
   legenda: boolean;
 }) {
-  const L = stato.lastra.larghezza;
-  const A = stato.lastra.altezza;
-  const mg = stato.margine;
+  const L = parametri.lastra.larghezza;
+  const mg = parametri.margine;
+  // sulla bobina si disegna solo il tratto CONSUMATO: mostrare 50 m di rotolo
+  // vuoto renderebbe i pezzi illeggibili
+  const consumata = lunghezzaUsata(lastra, mg);
+  const A = bobina ? Math.max(consumata, 1) : parametri.lastra.altezza;
   const latoMax = Math.max(L, A);
   const areaLastra = L * A;
   const usata = lastra.piazzamenti.reduce(
@@ -498,6 +655,14 @@ function Lastra({
   const resa = areaLastra > 0 ? (usata / areaLastra) * 100 : 0;
   const passo = passoGriglia(latoMax / 9);
 
+  // I testi vanno dimensionati in PIXEL DI SCHERMO: l'SVG ha il viewBox in
+  // millimetri, quindi una misura espressa in mm su una lastra da 2,5 m
+  // diventerebbe illeggibile sul telefono. Si misura la larghezza resa e si
+  // converte la dimensione desiderata da px a unità del disegno.
+  const [rifSvg, larghezzaResa] = useLarghezza();
+  const mmPerPx = larghezzaResa > 0 ? (L + 8) / larghezzaResa : 0;
+  const inUnita = (px: number) => px * mmPerPx;
+
   const linee: number[][] = [];
   for (let x = passo; x < L; x += passo) linee.push([x, 0, x, A]);
   for (let y = passo; y < A; y += passo) linee.push([0, y, L, y]);
@@ -506,9 +671,11 @@ function Lastra({
     <section className="nest-lastra">
       <div className="testa">
         <div className="titolo">
-          Lastra {indice + 1}
+          {bobina ? 'Bobina' : `Lastra ${indice + 1}`}
           <span>
-            {formattaNumero(L)}×{formattaNumero(A)} mm
+            {bobina
+              ? `${formattaNumero(L)} mm × ${formattaNumero(Math.round(consumata) / 1000)} m usati`
+              : `${formattaNumero(L)}×${formattaNumero(A)} mm`}
           </span>
         </div>
         <div className="misure">
@@ -516,6 +683,7 @@ function Lastra({
           <strong>{formattaNumero(Math.round(resa * 10) / 10)}%</strong>
         </div>
       </div>
+      <div ref={rifSvg}>
       <svg
         className="nest-svg"
         viewBox={`-4 -4 ${L + 8} ${A + 8}`}
@@ -553,12 +721,35 @@ function Lastra({
           />
         )}
         {lastra.piazzamenti.map((pc, i) => {
-          const lato = Math.min(pc.larghezza, pc.altezza);
-          const dim = Math.max(latoMax * 0.012, Math.min(lato * 0.2, latoMax * 0.05));
           const cx = pc.x + pc.larghezza / 2;
           const cy = pc.y + pc.altezza / 2;
-          const conNome = lato > latoMax * 0.06 && pc.nome;
           const misura = `${formattaNumero(pc.larghezzaFinita)}×${formattaNumero(pc.altezzaFinita)}`;
+          // dimensioni pensate in px di schermo, poi convertite nelle unità
+          // del disegno: così restano leggibili a qualsiasi scala
+          const dim = inUnita(12);
+          const dimMisura = inUnita(11);
+          const dimSola = inUnita(10);
+          // ci sta? (larghezza del testo ≈ 0,58 × corpo × caratteri)
+          const largo = (corpo: number, testo: string) => corpo * 0.58 * testo.length;
+          const conNome =
+            !!pc.nome &&
+            mmPerPx > 0 &&
+            largo(dim, pc.nome) <= pc.larghezza * 0.94 &&
+            largo(dimMisura, misura) <= pc.larghezza * 0.94 &&
+            dim * 2.5 <= pc.altezza;
+          const soloMisura =
+            !conNome &&
+            mmPerPx > 0 &&
+            largo(dimSola, misura) <= pc.larghezza * 0.94 &&
+            dimSola * 1.5 <= pc.altezza;
+          // pezzo stretto e alto: la misura non ci sta in orizzontale ma ci
+          // sta girata di 90°, come si scrive sui listelli
+          const misuraRuotata =
+            !conNome &&
+            !soloMisura &&
+            mmPerPx > 0 &&
+            largo(dimSola, misura) <= pc.altezza * 0.94 &&
+            dimSola * 1.5 <= pc.larghezza;
           return (
             <g key={i}>
               <rect
@@ -588,33 +779,46 @@ function Lastra({
                   </text>
                   <text
                     x={cx}
-                    y={cy + dim * 1.05}
+                    y={cy + dimMisura * 1.05}
                     textAnchor="middle"
-                    fontSize={dim * 0.86}
+                    fontSize={dimMisura}
                     fill="#3a424c"
                   >
                     {misura}
                   </text>
                 </>
               ) : (
-                lato > latoMax * 0.028 && (
+                (soloMisura && (
                   <text
                     x={cx}
-                    y={cy + dim * 0.34}
+                    y={cy + dimSola * 0.34}
                     textAnchor="middle"
-                    fontSize={dim * 0.9}
+                    fontSize={dimSola}
                     fill="#2a3138"
                   >
                     {misura}
                   </text>
-                )
+                )) ||
+                (misuraRuotata && (
+                  <text
+                    x={cx}
+                    y={cy}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fontSize={dimSola}
+                    fill="#2a3138"
+                    transform={`rotate(-90 ${cx} ${cy})`}
+                  >
+                    {misura}
+                  </text>
+                ))
               )}
-              {pc.ruotato && lato > latoMax * 0.05 && (
+              {pc.ruotato && conNome && (
                 <text
-                  x={pc.x + pc.larghezza - dim * 0.35}
+                  x={pc.x + pc.larghezza - dim * 0.3}
                   y={pc.y + dim * 1.1}
                   textAnchor="end"
-                  fontSize={dim * 0.95}
+                  fontSize={dim * 0.9}
                   fill={tintaBordo(pc.tinta)}
                 >
                   ↻
@@ -624,9 +828,10 @@ function Lastra({
           );
         })}
       </svg>
+      </div>
       {legenda && (
         <div className="nest-legenda">
-          {stato.pezzi
+          {pezzi
             .filter((p) => (Math.max(0, Math.round(p.quantita)) || 0) > 0)
             .map((p) => (
               <span className="voce" key={p.id}>

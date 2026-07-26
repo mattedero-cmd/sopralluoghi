@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   calcolaNesting,
   passoGriglia,
+  lunghezzaUsata,
   riepilogaNesting,
   type ParametriNesting,
   type PezzoNesting
@@ -205,6 +206,56 @@ describe('riepilogaNesting — statistiche', () => {
     const r = riepilogaNesting(PIANA, pezzi, e);
     expect(r.pezziRichiesti).toBe(5);
     expect(r.pezziPiazzati).toBe(3);
+  });
+});
+
+describe('bobina — una sola lastra e lunghezza consumata', () => {
+  // rotolo largo 1000, lungo 5 m
+  const BOBINA: ParametriNesting = {
+    lastra: { larghezza: 1000, altezza: 5000 },
+    lama: 0,
+    abbondanza: 0,
+    margine: 0,
+    massimoLastre: 1
+  };
+
+  it('non apre un secondo rotolo: ciò che non entra resta fuori', () => {
+    const e = calcolaNesting(BOBINA, [
+      pezzo({ larghezza: 1000, altezza: 1000, quantita: 7, ruotabile: false })
+    ]);
+    expect(e.lastre).toHaveLength(1);
+    expect(e.lastre[0].piazzamenti).toHaveLength(5); // 5 m di rotolo
+    expect(e.scartati).toHaveLength(2);
+  });
+
+  it('senza tetto, invece, apre altre lastre', () => {
+    const e = calcolaNesting({ ...BOBINA, massimoLastre: undefined }, [
+      pezzo({ larghezza: 1000, altezza: 1000, quantita: 7, ruotabile: false })
+    ]);
+    expect(e.lastre).toHaveLength(2);
+    expect(e.scartati).toHaveLength(0);
+  });
+
+  it('la lunghezza usata arriva alla fine del pezzo più lontano', () => {
+    const e = calcolaNesting(BOBINA, [
+      pezzo({ larghezza: 1000, altezza: 800, quantita: 3, ruotabile: false })
+    ]);
+    // tre pezzi impilati: 2400 mm
+    expect(lunghezzaUsata(e.lastre[0], 0)).toBeCloseTo(2400);
+  });
+
+  it('la lunghezza usata comprende il margine di coda', () => {
+    const par = { ...BOBINA, margine: 20 };
+    const e = calcolaNesting(par, [
+      pezzo({ larghezza: 900, altezza: 500, quantita: 1, ruotabile: false })
+    ]);
+    // parte a y=20 (margine), finisce a 520, più 20 di coda
+    expect(lunghezzaUsata(e.lastre[0], par.margine)).toBeCloseTo(540);
+  });
+
+  it('senza pezzi piazzati non si consuma nulla', () => {
+    expect(lunghezzaUsata(undefined, 10)).toBe(0);
+    expect(lunghezzaUsata({ piazzamenti: [] }, 10)).toBe(0);
   });
 });
 
