@@ -218,6 +218,14 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
               </button>
             </div>
 
+            {/* strumenti non legati a un progetto: qui con l'etichetta, perché
+                la sola icona nella barra non dice cosa fanno */}
+            <div className="riga-pulsanti" style={{ marginBottom: 16 }}>
+              <button className="btn" onClick={() => naviga({ nome: 'nesting' })}>
+                <Icona nome="griglia" dimensione={20} /> Nesting — ottimizza il taglio
+              </button>
+            </div>
+
             <div className="lista-griglia">
             {(cartelle ?? []).map((c) => (
               <button
