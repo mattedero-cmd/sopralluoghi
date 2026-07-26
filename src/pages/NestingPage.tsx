@@ -836,8 +836,9 @@ function Lastra({
             mmPerPx > 0
               ? pianoEtichetta(pc.larghezza, pc.altezza, pc.nome || '', misura, {
                   massimo: dim,
-                  minimo: inUnita(5),
-                  dueRighe: inUnita(8)
+                  comodo: inUnita(9),
+                  dueRighe: inUnita(8),
+                  minimo: inUnita(5)
                 })
               : null;
           return (
