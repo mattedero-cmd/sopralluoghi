@@ -14,6 +14,7 @@ import {
 } from '../geometry/nesting';
 import { analizzaTestoPezzi } from '../utils/parserPezzi';
 import { formattaNumero } from '../utils/format';
+import { pianoEtichetta } from '../utils/etichettaNesting';
 
 /**
  * NESTING — ottimizzazione del taglio.
@@ -831,29 +832,14 @@ function Lastra({
           // dimensioni pensate in px di schermo, poi convertite nelle unità
           // del disegno: così restano leggibili a qualsiasi scala
           const dim = inUnita(12);
-          const dimMisura = inUnita(11);
-          const dimSola = inUnita(10);
-          // ci sta? (larghezza del testo ≈ 0,58 × corpo × caratteri)
-          const largo = (corpo: number, testo: string) => corpo * 0.58 * testo.length;
-          const conNome =
-            !!pc.nome &&
-            mmPerPx > 0 &&
-            largo(dim, pc.nome) <= pc.larghezza * 0.94 &&
-            largo(dimMisura, misura) <= pc.larghezza * 0.94 &&
-            dim * 2.5 <= pc.altezza;
-          const soloMisura =
-            !conNome &&
-            mmPerPx > 0 &&
-            largo(dimSola, misura) <= pc.larghezza * 0.94 &&
-            dimSola * 1.5 <= pc.altezza;
-          // pezzo stretto e alto: la misura non ci sta in orizzontale ma ci
-          // sta girata di 90°, come si scrive sui listelli
-          const misuraRuotata =
-            !conNome &&
-            !soloMisura &&
-            mmPerPx > 0 &&
-            largo(dimSola, misura) <= pc.altezza * 0.94 &&
-            dimSola * 1.5 <= pc.larghezza;
+          const piano =
+            mmPerPx > 0
+              ? pianoEtichetta(pc.larghezza, pc.altezza, pc.nome || '', misura, {
+                  massimo: dim,
+                  minimo: inUnita(5),
+                  dueRighe: inUnita(8)
+                })
+              : null;
           return (
             <g
               key={i}
@@ -903,57 +889,50 @@ function Lastra({
                   ))}
                 </g>
               )}
-              {conNome ? (
-                <>
-                  {/* testo scuro fisso: i riempimenti sono pastello chiari in
-                      entrambi i temi, quindi non segue le variabili del tema */}
-                  <text
-                    x={cx}
-                    y={cy - dim * 0.15}
-                    textAnchor="middle"
-                    fontSize={dim}
-                    fontWeight={600}
-                    fill="#20252b"
-                  >
-                    {pc.nome}
-                  </text>
-                  <text
-                    x={cx}
-                    y={cy + dimMisura * 1.05}
-                    textAnchor="middle"
-                    fontSize={dimMisura}
-                    fill="#3a424c"
-                  >
-                    {misura}
-                  </text>
-                </>
-              ) : (
-                (soloMisura && (
-                  <text
-                    x={cx}
-                    y={cy + dimSola * 0.34}
-                    textAnchor="middle"
-                    fontSize={dimSola}
-                    fill="#2a3138"
-                  >
-                    {misura}
-                  </text>
-                )) ||
-                (misuraRuotata && (
-                  <text
-                    x={cx}
-                    y={cy}
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                    fontSize={dimSola}
-                    fill="#2a3138"
-                    transform={`rotate(-90 ${cx} ${cy})`}
-                  >
-                    {misura}
-                  </text>
-                ))
+              {/* testo scuro fisso: i riempimenti sono pastello chiari in
+                  entrambi i temi, quindi non segue le variabili del tema */}
+              {piano && (
+                <g transform={piano.ruotata ? `rotate(-90 ${cx} ${cy})` : undefined}>
+                  {piano.ampia ? (
+                    <>
+                      <text
+                        x={cx}
+                        y={cy - piano.corpoNome * 0.15}
+                        textAnchor="middle"
+                        fontSize={piano.corpoNome}
+                        fontWeight={600}
+                        fill="#20252b"
+                      >
+                        {piano.nome}
+                      </text>
+                      <text
+                        x={cx}
+                        y={cy + piano.corpoMisura * 1.05}
+                        textAnchor="middle"
+                        fontSize={piano.corpoMisura}
+                        fill="#3a424c"
+                      >
+                        {piano.misura}
+                      </text>
+                    </>
+                  ) : (
+                    <text
+                      x={cx}
+                      y={cy}
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fontSize={piano.nome ? piano.corpoNome : piano.corpoMisura}
+                      fontWeight={piano.nome ? 600 : 400}
+                      fill={piano.nome ? '#20252b' : '#2a3138'}
+                    >
+                      {piano.nome || piano.misura}
+                    </text>
+                  )}
+                </g>
               )}
-              {pc.ruotato && conNome && (
+              {/* il segno «girato» sta nell'angolo, in coordinate lastra:
+                  non segue la rotazione del testo */}
+              {pc.ruotato && piano?.ampia && (
                 <text
                   x={pc.x + pc.larghezza - dim * 0.3}
                   y={pc.y + dim * 1.1}
