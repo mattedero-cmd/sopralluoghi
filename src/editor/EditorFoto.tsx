@@ -934,8 +934,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       mostraToast(
         trovati.length ? 'successo' : 'info',
         trovati.length
-          ? `${trovati.length} volt${trovati.length === 1 ? 'o oscurato' : 'i oscurati'}. Controlla e aggiungi a mano ciò che manca.`
-          : 'Nessun volto rilevato. Se ce ne sono, tracciali a mano: nessun rilevamento è infallibile.'
+          ? `${trovati.length} volt${trovati.length === 1 ? 'o oscurato' : 'i oscurati'}. I visi di profilo o girati possono sfuggire: controlla e aggiungi a mano.`
+          : 'Nessun volto rilevato. Se ce ne sono (magari di profilo o girati), tracciali a mano.'
       );
     } catch (e) {
       mostraToast('errore', e instanceof Error ? e.message : 'Rilevamento dei volti non riuscito.');

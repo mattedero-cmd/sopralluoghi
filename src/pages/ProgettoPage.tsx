@@ -88,6 +88,9 @@ export function ProgettoPage({ id }: { id: string }) {
     if (!files || files.length === 0) return;
     setImportInCorso(true);
     let importate = 0;
+    // foto entrate SENZA che il rilevamento dei volti sia riuscito: vanno
+    // segnalate, altrimenti si crederebbe che siano già a posto
+    let senzaRilevamento = 0;
     try {
       const { fotoLatoMax, censuraVoltiAuto, censuraVoltiPermanente } = await leggiImpostazioni();
       for (const file of Array.from(files)) {
@@ -104,6 +107,7 @@ export function ProgettoPage({ id }: { id: string }) {
             sezioneId: sezioneTarget.current ?? undefined
           });
           importate++;
+          if (censuraVoltiAuto !== false && !dati.voltiCercati) senzaRilevamento++;
         } catch (e) {
           mostraToast(
             'errore',
@@ -113,6 +117,14 @@ export function ProgettoPage({ id }: { id: string }) {
       }
       if (importate > 0) {
         mostraToast('successo', importate === 1 ? 'Foto salvata.' : `${importate} foto salvate.`);
+      }
+      if (senzaRilevamento > 0) {
+        mostraToast(
+          'errore',
+          senzaRilevamento === 1
+            ? 'Attenzione: il rilevamento dei volti non è riuscito su questa foto. Controllala con «Volti» nell’editor.'
+            : `Attenzione: il rilevamento dei volti non è riuscito su ${senzaRilevamento} foto. Controllale con «Volti» nell’editor.`
+        );
       }
     } finally {
       setImportInCorso(false);
