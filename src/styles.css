@@ -2995,10 +2995,6 @@ a {
   outline-offset: -1px;
 }
 
-.nest-spunta {
-  margin-top: 10px;
-}
-
 /* elenco dei lavori archiviati */
 .nest-lavori {
   display: flex;

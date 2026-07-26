@@ -5,8 +5,11 @@ import {
   calcolaNesting,
   lunghezzaUsata,
   riepilogaNesting,
-  type EsitoNesting
+  type EsitoNesting,
+  type LastraNesting
 } from '../geometry/nesting';
+import { segmentaBobina } from '../geometry/segmenti';
+import { OPZIONI_PDF_PREDEFINITE, type OpzioniPdfNesting } from './opzioni';
 import {
   etichettaSupporto,
   parametriDi,
@@ -20,10 +23,24 @@ import { tintaSfondoEsa, tintaBordoEsa } from '../utils/tinte';
  * PDF DEL PIANO DI TAGLIO.
  *
  * Una pagina di riepilogo con la distinta per essenza, poi UNA PAGINA A4 PER
- * OGNI LASTRA O SEGMENTO: è il foglio che si porta al banco: si stacca il
- * segmento dalla bobina, si guarda la pagina, si tagliano i pezzi che ci sono
- * dentro.
+ * OGNI LASTRA O SEGMENTO: è il foglio che si porta al banco.
+ *
+ * La divisione della bobina in segmenti è un'opzione DI QUESTA esportazione,
+ * non un dato del materiale: dove spezzare il rotolo lo trova il programma
+ * (vedi geometry/segmenti), perché dipende da come sono impaginati i pezzi.
  */
+
+/** una pagina del PDF: una lastra, oppure un segmento di bobina */
+interface Foglio {
+  lastra: LastraNesting;
+  titolo: string;
+  /** misure del supporto disegnato */
+  larghezza: number;
+  altezza: number;
+  /** metri di materiale da staccare (solo bobina) */
+  daTagliare: number | null;
+  oltreMassimo: boolean;
+}
 
 // A4 in punti (in piedi e coricata), meno i margini della pagina
 const A4 = { corto: 595.28, lungo: 841.89 };
@@ -49,38 +66,66 @@ function areaPagina(orizzontale: boolean): AreaPagina {
 
 const mm = (v: number) => formattaNumero(Math.round(v * 10) / 10);
 
-/** disegno di una lastra come contenuti pdfmake, posizionati sulla pagina */
-function paginaLastra(
+/**
+ * Fogli da stampare per un materiale: le sue lastre, oppure i segmenti in cui
+ * conviene spezzare la bobina.
+ */
+function fogliDi(
   m: MaterialeNesting,
   esito: EsitoNesting,
-  indice: number
-): Content[] {
-  const lastra = esito.lastre[indice];
-  const segmenti = m.modo === 'bobina' && m.segmento > 0;
-  const misure =
-    m.modo === 'bobina'
-      ? { larghezza: m.bobina.larghezza, altezza: segmenti ? m.segmento : m.bobina.metri * 1000 }
-      : m.lastra;
+  opzioni: OpzioniPdfNesting
+): Foglio[] {
+  if (m.modo !== 'bobina') {
+    return esito.lastre.map((lastra, i) => ({
+      lastra,
+      titolo: `Lastra ${i + 1} di ${esito.lastre.length}`,
+      larghezza: m.lastra.larghezza,
+      altezza: m.lastra.altezza,
+      daTagliare: null,
+      oltreMassimo: false
+    }));
+  }
 
-  // di un segmento di bobina si taglia solo il tratto davvero occupato
-  const usata = lunghezzaUsata(lastra, m.margine);
-  const disegnate =
-    m.modo === 'bobina' ? { ...misure, altezza: segmenti ? misure.altezza : Math.max(1, usata) } : misure;
+  const rotolo = esito.lastre[0];
+  if (!rotolo || rotolo.piazzamenti.length === 0) return [];
 
-  const titolo = segmenti
-    ? `Segmento ${indice + 1} di ${esito.lastre.length}`
-    : m.modo === 'bobina'
-      ? 'Bobina'
-      : `Lastra ${indice + 1} di ${esito.lastre.length}`;
+  if (!opzioni.segmenta || !(opzioni.massimoSegmento > 0)) {
+    const usata = Math.max(1, lunghezzaUsata(rotolo, m.margine));
+    return [
+      {
+        lastra: rotolo,
+        titolo: 'Bobina',
+        larghezza: m.bobina.larghezza,
+        altezza: usata,
+        daTagliare: usata,
+        oltreMassimo: false
+      }
+    ];
+  }
 
+  const segmenti = segmentaBobina(rotolo, opzioni.massimoSegmento, m.margine);
+  return segmenti.map((s, i) => ({
+    lastra: s.lastra,
+    titolo: `Segmento ${i + 1} di ${segmenti.length}`,
+    larghezza: m.bobina.larghezza,
+    altezza: Math.max(1, s.fine - s.inizio),
+    daTagliare: s.fine - s.inizio,
+    oltreMassimo: s.oltreMassimo
+  }));
+}
+
+/** disegno di un foglio come contenuti pdfmake, posizionati sulla pagina */
+function paginaFoglio(m: MaterialeNesting, foglio: Foglio): Content[] {
+  const lastra = foglio.lastra;
+  const disegnate = { larghezza: foglio.larghezza, altezza: foglio.altezza };
+
+  const titolo = foglio.titolo;
   const sottotitolo =
-    m.modo === 'bobina'
-      ? `${
-          segmenti
-            ? `${mm(m.bobina.larghezza)} × ${mm(m.segmento)} mm`
-            : `${mm(m.bobina.larghezza)} mm di larghezza`
-        } · da tagliare ${formattaNumero(Math.round(usata) / 1000)} m`
-      : `${mm(m.lastra.larghezza)} × ${mm(m.lastra.altezza)} mm`;
+    foglio.daTagliare !== null
+      ? `${mm(foglio.larghezza)} × ${mm(foglio.altezza)} mm · da staccare ${formattaNumero(
+          Math.round(foglio.daTagliare) / 1000
+        )} m${foglio.oltreMassimo ? ' · nessun taglio libero prima' : ''}`
+      : `${mm(foglio.larghezza)} × ${mm(foglio.altezza)} mm`;
 
   const orizzontale = disegnate.larghezza >= disegnate.altezza;
   const area = areaPagina(orizzontale);
@@ -251,7 +296,10 @@ function distinta(m: MaterialeNesting, esito: EsitoNesting): Content {
   };
 }
 
-export async function generaPdfNesting(doc: DocumentoNesting): Promise<Blob> {
+export async function generaPdfNesting(
+  doc: DocumentoNesting,
+  opzioni: OpzioniPdfNesting = OPZIONI_PDF_PREDEFINITE
+): Promise<Blob> {
   const contenuto: Content[] = [
     { text: doc.nome || 'Piano di taglio', style: 'titolo' },
     {
@@ -267,7 +315,7 @@ export async function generaPdfNesting(doc: DocumentoNesting): Promise<Blob> {
     const par = parametriDi(m);
     const esito = calcolaNesting(par, m.pezzi);
     const riep = riepilogaNesting(par, m.pezzi, esito);
-    const segmenti = m.modo === 'bobina' && m.segmento > 0;
+    const fogli = fogliDi(m, esito, opzioni);
     const usataTotale = esito.lastre.reduce((s, l) => s + lunghezzaUsata(l, m.margine), 0);
 
     const dati: string[] = [
@@ -279,8 +327,24 @@ export async function generaPdfNesting(doc: DocumentoNesting): Promise<Blob> {
       dati.push(
         `materiale usato ${formattaNumero(Math.round(usataTotale) / 1000)} m su ${formattaNumero(
           m.bobina.metri
-        )} m${segmenti ? ` · ${esito.lastre.length} segmenti` : ''}`
+        )} m`
       );
+      if (opzioni.segmenta && fogli.length > 0) {
+        const lunghezze = fogli
+          .map((f) => `${formattaNumero(Math.round(f.daTagliare ?? 0) / 1000)} m`)
+          .join(' + ');
+        dati.push(
+          `${fogli.length} ${fogli.length === 1 ? 'segmento' : 'segmenti'} da staccare: ${lunghezze}`
+        );
+        const forzati = fogli.filter((f) => f.oltreMassimo).length;
+        if (forzati > 0) {
+          dati.push(
+            `${forzati} ${
+              forzati === 1 ? 'segmento supera' : 'segmenti superano'
+            } i ${formattaNumero(opzioni.massimoSegmento / 1000)} m: i pezzi impaginati non lasciano un taglio libero prima`
+          );
+        }
+      }
     } else {
       dati.push(`${riep.lastreUsate} lastre · resa ${formattaNumero(Math.round(riep.resa * 10) / 10)}%`);
     }
@@ -294,8 +358,8 @@ export async function generaPdfNesting(doc: DocumentoNesting): Promise<Blob> {
     contenuto.push({ text: dati.join('\n'), style: 'dati' });
     contenuto.push(distinta(m, esito));
 
-    for (let i = 0; i < esito.lastre.length; i++) {
-      pagine.push(...paginaLastra(m, esito, i));
+    for (const foglio of fogli) {
+      pagine.push(...paginaFoglio(m, foglio));
     }
   }
 

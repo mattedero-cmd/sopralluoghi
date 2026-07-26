@@ -21,40 +21,23 @@ describe('parametriDi', () => {
     expect(p.massimoLastre).toBeUndefined();
   });
 
-  it('bobina senza segmenti: una sola striscia lunga quanto il rotolo', () => {
-    const m = { ...materialeNuovo('m1', 'Pelle'), modo: 'bobina' as const };
-    const p = parametriDi(m);
-    expect(p.lastra).toEqual({ larghezza: 1000, altezza: 50000 });
-    expect(p.massimoLastre).toBe(1);
-  });
-
-  it('bobina a segmenti: ogni lastra del calcolo è un segmento da staccare', () => {
-    const m = { ...materialeNuovo('m1', 'Pelle'), modo: 'bobina' as const, segmento: 2200 };
-    const p = parametriDi(m);
-    expect(p.lastra).toEqual({ larghezza: 1000, altezza: 2200 });
-    // 50 m / 2,2 m = 22,7 → 23 segmenti: il limite è il rotolo, non l'infinito
-    expect(p.massimoLastre).toBe(23);
-  });
-
-  it('i segmenti non possono superare i metri disponibili', () => {
+  it('la bobina resta una striscia sola: dove spezzarla si decide dopo', () => {
     const m = {
       ...materialeNuovo('m1', 'Pelle'),
       modo: 'bobina' as const,
-      segmento: 2200,
-      bobina: { larghezza: 1000, metri: 5 }
+      bobina: { larghezza: 1400, metri: 5 }
     };
-    expect(parametriDi(m).massimoLastre).toBe(3);
+    const p = parametriDi(m);
+    expect(p.lastra).toEqual({ larghezza: 1400, altezza: 5000 });
+    expect(p.massimoLastre).toBe(1);
   });
 });
 
 describe('etichettaSupporto', () => {
-  it('descrive lastre, bobina e bobina a segmenti', () => {
+  it('descrive lastre e bobina', () => {
     const m = materialeNuovo('m1', 'Legno');
     expect(etichettaSupporto(m)).toBe('lastre 2500 × 1250 mm');
     expect(etichettaSupporto({ ...m, modo: 'bobina' })).toBe('bobina 1000 mm × 50 m');
-    expect(etichettaSupporto({ ...m, modo: 'bobina', segmento: 2200 })).toBe(
-      'bobina 1000 mm × 50 m, segmenti da 2200 mm'
-    );
   });
 });
 

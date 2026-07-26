@@ -23,13 +23,6 @@ export interface MaterialeNesting {
   lastra: { larghezza: number; altezza: number };
   /** larghezza del rotolo (mm) e metri disponibili */
   bobina: { larghezza: number; metri: number };
-  /**
-   * Lunghezza massima del pezzo di bobina tagliato al banco (mm).
-   * È il modo di lavorare a mano: prima si staccano segmenti maneggevoli
-   * dal rotolo, poi dentro ogni segmento si tagliano i pezzi.
-   * 0 = nessuna segmentazione, il rotolo si tratta come un'unica striscia.
-   */
-  segmento: number;
   venatura: Venatura;
   lama: number;
   abbondanza: number;
@@ -49,8 +42,6 @@ export interface DocumentoNesting {
 
 export const LASTRA_PREDEFINITA = { larghezza: 2500, altezza: 1250 };
 export const BOBINA_PREDEFINITA = { larghezza: 1000, metri: 50 };
-/** i 2,2 m del racconto: un segmento che una persona sola riesce a maneggiare */
-export const SEGMENTO_PREDEFINITO = 2200;
 
 export function materialeNuovo(id: string, nome: string): MaterialeNesting {
   return {
@@ -59,7 +50,6 @@ export function materialeNuovo(id: string, nome: string): MaterialeNesting {
     modo: 'lastre',
     lastra: { ...LASTRA_PREDEFINITA },
     bobina: { ...BOBINA_PREDEFINITA },
-    segmento: 0,
     venatura: 'nessuna',
     lama: 3,
     abbondanza: 0,
@@ -80,15 +70,8 @@ export function parametriDi(m: MaterialeNesting): ParametriNesting {
   if (m.modo !== 'bobina') {
     return { lastra: { ...m.lastra }, ...comuni };
   }
-  if (m.segmento > 0) {
-    // ogni "lastra" del calcolo è un segmento staccato dal rotolo: quanti
-    // ne servono lo dice il risultato, il limite vero sono i metri disponibili
-    return {
-      lastra: { larghezza: m.bobina.larghezza, altezza: m.segmento },
-      ...comuni,
-      massimoLastre: Math.max(1, Math.ceil((m.bobina.metri * 1000) / m.segmento))
-    };
-  }
+  // il rotolo è UNA striscia continua: si impagina sfruttando tutta la
+  // lunghezza, e solo dopo si decide dove spezzarlo (vedi geometry/segmenti)
   return {
     lastra: { larghezza: m.bobina.larghezza, altezza: Math.max(1, m.bobina.metri * 1000) },
     ...comuni,
@@ -99,8 +82,7 @@ export function parametriDi(m: MaterialeNesting): ParametriNesting {
 /** com'è fatto il supporto, in una riga (intestazioni, PDF, elenchi) */
 export function etichettaSupporto(m: MaterialeNesting): string {
   if (m.modo === 'bobina') {
-    const base = `bobina ${m.bobina.larghezza} mm × ${m.bobina.metri} m`;
-    return m.segmento > 0 ? `${base}, segmenti da ${m.segmento} mm` : base;
+    return `bobina ${m.bobina.larghezza} mm × ${m.bobina.metri} m`;
   }
   return `lastre ${m.lastra.larghezza} × ${m.lastra.altezza} mm`;
 }
@@ -150,7 +132,6 @@ function normalizzaMateriale(
       larghezza: numero(bobina.larghezza, BOBINA_PREDEFINITA.larghezza, 1),
       metri: numero(bobina.metri, BOBINA_PREDEFINITA.metri, 0.001)
     },
-    segmento: numero(g.segmento, 0),
     venatura:
       g.venatura === 'orizzontale' || g.venatura === 'verticale' ? g.venatura : 'nessuna',
     lama: numero(g.lama, base.lama),

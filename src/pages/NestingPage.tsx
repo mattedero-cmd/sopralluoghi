@@ -20,7 +20,6 @@ import {
   migraDocumento,
   parametriDi,
   pezziRichiesti,
-  SEGMENTO_PREDEFINITO,
   type DocumentoNesting,
   type MaterialeNesting,
   type Venatura
@@ -29,6 +28,7 @@ import { elencaNesting, eliminaNesting, salvaNesting } from '../db/repository';
 import type { LavoroNesting } from '../db/types';
 import { mostraToast } from '../state/toast';
 import { condividiOScarica, nomeFileSicuro } from '../utils/share';
+import { OPZIONI_PDF_PREDEFINITE, type OpzioniPdfNesting } from '../pdf/opzioni';
 
 /**
  * NESTING — ottimizzazione del taglio.
@@ -37,9 +37,10 @@ import { condividiOScarica, nomeFileSicuro } from '../utils/share';
  * suo supporto, la sua venatura e la sua lista di pezzi, e viene ottimizzata
  * per conto suo con l'algoritmo MaxRects (vedi geometry/nesting.ts).
  *
- * Sulla bobina si può lavorare a SEGMENTI: si staccano dal rotolo pezzi di
- * lunghezza maneggevole e dentro ognuno si tagliano i pezzi. Ogni segmento è
- * una pagina A4 del PDF esportato.
+ * La bobina si impagina come una striscia unica. Spezzarla in blocchi
+ * maneggevoli è un'opzione dell'esportazione PDF, non un dato del materiale:
+ * dove cadano i tagli lo trova il programma, perché dipende da come sono
+ * impaginati i pezzi (vedi geometry/segmenti).
  *
  * Misure in millimetri.
  */
@@ -203,6 +204,7 @@ export function NestingPage() {
   const [incolla, setIncolla] = useState(false);
   const [apri, setApri] = useState(false);
   const [chiediNome, setChiediNome] = useState(false);
+  const [esporta, setEsporta] = useState(false);
   const [pdfInCorso, setPdfInCorso] = useState(false);
 
   // il lavoro resta fra una navigazione e l'altra (e fra le sessioni)
@@ -232,7 +234,6 @@ export function NestingPage() {
         modo: mat.modo,
         lastra: { ...mat.lastra },
         bobina: { ...mat.bobina },
-        segmento: mat.segmento,
         lama: mat.lama,
         abbondanza: mat.abbondanza,
         margine: mat.margine
@@ -268,8 +269,6 @@ export function NestingPage() {
     () => riepilogaNesting(parametri, mat.pezzi, esito),
     [parametri, mat.pezzi, esito]
   );
-
-  const aSegmenti = mat.modo === 'bobina' && mat.segmento > 0;
 
   /** consumo del rotolo: quanto materiale serve davvero */
   const consumo = useMemo(() => {
@@ -344,11 +343,12 @@ export function NestingPage() {
     }
   };
 
-  const esportaPdf = async () => {
+  const esportaPdf = async (opzioni: OpzioniPdfNesting) => {
+    setEsporta(false);
     setPdfInCorso(true);
     try {
       const { generaPdfNesting } = await import('../pdf/nesting');
-      const blob = await generaPdfNesting(doc);
+      const blob = await generaPdfNesting(doc, opzioni);
       await condividiOScarica(
         blob,
         nomeFileSicuro(doc.nome || 'piano-di-taglio', 'pdf'),
@@ -398,7 +398,6 @@ export function NestingPage() {
           modo: modello.modo,
           lastra: { ...modello.lastra },
           bobina: { ...modello.bobina },
-          segmento: modello.segmento,
           venatura: modello.venatura,
           lama: modello.lama,
           abbondanza: modello.abbondanza,
@@ -456,11 +455,9 @@ export function NestingPage() {
     if (mat.modo !== 'bobina') return { ...mat.lastra };
     return {
       larghezza: mat.bobina.larghezza,
-      // il segmento si disegna intero (è il pezzo di rotolo che si stacca);
-      // la bobina continua si disegna solo per il tratto consumato
-      altezza: aSegmenti
-        ? mat.segmento
-        : Math.max(1, lunghezzaUsata(lastra, mat.margine))
+      // della bobina si disegna solo il tratto consumato: mostrare 50 m di
+      // rotolo vuoto renderebbe i pezzi illeggibili
+      altezza: Math.max(1, lunghezzaUsata(lastra, mat.margine))
     };
   };
 
@@ -497,7 +494,7 @@ export function NestingPage() {
           aria-label="Esporta il PDF del piano di taglio"
           title="Esporta il PDF del piano di taglio"
           disabled={pdfInCorso}
-          onClick={esportaPdf}
+          onClick={() => setEsporta(true)}
         >
           <Icona nome="condividi" />
         </button>
@@ -606,32 +603,10 @@ export function NestingPage() {
                 <small>Lunghezza totale sul rotolo</small>
               </label>
             </div>
-            <label className="fisc-check nest-spunta">
-              <input
-                type="checkbox"
-                checked={aSegmenti}
-                onChange={(e) =>
-                  aggiornaMat({ segmento: e.target.checked ? SEGMENTO_PREDEFINITO : 0 })
-                }
-              />
-              Taglio a segmenti
-            </label>
-            {aSegmenti && (
-              <div className="nest-campi">
-                <label className="campo">
-                  <span>Lunghezza del segmento (mm)</span>
-                  <CampoNumero
-                    valore={mat.segmento}
-                    min={1}
-                    onCambia={(v) => aggiornaMat({ segmento: v })}
-                  />
-                  <small>
-                    Prima si staccano dal rotolo pezzi di questa lunghezza, poi dentro ognuno si
-                    tagliano i pezzi. Nel PDF ogni segmento è una pagina A4.
-                  </small>
-                </label>
-              </div>
-            )}
+            <p className="nest-sub">
+              Il rotolo si impagina come una striscia unica. Dove spezzarlo in blocchi
+              maneggevoli lo decide l’esportazione del PDF, seguendo i pezzi impaginati.
+            </p>
           </>
         )}
 
@@ -799,15 +774,11 @@ export function NestingPage() {
                       buona: true
                     }}
                   />
-                  {aSegmenti ? (
-                    <Statistica etichetta="Segmenti" valore={String(consumo.segmenti)} />
-                  ) : (
-                    <Statistica
-                      etichetta="Metri rimanenti"
-                      valore={formattaNumero(Math.round(consumo.rimanentiM * 100) / 100)}
-                      unita="m"
-                    />
-                  )}
+                  <Statistica
+                    etichetta="Metri rimanenti"
+                    valore={formattaNumero(Math.round(consumo.rimanentiM * 100) / 100)}
+                    unita="m"
+                  />
                   <Statistica
                     etichetta="Resa sul consumato"
                     valore={formattaNumero(Math.round(consumo.resa * 10) / 10)}
@@ -876,13 +847,7 @@ export function NestingPage() {
                 lastra={lastra}
                 misure={misureDisegno(lastra)}
                 margine={mat.margine}
-                titolo={
-                  aSegmenti
-                    ? `Segmento ${i + 1} di ${esito.lastre.length}`
-                    : mat.modo === 'bobina'
-                      ? 'Bobina'
-                      : `Lastra ${i + 1}`
-                }
+                titolo={mat.modo === 'bobina' ? 'Bobina' : `Lastra ${i + 1}`}
                 pezzi={mat.pezzi}
                 venatura={mat.venatura}
                 imposti={mat.orientamenti}
@@ -896,9 +861,9 @@ export function NestingPage() {
         <p className="nest-nota">
           Nesting <strong>libero</strong> (MaxRects, Best-Area-Fit), calcolato per ogni essenza
           separatamente. La <em>resa</em> è l’area dei pezzi finiti sull’area del materiale usato;
-          lo <em>sfrido</em> comprende lama, abbondanze e margini. Sulla bobina il{' '}
-          <em>taglio a segmenti</em> spezza il rotolo in tratti maneggevoli: nel PDF ogni segmento
-          è una pagina. Misure in millimetri.
+          lo <em>sfrido</em> comprende lama, abbondanze e margini. Il rotolo viene
+          impaginato come una striscia unica; il PDF può poi spezzarlo in blocchi maneggevoli,
+          tagliando solo dove non passa nessun pezzo. Misure in millimetri.
         </p>
       </main>
 
@@ -912,6 +877,14 @@ export function NestingPage() {
             setChiediNome(false);
             void salva(nome);
           }}
+        />
+      )}
+
+      {esporta && (
+        <ModaleEsporta
+          conBobine={doc.materiali.some((m) => m.modo === 'bobina')}
+          onChiudi={() => setEsporta(false)}
+          onEsporta={esportaPdf}
         />
       )}
 
@@ -1228,6 +1201,75 @@ function Lastra({
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * Opzioni dell'esportazione PDF.
+ *
+ * Il taglio in segmenti si decide QUI, al momento di stampare: è una scelta
+ * di come portare il lavoro al banco, non una proprietà del materiale. Dove
+ * cadano i tagli lo trova il programma, guardando i pezzi impaginati.
+ */
+function ModaleEsporta({
+  conBobine,
+  onChiudi,
+  onEsporta
+}: {
+  conBobine: boolean;
+  onChiudi: () => void;
+  onEsporta: (opzioni: OpzioniPdfNesting) => void;
+}) {
+  const [segmenta, setSegmenta] = useState(OPZIONI_PDF_PREDEFINITE.segmenta);
+  const [massimo, setMassimo] = useState(OPZIONI_PDF_PREDEFINITE.massimoSegmento);
+
+  return (
+    <Modale titolo="Esporta il piano di taglio" onChiudi={onChiudi}>
+      <p className="nest-sub">
+        Una pagina di riepilogo con la distinta per essenza, poi una pagina A4 per ogni lastra.
+      </p>
+      {conBobine ? (
+        <>
+          <label className="fisc-check">
+            <input
+              type="checkbox"
+              checked={segmenta}
+              onChange={(e) => setSegmenta(e.target.checked)}
+            />
+            Dividi le bobine in segmenti
+          </label>
+          {segmenta && (
+            <div className="nest-campi" style={{ marginTop: 10 }}>
+              <label className="campo">
+                <span>Lunghezza massima (mm)</span>
+                <CampoNumero valore={massimo} min={100} onCambia={setMassimo} />
+                <small>
+                  I tagli cadono solo dove non passa nessun pezzo: il programma sceglie il più
+                  lontano possibile entro questa misura. Se i pezzi non lasciano un taglio libero
+                  prima, il segmento risulta più lungo e viene segnalato.
+                </small>
+              </label>
+            </div>
+          )}
+        </>
+      ) : (
+        <p className="nest-sub">
+          Nessuna bobina in questo lavoro: la divisione in segmenti riguarda solo i rotoli.
+        </p>
+      )}
+      <div className="riga-pulsanti" style={{ marginTop: 14 }}>
+        <button className="btn" onClick={onChiudi}>
+          Annulla
+        </button>
+        <button
+          className="btn primario"
+          style={{ flex: 1 }}
+          onClick={() => onEsporta({ segmenta, massimoSegmento: massimo })}
+        >
+          Esporta PDF
+        </button>
+      </div>
+    </Modale>
   );
 }
 
