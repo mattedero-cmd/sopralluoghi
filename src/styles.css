@@ -2909,3 +2909,144 @@ a {
 .nest-svg line {
   pointer-events: none;
 }
+
+/* nome del lavoro: sta in cima, è il titolo del PDF e del salvataggio */
+.nest-nome {
+  margin-bottom: 4px;
+}
+
+/* essenze: una linguetta per materiale, scorrevoli in orizzontale */
+.nest-essenze {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.nest-essenze button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--tocco);
+  padding: 0 12px;
+  border: 1px solid var(--bordo);
+  border-radius: 999px;
+  background: var(--sfondo-2);
+  color: var(--testo);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.nest-essenze button small {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--sfondo-3);
+  color: var(--testo-2);
+  font-size: 11px;
+}
+
+.nest-essenze button.attivo {
+  background: var(--accento);
+  border-color: var(--accento);
+  color: #fff;
+}
+
+.nest-essenze button.attivo small {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+.nest-essenze button.agg {
+  font-size: 18px;
+  padding: 0 14px;
+}
+
+/* nome dell'essenza attiva + eliminazione */
+.nest-riga-essenza {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.nest-riga-essenza input {
+  flex: 1;
+  min-width: 0;
+  /* fuori da .campo gli stili condivisi non arrivano: senza questi il campo
+     resterebbe bianco di sistema, con il testo chiaro illeggibile */
+  min-height: var(--tocco);
+  padding: 8px 12px;
+  font-size: 15px;
+  background: var(--sfondo-2);
+  color: var(--testo);
+  border: 1px solid var(--bordo);
+  border-radius: var(--raggio);
+}
+
+.nest-riga-essenza input:focus {
+  outline: 2px solid var(--accento);
+  outline-offset: -1px;
+}
+
+.nest-spunta {
+  margin-top: 10px;
+}
+
+/* elenco dei lavori archiviati */
+.nest-lavori {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.nest-lavori .voce {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--bordo);
+  border-radius: var(--raggio);
+  padding: 4px 6px 4px 10px;
+}
+
+.nest-lavori .voce.corrente {
+  border-color: var(--accento);
+}
+
+.nest-lavori .apri {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: var(--tocco);
+  padding: 6px 0;
+  background: none;
+  border: 0;
+  color: var(--testo);
+  text-align: left;
+  cursor: pointer;
+}
+
+.nest-lavori .apri small {
+  color: var(--testo-2);
+  font-size: 12px;
+}
+
+/* intestazione di essenza nell'anteprima dell'incolla */
+.pv-materiale {
+  margin: 8px 0 4px;
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accento);
+  font-weight: 600;
+}

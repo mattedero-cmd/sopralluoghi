@@ -54,13 +54,15 @@ export function pianoEtichetta(
   altezza: number,
   nome: string,
   misura: string,
-  corpi: CorpiEtichetta
+  corpi: CorpiEtichetta,
+  /** il PDF non sa girare il testo: lì l'etichetta resta orizzontale */
+  opzioni?: { rotazione?: boolean }
 ): PianoEtichetta | null {
   if (!(corpi.minimo > 0) || !(larghezza > 0) || !(altezza > 0)) return null;
 
   // pezzo decisamente più alto che largo: si scrive nel verso lungo, come
   // si fa a matita sui listelli
-  const ruotata = altezza > larghezza * 1.15;
+  const ruotata = opzioni?.rotazione !== false && altezza > larghezza * 1.15;
   const lungo = (ruotata ? altezza : larghezza) * 0.96;
   const alto = ruotata ? larghezza : altezza;
 

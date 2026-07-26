@@ -5,6 +5,7 @@ import type {
   Cliente,
   Foto,
   Impostazioni,
+  LavoroNesting,
   Preventivo,
   Progetto
 } from './types';
@@ -22,6 +23,7 @@ export class SopralluoghiDB extends Dexie {
   impostazioni!: Table<Impostazioni, string>;
   clienti!: Table<Cliente, string>;
   preventivi!: Table<Preventivo, string>;
+  nesting!: Table<LavoroNesting, string>;
 
   constructor() {
     super('sopralluoghi');
@@ -41,6 +43,17 @@ export class SopralluoghiDB extends Dexie {
       impostazioni: 'id',
       clienti: 'id, nome',
       preventivi: 'id, progettoId, clienteId, numero'
+    });
+    // Fase 4: lavori di nesting salvati in archivio
+    this.version(3).stores({
+      cartelle: 'id, parentId',
+      progetti: 'id, cartellaId, clienteId, modificatoIl',
+      foto: 'id, progettoId',
+      annotazioni: 'id, fotoId',
+      impostazioni: 'id',
+      clienti: 'id, nome',
+      preventivi: 'id, progettoId, clienteId, numero',
+      nesting: 'id, nome, modificatoIl'
     });
   }
 }

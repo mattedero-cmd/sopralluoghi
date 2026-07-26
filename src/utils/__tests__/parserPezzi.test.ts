@@ -24,9 +24,16 @@ describe('analizzaTestoPezzi — misure', () => {
   });
 
   it('una riga senza misura finisce fra le ignorate', () => {
-    const r = analizzaTestoPezzi('Materiale: rovere\nripiano 560x300\nda confermare col cliente');
+    const r = analizzaTestoPezzi('ripiano 560x300\nda confermare col cliente');
     expect(r.pezzi).toHaveLength(1);
-    expect(r.ignorate).toEqual(['Materiale: rovere', 'da confermare col cliente']);
+    expect(r.ignorate).toEqual(['da confermare col cliente']);
+  });
+
+  it('«Materiale: rovere» dichiara l’essenza, non è una riga da buttare', () => {
+    const r = analizzaTestoPezzi('Materiale: rovere\nripiano 560x300');
+    expect(r.materiali).toEqual(['Rovere']);
+    expect(r.pezzi[0].materiale).toBe('Rovere');
+    expect(r.ignorate).toEqual([]);
   });
 
   it('scarta le righe con misura nulla', () => {
@@ -119,7 +126,74 @@ describe('analizzaTestoPezzi — lista realistica', () => {
   });
 
   it('testo vuoto non produce nulla', () => {
-    expect(analizzaTestoPezzi('')).toEqual({ pezzi: [], ignorate: [] });
-    expect(analizzaTestoPezzi('   \n  \n')).toEqual({ pezzi: [], ignorate: [] });
+    expect(analizzaTestoPezzi('')).toEqual({ pezzi: [], ignorate: [], materiali: [] });
+    expect(analizzaTestoPezzi('   \n  \n')).toEqual({ pezzi: [], ignorate: [], materiali: [] });
+  });
+});
+
+describe('liste divise per essenza', () => {
+  const LISTA = `Legno scuro
+
+* Ante armadio — 3 pz — 220 × 61 cm
+* Sopraluce armadio — 2 pz — 220 × 30 cm
+* Fianchi comodino — 8 pz — 50 × 50 cm
+* Fianchi/traverse comodino — 4 pz — 50 × 30 cm
+
+Bianco
+
+* Fianchi porta valigie — 3 pz — 61 × 40 cm
+
+Materiale chiaro (pelle chiara)
+
+* Fianco armadio — 1 pz — 230 × 45 cm
+* Frontali cassetti comodino — 2 pz — 50 × 15 cm`;
+
+  it('riconosce le intestazioni di materiale e ci attacca i pezzi', () => {
+    const e = analizzaTestoPezzi(LISTA);
+    expect(e.materiali).toEqual(['Legno scuro', 'Bianco', 'Materiale chiaro (pelle chiara)']);
+    expect(e.pezzi).toHaveLength(7);
+    expect(e.pezzi[0]).toMatchObject({
+      nome: 'Ante armadio',
+      larghezza: 2200,
+      altezza: 610,
+      quantita: 3,
+      materiale: 'Legno scuro'
+    });
+    expect(e.pezzi[3].materiale).toBe('Legno scuro');
+    expect(e.pezzi[4]).toMatchObject({ nome: 'Fianchi porta valigie', materiale: 'Bianco' });
+    expect(e.pezzi[6].materiale).toBe('Materiale chiaro (pelle chiara)');
+    expect(e.ignorate).toEqual([]);
+  });
+
+  it('senza intestazioni i pezzi restano senza materiale', () => {
+    const e = analizzaTestoPezzi('Anta 600x400 x2\nFianco 300x800');
+    expect(e.materiali).toEqual([]);
+    expect(e.pezzi.every((p) => p.materiale === undefined)).toBe(true);
+  });
+
+  it('una frase di commento non diventa un materiale', () => {
+    const e = analizzaTestoPezzi(
+      'Ricorda di controllare il verso della venatura prima di tagliare\nAnta 600x400'
+    );
+    expect(e.materiali).toEqual([]);
+    expect(e.ignorate).toHaveLength(1);
+  });
+
+  it('un titolo senza pezzi sotto resta fra le righe ignorate', () => {
+    const e = analizzaTestoPezzi('Anta 600x400\n\nNoce nazionale');
+    expect(e.materiali).toEqual([]);
+    expect(e.ignorate).toEqual(['Noce nazionale']);
+  });
+
+  it('due titoli di fila: conta solo quello che ha pezzi sotto', () => {
+    const e = analizzaTestoPezzi('Rovere\nNoce\nAnta 600x400');
+    expect(e.materiali).toEqual(['Noce']);
+    expect(e.ignorate).toEqual(['Rovere']);
+    expect(e.pezzi[0].materiale).toBe('Noce');
+  });
+
+  it('accetta il titolo con i due punti o in grassetto markdown', () => {
+    const e = analizzaTestoPezzi('**Legno scuro:**\nAnta 600x400');
+    expect(e.materiali).toEqual(['Legno scuro']);
   });
 });

@@ -7,6 +7,7 @@ import {
   type Foto,
   type ID,
   type Impostazioni,
+  type LavoroNesting,
   type Preventivo,
   type Progetto,
   type Sezione
@@ -780,4 +781,44 @@ export async function inizializzaStorage(): Promise<void> {
   } catch {
     // La stima dello storage non è critica: l'app continua a funzionare
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Lavori di nesting                                                    */
+/* ------------------------------------------------------------------ */
+
+/** i lavori salvati, dal più recente */
+export async function elencaNesting(): Promise<LavoroNesting[]> {
+  const tutti = await db.nesting.toArray();
+  return tutti.sort((a, b) => b.modificatoIl - a.modificatoIl);
+}
+
+export async function leggiNesting(id: ID): Promise<LavoroNesting | undefined> {
+  return db.nesting.get(id);
+}
+
+/**
+ * Salva un lavoro: crea il record se l'id non esiste ancora, altrimenti
+ * lo sovrascrive. Il chiamante decide l'id, così «salva» e «salva come»
+ * sono la stessa operazione con un id diverso.
+ */
+export async function salvaNesting(
+  id: ID,
+  nome: string,
+  documento: unknown
+): Promise<LavoroNesting> {
+  const esistente = await db.nesting.get(id);
+  const record: LavoroNesting = {
+    id,
+    nome,
+    creatoIl: esistente?.creatoIl ?? ora(),
+    modificatoIl: ora(),
+    documento
+  };
+  await scrivi('salvare il lavoro di nesting', () => db.nesting.put(record));
+  return record;
+}
+
+export async function eliminaNesting(id: ID): Promise<void> {
+  await scrivi('eliminare il lavoro di nesting', () => db.nesting.delete(id));
 }

@@ -1053,3 +1053,19 @@ export const COLORE_QUOTA = '#ffc400';
 
 /** Colore dedicato alla QUOTATURA TECNICA, distinto dal giallo delle quote base. */
 export const COLORE_QUOTA_TECNICA = '#00A896';
+
+/**
+ * Lavoro di nesting salvato in archivio.
+ *
+ * Il documento (materiali, pezzi, parametri) viaggia come struttura opaca:
+ * la sua forma e le migrazioni stanno in utils/documentoNesting.ts, così il
+ * database non deve sapere nulla dell'ottimizzazione del taglio.
+ */
+export interface LavoroNesting {
+  id: ID;
+  nome: string;
+  creatoIl: number;
+  modificatoIl: number;
+  /** DocumentoNesting serializzabile */
+  documento: unknown;
+}
