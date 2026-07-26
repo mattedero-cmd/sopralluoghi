@@ -11,6 +11,7 @@ export type Rotta =
   | { nome: 'clienti' }
   | { nome: 'cliente'; id: string }
   | { nome: 'preventivo'; id: string }
+  | { nome: 'nesting' }
   | { nome: 'impostazioni' };
 
 export function analizzaHash(hash: string): Rotta {
@@ -22,6 +23,7 @@ export function analizzaHash(hash: string): Rotta {
   if (parti[0] === 'clienti') return { nome: 'clienti' };
   if (parti[0] === 'cliente' && parti[1]) return { nome: 'cliente', id: parti[1] };
   if (parti[0] === 'preventivo' && parti[1]) return { nome: 'preventivo', id: parti[1] };
+  if (parti[0] === 'nesting') return { nome: 'nesting' };
   if (parti[0] === 'impostazioni') return { nome: 'impostazioni' };
   return { nome: 'archivio', cartellaId: null };
 }
@@ -40,6 +42,8 @@ export function urlRotta(r: Rotta): string {
       return `#/cliente/${r.id}`;
     case 'preventivo':
       return `#/preventivo/${r.id}`;
+    case 'nesting':
+      return '#/nesting';
     case 'impostazioni':
       return '#/impostazioni';
   }

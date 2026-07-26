@@ -4,6 +4,7 @@ import { ProgettoPage } from './pages/ProgettoPage';
 import { ImpostazioniPage } from './pages/ImpostazioniPage';
 import { ClientiPage, ClientePage } from './pages/ClientiPage';
 import { PreventivoPage } from './pages/PreventivoPage';
+import { NestingPage } from './pages/NestingPage';
 import { EditorFoto } from './editor/EditorFoto';
 import { Toasts } from './components/comuni';
 import { PromemoriaSync } from './components/PromemoriaSync';
@@ -18,6 +19,7 @@ export function App() {
       {rotta.nome === 'clienti' && <ClientiPage />}
       {rotta.nome === 'cliente' && <ClientePage id={rotta.id} key={rotta.id} />}
       {rotta.nome === 'preventivo' && <PreventivoPage id={rotta.id} key={rotta.id} />}
+      {rotta.nome === 'nesting' && <NestingPage />}
       {rotta.nome === 'impostazioni' && <ImpostazioniPage />}
       <PromemoriaSync />
       <Toasts />

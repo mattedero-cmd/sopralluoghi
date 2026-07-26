@@ -2474,3 +2474,412 @@ a {
     place-items: center;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   NESTING — ottimizzazione del taglio.
+   Usa le variabili dell'app (colori, raggio) così la sezione è coerente col
+   resto; qui stanno solo la griglia della tabella pezzi, le statistiche e il
+   disegno delle lastre, che non hanno un equivalente altrove.
+   --------------------------------------------------------------------------- */
+
+.nest-titolo {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--testo-2);
+  margin: 22px 0 10px;
+}
+
+.nest-campi {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  /* le etichette possono andare a capo: allineando in basso gli input
+     restano su una linea comune */
+  align-items: end;
+}
+
+.nest-campi.tre {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+@media (max-width: 560px) {
+  .nest-campi.tre {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.nest-campi .campo {
+  margin-bottom: 0;
+}
+
+.nest-campi .campo small {
+  color: var(--testo-2);
+  font-size: 11.5px;
+}
+
+/* tabella dei pezzi */
+.nest-tabella {
+  border: 1px solid var(--bordo);
+  border-radius: var(--raggio);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.nest-intestazione,
+.nest-riga {
+  display: grid;
+  grid-template-columns: 16px minmax(64px, 1fr) auto 38px;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 8px;
+}
+
+/* blocco delle misure: L, A, Qtà, Ruota */
+.nest-misure {
+  display: grid;
+  grid-template-columns: 68px 68px 58px 44px;
+  gap: 6px;
+  align-items: center;
+}
+
+.nest-intestazione {
+  background: var(--sfondo-2);
+  color: var(--testo-2);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.nest-intestazione .c {
+  text-align: center;
+}
+
+.nest-riga + .nest-riga,
+.nest-intestazione + .nest-riga {
+  border-top: 1px solid var(--bordo);
+}
+
+.nest-riga input[type='text'],
+.nest-riga input[type='number'] {
+  width: 100%;
+  min-height: 38px;
+  padding: 6px 8px;
+  font-size: 14px;
+  background: var(--sfondo);
+  color: var(--testo);
+  border: 1px solid var(--bordo);
+  border-radius: 8px;
+}
+
+.nest-riga input.c {
+  text-align: center;
+}
+
+/* su telefono la riga va su due linee: nome sopra, misure sotto. Su una sola
+   linea un valore a 4 cifre (es. 1160) resterebbe tagliato. */
+@media (max-width: 620px) {
+  .nest-intestazione {
+    display: none;
+  }
+  .nest-riga {
+    grid-template-columns: 16px 1fr 38px;
+    grid-template-areas:
+      'tinta nome elimina'
+      'misure misure misure';
+    row-gap: 8px;
+    padding: 10px 8px;
+  }
+  .nest-riga > .nest-tinta {
+    grid-area: tinta;
+  }
+  .nest-riga > input[type='text'] {
+    grid-area: nome;
+  }
+  .nest-riga > .btn.icona {
+    grid-area: elimina;
+  }
+  .nest-riga > .nest-misure {
+    grid-area: misure;
+    grid-template-columns: 1fr 1fr 1fr 44px;
+  }
+}
+
+/* pastiglia col colore del pezzo: nella riga della tabella e nella legenda */
+.nest-tinta {
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  border: 1.5px solid;
+  display: inline-block;
+  flex: none;
+  /* nella riga è un elemento di griglia: senza questo verrebbe stirato */
+  align-self: center;
+}
+
+.nest-ruota {
+  display: flex;
+  justify-content: center;
+}
+
+.nest-ruota input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accento);
+}
+
+.btn.icona.piccolo {
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+}
+
+/* statistiche */
+.nest-statistiche {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin: 18px 0 14px;
+}
+
+@media (max-width: 560px) {
+  .nest-statistiche {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.nest-stat {
+  background: var(--sfondo-2);
+  border: 1px solid var(--bordo);
+  border-radius: var(--raggio);
+  padding: 10px 12px;
+}
+
+.nest-stat .k {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--testo-2);
+}
+
+.nest-stat .v {
+  font-size: 24px;
+  font-weight: 700;
+  margin-top: 4px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.nest-stat .v small {
+  font-size: 13px;
+  color: var(--testo-2);
+  font-weight: 500;
+  margin-left: 2px;
+}
+
+.nest-stat .misuratore {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--sfondo-3);
+  margin-top: 9px;
+  overflow: hidden;
+}
+
+.nest-stat .misuratore i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+}
+
+/* avviso pezzi fuori misura */
+.nest-avviso {
+  border: 1px solid var(--pericolo);
+  background: color-mix(in srgb, var(--pericolo) 12%, transparent);
+  border-radius: var(--raggio);
+  padding: 11px 13px;
+  margin-bottom: 14px;
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.nest-avviso ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: var(--testo-2);
+}
+
+/* lastre */
+.nest-lastra {
+  background: var(--sfondo-2);
+  border: 1px solid var(--bordo);
+  border-radius: var(--raggio);
+  padding: 12px 13px 14px;
+  margin-bottom: 14px;
+}
+
+.nest-lastra .testa {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.nest-lastra .testa .titolo {
+  font-weight: 650;
+  font-size: 15px;
+}
+
+.nest-lastra .testa .titolo span {
+  color: var(--testo-2);
+  font-weight: 500;
+  font-size: 12px;
+  margin-left: 7px;
+}
+
+.nest-lastra .testa .misure {
+  color: var(--testo-2);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.nest-lastra .testa .misure strong {
+  color: var(--ok);
+}
+
+.nest-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 6px;
+}
+
+.nest-legenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--bordo);
+}
+
+.nest-legenda .voce {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+}
+
+.nest-legenda .voce .q {
+  color: var(--testo-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.nest-nota {
+  color: var(--testo-2);
+  font-size: 12px;
+  line-height: 1.6;
+  border-top: 1px solid var(--bordo);
+  padding-top: 14px;
+  margin-top: 20px;
+}
+
+/* modale "incolla da testo" */
+.nest-sub {
+  color: var(--testo-2);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 12px;
+}
+
+.nest-sub code,
+.nest-nota code {
+  background: var(--sfondo-3);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 11.5px;
+}
+
+.nest-anteprima {
+  max-height: 34vh;
+  overflow-y: auto;
+  margin-bottom: 10px;
+}
+
+.pv-testa {
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ok);
+  margin-bottom: 8px;
+}
+
+.pv-testa.avviso {
+  color: var(--pericolo);
+}
+
+.pv-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pv-voce {
+  display: grid;
+  grid-template-columns: 1fr auto auto 16px;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 10px;
+  background: var(--sfondo-3);
+  border: 1px solid var(--bordo);
+  border-radius: 8px;
+  font-size: 12.5px;
+}
+
+.pv-voce .n {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pv-voce .d,
+.pv-voce .q {
+  color: var(--testo-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.pv-voce .r {
+  color: var(--accento);
+  text-align: center;
+}
+
+.pv-voce .r.spento {
+  color: var(--bordo);
+}
+
+.pv-ignorate {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px dashed var(--bordo);
+  color: var(--testo-2);
+  font-size: 11.5px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+@media print {
+  .nest-titolo,
+  .nest-campi,
+  .nest-tabella,
+  .nest-nota,
+  .barra,
+  .riga-pulsanti {
+    display: none !important;
+  }
+  .nest-lastra {
+    break-inside: avoid;
+    border-color: #999;
+  }
+}
