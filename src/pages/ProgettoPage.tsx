@@ -290,7 +290,7 @@ export function ProgettoPage({ id }: { id: string }) {
           attivo: materiale.id,
           materiali: [materiale]
         },
-        { cartellaId: progetto.cartellaId }
+        { cartellaId: progetto.cartellaId, progettoId: progetto.id }
       );
       const conAbb = pezzi.filter((p) => p.conAbbondanze).length;
       mostraToast(
@@ -312,8 +312,35 @@ export function ProgettoPage({ id }: { id: string }) {
     try {
       setPdfInCorso('Preparazione…');
       // import dinamico: il motore PDF (~2 MB) non pesa sull'avvio dell'app
-      const { generaReportPdf } = await import('../pdf/report');
+      const { generaReportPdf, documentoTaglioProgetto } = await import('../pdf/report');
       const blob = await generaReportPdf(progetto, (msg) => setPdfInCorso(msg), opzioni);
+
+      // piano di taglio a parte: due PDF dentro un unico zip, perché la
+      // condivisione di sistema accetta un file per volta
+      if (opzioni.pianoDiTaglio === 'separato') {
+        setPdfInCorso('Piano di taglio…');
+        const taglio = await documentoTaglioProgetto(progetto);
+        if (taglio) {
+          const [{ generaPdfNesting }, JSZip] = await Promise.all([
+            import('../pdf/nesting'),
+            import('jszip').then((m) => m.default)
+          ]);
+          const pdfTaglio = await generaPdfNesting(taglio);
+          const zip = new JSZip();
+          zip.file(nomeFileSicuro(`report_${progetto.nome}`, 'pdf'), blob);
+          zip.file(nomeFileSicuro(`taglio_${progetto.nome}`, 'pdf'), pdfTaglio);
+          const pacchetto = await zip.generateAsync({ type: 'blob' });
+          setPdfInCorso(null);
+          await condividiOScarica(
+            pacchetto,
+            nomeFileSicuro(`${progetto.nome}_report_e_taglio`, 'zip'),
+            progetto.nome
+          );
+          return;
+        }
+        mostraToast('info', 'Nessun pezzo da tagliare: esportato il solo report.');
+      }
+
       setPdfInCorso(null);
       await condividiOScarica(blob, nomeFileSicuro(`report_${progetto.nome}`, 'pdf'), progetto.nome);
     } catch (e) {
@@ -614,6 +641,7 @@ export function ProgettoPage({ id }: { id: string }) {
             setOpzioniPdfAperte(false);
             void generaZip(opzioni);
           }}
+          conPianoDiTaglio
         />
       )}
       {modificaDati && <FormDatiProgetto progetto={progetto} onChiudi={() => setModificaDati(false)} />}

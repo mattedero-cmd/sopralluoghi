@@ -1066,6 +1066,8 @@ export interface LavoroNesting {
   nome: string;
   /** cartella dell'archivio in cui vive il lavoro (null = radice) */
   cartellaId: ID | null;
+  /** sopralluogo da cui è nato: il report può allegargli questo piano */
+  progettoId?: ID | null;
   creatoIl: number;
   modificatoIl: number;
   /** DocumentoNesting serializzabile */

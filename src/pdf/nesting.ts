@@ -367,36 +367,23 @@ function distinta(m: MaterialeNesting, esito: EsitoNesting): Content {
   };
 }
 
-export async function generaPdfNesting(
+/**
+ * Il piano di taglio come CONTENUTO pdfmake, senza copertina.
+ *
+ * Serve a due padroni: il PDF del solo piano di taglio (che ci mette la sua
+ * copertina davanti) e il report del sopralluogo, che se lo allega in fondo.
+ * Gli stili usati sono quelli di casa — h1, h2, th, td — quindi il blocco si
+ * innesta in qualunque documento dell'app senza portarsi dietro nulla.
+ */
+export function contenutoNesting(
   doc: DocumentoNesting,
   opzioni: OpzioniPdfNesting = OPZIONI_PDF_PREDEFINITE
-): Promise<Blob> {
-  const imp = await leggiImpostazioni();
-  const prof = imp.professionista;
-  const BLU = imp.pdf.colore || COLORI_PDF.blu;
-  const righeProf = [prof.nome, prof.azienda, prof.indirizzo, prof.telefono, prof.email].filter(
-    Boolean
-  );
-
-  // copertina come quella dei report: stesso impianto, stesso ritmo
-  const contenuto: Content[] = [
-    { text: 'PIANO DI TAGLIO', style: 'copertinaTipo', margin: [0, 120, 0, 8] },
-    { text: doc.nome || 'Piano di taglio', style: 'copertinaTitolo' },
-    {
-      text: `Data: ${formattaData(Date.now())}`,
-      style: 'copertinaDati',
-      margin: [0, 18, 0, 0]
-    },
-    righeProf.length > 0
-      ? {
-          text: righeProf.join('\n'),
-          style: 'copertinaProf',
-          absolutePosition: { x: 40, y: 700 }
-        }
-      : { text: '' },
-    { text: 'Distinta di taglio', style: 'h1', pageBreak: 'before' }
+): Content[] {
+  // `tocItem` serve quando queste pagine finiscono in coda a un report: il
+  // piano di taglio compare nell'indice come le altre parti del documento
+  const distinte: Content[] = [
+    { text: 'Piano di taglio', style: 'h1', pageBreak: 'before', tocItem: true } as Content
   ];
-
   const pagine: Content[] = [];
 
   for (const m of doc.materiali) {
@@ -439,7 +426,9 @@ export async function generaPdfNesting(
         }
       }
     } else {
-      dati.push(`${riep.lastreUsate} lastre · resa ${formattaNumero(Math.round(riep.resa * 10) / 10)}%`);
+      dati.push(
+        `${riep.lastreUsate} lastre · resa ${formattaNumero(Math.round(riep.resa * 10) / 10)}%`
+      );
     }
     dati.push(
       esito.scartati.length > 0
@@ -447,14 +436,45 @@ export async function generaPdfNesting(
         : `${riep.pezziPiazzati} pezzi piazzati`
     );
 
-    contenuto.push({ text: m.nome, style: 'h2' });
-    contenuto.push({ text: dati.join('\n'), style: 'dati' });
-    contenuto.push(distinta(m, esito));
+    distinte.push({ text: m.nome, style: 'h2' });
+    distinte.push({ text: dati.join('\n'), style: 'dati' });
+    distinte.push(distinta(m, esito));
 
-    for (const foglio of fogli) {
-      pagine.push(...paginaFoglio(m, foglio));
-    }
+    for (const foglio of fogli) pagine.push(...paginaFoglio(m, foglio));
   }
+
+  return [...distinte, ...pagine];
+}
+
+export async function generaPdfNesting(
+  doc: DocumentoNesting,
+  opzioni: OpzioniPdfNesting = OPZIONI_PDF_PREDEFINITE
+): Promise<Blob> {
+  const imp = await leggiImpostazioni();
+  const prof = imp.professionista;
+  const BLU = imp.pdf.colore || COLORI_PDF.blu;
+  const righeProf = [prof.nome, prof.azienda, prof.indirizzo, prof.telefono, prof.email].filter(
+    Boolean
+  );
+
+  // copertina come quella dei report: stesso impianto, stesso ritmo
+  // copertina come quella dei report: stesso impianto, stesso ritmo
+  const copertina: Content[] = [
+    { text: 'PIANO DI TAGLIO', style: 'copertinaTipo', margin: [0, 120, 0, 8] },
+    { text: doc.nome || 'Piano di taglio', style: 'copertinaTitolo' },
+    {
+      text: `Data: ${formattaData(Date.now())}`,
+      style: 'copertinaDati',
+      margin: [0, 18, 0, 0]
+    },
+    righeProf.length > 0
+      ? {
+          text: righeProf.join('\n'),
+          style: 'copertinaProf',
+          absolutePosition: { x: 40, y: 700 }
+        }
+      : { text: '' }
+  ];
 
   const pieDiPagina = imp.pdf.pieDiPagina.trim() || prof.azienda || prof.nome || '';
 
@@ -465,7 +485,7 @@ export async function generaPdfNesting(
       title: `Piano di taglio — ${doc.nome || 'senza nome'}`,
       author: prof.nome || 'Sopralluoghi'
     },
-    content: [...contenuto, ...pagine],
+    content: [...copertina, ...contenutoNesting(doc, opzioni)],
     defaultStyle: { fontSize: 11, color: '#20252b' },
     styles: {
       copertinaTipo: {

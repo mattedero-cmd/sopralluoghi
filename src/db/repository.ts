@@ -817,7 +817,7 @@ export async function salvaNesting(
   id: ID,
   nome: string,
   documento: unknown,
-  opzioni?: { cartellaId?: ID | null; pdf?: Blob }
+  opzioni?: { cartellaId?: ID | null; pdf?: Blob; progettoId?: ID | null }
 ): Promise<LavoroNesting> {
   const esistente = await db.nesting.get(id);
   const adesso = ora();
@@ -826,6 +826,8 @@ export async function salvaNesting(
     nome,
     cartellaId:
       opzioni?.cartellaId !== undefined ? opzioni.cartellaId : (esistente?.cartellaId ?? null),
+    progettoId:
+      opzioni?.progettoId !== undefined ? opzioni.progettoId : (esistente?.progettoId ?? null),
     creatoIl: esistente?.creatoIl ?? adesso,
     modificatoIl: adesso,
     documento,
@@ -834,6 +836,14 @@ export async function salvaNesting(
   };
   await scrivi('salvare il lavoro di nesting', () => db.nesting.put(record));
   return record;
+}
+
+/** il piano di taglio nato da un sopralluogo, se c'è (il più recente) */
+export async function nestingDiProgetto(progettoId: ID): Promise<LavoroNesting | undefined> {
+  const tutti = await db.nesting.toArray();
+  return tutti
+    .filter((l) => l.progettoId === progettoId)
+    .sort((a, b) => b.modificatoIl - a.modificatoIl)[0];
 }
 
 /** aggiorna il solo PDF di un lavoro già salvato, con la build che l'ha fatto */

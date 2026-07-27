@@ -95,8 +95,8 @@ describe('pezziDaProgetto', () => {
 
     const pezzi = await pezziDaProgetto('p1');
     const nomi = pezzi.map((p) => p.nome);
-    expect(nomi.some((n) => n.startsWith('Triangolo'))).toBe(true);
-    expect(nomi.some((n) => n.startsWith('Trapezio'))).toBe(true);
+    expect(nomi.some((n) => n.endsWith('Triangolo'))).toBe(true);
+    expect(nomi.some((n) => n.endsWith('Trapezio'))).toBe(true);
     expect(nomi.some((n) => n.includes('Poligono'))).toBe(false);
   });
 
@@ -118,7 +118,8 @@ describe('pezziDaProgetto', () => {
 
     const pezzi = await pezziDaProgetto('p1');
     expect(pezzi).toHaveLength(1);
-    expect(pezzi[0].nome).toMatch(/^Rettangolo \S+/);
+    // stesso ordine del report: codice, poi forma
+    expect(pezzi[0].nome).toMatch(/^\S+ Rettangolo$/);
     expect(pezzi[0]).toMatchObject({ larghezza: 1200, altezza: 600, quantita: 1 });
   });
 
@@ -197,9 +198,9 @@ describe('pezziDaProgetto', () => {
     ] as unknown as Annotazione[]);
 
     const pezzi = await pezziDaProgetto('p1');
-    const poli = pezzi.find((p) => p.nome.startsWith('Rettangolo') || p.nome.startsWith('Trapezio'))!;
+    const poli = pezzi.find((p) => /Rettangolo|Trapezio/.test(p.nome))!;
     expect(poli).toMatchObject({ larghezza: 2100, altezza: 1030, conAbbondanze: true });
-    const cerchio = pezzi.find((p) => p.nome.startsWith('Cerchio'))!;
+    const cerchio = pezzi.find((p) => p.nome.includes('Cerchio'))!;
     expect(cerchio).toMatchObject({ larghezza: 440, altezza: 440 });
   });
 

@@ -1,4 +1,12 @@
-import { ingombroTaglio, type PezzoDaMisura } from '../geometry/pezziDaSopralluogo';
+import {
+  ingombroTaglio,
+  raggruppaPezzi,
+  type PezzoDaMisura
+} from '../geometry/pezziDaSopralluogo';
+import { nestingDiProgetto } from '../db/repository';
+import { contenutoNesting } from './nesting';
+import { materialeNuovo, migraDocumento, type DocumentoNesting } from '../utils/documentoNesting';
+import { prossimaTinta } from '../utils/tinte';
 import { pdfMake } from './engine';
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { db } from '../db/db';
@@ -79,6 +87,11 @@ export interface OpzioniReport {
   includiTabellaMisure: boolean;
   /** distinta di taglio: elenco dei pezzi da produrre con misure di taglio */
   includiDistinta: boolean;
+  /**
+   * Piano di taglio: «no» non lo tocca, «allegato» lo mette in fondo al
+   * report, «separato» lo lascia al chiamante (che esporta due file).
+   */
+  pianoDiTaglio?: 'no' | 'allegato' | 'separato';
 }
 
 export const OPZIONI_REPORT_DEFAULT: OpzioniReport = {
@@ -378,6 +391,14 @@ export async function generaReportPdf(
     contenuto.push(...distintaTaglio(fotoList, annotazioniPerFoto, info));
   }
 
+  // --- Piano di taglio allegato ----------------------------------------------
+  // le pagine del nesting entrano nello stesso documento: un file solo da
+  // portare in cantiere e in laboratorio
+  if (opzioni.pianoDiTaglio === 'allegato') {
+    const taglio = await documentoTaglioProgetto(progetto);
+    if (taglio) contenuto.push(...contenutoNesting(taglio));
+  }
+
   const pieDiPagina = impostazioni.pdf.pieDiPagina.trim() || prof.azienda || prof.nome || '';
   const def = documentoReport({
     BLU,
@@ -431,6 +452,9 @@ function documentoReport(args: {
       corpo: { fontSize: 11, lineHeight: 1.25, margin: [0, 4, 0, 10] },
       th: { fontSize: 9, bold: true, color: '#ffffff', fillColor: BLU },
       td: { fontSize: 10 },
+      // usati dalle pagine del piano di taglio allegato in coda al report
+      dati: { fontSize: 10, color: GRIGIO, lineHeight: 1.3 },
+      sottotitolo: { fontSize: 10, color: GRIGIO },
       tdNum: { fontSize: 11, bold: true, color: GRIGIO_CHIARO, alignment: 'center' },
       tdForma: { fontSize: 11, bold: true, color: BLU_FORMA },
       pie: { fontSize: 9, color: GRIGIO }
@@ -1550,7 +1574,9 @@ export async function pezziDaProgetto(progettoId: string): Promise<PezzoDaMisura
     for (const r of righeMisureFoto(annotazioni, f, ctx, percorso)) {
       if (!r.pezzo || !r.taglioMm) continue;
       pezzi.push({
-        nome: [r.forma, r.codice].filter(Boolean).join(' '),
+        // stesso identificativo del report: prima il codice, poi la forma,
+        // come nelle due colonne della distinta di taglio
+        nome: [r.codice, r.forma].filter(Boolean).join(' '),
         larghezza: r.taglioMm.larghezza,
         altezza: r.taglioMm.altezza,
         quantita: Math.max(1, Math.round(r.quantita ?? 1)),
@@ -1559,4 +1585,37 @@ export async function pezziDaProgetto(progettoId: string): Promise<PezzoDaMisura
     }
   }
   return pezzi;
+}
+
+/**
+ * Il piano di taglio da allegare al report di un sopralluogo.
+ *
+ * Se dal sopralluogo è già nato un piano salvato, si usa quello — ha i
+ * materiali e le abbondanze scelti a mano. Altrimenti se ne compone uno al
+ * volo dalle misure quotate, così il report è completo comunque.
+ */
+export async function documentoTaglioProgetto(
+  progetto: Progetto
+): Promise<DocumentoNesting | null> {
+  const salvato = await nestingDiProgetto(progetto.id);
+  if (salvato) {
+    const doc = migraDocumento(salvato.documento);
+    if (doc) return { ...doc, nome: salvato.nome };
+  }
+  const pezzi = raggruppaPezzi(await pezziDaProgetto(progetto.id));
+  if (pezzi.length === 0) return null;
+  const materiale = {
+    ...materialeNuovo('m1', 'Materiale 1'),
+    pezzi: pezzi.map((p, i) => ({
+      id: `p${i + 1}`,
+      nome: p.nome,
+      larghezza: p.larghezza,
+      altezza: p.altezza,
+      quantita: p.quantita,
+      ruotabile: true,
+      tinta: prossimaTinta(i)
+    }))
+  };
+  const nome = `Taglio — ${progetto.nome}`;
+  return { versione: 2, nome, attivo: materiale.id, materiali: [materiale] };
 }

@@ -20,7 +20,8 @@ export function PannelloOpzioniPdf({
   generaAnteprima,
   onChiudi,
   onGenera,
-  onGeneraZip
+  onGeneraZip,
+  conPianoDiTaglio
 }: {
   titolo: string;
   /** foto del progetto da poter selezionare; assente nel report di cartella */
@@ -32,6 +33,8 @@ export function PannelloOpzioniPdf({
   onChiudi: () => void;
   onGenera: (opzioni: OpzioniReport) => void;
   onGeneraZip: (opzioni: OpzioniReport) => void;
+  /** solo per i sopralluoghi: la cartella non ha un piano di taglio suo */
+  conPianoDiTaglio?: boolean;
 }) {
   const [fotoPerPagina, setFotoPerPagina] = useState<1 | 2 | 4 | 6>(1);
   const [orizzontale, setOrizzontale] = useState(false);
@@ -40,6 +43,7 @@ export function PannelloOpzioniPdf({
   const [includiNoteDato, setIncludiNoteDato] = useState(true);
   const [includiTabellaMisure, setIncludiTabellaMisure] = useState(true);
   const [includiDistinta, setIncludiDistinta] = useState(true);
+  const [pianoDiTaglio, setPianoDiTaglio] = useState<'no' | 'allegato' | 'separato'>('no');
   const [avanzate, setAvanzate] = useState(false);
   const [scegliFoto, setScegliFoto] = useState(false);
   const [selezione, setSelezione] = useState<Set<string>>(new Set((foto ?? []).map((f) => f.id)));
@@ -62,7 +66,8 @@ export function PannelloOpzioniPdf({
     includiRiepilogo,
     includiNoteDato: griglia ? false : includiNoteDato,
     includiTabellaMisure: griglia ? false : includiTabellaMisure,
-    includiDistinta
+    includiDistinta,
+    pianoDiTaglio
   });
 
   const nFoto = foto ? selezione.size : null;
@@ -91,7 +96,7 @@ export function PannelloOpzioniPdf({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const chiaveOpzioni = `${fotoPerPagina}|${orizzontale}|${includiIndice}|${includiRiepilogo}|${includiNoteDato}|${includiTabellaMisure}|${includiDistinta}|${Array.from(selezione).sort().join(',')}`;
+  const chiaveOpzioni = `${fotoPerPagina}|${orizzontale}|${includiIndice}|${includiRiepilogo}|${includiNoteDato}|${includiTabellaMisure}|${includiDistinta}|${pianoDiTaglio}|${Array.from(selezione).sort().join(',')}`;
 
   // ricompone il PDF quando cambiano le opzioni (debounce)
   useEffect(() => {
@@ -201,6 +206,40 @@ export function PannelloOpzioniPdf({
           </button>
         </span>
       </div>
+
+      {/* Piano di taglio: allegato al report o esportato a parte */}
+      {conPianoDiTaglio && (
+        <div className="campo">
+          <label>Piano di taglio</label>
+          <span className="segmenti" role="group">
+            <button
+              className={pianoDiTaglio === 'no' ? 'attivo' : ''}
+              onClick={() => setPianoDiTaglio('no')}
+            >
+              Niente
+            </button>
+            <button
+              className={pianoDiTaglio === 'allegato' ? 'attivo' : ''}
+              onClick={() => setPianoDiTaglio('allegato')}
+            >
+              In fondo al report
+            </button>
+            <button
+              className={pianoDiTaglio === 'separato' ? 'attivo' : ''}
+              onClick={() => setPianoDiTaglio('separato')}
+            >
+              File separato
+            </button>
+          </span>
+          <p className="aiuto" style={{ marginTop: 4 }}>
+            {pianoDiTaglio === 'no'
+              ? 'Solo il report del sopralluogo.'
+              : pianoDiTaglio === 'allegato'
+                ? 'Le pagine del nesting finiscono in coda al report: un file solo.'
+                : 'Due PDF — report e piano di taglio — dentro un unico zip.'}
+          </p>
+        </div>
+      )}
 
       {/* Foto da includere (solo progetto): compatto, si apre a richiesta */}
       {foto && (

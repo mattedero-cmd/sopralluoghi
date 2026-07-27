@@ -5,6 +5,7 @@ import { blobOrigine, canvasInBlob, caricaImmagine, fotoIllegibile } from './ima
 import { haCensure, immagineCensurata } from './censura';
 import { etichettaFoto } from '../geometry/nomenclatura';
 import {
+  documentoTaglioProgetto,
   generaReportCartella,
   generaReportPdf,
   OPZIONI_REPORT_DEFAULT,
@@ -125,6 +126,20 @@ export async function esportaProgettoZip(
   avanzamento?.('Report PDF…');
   const pdf = await generaReportPdf(progetto, avanzamento, opzioni);
   zip.file(`${radice}${nomeFileSicuro(`report_${progetto.nome}`, 'pdf')}`, pdf);
+
+  // piano di taglio «a parte»: nel pacchetto diventa un secondo PDF accanto al
+  // report, dentro la stessa cartella del progetto
+  if (opzioni.pianoDiTaglio === 'separato') {
+    avanzamento?.('Piano di taglio…');
+    const taglio = await documentoTaglioProgetto(progetto);
+    if (taglio) {
+      const { generaPdfNesting } = await import('../pdf/nesting');
+      zip.file(
+        `${radice}${nomeFileSicuro(`taglio_${progetto.nome}`, 'pdf')}`,
+        await generaPdfNesting(taglio)
+      );
+    }
+  }
 
   avanzamento?.('Foto originali…');
   const foto = await fotoDiProgetto(progetto.id);
