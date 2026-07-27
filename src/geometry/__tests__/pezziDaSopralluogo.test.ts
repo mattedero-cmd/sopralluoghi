@@ -143,6 +143,65 @@ describe('pezziDaAnnotazioni', () => {
     expect(p[0].altezza).toBeLessThan(1010);
   });
 
+  it('vale la misura scritta, non come la forma è stata disegnata', () => {
+    // rettangolo tracciato a mano su una foto: i vertici non sono perfetti,
+    // ma il pezzo è b 140 · h 220 con +2 e +2 di lato e +10 sotto = 144 × 230
+    const p = pezziDaAnnotazioni(
+      [
+        poligono(
+          [[3, 1], [402, 6], [399, 622], [0, 618]],
+          [
+            { da: 0, a: 1, valore: 140, abbInizio: 2, abbFine: 2 },
+            { da: 1, a: 2, valore: 220, abbFine: 10 }
+          ]
+        )
+      ],
+      FOTO
+    );
+    expect(p[0]).toMatchObject({ larghezza: 1440, altezza: 2300, conAbbondanze: true });
+  });
+
+  it('un triangolo si taglia appoggiato sul lato più lungo', () => {
+    // 3-4-5: appoggiato sul 5 è alto 2,4
+    const p = pezziDaAnnotazioni(
+      [
+        poligono(
+          [[0, 0], [500, 0], [0, 300]],
+          [
+            { da: 0, a: 1, valore: 40 },
+            { da: 1, a: 2, valore: 50 },
+            { da: 2, a: 0, valore: 30 }
+          ]
+        )
+      ],
+      FOTO
+    );
+    expect(p[0]).toMatchObject({ larghezza: 500, altezza: 240 });
+  });
+
+  it('un trapezio prende la base maggiore e il lato più lungo', () => {
+    const p = pezziDaAnnotazioni(
+      [
+        poligono(
+          [[0, 0], [400, 0], [350, 200], [50, 200]],
+          [
+            { da: 0, a: 1, valore: 200 },
+            { da: 1, a: 2, valore: 105 },
+            { da: 2, a: 3, valore: 150 }
+          ]
+        )
+      ],
+      FOTO
+    );
+    // B 200 (maggiore di b 150) × h 105
+    expect(p[0]).toMatchObject({ larghezza: 2000, altezza: 1050 });
+  });
+
+  it('senza misure scritte l’ingombro si ricava ancora dal disegno', () => {
+    const p = pezziDaAnnotazioni([poligono([[0, 0], [200, 0], [200, 100], [0, 100]])], FOTO);
+    expect(p[0]).toMatchObject({ larghezza: 2000, altezza: 1000 });
+  });
+
   it('quote lineari, angoli e testi non sono pezzi', () => {
     const altro = [
       { ...base, tipo: 'quota', unita: 'cm', valore: 100 },

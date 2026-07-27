@@ -204,6 +204,29 @@ describe('pezziDaProgetto', () => {
     expect(cerchio).toMatchObject({ larghezza: 440, altezza: 440 });
   });
 
+  it('la misura è quella del report, non quella del disegno storto', async () => {
+    // stesso caso della relazione: b 140 · h 220 con +2, +2 e +10 → 144 × 230
+    await db.annotazioni.put({
+      ...comune('f1'),
+      id: 'a1',
+      tipo: 'quotaPoligono',
+      etichetta: 'I',
+      punti: [
+        { x: 3, y: 1 },
+        { x: 402, y: 6 },
+        { x: 399, y: 622 },
+        { x: 0, y: 618 }
+      ],
+      segmenti: [
+        { da: 0, a: 1, valore: 140, abbInizio: 2, abbFine: 2 },
+        { da: 1, a: 2, valore: 220, abbFine: 10 }
+      ]
+    } as unknown as Annotazione);
+
+    const pezzi = await pezziDaProgetto('p1');
+    expect(pezzi[0]).toMatchObject({ larghezza: 1440, altezza: 2300, conAbbondanze: true });
+  });
+
   it('le quote lineari non diventano pezzi', async () => {
     await db.annotazioni.put({
       ...comune('f1'),

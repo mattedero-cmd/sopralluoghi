@@ -11,10 +11,11 @@
  * ingombro reale, allungato dalle abbondanze dei lati.
  */
 
-import type { Annotazione, Foto, Punto, Unita } from '../db/types';
+import type { Annotazione, Foto, Punto, QuotaPoligono, SegmentoQuota, Unita } from '../db/types';
 import { abbondanzaTotale, segmentiPoligono, segmentoELato } from '../db/types';
 import { misuraSegmento } from './calibrazione';
 import { misureElemento } from './calibrazione';
+import { nomeFormaPoligono, simboliPoligono } from './primitive';
 import { inMillimetri } from '../utils/format';
 
 export interface PezzoDaMisura {
@@ -93,6 +94,80 @@ function ingombroPoligono(
   return { larghezza, altezza };
 }
 
+/** misura di taglio di un segmento: valore scritto + abbondanze */
+function taglioSegmento(s: SegmentoQuota): number | null {
+  if (s.valore === null || s.valore <= 0) return null;
+  return s.valore + abbondanzaTotale(s);
+}
+
+/**
+ * INGOMBRO DALLE MISURE SCRITTE, la stessa fonte del report.
+ *
+ * Un pezzo si taglia b × h: quanto è largo e alto sul disegno non conta, e
+ * anzi inganna, perché la forma è tracciata a mano su una foto in prospettiva.
+ * Il rettangolo quotato «b 140 · h 220 con +2 e +2 di lato e +10 sotto» è un
+ * pezzo da 144 × 230 cm esatti, non 141,4 × 229,8.
+ *
+ * Si riconosce la forma come nel report e si leggono i lati per quello che
+ * dicono. Restituisce null quando le misure non bastano — poligoni irregolari,
+ * lati non quotati — e allora l'ingombro si ricava dal disegno.
+ */
+function ingombroDaQuote(q: QuotaPoligono): { larghezza: number; altezza: number } | null {
+  const segs = segmentiPoligono(q);
+  const n = q.punti.length;
+  const forma = nomeFormaPoligono(q);
+  const lati = segs.filter((s) => segmentoELato(s, n));
+
+  // TRIANGOLO: i tre lati bastano a costruirlo. Si taglia appoggiato sul lato
+  // più lungo, quindi l'ingombro è quel lato per l'altezza relativa.
+  if (forma === 'Triangolo') {
+    const v = lati.map(taglioSegmento);
+    if (v.length !== 3 || v.some((x) => x === null)) return null;
+    const [a, b, c] = v as number[];
+    const sp = (a + b + c) / 2;
+    const q2 = sp * (sp - a) * (sp - b) * (sp - c);
+    if (q2 <= 0) return null; // lati che non chiudono un triangolo
+    const base = Math.max(a, b, c);
+    return { larghezza: base, altezza: (2 * Math.sqrt(q2)) / base };
+  }
+
+  const simboli = simboliPoligono(q);
+  const larghezze: number[] = [];
+  const altezze: number[] = [];
+  const diagonali: number[] = [];
+  segs.forEach((s, i) => {
+    const v = taglioSegmento(s);
+    if (v === null) return;
+    if (!segmentoELato(s, n)) {
+      diagonali.push(v);
+      return;
+    }
+    // il simbolo del report dice già a che asse appartiene il lato: b/B in
+    // larghezza, h/H in altezza (i pedici del quadrilatero non cambiano nulla)
+    const sim = (simboli[i] ?? '').replace(/[₀-₉0-9]/g, '');
+    if (sim === 'b' || sim === 'B') larghezze.push(v);
+    else if (sim === 'h' || sim === 'H') altezze.push(v);
+    else {
+      // simbolo scritto a mano: si guarda come il lato è disegnato
+      const p1 = q.punti[s.da];
+      const p2 = q.punti[s.a];
+      if (!p1 || !p2) return;
+      (Math.abs(p2.x - p1.x) >= Math.abs(p2.y - p1.y) ? larghezze : altezze).push(v);
+    }
+  });
+
+  // ROMBO: sta dentro il rettangolo delle sue diagonali
+  if (forma === 'Rombo' && diagonali.length === 2) {
+    return { larghezza: Math.max(...diagonali), altezza: Math.min(...diagonali) };
+  }
+
+  // rettangolo, trapezio, quadrilatero: il lato più lungo per ciascun verso
+  if (larghezze.length > 0 && altezze.length > 0) {
+    return { larghezza: Math.max(...larghezze), altezza: Math.max(...altezze) };
+  }
+  return null;
+}
+
 /**
  * INGOMBRO DI TAGLIO di una forma, in millimetri.
  *
@@ -129,6 +204,19 @@ export function ingombroTaglio(
 
   if (a.tipo === 'quotaPoligono') {
     const segs = segmentiPoligono(a);
+    const conAbb = segs.some((s) => segmentoELato(s, a.punti.length) && abbondanzaTotale(s) > 0);
+
+    // prima le misure scritte: sono quelle che finiscono sul report e che
+    // l'artigiano ha davvero preso
+    const daQuote = ingombroDaQuote(a);
+    if (daQuote) {
+      return {
+        larghezza: mm(daQuote.larghezza, a.unita),
+        altezza: mm(daQuote.altezza, a.unita),
+        conAbbondanze: conAbb
+      };
+    }
+
     const ing = ingombroPoligono(a.punti, segs, foto, a.unita);
     if (!ing) return null;
     // le abbondanze allungano i lati: quelle dei lati orizzontali entrano
