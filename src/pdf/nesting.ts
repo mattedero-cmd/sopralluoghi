@@ -1,5 +1,6 @@
 import type { Content, TDocumentDefinitions, TableCell } from 'pdfmake/interfaces';
-import { pdfMake } from './engine';
+import { pdfMake, COLORI_PDF } from './engine';
+import { leggiImpostazioni } from '../db/repository';
 import { impaginaLastra, riassuntoLastra, type AreaPagina } from './disegnoNesting';
 import {
   calcolaNestingMigliore,
@@ -45,10 +46,12 @@ interface Foglio {
 
 // A4 in punti (in piedi e coricata), meno i margini della pagina
 const A4 = { corto: 595.28, lungo: 841.89 };
-const MARGINI: [number, number, number, number] = [28, 30, 28, 34];
+// gli stessi margini dei report e dei preventivi: i documenti dell'app si
+// riconoscono come una famiglia
+const MARGINI: [number, number, number, number] = [40, 50, 40, 50];
 /** il disegno comincia sotto l'intestazione e lascia spazio alla didascalia */
-const Y_DISEGNO = 84;
-const SOTTO_DISEGNO = 60;
+const Y_DISEGNO = 100;
+const SOTTO_DISEGNO = 76;
 
 /**
  * Area del disegno sulla pagina. Una lastra larga si legge molto meglio su
@@ -243,8 +246,8 @@ function paginaFoglio(m: MaterialeNesting, foglio: Foglio): Content[] {
       pageBreak: 'before',
       pageOrientation: orizzontale ? 'landscape' : 'portrait',
       columns: [
-        { text: m.nome, style: 'titoloPagina' },
-        { text: titolo, style: 'titoloPagina', alignment: 'right' }
+        { text: m.nome, style: 'h2' },
+        { text: titolo, style: 'h2', alignment: 'right' }
       ]
     },
     {
@@ -358,9 +361,9 @@ function distinta(m: MaterialeNesting, esito: EsitoNesting): Content {
   }
   return {
     // la colonna del verso deve tenere «NON ENTRA» su una riga sola
-    table: { headerRows: 1, widths: [12, '*', 90, 36, 56], body: righe },
+    table: { headerRows: 1, widths: [12, '*', 90, 36, 60], body: righe },
     layout: 'lightHorizontalLines',
-    margin: [0, 4, 0, 0]
+    margin: [0, 6, 0, 0]
   };
 }
 
@@ -368,13 +371,30 @@ export async function generaPdfNesting(
   doc: DocumentoNesting,
   opzioni: OpzioniPdfNesting = OPZIONI_PDF_PREDEFINITE
 ): Promise<Blob> {
+  const imp = await leggiImpostazioni();
+  const prof = imp.professionista;
+  const BLU = imp.pdf.colore || COLORI_PDF.blu;
+  const righeProf = [prof.nome, prof.azienda, prof.indirizzo, prof.telefono, prof.email].filter(
+    Boolean
+  );
+
+  // copertina come quella dei report: stesso impianto, stesso ritmo
   const contenuto: Content[] = [
-    { text: doc.nome || 'Piano di taglio', style: 'titolo' },
+    { text: 'PIANO DI TAGLIO', style: 'copertinaTipo', margin: [0, 120, 0, 8] },
+    { text: doc.nome || 'Piano di taglio', style: 'copertinaTitolo' },
     {
-      text: `Piano di taglio · ${formattaData(Date.now())}`,
-      style: 'sottotitolo',
-      margin: [0, 0, 0, 10]
-    }
+      text: `Data: ${formattaData(Date.now())}`,
+      style: 'copertinaDati',
+      margin: [0, 18, 0, 0]
+    },
+    righeProf.length > 0
+      ? {
+          text: righeProf.join('\n'),
+          style: 'copertinaProf',
+          absolutePosition: { x: 40, y: 700 }
+        }
+      : { text: '' },
+    { text: 'Distinta di taglio', style: 'h1', pageBreak: 'before' }
   ];
 
   const pagine: Content[] = [];
@@ -427,7 +447,7 @@ export async function generaPdfNesting(
         : `${riep.pezziPiazzati} pezzi piazzati`
     );
 
-    contenuto.push({ text: m.nome, style: 'sezione' });
+    contenuto.push({ text: m.nome, style: 'h2' });
     contenuto.push({ text: dati.join('\n'), style: 'dati' });
     contenuto.push(distinta(m, esito));
 
@@ -436,27 +456,41 @@ export async function generaPdfNesting(
     }
   }
 
+  const pieDiPagina = imp.pdf.pieDiPagina.trim() || prof.azienda || prof.nome || '';
+
   const def: TDocumentDefinitions = {
     pageSize: 'A4',
     pageMargins: MARGINI,
-    info: { title: doc.nome || 'Piano di taglio' },
+    info: {
+      title: `Piano di taglio — ${doc.nome || 'senza nome'}`,
+      author: prof.nome || 'Sopralluoghi'
+    },
     content: [...contenuto, ...pagine],
-    defaultStyle: { fontSize: 9, color: '#20252b' },
+    defaultStyle: { fontSize: 11, color: '#20252b' },
     styles: {
-      titolo: { fontSize: 18, bold: true },
-      sezione: { fontSize: 13, bold: true, margin: [0, 12, 0, 2] },
-      sottotitolo: { fontSize: 9, color: '#5b636c' },
-      titoloPagina: { fontSize: 13, bold: true },
-      dati: { fontSize: 9, color: '#5b636c', lineHeight: 1.25 },
-      th: { fontSize: 8, bold: true, color: '#5b636c' },
-      td: { fontSize: 9 }
+      copertinaTipo: {
+        fontSize: 13,
+        color: COLORI_PDF.grigio,
+        alignment: 'center',
+        characterSpacing: 2
+      },
+      copertinaTitolo: { fontSize: 30, bold: true, alignment: 'center', color: BLU },
+      copertinaDati: { fontSize: 14, alignment: 'center', color: '#222222' },
+      copertinaProf: { fontSize: 10, color: COLORI_PDF.grigio },
+      h1: { fontSize: 20, bold: true, color: BLU, margin: [0, 0, 0, 12] },
+      h2: { fontSize: 15, bold: true, color: BLU, margin: [0, 10, 0, 4] },
+      sottotitolo: { fontSize: 10, color: COLORI_PDF.grigio },
+      dati: { fontSize: 10, color: COLORI_PDF.grigio, lineHeight: 1.3 },
+      th: { fontSize: 9, bold: true, color: '#ffffff', fillColor: BLU },
+      td: { fontSize: 10 },
+      pie: { fontSize: 9, color: COLORI_PDF.grigio }
     },
     footer: (pagina, totale) => ({
-      text: `${pagina} / ${totale}`,
-      alignment: 'center',
-      fontSize: 8,
-      color: '#8a9199',
-      margin: [0, 8, 0, 0]
+      columns: [
+        { text: pieDiPagina, style: 'pie' },
+        { text: `Pagina ${pagina} di ${totale}`, style: 'pie', alignment: 'right' }
+      ],
+      margin: [40, 16, 40, 0]
     })
   };
 

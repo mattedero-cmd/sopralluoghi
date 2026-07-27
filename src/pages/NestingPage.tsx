@@ -37,6 +37,8 @@ import {
 import type { LavoroNesting } from '../db/types';
 import { mostraToast } from '../state/toast';
 import { ModaleAnteprimaPdf } from '../components/ModaleAnteprimaPdf';
+import { condividiOScarica, nomeFileSicuro } from '../utils/share';
+import type { OpzioniSvgTaglio } from '../utils/esportaTaglio';
 import { OPZIONI_PDF_PREDEFINITE, type OpzioniPdfNesting } from '../pdf/opzioni';
 
 /**
@@ -479,6 +481,44 @@ export function NestingPage({ id, nuovoIn }: { id?: string; nuovoIn?: string }) 
       setAnteprima(blob);
     } catch (e) {
       mostraToast('errore', e instanceof Error ? e.message : 'Generazione PDF non riuscita.');
+    } finally {
+      setPdfInCorso(false);
+    }
+  };
+
+  /**
+   * Esporta i file SVG per la macchina da taglio.
+   *
+   * Uno solo si manda com'è; più d'uno finiscono in uno zip, perché la
+   * condivisione di sistema accetta un file per volta.
+   */
+  const esportaSvg = async (opzioni: OpzioniSvgTaglio) => {
+    setEsporta(false);
+    setPdfInCorso(true);
+    try {
+      const { fileSvgTaglio } = await import('../utils/esportaTaglio');
+      const file = fileSvgTaglio(doc, opzioni);
+      if (file.length === 0) {
+        mostraToast('info', 'Non c’è niente da tagliare: aggiungi dei pezzi.');
+        return;
+      }
+      const nome = doc.nome || 'piano-di-taglio';
+      if (file.length === 1) {
+        const blob = new Blob([file[0].contenuto], { type: 'image/svg+xml' });
+        await condividiOScarica(blob, `${file[0].nome}.svg`, nome);
+      } else {
+        const JSZip = (await import('jszip')).default;
+        const zip = new JSZip();
+        for (const f of file) zip.file(`${f.nome}.svg`, f.contenuto);
+        const blob = await zip.generateAsync({ type: 'blob' });
+        await condividiOScarica(blob, nomeFileSicuro(nome, 'zip'), nome);
+      }
+      mostraToast(
+        'successo',
+        file.length === 1 ? 'SVG di taglio esportato.' : `${file.length} SVG di taglio esportati.`
+      );
+    } catch (e) {
+      mostraToast('errore', e instanceof Error ? e.message : 'Esportazione SVG non riuscita.');
     } finally {
       setPdfInCorso(false);
     }
@@ -1124,6 +1164,7 @@ export function NestingPage({ id, nuovoIn }: { id?: string; nuovoIn?: string }) 
           iniziali={doc.stampa ?? OPZIONI_PDF_PREDEFINITE}
           onChiudi={() => setEsporta(false)}
           onEsporta={esportaPdf}
+          onEsportaSvg={esportaSvg}
         />
       )}
 
@@ -1453,15 +1494,20 @@ function ModaleEsporta({
   conBobine,
   iniziali,
   onChiudi,
-  onEsporta
+  onEsporta,
+  onEsportaSvg
 }: {
   conBobine: boolean;
   iniziali: OpzioniPdfNesting;
   onChiudi: () => void;
   onEsporta: (opzioni: OpzioniPdfNesting) => void;
+  onEsportaSvg: (opzioni: OpzioniSvgTaglio) => void;
 }) {
   const [segmenta, setSegmenta] = useState(iniziali.segmenta);
   const [massimo, setMassimo] = useState(iniziali.massimoSegmento);
+  // l'SVG può seguire la stessa divisione del PDF o restare un file unico
+  const [svgUnico, setSvgUnico] = useState(false);
+  const [svgEtichette, setSvgEtichette] = useState(false);
 
   return (
     <Modale titolo="Esporta il piano di taglio" onChiudi={onChiudi}>
@@ -1507,6 +1553,48 @@ function ModaleEsporta({
           onClick={() => onEsporta({ segmenta, massimoSegmento: massimo })}
         >
           Esporta PDF
+        </button>
+      </div>
+
+      <h3 className="nest-titolo" style={{ marginTop: 22 }}>
+        SVG per il taglio a macchina
+      </h3>
+      <p className="nest-sub">
+        Un file per foglio, in scala 1:1: il contorno del supporto nel livello{' '}
+        <code>sheet</code> in nero, i contorni dei pezzi nel livello{' '}
+        <code>CutContour</code> in magenta 100% — i nomi che i software di taglio cercano.
+      </p>
+      {conBobine && (
+        <div className="segmenti" role="group" aria-label="Come dividere i file SVG">
+          <button className={svgUnico ? 'attivo' : ''} onClick={() => setSvgUnico(true)}>
+            Un file per essenza
+          </button>
+          <button className={svgUnico ? '' : 'attivo'} onClick={() => setSvgUnico(false)}>
+            Come il PDF, sezionato
+          </button>
+        </div>
+      )}
+      <label className="fisc-check" style={{ marginTop: 10 }}>
+        <input
+          type="checkbox"
+          checked={svgEtichette}
+          onChange={(e) => setSvgEtichette(e.target.checked)}
+        />
+        Scrivi anche i nomi dei pezzi (fuori dal livello di taglio)
+      </label>
+      <div className="riga-pulsanti" style={{ marginTop: 12 }}>
+        <button
+          className="btn"
+          style={{ flex: 1 }}
+          onClick={() =>
+            onEsportaSvg({
+              perSegmento: conBobine ? !svgUnico : true,
+              massimoSegmento: massimo,
+              etichette: svgEtichette
+            })
+          }
+        >
+          <Icona nome="condividi" dimensione={18} /> Esporta SVG
         </button>
       </div>
     </Modale>
