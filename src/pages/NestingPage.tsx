@@ -11,7 +11,7 @@ import {
   type LastraNesting,
   type PezzoNesting
 } from '../geometry/nesting';
-import { BLOCCO_MANEGGEVOLE } from '../geometry/segmenti';
+import { BLOCCO_MANEGGEVOLE, segmentaBobina, strisciaResidua } from '../geometry/segmenti';
 import { analizzaTestoPezzi, type PezzoTestuale } from '../utils/parserPezzi';
 import { formattaData, formattaNumero } from '../utils/format';
 import { pianoEtichetta } from '../utils/etichettaNesting';
@@ -572,15 +572,58 @@ export function NestingPage({ id, nuovoIn }: { id?: string; nuovoIn?: string }) 
 
   /* --- disegno ------------------------------------------------------ */
 
-  const misureDisegno = (lastra: LastraNesting) => {
-    if (mat.modo !== 'bobina') return { ...mat.lastra };
-    return {
-      larghezza: mat.bobina.larghezza,
-      // della bobina si disegna solo il tratto consumato: mostrare 50 m di
-      // rotolo vuoto renderebbe i pezzi illeggibili
-      altezza: Math.max(1, lunghezzaUsata(lastra, mat.margine))
-    };
-  };
+  /**
+   * I FOGLI MOSTRATI A SCHERMO SONO QUELLI DEL PDF.
+   *
+   * Sulle lastre è una per foglio. Sulla bobina il rotolo viene spezzato negli
+   * stessi segmenti che finiranno sulla carta, con i pezzi già giustificati in
+   * fondo: quello che si vede qui è quello che si taglia, senza sorprese
+   * all'apertura del PDF.
+   */
+  const fogli = useMemo(() => {
+    if (mat.modo !== 'bobina') {
+      return esito.lastre.map((lastra, i) => ({
+        lastra,
+        titolo: `Lastra ${i + 1}`,
+        misure: { ...mat.lastra },
+        striscia: null as ReturnType<typeof strisciaResidua>
+      }));
+    }
+    const rotolo = esito.lastre[0];
+    if (!rotolo || rotolo.piazzamenti.length === 0) return [];
+    const opzioni = doc.stampa ?? OPZIONI_PDF_PREDEFINITE;
+    if (!opzioni.segmenta || !(opzioni.massimoSegmento > 0)) {
+      const usata = Math.max(1, lunghezzaUsata(rotolo, mat.margine));
+      const misure = { larghezza: mat.bobina.larghezza, altezza: usata };
+      return [
+        {
+          lastra: rotolo,
+          titolo: 'Bobina',
+          misure,
+          striscia: strisciaResidua(rotolo, misure.larghezza, misure.altezza)
+        }
+      ];
+    }
+    const segmenti = segmentaBobina(
+      rotolo,
+      opzioni.massimoSegmento,
+      mat.margine,
+      mat.bobina.larghezza,
+      mat.lama
+    );
+    return segmenti.map((sg, i) => {
+      const misure = {
+        larghezza: mat.bobina.larghezza,
+        altezza: Math.max(1, sg.fine - sg.inizio)
+      };
+      return {
+        lastra: sg.lastra,
+        titolo: `Segmento ${i + 1} di ${segmenti.length}`,
+        misure,
+        striscia: strisciaResidua(sg.lastra, misure.larghezza, misure.altezza)
+      };
+    });
+  }, [esito, mat.modo, mat.lastra, mat.bobina.larghezza, mat.margine, mat.lama, doc.stampa]);
 
   return (
     <div className="app">
@@ -987,14 +1030,15 @@ export function NestingPage({ id, nuovoIn }: { id?: string; nuovoIn?: string }) 
               </div>
             )}
 
-            {esito.lastre.map((lastra, i) => (
+            {fogli.map((f, i) => (
               <Lastra
                 key={i}
                 indice={i}
-                lastra={lastra}
-                misure={misureDisegno(lastra)}
+                lastra={f.lastra}
+                misure={f.misure}
                 margine={mat.margine}
-                titolo={mat.modo === 'bobina' ? 'Bobina' : `Lastra ${i + 1}`}
+                titolo={f.titolo}
+                striscia={f.striscia}
                 pezzi={mat.pezzi}
                 venatura={mat.venatura}
                 imposti={mat.orientamenti}
@@ -1009,8 +1053,9 @@ export function NestingPage({ id, nuovoIn }: { id?: string; nuovoIn?: string }) 
           Nesting <strong>libero</strong> (MaxRects, Best-Area-Fit), calcolato per ogni essenza
           separatamente provando più ordini di inserimento e tenendo il più efficiente. La <em>resa</em> è l’area dei pezzi finiti sull’area del materiale usato;
           lo <em>sfrido</em> comprende lama, abbondanze e margini. Il rotolo viene
-          impaginato come una striscia unica; il PDF può poi spezzarlo in blocchi maneggevoli,
-          tagliando solo dove non passa nessun pezzo. Misure in millimetri.
+          impaginato come una striscia unica e poi spezzato in blocchi maneggevoli, tagliando
+          solo dove non passa nessun pezzo: quello che vedi qui è quello che trovi nel PDF.
+          Misure in millimetri.
         </p>
       </main>
 
@@ -1108,6 +1153,7 @@ function Lastra({
   misure,
   margine,
   titolo,
+  striscia,
   pezzi,
   venatura,
   imposti,
@@ -1119,6 +1165,8 @@ function Lastra({
   misure: { larghezza: number; altezza: number };
   margine: number;
   titolo: string;
+  /** il ritaglio buono che avanza, se ce n'è uno */
+  striscia?: { larghezza: number; lunghezza: number } | null;
   pezzi: PezzoNesting[];
   venatura: Venatura;
   imposti: Record<string, boolean>;
@@ -1164,6 +1212,13 @@ function Lastra({
         <div className="misure">
           {lastra.piazzamenti.length} pezzi · resa{' '}
           <strong>{formattaNumero(Math.round(resa * 10) / 10)}%</strong>
+          {striscia && (
+            <>
+              <br />
+              avanza {formattaNumero(Math.round(striscia.larghezza))}×
+              {formattaNumero(Math.round(striscia.lunghezza))} mm
+            </>
+          )}
         </div>
       </div>
       <div ref={rifSvg}>
