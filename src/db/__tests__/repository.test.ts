@@ -298,6 +298,18 @@ describe('lavori di nesting in archivio', () => {
     expect(dopo.documento).toEqual({ a: 2 });
   });
 
+  it('«non so dov’è» lascia il lavoro dov’è, «radice» invece lo sposta', async () => {
+    // la distinzione che tiene il piano di taglio nella cartella del progetto:
+    // chi salva senza sapere la cartella non deve dire «radice» per sbaglio
+    await salvaNesting('n5', 'Taglio', { a: 1 }, { cartellaId: 'cart' });
+    expect((await salvaNesting('n5', 'Taglio', { a: 2 }, { pdf: undefined })).cartellaId).toBe(
+      'cart'
+    );
+    expect((await salvaNesting('n5', 'Taglio', { a: 3 }, { cartellaId: null })).cartellaId).toBe(
+      null
+    );
+  });
+
   it('il PDF resta finché non ne arriva uno nuovo, e la data dice se è vecchio', async () => {
     const pdf = new Blob(['%PDF-1.4'], { type: 'application/pdf' });
     await salvaNesting('n3', 'Taglio', { a: 1 }, { pdf });

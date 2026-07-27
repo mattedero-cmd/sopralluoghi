@@ -221,7 +221,16 @@ export function NestingPage({ id, nuovoIn }: { id?: string; nuovoIn?: string }) 
   const [idArchivio, setIdArchivio] = useState<string | null>(
     id ?? iniziale?.idArchivio ?? null
   );
-  const [cartellaId, setCartellaId] = useState<string | null>(nuovoIn ?? null);
+  /**
+   * Cartella dell'archivio in cui vive il lavoro.
+   *
+   * `undefined` vuol dire «non lo so ancora»: il salvataggio automatico allora
+   * NON tocca la cartella del record, che resta dov'è. È la differenza fra
+   * «metti questo lavoro nella radice» e «lascialo dov'è»: senza, riprendendo
+   * una bozza il piano di taglio uscirebbe dalla cartella del progetto da cui
+   * è nato.
+   */
+  const [cartellaId, setCartellaId] = useState<string | null | undefined>(nuovoIn ?? undefined);
   const [caricamento, setCaricamento] = useState(!!id);
   const [incolla, setIncolla] = useState(false);
   const [apri, setApri] = useState(false);
@@ -252,6 +261,20 @@ export function NestingPage({ id, nuovoIn }: { id?: string; nuovoIn?: string }) 
       vivo = false;
     };
   }, [id]);
+
+  // BOZZA RIPRESA di un lavoro già in archivio: il documento arriva da lì —
+  // può contenere modifiche non ancora scritte — ma la cartella la sa solo il
+  // database, e va ritrovata prima che il salvataggio automatico scriva
+  useEffect(() => {
+    if (id || !idArchivio || cartellaId !== undefined) return;
+    let vivo = true;
+    void leggiNesting(idArchivio).then((l) => {
+      if (vivo && l) setCartellaId(l.cartellaId ?? null);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [id, idArchivio, cartellaId]);
 
   // il lavoro resta fra una navigazione e l'altra (e fra le sessioni)
   useEffect(() => {
@@ -682,7 +705,7 @@ export function NestingPage({ id, nuovoIn }: { id?: string; nuovoIn?: string }) 
         <button
           className="btn icona"
           aria-label="Indietro"
-          onClick={() => naviga({ nome: 'archivio', cartellaId })}
+          onClick={() => naviga({ nome: 'archivio', cartellaId: cartellaId ?? null })}
         >
           <Icona nome="indietro" />
         </button>
