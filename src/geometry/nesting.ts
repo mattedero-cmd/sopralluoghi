@@ -383,7 +383,8 @@ function qualita(
   e: EsitoNesting,
   opzioni?: OpzioniRicerca,
   margine = 0,
-  larghezza = 0
+  larghezza = 0,
+  lama = 0
 ): [number, number, number, number] {
   let piazzati = 0;
   let occupata = 0;
@@ -399,7 +400,7 @@ function qualita(
   let ingestibili = 0;
   if (opzioni?.bloccoMassimo && opzioni.bloccoMassimo > 0) {
     for (const l of e.lastre) {
-      for (const s of segmentaBobina(l, opzioni.bloccoMassimo, margine, larghezza)) {
+      for (const s of segmentaBobina(l, opzioni.bloccoMassimo, margine, larghezza, lama)) {
         if (s.oltreMassimo) ingestibili++;
       }
     }
@@ -455,7 +456,7 @@ export function calcolaNestingMigliore(
   for (const ordinamento of ORDINAMENTI) {
     for (const verso of VERSI) {
       const e = calcolaNesting({ ...par, ordinamento, verso }, pezzi);
-      const q = qualita(e, opzioni, par.margine, par.lastra.larghezza);
+      const q = qualita(e, opzioni, par.margine, par.lastra.larghezza, par.lama);
       if (!punteggio || confronta(q, punteggio) < 0) {
         migliore = e;
         punteggio = q;

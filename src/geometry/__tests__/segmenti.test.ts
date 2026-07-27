@@ -400,3 +400,93 @@ describe('ritaglio: a parità di superficie vince il più largo', () => {
     expect(s?.larghezza).toBe(100);
   });
 });
+
+describe('pezzi giustificati in fondo al segmento', () => {
+  const conX = (...righe: Array<[number, number, number, number]>): LastraNesting => ({
+    piazzamenti: righe.map(([x, y, l, a], i) => ({
+      x, y, larghezza: l, altezza: a,
+      larghezzaFinita: l, altezzaFinita: a,
+      nome: `p${i}`, tinta: 0, ruotato: false, chiave: `p${i}#0`
+    })) as Piazzamento[]
+  });
+
+  // il caso della foto: due colonne alte a sinistra, una colonna media, e due
+  // frontali fermi a metà blocco sotto di essa
+  const rotolo = conX(
+    [10, 10, 450, 2300],
+    [463, 10, 200, 2300],
+    [666, 10, 100, 1650],
+    [666, 1663, 500, 150],
+    [666, 1816, 500, 150]
+  );
+
+  it('i frontali scendono in fondo e il ritaglio diventa più grande', () => {
+    const senza = strisciaResidua(rotolo, 1220, 2310)!;
+    const s = segmentaBobina(rotolo, 3000, 10, 1220, 3);
+    expect(s).toHaveLength(1);
+    const con = strisciaResidua(s[0].lastra, 1220, 2310)!;
+    expect(con.larghezza * con.lunghezza).toBeGreaterThan(senza.larghezza * senza.lunghezza);
+
+    const frontali = s[0].lastra.piazzamenti.filter((p) => p.altezza === 150);
+    // il più basso arriva a filo dei pezzi alti, cioè in fondo al segmento
+    const piuBasso = Math.max(...frontali.map((p) => p.y + p.altezza));
+    expect(piuBasso).toBe(2310);
+  });
+
+  it('non sovrappone i pezzi e lascia la lama fra loro', () => {
+    const s = segmentaBobina(rotolo, 3000, 10, 1220, 3);
+    const pezzi = s[0].lastra.piazzamenti;
+    for (let i = 0; i < pezzi.length; i++) {
+      for (let j = i + 1; j < pezzi.length; j++) {
+        const a = pezzi[i];
+        const b = pezzi[j];
+        const separati =
+          a.x + a.larghezza <= b.x + 1e-9 ||
+          b.x + b.larghezza <= a.x + 1e-9 ||
+          a.y + a.altezza <= b.y + 1e-9 ||
+          b.y + b.altezza <= a.y + 1e-9;
+        expect(separati, `${a.nome} e ${b.nome} si toccano`).toBe(true);
+        // se sono incolonnati, fra loro resta almeno la lama
+        const incrociaX = a.x < b.x + b.larghezza && a.x + a.larghezza > b.x;
+        if (incrociaX) {
+          const sopra = a.y < b.y ? a : b;
+          const sotto = a.y < b.y ? b : a;
+          expect(sotto.y - (sopra.y + sopra.altezza)).toBeGreaterThanOrEqual(3 - 1e-9);
+        }
+      }
+    }
+  });
+
+  it('nessun pezzo esce dal segmento', () => {
+    const s = segmentaBobina(rotolo, 3000, 10, 1220, 3);
+    for (const seg of s) {
+      for (const p of seg.lastra.piazzamenti) {
+        expect(p.y).toBeGreaterThanOrEqual(-1e-9);
+        expect(p.y + p.altezza).toBeLessThanOrEqual(seg.fine - seg.inizio + 1e-9);
+      }
+    }
+  });
+
+  it('le misure dei pezzi non vengono toccate', () => {
+    const s = segmentaBobina(rotolo, 3000, 10, 1220, 3);
+    const misure = s[0].lastra.piazzamenti
+      .map((p) => `${p.larghezza}x${p.altezza}@${p.x}`)
+      .sort();
+    expect(misure).toEqual(
+      rotolo.piazzamenti.map((p) => `${p.larghezza}x${p.altezza}@${p.x}`).sort()
+    );
+  });
+
+  it('se il blocco è già compatto non cambia niente', () => {
+    const pieno = conX([10, 10, 600, 1000], [616, 10, 594, 1000]);
+    const s = segmentaBobina(pieno, 3000, 10, 1220, 3);
+    expect(s[0].lastra.piazzamenti.map((p) => p.y)).toEqual([10, 10]);
+  });
+
+  it('senza la larghezza del rotolo non si azzarda a spostare niente', () => {
+    const s = segmentaBobina(rotolo, 3000, 10);
+    expect(s[0].lastra.piazzamenti.map((p) => p.y)).toEqual(
+      rotolo.piazzamenti.map((p) => p.y)
+    );
+  });
+});

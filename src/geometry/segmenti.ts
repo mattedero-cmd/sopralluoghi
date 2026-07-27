@@ -61,16 +61,16 @@ export function segmentaBobina(
   lastra: LastraNesting | undefined,
   massimo: number,
   margine = 0,
-  larghezza = 0
+  larghezza = 0,
+  lama = 0
 ): SegmentoBobina[] {
   const pezzi = lastra?.piazzamenti ?? [];
   if (pezzi.length === 0) return [];
 
   const fineTotale = pezzi.reduce((f, p) => Math.max(f, p.y + p.altezza), 0) + margine;
+  const contesto = { larghezza, lama, margine, ultimo: true };
   if (!(massimo > 0) || fineTotale <= massimo) {
-    return [
-      { inizio: 0, fine: fineTotale, lastra: trasla(pezzi, 0), oltreMassimo: false }
-    ];
+    return [blocco(pezzi, 0, fineTotale, false, contesto)];
   }
 
   // Le fasce di rotolo davvero occupate, unite fra loro. Fuori da queste il
@@ -178,17 +178,97 @@ export function segmentaBobina(
     blocchi.splice(i, 1);
   }
 
-  return blocchi.map((b) => blocco(pezzi, b.inizio, b.fine, b.oltre));
+  return blocchi.map((b, i) =>
+    blocco(pezzi, b.inizio, b.fine, b.oltre, { ...contesto, ultimo: i === blocchi.length - 1 })
+  );
 }
 
 function blocco(
   pezzi: Piazzamento[],
   inizio: number,
   fine: number,
-  oltreMassimo: boolean
+  oltreMassimo: boolean,
+  contesto?: { larghezza: number; lama: number; ultimo: boolean; margine: number }
 ): SegmentoBobina {
   const dentro = pezzi.filter((p) => p.y >= inizio - EPS && p.y + p.altezza <= fine + EPS);
-  return { inizio, fine, lastra: trasla(dentro, inizio), oltreMassimo };
+  const lastra = contesto
+    ? assestaSegmento(trasla(dentro, inizio), fine - inizio, contesto)
+    : trasla(dentro, inizio);
+  return { inizio, fine, lastra, oltreMassimo };
+}
+
+/**
+ * PEZZI GIUSTIFICATI IN FONDO AL SEGMENTO.
+ *
+ * Dentro un blocco staccato dal rotolo la posizione dei pezzi lungo la
+ * lunghezza non cambia il taglio: cambia solo la FORMA di quello che avanza.
+ * Un pezzo lasciato a metà blocco spacca lo sfrido in due ritagli; lo stesso
+ * pezzo spinto in fondo lascia un rettangolo unico e più grande.
+ *
+ * Si provano tre disposizioni — com'è, tutti i pezzi caduti in fondo, solo
+ * quelli che non partono dalla testa — e si tiene quella che lascia il
+ * ritaglio migliore. Nessuno risale mai, e la distanza fra i pezzi resta
+ * quella della lama: le misure di taglio non cambiano di un millimetro.
+ */
+function assestaSegmento(
+  lastra: LastraNesting,
+  lunghezza: number,
+  contesto: { larghezza: number; lama: number; ultimo: boolean; margine: number }
+): LastraNesting {
+  const pezzi = lastra.piazzamenti;
+  if (pezzi.length === 0 || !(contesto.larghezza > 0)) return lastra;
+  // nell'ultimo blocco il margine di coda va lasciato libero
+  const fondo = lunghezza - (contesto.ultimo ? contesto.margine : 0);
+  if (!(fondo > 0)) return lastra;
+
+  const candidate = [
+    lastra,
+    { piazzamenti: cadono(pezzi, fondo, contesto.lama, false) },
+    { piazzamenti: cadono(pezzi, fondo, contesto.lama, true) }
+  ];
+
+  let migliore = lastra;
+  let punteggio = -1;
+  for (const c of candidate) {
+    const r = strisciaResidua(c, contesto.larghezza, lunghezza);
+    // a parità di ritaglio si tiene la prima, cioè la disposizione originale
+    const valore = r ? r.larghezza * r.lunghezza : 0;
+    if (valore > punteggio + 1e-6) {
+      punteggio = valore;
+      migliore = c;
+    }
+  }
+  return migliore;
+}
+
+/**
+ * Fa "cadere" i pezzi verso il fondo del blocco, uno alla volta partendo dal
+ * più basso. Con `soloFluttuanti` restano fermi quelli che partono dalla testa
+ * del blocco: sono già a posto, e muoverli aprirebbe un buco in cima.
+ */
+function cadono(
+  pezzi: Piazzamento[],
+  fondo: number,
+  lama: number,
+  soloFluttuanti: boolean
+): Piazzamento[] {
+  const testa = Math.min(...pezzi.map((p) => p.y));
+  const ordinati = [...pezzi].sort((a, b) => b.y + b.altezza - (a.y + a.altezza));
+  const messi: Piazzamento[] = [];
+  for (const p of ordinati) {
+    if (soloFluttuanti && p.y <= testa + EPS) {
+      messi.push(p);
+      continue;
+    }
+    let y = fondo - p.altezza;
+    for (const q of messi) {
+      const incrociaX = p.x < q.x + q.larghezza - EPS && p.x + p.larghezza > q.x + EPS;
+      if (incrociaX) y = Math.min(y, q.y - lama - p.altezza);
+    }
+    // solo in giù: risalire sposterebbe il pezzo fuori dal suo blocco
+    messi.push({ ...p, y: Math.max(p.y, y) });
+  }
+  return messi;
 }
 
 /**

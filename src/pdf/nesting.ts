@@ -108,7 +108,8 @@ function fogliDi(
     rotolo,
     opzioni.massimoSegmento,
     m.margine,
-    m.bobina.larghezza
+    m.bobina.larghezza,
+    m.lama
   );
   return segmenti.map((s, i) => ({
     lastra: s.lastra,
