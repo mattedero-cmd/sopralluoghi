@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { segmentaBobina } from '../segmenti';
+import { segmentaBobina, strisciaResidua } from '../segmenti';
 import { calcolaNesting, type LastraNesting, type Piazzamento } from '../nesting';
 
 /** costruisce una lastra fittizia: solo y/altezza contano per il taglio */
@@ -197,5 +197,206 @@ describe('margini senza pezzi dentro', () => {
       expect(s.every((x) => x.lastra.piazzamenti.length > 0)).toBe(true);
       expect(s.reduce((n, x) => n + x.lastra.piazzamenti.length, 0)).toBe(4);
     }
+  });
+});
+
+describe('sfridi: le strisce restano intere', () => {
+  /** lastra con pezzi collocati anche in x, per valutare la striscia laterale */
+  function conX(...righe: Array<[number, number, number, number]>): LastraNesting {
+    return {
+      piazzamenti: righe.map(([x, y, l, a], i) => ({
+        x,
+        y,
+        larghezza: l,
+        altezza: a,
+        larghezzaFinita: l,
+        altezzaFinita: a,
+        nome: `p${i}`,
+        tinta: 0,
+        ruotato: false,
+        chiave: `p${i}#0`
+      })) as Piazzamento[]
+    };
+  }
+
+  // come nella foto: sopra una colonna di pezzi da 750 (striscia libera 470),
+  // sotto tre file di due pezzi da 500 (striscia libera 220)
+  const rotolo = conX(
+    [0, 0, 750, 500],
+    [0, 500, 750, 500],
+    [0, 1000, 500, 500],
+    [500, 1000, 500, 500],
+    [0, 1500, 500, 500],
+    [500, 1500, 500, 500],
+    [0, 2000, 500, 500],
+    [500, 2000, 500, 500]
+  );
+
+  it('taglia dove la striscia cambia larghezza, non in mezzo alle file uguali', () => {
+    // il limite cadrebbe a 1800, in mezzo alle file da 500: lì la striscia da
+    // 220 verrebbe spezzata in due. Il punto giusto è 1000, dove la striscia
+    // passa da 470 a 220 per conto suo.
+    const s = segmentaBobina(rotolo, 1800, 0, 1220);
+    expect(s[0].fine).toBe(1000);
+  });
+
+  it('senza la larghezza del rotolo non può ragionare sulle strisce', () => {
+    // 1800 cade dentro una fila, quindi si arretra a 1500: ma lì la striscia
+    // da 220 viene spezzata, e senza la larghezza non lo si può sapere
+    const s = segmentaBobina(rotolo, 1800, 0);
+    expect(s[0].fine).toBe(1500);
+  });
+
+  it('una striscia troppo stretta è scarto: non vale la pena accorciare', () => {
+    // rotolo largo 1010: di fianco alle file da 500+500 restano 10 mm, che
+    // non sono materiale. Spezzarli non toglie niente, quindi si taglia lungo
+    const s = segmentaBobina(rotolo, 1800, 0, 1010);
+    expect(s[0].fine).toBe(1500);
+  });
+
+  it('se accorciare non serve, il taglio resta il più lontano possibile', () => {
+    // file tutte diverse: ogni linea cambia la striscia, quindi si usa tutto
+    const misto = conX([0, 0, 700, 500], [0, 500, 900, 500], [0, 1000, 600, 500]);
+    const s = segmentaBobina(misto, 1000, 0, 1220);
+    expect(s[0].fine).toBe(1000);
+  });
+
+  it('non perde pezzi né contiguità nemmeno con la preferenza attiva', () => {
+    for (const massimo of [700, 1100, 1500, 1800, 2200]) {
+      const s = segmentaBobina(rotolo, massimo, 10, 1220);
+      expect(s.reduce((n, x) => n + x.lastra.piazzamenti.length, 0)).toBe(8);
+      expect(s[0].inizio).toBe(0);
+      expect(s[s.length - 1].fine).toBe(2510);
+      for (let i = 1; i < s.length; i++) expect(s[i].inizio).toBe(s[i - 1].fine);
+    }
+  });
+});
+
+describe('strisciaResidua', () => {
+  const conX = (...righe: Array<[number, number, number, number]>): LastraNesting => ({
+    piazzamenti: righe.map(([x, y, l, a], i) => ({
+      x, y, larghezza: l, altezza: a,
+      larghezzaFinita: l, altezzaFinita: a,
+      nome: `p${i}`, tinta: 0, ruotato: false, chiave: `p${i}#0`
+    })) as Piazzamento[]
+  });
+
+  it('misura il ritaglio intero più grande che avanza di fianco ai pezzi', () => {
+    const s = strisciaResidua(conX([0, 0, 750, 500], [0, 500, 700, 500]), 1220, 1000);
+    expect(s).toEqual({ larghezza: 470, lunghezza: 1000, inizio: 0 });
+  });
+
+  it('preferisce il rettangolo più grande, non la striscia più stretta', () => {
+    // sopra avanzano 470 mm per 500 di lunghezza (235.000 mm²), sotto ne
+    // avanzano 720 per 1000 (720.000): il ritaglio buono è il secondo
+    const s = strisciaResidua(conX([0, 0, 750, 500], [0, 500, 500, 1000]), 1220, 1500);
+    expect(s).toEqual({ larghezza: 720, lunghezza: 1000, inizio: 500 });
+  });
+
+  it('il ritaglio a cavallo di più fasce vale la larghezza minore', () => {
+    // 470 su tutte e due le fasce = 470 × 1000, meglio di 720 × 500
+    const s = strisciaResidua(conX([0, 0, 750, 500], [0, 500, 500, 500]), 1220, 1000);
+    expect(s).toEqual({ larghezza: 470, lunghezza: 1000, inizio: 0 });
+  });
+
+  it('una striscia sotto i 10 cm è scarto, non materiale', () => {
+    expect(strisciaResidua(conX([0, 0, 1180, 500]), 1220, 500)).toBeNull();
+  });
+
+  it('senza pezzi o senza misure non inventa niente', () => {
+    expect(strisciaResidua(undefined, 1220, 1000)).toBeNull();
+    expect(strisciaResidua(conX([0, 0, 500, 500]), 0, 1000)).toBeNull();
+    expect(strisciaResidua(conX([0, 0, 500, 500]), 1220, 0)).toBeNull();
+  });
+});
+
+describe('ritaglio più grande: casi a gradini', () => {
+  const conX = (...righe: Array<[number, number, number, number]>): LastraNesting => ({
+    piazzamenti: righe.map(([x, y, l, a], i) => ({
+      x, y, larghezza: l, altezza: a,
+      larghezzaFinita: l, altezzaFinita: a,
+      nome: `p${i}`, tinta: 0, ruotato: false, chiave: `p${i}#0`
+    })) as Piazzamento[]
+  });
+
+  it('un tratto largo e corto batte una striscia stretta e lunga se ha più area', () => {
+    // fasce libere: 320 (0..610), 157 (610..1220), 470 (1220..2455)
+    // 470 × 1235 = 580.450 vince su 157 × 2455 = 385.435
+    const s = strisciaResidua(
+      conX(
+        [0, 0, 900, 610],
+        [0, 610, 750, 610],
+        [750, 610, 313, 610],
+        [0, 1220, 750, 1235]
+      ),
+      1220,
+      2455
+    );
+    expect(s).toEqual({ larghezza: 470, lunghezza: 1235, inizio: 1220 });
+  });
+
+  it('una striscia stretta ma lunghissima vince se ha più area', () => {
+    // i 100 mm liberi in cima proseguono anche nella fascia sotto (che ne ha
+    // 400): la striscia vale 100 × 6000, meglio dei 400 × 1000 in fondo
+    const s = strisciaResidua(
+      conX([0, 0, 1120, 5000], [0, 5000, 820, 1000]),
+      1220,
+      6000
+    );
+    expect(s).toEqual({ larghezza: 100, lunghezza: 6000, inizio: 0 });
+  });
+
+  it('il ritaglio dichiarato è davvero libero: nessun pezzo ci finisce dentro', () => {
+    const l = conX(
+      [0, 0, 900, 610],
+      [0, 610, 750, 610],
+      [750, 610, 313, 610],
+      [0, 1220, 750, 1235]
+    );
+    const s = strisciaResidua(l, 1220, 2455)!;
+    for (const p of l.piazzamenti) {
+      const sovrappone =
+        p.x < 1220 - s.larghezza + 1220 &&
+        p.x + p.larghezza > 1220 - s.larghezza &&
+        p.y < s.inizio + s.lunghezza &&
+        p.y + p.altezza > s.inizio;
+      // il ritaglio sta a destra di tutti i pezzi che lo attraversano in altezza
+      if (sovrappone) expect(p.x + p.larghezza).toBeLessThanOrEqual(1220 - s.larghezza + 1e-6);
+    }
+  });
+});
+
+describe('ritaglio: a parità di superficie vince il più largo', () => {
+  const conX = (...righe: Array<[number, number, number, number]>): LastraNesting => ({
+    piazzamenti: righe.map(([x, y, l, a], i) => ({
+      x, y, larghezza: l, altezza: a,
+      larghezzaFinita: l, altezzaFinita: a,
+      nome: `p${i}`, tinta: 0, ruotato: false, chiave: `p${i}#0`
+    })) as Piazzamento[]
+  });
+
+  it('il caso reale: il ritaglio largo 460 batte la bandella da 157', () => {
+    // due traverse sporgono a destra solo per un tratto: sotto resta un
+    // ritaglio corto ma largo, quasi della stessa superficie della bandella
+    const s = strisciaResidua(
+      conX(
+        [10, 3, 900, 610],
+        [10, 616, 750, 610],
+        [10, 1229, 750, 610],
+        [10, 1842, 750, 610],
+        [763, 616, 300, 500],
+        [763, 1119, 300, 500]
+      ),
+      1220,
+      2455
+    );
+    expect(s?.larghezza).toBe(460);
+    expect(Math.round(s!.lunghezza)).toBe(836);
+  });
+
+  it('una differenza di superficie vera decide comunque lei', () => {
+    // 100 × 6000 = 600.000 contro 400 × 1000: non è parità, vince l'area
+    const s = strisciaResidua(conX([0, 0, 1120, 5000], [0, 5000, 820, 1000]), 1220, 6000);
+    expect(s?.larghezza).toBe(100);
   });
 });
