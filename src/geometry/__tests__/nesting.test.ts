@@ -3,6 +3,7 @@ import {
   calcolaNesting,
   calcolaNestingMigliore,
   CRITERI,
+  risalgono,
   ORDINAMENTI,
   VERSI,
   passoGriglia,
@@ -687,5 +688,95 @@ describe('raffinatura: gira un pezzo alla volta', () => {
           }
       }
     }
+  });
+});
+
+/**
+ * IL PONTE FRA DUE BLOCCHI.
+ *
+ * Due pezzi stretti incolonnati, rimasti più in basso del necessario, si
+ * allungano oltre la fine della fila che hanno di fianco: da lì in poi la
+ * lama non trova più un punto dove passare e il rotolo si stacca tutto
+ * intero. Presi uno per uno non possono salire — sopra ognuno c'è meno
+ * spazio di quanto sia lungo — quindi devono muoversi insieme.
+ */
+describe('risalita verso la testa del rotolo', () => {
+  const piazza = (nome: string, x: number, y: number, larghezza: number, altezza: number) => ({
+    x,
+    y,
+    larghezza,
+    altezza,
+    larghezzaFinita: larghezza,
+    altezzaFinita: altezza,
+    nome,
+    tinta: 0,
+    ruotato: false,
+    chiave: `${nome}#0`
+  });
+
+  // quattro file da 1400 una sotto l'altra e, di fianco, due pezzi stretti
+  // rimasti 800 mm più in basso del necessario: a cavallo delle file, fanno da
+  // ponte e saldano il rotolo in un blocco unico da 4,2 m
+  const ponte: EsitoNesting = {
+    scartati: [],
+    lastre: [
+      {
+        piazzamenti: [
+          piazza('Fila 1', 0, 0, 1440, 1400),
+          piazza('Fila 2', 0, 1400, 1440, 1400),
+          piazza('Fila 3', 0, 2800, 1440, 1400),
+          piazza('Fila 4', 0, 4200, 1440, 1400),
+          piazza('Stretto 1', 1440, 800, 200, 1200),
+          piazza('Stretto 2', 1440, 2000, 200, 1200)
+        ]
+      }
+    ]
+  };
+
+  it('senza risalita resta un blocco che al banco non si maneggia', () => {
+    const s = segmentaBobina(ponte.lastre[0], 3000, 0, 1830, 0);
+    expect(s.some((x) => x.oltreMassimo)).toBe(true);
+    expect(Math.max(...s.map((x) => x.fine - x.inizio))).toBe(4200);
+  });
+
+  it('le due colonne salgono INSIEME: da sole non ci sarebbero mai arrivate', () => {
+    // sopra ciascuna c'\u2019\u00e8 meno spazio di quanto sia lunga (800 contro 1200):
+    // spostare un pezzo alla volta non serve a niente
+    const su = risalgono(ponte, 0, 0);
+    const stretti = su.lastre[0].piazzamenti
+      .filter((p) => p.nome.startsWith('Stretto'))
+      .sort((a, b) => a.y - b.y);
+    expect(stretti.map((p) => p.y)).toEqual([0, 1200]);
+  });
+
+  it('e il rotolo torna a lasciarsi spezzare', () => {
+    const s = segmentaBobina(risalgono(ponte, 0, 0).lastre[0], 3000, 0, 1830, 0);
+    expect(s.every((x) => !x.oltreMassimo)).toBe(true);
+    for (const x of s) expect(x.fine - x.inizio).toBeLessThanOrEqual(3000);
+  });
+
+  it('nessuno scavalca nessuno e il materiale non cresce mai', () => {
+    const su = risalgono(ponte, 0, 0);
+    const p = su.lastre[0].piazzamenti;
+    for (let i = 0; i < p.length; i++)
+      for (let j = i + 1; j < p.length; j++)
+        expect(
+          p[i].x + p[i].larghezza <= p[j].x + 1e-9 ||
+            p[j].x + p[j].larghezza <= p[i].x + 1e-9 ||
+            p[i].y + p[i].altezza <= p[j].y + 1e-9 ||
+            p[j].y + p[j].altezza <= p[i].y + 1e-9
+        ).toBe(true);
+    const fine = (e: EsitoNesting) =>
+      e.lastre[0].piazzamenti.reduce((f, x) => Math.max(f, x.y + x.altezza), 0);
+    expect(fine(su)).toBeLessThanOrEqual(fine(ponte));
+  });
+
+  it('la lama resta fra i pezzi e il margine di testa non si invade', () => {
+    const su = risalgono(ponte, 3, 10);
+    const stretti = su.lastre[0].piazzamenti
+      .filter((p) => p.nome.startsWith('Stretto'))
+      .sort((a, b) => a.y - b.y);
+    expect(stretti[0].y).toBe(10);
+    expect(stretti[1].y).toBe(10 + 1200 + 3);
   });
 });

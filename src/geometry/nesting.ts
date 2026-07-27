@@ -411,6 +411,44 @@ export function calcolaNesting(par: ParametriNesting, pezzi: PezzoNesting[]): Es
   return { lastre: lastre.map((c) => ({ piazzamenti: c.piazzamenti })), scartati };
 }
 
+/**
+ * RISALITA: i pezzi si stringono verso la testa del rotolo.
+ *
+ * L'impacchettamento appoggia ogni pezzo in cima allo spazio libero che ha
+ * trovato, ma quello spazio può cominciare più in basso di dov'è finito il
+ * pezzo accanto: restano buchi, e un buco in mezzo a una colonna tiene i pezzi
+ * più in basso di quanto serva. Quando due pezzi stretti incolonnati scendono
+ * sotto la fine della fila che hanno di fianco, fanno da ponte fra un blocco e
+ * il successivo: la lama non ha più dove passare e il rotolo si stacca tutto
+ * intero, nove metri e mezzo che al banco non si maneggiano.
+ *
+ * Qui i pezzi risalgono uno alla volta partendo dal primo, ciascuno fino a
+ * toccare — a distanza di lama — quello che incontra sopra di sé nella sua
+ * colonna. È il movimento contrario alla caduta dentro il blocco, e ha la
+ * stessa garanzia: nessuno scavalca nessuno, le distanze di taglio non
+ * cambiano, il materiale usato non può che diminuire. Una colonna intera si
+ * sposta insieme, ed è quello che serve: preso da solo, nessuno dei due pezzi
+ * incolonnati avrebbe avuto lo spazio per salire.
+ */
+export function risalgono(esito: EsitoNesting, lama: number, margine: number): EsitoNesting {
+  return {
+    scartati: esito.scartati,
+    lastre: esito.lastre.map((l) => {
+      const messi: Piazzamento[] = [];
+      for (const p of [...l.piazzamenti].sort((a, b) => a.y - b.y)) {
+        let limite = margine;
+        for (const q of messi) {
+          const incrociaX = p.x < q.x + q.larghezza - 1e-6 && p.x + p.larghezza > q.x + 1e-6;
+          if (incrociaX) limite = Math.max(limite, q.y + q.altezza + lama);
+        }
+        // solo in su: scendere allungherebbe il rotolo
+        messi.push({ ...p, y: Math.min(p.y, limite) });
+      }
+      return { piazzamenti: messi };
+    })
+  };
+}
+
 /** com'è fatta una copia: misure d'ingombro e libertà di girare */
 interface IngombroCopia {
   packL: number;
@@ -479,7 +517,9 @@ function compatta(
     return c;
   };
 
-  const lastre = esito.lastre.map((l) => ({ piazzamenti: [...l.piazzamenti] }));
+  // copie proprie dei pezzi: qui si spostano, e la disposizione di partenza
+  // deve restare intatta per il confronto finale
+  const lastre = esito.lastre.map((l) => ({ piazzamenti: l.piazzamenti.map((p) => ({ ...p })) }));
 
   for (const lastra of lastre) {
     for (let giro = 0; giro < giriMassimi; giro++) {
@@ -662,9 +702,24 @@ export function calcolaNestingMigliore(
   migliore = raffinato.esito;
   punteggio = raffinato.punteggio;
 
-  // infine si recuperano i pezzi rimasti indietro
-  const stretto = compatta(par, pezzi, migliore);
-  return confronta(valuta(stretto), punteggio) <= 0 ? stretto : migliore;
+  // infine si stringe la disposizione: si recuperano i pezzi rimasti indietro
+  // e si fanno risalire le colonne. Le due cose si aiutano — un pezzo tirato
+  // avanti libera spazio a chi sta sopra — quindi si provano anche insieme e
+  // si tiene quella che vale di più.
+  for (const stretta of [
+    () => compatta(par, pezzi, migliore!),
+    () => risalgono(migliore!, par.lama, par.margine),
+    () => risalgono(compatta(par, pezzi, migliore!), par.lama, par.margine)
+  ]) {
+    const e = stretta();
+    const q = valuta(e);
+    // a pari qualità si tiene la più stretta: costa uguale e si maneggia meglio
+    if (confronta(q, punteggio!) <= 0) {
+      migliore = e;
+      punteggio = q;
+    }
+  }
+  return migliore;
 }
 
 /**
