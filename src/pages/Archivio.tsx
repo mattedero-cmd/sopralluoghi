@@ -32,6 +32,7 @@ import { mostraToast } from '../state/toast';
 import { formattaData } from '../utils/format';
 import { Icona } from '../components/Icona';
 import { PannelloOpzioniPdf } from '../components/OpzioniPdf';
+import { ModaleAnteprimaPdf } from '../components/ModaleAnteprimaPdf';
 
 export function Archivio({ cartellaId }: { cartellaId: string | null }) {
   const [ricerca, setRicerca] = useState('');
@@ -48,6 +49,8 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
   const [menu, setMenu] = useState<{ pos: { x: number; y: number }; voci: VoceMenu[] } | null>(null);
   const [reportCartella, setReportCartella] = useState<Cartella | null>(null);
   const [rinominaLavoro, setRinominaLavoro] = useState<LavoroNesting | null>(null);
+  /** PDF da guardare nell'app prima di mandarlo via */
+  const [anteprima, setAnteprima] = useState<{ blob: Blob; titolo: string } | null>(null);
   const [pdfInCorso, setPdfInCorso] = useState<string | null>(null);
 
   const corrente = useLiveQuery(
@@ -165,7 +168,7 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
         blob = await generaPdfNesting(documento);
         await salvaPdfNesting(l.id, blob);
       }
-      await condividiOScarica(blob, nomeFileSicuro(l.nome || 'piano-di-taglio', 'pdf'), l.nome);
+      setAnteprima({ blob, titolo: l.nome });
     } catch (e) {
       mostraToast('errore', e instanceof Error ? e.message : 'PDF non disponibile.');
     } finally {
@@ -178,7 +181,7 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
     setMenu({
       pos: { x: e.clientX, y: e.clientY },
       voci: [
-        { testo: 'Apri il PDF', icona: 'documento', onClick: () => void apriPdfNesting(l) },
+        { testo: 'Guarda il PDF', icona: 'documento', onClick: () => void apriPdfNesting(l) },
         { testo: 'Rinomina…', icona: 'matita', onClick: () => setRinominaLavoro(l) },
         {
           testo: 'Sposta…',
@@ -390,7 +393,7 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
                     className="btn icona"
                     role="button"
                     aria-label={`Apri il PDF di ${l.nome}`}
-                    title="Apri il PDF del piano di taglio"
+                    title="Guarda il PDF del piano di taglio"
                     onClick={(e) => {
                       e.stopPropagation();
                       void apriPdfNesting(l);
@@ -489,6 +492,15 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
           }}
         />
       )}
+      {anteprima && (
+        <ModaleAnteprimaPdf
+          blob={anteprima.blob}
+          titolo={anteprima.titolo}
+          nomeFile={anteprima.titolo}
+          onChiudi={() => setAnteprima(null)}
+        />
+      )}
+
       {rinominaLavoro && (
         <FormNome
           titolo="Rinomina il piano di taglio"

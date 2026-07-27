@@ -36,7 +36,7 @@ import {
 } from '../db/repository';
 import type { LavoroNesting } from '../db/types';
 import { mostraToast } from '../state/toast';
-import { condividiOScarica, nomeFileSicuro } from '../utils/share';
+import { ModaleAnteprimaPdf } from '../components/ModaleAnteprimaPdf';
 import { OPZIONI_PDF_PREDEFINITE, type OpzioniPdfNesting } from '../pdf/opzioni';
 
 /**
@@ -226,6 +226,8 @@ export function NestingPage({ id, nuovoIn }: { id?: string; nuovoIn?: string }) 
   const [chiediNome, setChiediNome] = useState(false);
   const [esporta, setEsporta] = useState(false);
   const [pdfInCorso, setPdfInCorso] = useState(false);
+  /** PDF appena generato, mostrato in anteprima prima di mandarlo via */
+  const [anteprima, setAnteprima] = useState<Blob | null>(null);
 
   // apertura di un lavoro dell'archivio: il documento arriva dal database
   useEffect(() => {
@@ -465,11 +467,8 @@ export function NestingPage({ id, nuovoIn }: { id?: string; nuovoIn?: string }) 
     try {
       const { generaPdfNesting } = await import('../pdf/nesting');
       const blob = await generaPdfNesting(doc, opzioni);
-      await condividiOScarica(
-        blob,
-        nomeFileSicuro(doc.nome || 'piano-di-taglio', 'pdf'),
-        doc.nome || 'Piano di taglio'
-      );
+      // prima si guarda, poi semmai si manda: l'anteprima è nell'app
+      setAnteprima(blob);
     } catch (e) {
       mostraToast('errore', e instanceof Error ? e.message : 'Generazione PDF non riuscita.');
     } finally {
@@ -1020,6 +1019,15 @@ export function NestingPage({ id, nuovoIn }: { id?: string; nuovoIn?: string }) 
             setChiediNome(false);
             void salva(nome);
           }}
+        />
+      )}
+
+      {anteprima && (
+        <ModaleAnteprimaPdf
+          blob={anteprima}
+          titolo={doc.nome || 'Piano di taglio'}
+          nomeFile={doc.nome || 'piano-di-taglio'}
+          onChiudi={() => setAnteprima(null)}
         />
       )}
 

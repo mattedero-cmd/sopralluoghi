@@ -3067,3 +3067,16 @@ a {
   color: var(--accento);
   font-weight: 600;
 }
+
+/* anteprima del PDF a tutta modale: prima si guarda, poi si condivide */
+.pdf-anteprima {
+  margin: 4px 0 2px;
+}
+
+.pdf-anteprima .anteprima-pagina-img {
+  max-height: 62vh;
+}
+
+.pdf-anteprima .anteprima-pagina-vuota {
+  height: 42vh;
+}
