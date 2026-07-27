@@ -13,8 +13,10 @@ import {
   creaSezione,
   eliminaFoto,
   eliminaSezione,
-  leggiImpostazioni
+  leggiImpostazioni,
+  salvaNesting
 } from '../db/repository';
+import { nuovoId } from '../utils/id';
 import type { Sezione } from '../db/types';
 import type { OpzioniReport } from '../pdf/report';
 import { SelettoreCliente } from './ClientiPage';
@@ -216,6 +218,77 @@ export function ProgettoPage({ id }: { id: string }) {
     });
   };
 
+  /**
+   * Porta le misure del sopralluogo nel nesting.
+   *
+   * Le forme quotate sulle foto sono già i pezzi da produrre: diventano
+   * rettangoli con la misura DI TAGLIO — reale più le abbondanze inserite —
+   * dentro un piano di taglio nuovo, nella stessa cartella del sopralluogo.
+   */
+  const creaPianoDiTaglio = async () => {
+    try {
+      const [{ pezziDaAnnotazioni, raggruppaPezzi }, { materialeNuovo }, { prossimaTinta }] =
+        await Promise.all([
+          import('../geometry/pezziDaSopralluogo'),
+          import('../utils/documentoNesting'),
+          import('../utils/tinte')
+        ]);
+
+      const trovati = [];
+      for (const f of foto) {
+        const ann = await db.annotazioni.where('fotoId').equals(f.id).toArray();
+        trovati.push(...pezziDaAnnotazioni(ann, f));
+      }
+      const pezzi = raggruppaPezzi(trovati);
+      if (pezzi.length === 0) {
+        mostraToast(
+          'info',
+          'Nessuna forma quotata da tagliare in questo sopralluogo: quota un rettangolo, un poligono o un cerchio.'
+        );
+        return;
+      }
+
+      const materiale = {
+        ...materialeNuovo(nuovoId(), 'Materiale 1'),
+        pezzi: pezzi.map((p, i) => ({
+          id: nuovoId(),
+          nome: p.nome,
+          larghezza: p.larghezza,
+          altezza: p.altezza,
+          quantita: p.quantita,
+          ruotabile: true,
+          tinta: prossimaTinta(i)
+        }))
+      };
+      const id = nuovoId();
+      const nome = `Taglio — ${progetto.nome}`;
+      await salvaNesting(
+        id,
+        nome,
+        {
+          versione: 2,
+          nome,
+          attivo: materiale.id,
+          materiali: [materiale]
+        },
+        { cartellaId: progetto.cartellaId }
+      );
+      const conAbb = pezzi.filter((p) => p.conAbbondanze).length;
+      mostraToast(
+        'successo',
+        `${pezzi.length} pezzi portati nel piano di taglio${
+          conAbb > 0 ? `, di cui ${conAbb} con le abbondanze` : ''
+        }.`
+      );
+      naviga({ nome: 'nesting', id });
+    } catch (e) {
+      mostraToast(
+        'errore',
+        e instanceof Error ? e.message : 'Non è stato possibile creare il piano di taglio.'
+      );
+    }
+  };
+
   const generaPdf = async (opzioni: OpzioniReport) => {
     try {
       setPdfInCorso('Preparazione…');
@@ -389,6 +462,9 @@ export function ProgettoPage({ id }: { id: string }) {
             }}
           >
             <Icona nome="condividi" dimensione={20} /> Esporta (PDF / ZIP)
+          </button>
+          <button className="btn" onClick={() => void creaPianoDiTaglio()}>
+            <Icona nome="griglia" dimensione={20} /> Piano di taglio
           </button>
         </div>
         {importInCorso && <p style={{ color: 'var(--testo-2)' }}>Importazione foto in corso…</p>}
