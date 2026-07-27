@@ -55,16 +55,56 @@ export function pianoEtichetta(
   nome: string,
   misura: string,
   corpi: CorpiEtichetta,
-  /** il PDF non sa girare il testo: lì l'etichetta resta orizzontale */
   opzioni?: { rotazione?: boolean }
 ): PianoEtichetta | null {
   if (!(corpi.minimo > 0) || !(larghezza > 0) || !(altezza > 0)) return null;
 
-  // pezzo decisamente più alto che largo: si scrive nel verso lungo, come
-  // si fa a matita sui listelli
-  const ruotata = opzioni?.rotazione !== false && altezza > larghezza * 1.15;
-  const lungo = (ruotata ? altezza : larghezza) * 0.96;
-  const alto = ruotata ? larghezza : altezza;
+  // Si prova a scrivere nei due versi e si tiene il migliore. Girare il testo
+  // serve sui pezzi stretti — lì per lungo ci sta tutto il nome — ma su un
+  // pezzo appena più alto che largo il testo dritto si legge meglio: a parità
+  // di risultato vince l'orizzontale.
+  const dritto = pianoNelVerso(larghezza, altezza, false, nome, misura, corpi);
+  if (opzioni?.rotazione === false) return dritto;
+  const girato = pianoNelVerso(altezza, larghezza, true, nome, misura, corpi);
+  return meglio(dritto, girato) <= 0 ? dritto : girato;
+}
+
+/** quanto vale un piano: numeri più bassi sono migliori */
+function valore(p: PianoEtichetta | null): [number, number, number, number] {
+  if (!p) return [3, 1, 1, 0];
+  const testo = p.nome ?? p.misura ?? '';
+  return [
+    p.nome ? 0 : 1, // col nome vale sempre più che con la sola misura
+    testo.endsWith('…') ? 1 : 0, // intero meglio che troncato
+    p.ampia ? 0 : 1, // nome E misura meglio del solo nome
+    -(p.nome ? p.corpoNome : p.corpoMisura) // più grande, meglio
+  ];
+}
+
+/** <=0 se «a» è almeno buono quanto «b» */
+function meglio(a: PianoEtichetta | null, b: PianoEtichetta | null): number {
+  const va = valore(a);
+  const vb = valore(b);
+  for (let i = 0; i < va.length; i++) {
+    if (Math.abs(va[i] - vb[i]) > 1e-9) return va[i] - vb[i];
+  }
+  return 0;
+}
+
+/**
+ * Impagina nel verso dato: `lungo` è la misura del pezzo lungo la riga di
+ * scrittura, `alto` quella perpendicolare.
+ */
+function pianoNelVerso(
+  lungoPezzo: number,
+  altoPezzo: number,
+  ruotata: boolean,
+  nome: string,
+  misura: string,
+  corpi: CorpiEtichetta
+): PianoEtichetta | null {
+  const lungo = lungoPezzo * 0.96;
+  const alto = altoPezzo;
 
   const larghezzaTesto = (corpo: number, testo: string) =>
     corpo * LARGHEZZA_CARATTERE * testo.length;

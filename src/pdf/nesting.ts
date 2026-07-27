@@ -192,6 +192,36 @@ function paginaFoglio(m: MaterialeNesting, foglio: Foglio): Content[] {
     ]
   };
 
+  /**
+   * Etichette girate di 90°: pdfmake non sa ruotare il testo, ma sa disegnare
+   * un frammento SVG, e dentro l'SVG la rotazione è normale amministrazione.
+   * Se ne mette uno per pezzo, grande quanto il pezzo.
+   */
+  const perXml = (t: string) =>
+    t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const ruotate: Content[] = d.ruotate.map((e) => {
+    const cx = e.larghezza / 2;
+    const cy = e.altezza / 2;
+    const righe = e.righe
+      .map(
+        (r) =>
+          `<text x="${cx.toFixed(2)}" y="${(cy + r.scarto).toFixed(2)}" text-anchor="middle"` +
+          ` font-family="Roboto" font-size="${r.corpo.toFixed(2)}"` +
+          (r.grassetto ? ' font-weight="bold"' : '') +
+          ` fill="${r.colore}" transform="rotate(-90 ${cx.toFixed(2)} ${cy.toFixed(2)})">` +
+          `${perXml(r.testo)}</text>`
+      )
+      .join('');
+    return {
+      absolutePosition: { x: e.x, y: e.y },
+      width: e.larghezza,
+      height: e.altezza,
+      svg:
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${e.larghezza.toFixed(2)}"` +
+        ` height="${e.altezza.toFixed(2)}">${righe}</svg>`
+    } as Content;
+  });
+
   // il testo va centrato nella larghezza del PEZZO, non della pagina: solo una
   // colonna di larghezza fissa dà quel controllo a pdfmake
   const etichette: Content[] = d.testi.map((t) => ({
@@ -234,6 +264,7 @@ function paginaFoglio(m: MaterialeNesting, foglio: Foglio): Content[] {
     },
     disegno,
     ...etichette,
+    ...ruotate,
     {
       // la didascalia sta subito sotto il disegno, non a un'altezza fissa:
       // una lastra bassa e larga non deve lasciare mezza pagina bianca

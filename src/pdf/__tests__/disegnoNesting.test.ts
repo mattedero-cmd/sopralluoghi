@@ -59,10 +59,12 @@ describe('impaginaLastra', () => {
     }
   });
 
-  it('nel PDF le etichette non sono mai girate: sono tutte orizzontali', () => {
-    // se ci fosse rotazione, i pezzi alti e stretti avrebbero testo più largo
-    // del pezzo stesso: qui il controllo precedente lo escluderebbe già
-    expect(d.testi.length).toBeGreaterThan(0);
+  it('gira il testo solo dove dritto non ci starebbe', () => {
+    // gli Zoccolo sono impaginati in piedi (60 mm di larghezza): lì il nome
+    // ci sta solo per lungo. Anta e Ripiano restano dritti.
+    for (const e of d.ruotate) expect(e.larghezza).toBeLessThan(e.altezza);
+    expect(d.testi.map((t) => t.testo)).toContain('Anta');
+    expect(d.testi.map((t) => t.testo)).toContain('Ripiano');
   });
 
   it('i colori sono esadecimali: pdfmake non capisce hsl()', () => {
@@ -144,5 +146,55 @@ describe('venatura nel PDF', () => {
     });
     expect(d.venatura.length).toBeGreaterThan(10);
     for (const l of d.venatura) expect(l.y1).toBe(l.y2);
+  });
+});
+
+describe('etichette girate sui pezzi stretti', () => {
+  const strettoAlto = calcolaNesting(
+    { lastra: { larghezza: 1220, altezza: 2400 }, lama: 3, abbondanza: 0, margine: 10 },
+    [
+      { id: 'a', nome: 'Sopra armadio', larghezza: 100, altezza: 1650, quantita: 1, ruotabile: false, tinta: 0 },
+      { id: 'b', nome: 'Fianco armadio', larghezza: 450, altezza: 2300, quantita: 1, ruotabile: false, tinta: 90 },
+      { id: 'c', nome: 'Traversa', larghezza: 600, altezza: 400, quantita: 1, ruotabile: false, tinta: 200 }
+    ]
+  );
+
+  it('un pezzo stretto e alto riceve l’etichetta per lungo, non troncata', () => {
+    const d = impaginaLastra(strettoAlto.lastre[0], { larghezza: 1220, altezza: 2400 }, AREA);
+    expect(d.ruotate.length).toBeGreaterThan(0);
+    const nomi = d.ruotate.flatMap((e) => e.righe.map((r) => r.testo));
+    expect(nomi).toContain('Sopra armadio');
+    // scritto per intero: nessuna ellissi
+    expect(nomi.some((t) => t.endsWith('…'))).toBe(false);
+  });
+
+  it('il riquadro dell’etichetta girata coincide col pezzo', () => {
+    const d = impaginaLastra(strettoAlto.lastre[0], { larghezza: 1220, altezza: 2400 }, AREA);
+    for (const e of d.ruotate) {
+      const suo = d.pezzi.find(
+        (p) =>
+          Math.abs(p.x - e.x) < 0.001 &&
+          Math.abs(p.y - e.y) < 0.001 &&
+          Math.abs(p.larghezza - e.larghezza) < 0.001 &&
+          Math.abs(p.altezza - e.altezza) < 0.001
+      );
+      expect(suo).toBeTruthy();
+    }
+  });
+
+  it('il testo girato sta nella lunghezza del pezzo', () => {
+    const d = impaginaLastra(strettoAlto.lastre[0], { larghezza: 1220, altezza: 2400 }, AREA);
+    for (const e of d.ruotate) {
+      for (const r of e.righe) {
+        // girato: la larghezza del testo si misura sull'ALTEZZA del pezzo
+        expect(r.corpo * 0.58 * r.testo.length).toBeLessThanOrEqual(e.altezza);
+        expect(r.corpo * 1.2).toBeLessThanOrEqual(e.larghezza);
+      }
+    }
+  });
+
+  it('nella stessa lastra i pezzi larghi restano col testo dritto', () => {
+    const d = impaginaLastra(strettoAlto.lastre[0], { larghezza: 1220, altezza: 2400 }, AREA);
+    expect(d.testi.map((t) => t.testo)).toContain('Traversa');
   });
 });

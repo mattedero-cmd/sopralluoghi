@@ -48,6 +48,29 @@ export interface LineaPdf {
   y2: number;
 }
 
+/**
+ * Etichetta scritta per lungo su un pezzo stretto e alto.
+ *
+ * Sta a parte dalle altre perché il testo dritto e quello girato si disegnano
+ * in due modi diversi: il primo è testo normale, il secondo deve passare da
+ * un frammento SVG, l'unico posto dove pdfmake sa ruotare le lettere.
+ */
+export interface EtichettaRuotata {
+  /** riquadro del pezzo, in punti pagina */
+  x: number;
+  y: number;
+  larghezza: number;
+  altezza: number;
+  righe: Array<{
+    testo: string;
+    corpo: number;
+    grassetto: boolean;
+    colore: string;
+    /** scostamento della linea di base dal centro, prima della rotazione */
+    scarto: number;
+  }>;
+}
+
 export interface DisegnoLastra {
   cornice: RiquadroPdf;
   /** area utile dentro i margini, tratteggiata */
@@ -56,6 +79,8 @@ export interface DisegnoLastra {
   /** venatura del materiale, già ritagliata dentro i pezzi */
   venatura: LineaPdf[];
   testi: TestoPdf[];
+  /** etichette scritte per lungo sui pezzi stretti */
+  ruotate: EtichettaRuotata[];
   /** punti per unità di disegno (mm) */
   scala: number;
 }
@@ -102,6 +127,7 @@ export function impaginaLastra(
 
   const pezzi: RiquadroPdf[] = [];
   const testi: TestoPdf[] = [];
+  const ruotate: EtichettaRuotata[] = [];
   const venatura: LineaPdf[] = [];
   // il filo del materiale è parallelo alla lastra e NON gira col pezzo: è
   // così che si vede a colpo d'occhio un pezzo impaginato controvena
@@ -134,9 +160,41 @@ export function impaginaLastra(
     }
 
     const misura = `${formattaNumero(pc.larghezzaFinita)}×${formattaNumero(pc.altezzaFinita)}`;
-    // il testo del PDF non gira: la pagina si legge in un verso solo
-    const piano = pianoEtichetta(rw, rh, pc.nome || '', misura, CORPI_PDF, { rotazione: false });
+    const piano = pianoEtichetta(rw, rh, pc.nome || '', misura, CORPI_PDF);
     if (!piano) continue;
+
+    // pezzo stretto e alto: il nome ci sta solo scritto per lungo, come si
+    // scrive a matita sui listelli. Il foglio si gira, ma si legge tutto.
+    if (piano.ruotata) {
+      const righe = piano.ampia
+        ? [
+            {
+              testo: piano.nome ?? '',
+              corpo: piano.corpoNome,
+              grassetto: true,
+              colore: '#1d2229',
+              scarto: -piano.corpoNome * 0.15
+            },
+            {
+              testo: piano.misura ?? '',
+              corpo: piano.corpoMisura,
+              grassetto: false,
+              colore: '#3a424c',
+              scarto: piano.corpoMisura * 1.05
+            }
+          ]
+        : [
+            {
+              testo: (piano.nome || piano.misura) ?? '',
+              corpo: piano.nome ? piano.corpoNome : piano.corpoMisura,
+              grassetto: !!piano.nome,
+              colore: '#1d2229',
+              scarto: (piano.nome ? piano.corpoNome : piano.corpoMisura) * 0.36
+            }
+          ];
+      ruotate.push({ x: rx, y: ry, larghezza: rw, altezza: rh, righe });
+      continue;
+    }
 
     const cy = ry + rh / 2;
     if (piano.ampia) {
@@ -172,7 +230,7 @@ export function impaginaLastra(
     }
   }
 
-  return { cornice, margine, pezzi, venatura, testi, scala };
+  return { cornice, margine, pezzi, venatura, testi, ruotate, scala };
 }
 
 /** i pezzi di una lastra raccolti per nome e misura, per la didascalia */
