@@ -308,6 +308,9 @@ export function NestingPage({ id, nuovoIn }: { id?: string; nuovoIn?: string }) 
       })
     }));
 
+  /** opzioni di stampa del lavoro: comandano i blocchi a schermo e nel PDF */
+  const stampa = doc.stampa ?? OPZIONI_PDF_PREDEFINITE;
+
   const parametri = useMemo(() => parametriDi(mat), [mat]);
   // senza venatura i pezzi si girano liberamente: è il motore a scegliere il
   // verso, provando più ordini di inserimento e tenendo il migliore
@@ -591,7 +594,7 @@ export function NestingPage({ id, nuovoIn }: { id?: string; nuovoIn?: string }) 
     }
     const rotolo = esito.lastre[0];
     if (!rotolo || rotolo.piazzamenti.length === 0) return [];
-    const opzioni = doc.stampa ?? OPZIONI_PDF_PREDEFINITE;
+    const opzioni = stampa;
     if (!opzioni.segmenta || !(opzioni.massimoSegmento > 0)) {
       const usata = Math.max(1, lunghezzaUsata(rotolo, mat.margine));
       const misure = { larghezza: mat.bobina.larghezza, altezza: usata };
@@ -623,7 +626,7 @@ export function NestingPage({ id, nuovoIn }: { id?: string; nuovoIn?: string }) 
         striscia: strisciaResidua(sg.lastra, misure.larghezza, misure.altezza)
       };
     });
-  }, [esito, mat.modo, mat.lastra, mat.bobina.larghezza, mat.margine, mat.lama, doc.stampa]);
+  }, [esito, mat.modo, mat.lastra, mat.bobina.larghezza, mat.margine, mat.lama, stampa]);
 
   return (
     <div className="app">
@@ -1027,6 +1030,40 @@ export function NestingPage({ id, nuovoIn }: { id?: string; nuovoIn?: string }) 
                     </li>
                   ))}
                 </ul>
+              </div>
+            )}
+
+            {mat.modo === 'bobina' && (
+              <div className="nest-blocchi">
+                <label className="fisc-check">
+                  <input
+                    type="checkbox"
+                    checked={stampa.segmenta}
+                    onChange={(e) =>
+                      setDoc((d) => ({
+                        ...d,
+                        stampa: { ...stampa, segmenta: e.target.checked }
+                      }))
+                    }
+                  />
+                  Dividi il rotolo in blocchi
+                </label>
+                {stampa.segmenta && (
+                  <label className="campo">
+                    <span>Lunghezza massima (mm)</span>
+                    <CampoNumero
+                      valore={stampa.massimoSegmento}
+                      min={100}
+                      onCambia={(v) =>
+                        setDoc((d) => ({ ...d, stampa: { ...stampa, massimoSegmento: v } }))
+                      }
+                    />
+                  </label>
+                )}
+                <small>
+                  Dove cadono i tagli lo decide il programma: solo dove non passa nessun pezzo, e
+                  senza spezzare le strisce di sfrido. Vale anche per il PDF.
+                </small>
               </div>
             )}
 
