@@ -330,6 +330,14 @@ export function NestingPage({ id, nuovoIn }: { id?: string; nuovoIn?: string }) 
     () => riepilogaNesting(parametri, pezziCalcolo, esito),
     [parametri, pezziCalcolo, esito]
   );
+  // i versi imposti che contano davvero: quelli su pezzi liberi di girare.
+  // Con la venatura comanda la fibra, e un verso scelto prima non vale più.
+  const impostiAttivi = useMemo(() => {
+    const liberi = new Set(pezziCalcolo.filter((p) => p.ruotabile).map((p) => p.id));
+    return Object.keys(mat.orientamenti).filter((c) =>
+      liberi.has(c.slice(0, c.lastIndexOf('#')))
+    );
+  }, [mat.orientamenti, pezziCalcolo]);
 
   /** consumo del rotolo: quanto materiale serve davvero */
   const consumo = useMemo(() => {
@@ -1046,10 +1054,10 @@ export function NestingPage({ id, nuovoIn }: { id?: string; nuovoIn?: string }) 
               />
             </div>
 
-            {Object.keys(mat.orientamenti).length > 0 && (
+            {impostiAttivi.length > 0 && (
               <div className="riga-pulsanti" style={{ marginBottom: 12 }}>
                 <button className="btn" onClick={() => aggiornaMat({ orientamenti: {} })}>
-                  ↺ Togli i {Object.keys(mat.orientamenti).length} versi imposti a mano
+                  ↺ Togli i {impostiAttivi.length} versi imposti a mano
                 </button>
               </div>
             )}
@@ -1116,7 +1124,9 @@ export function NestingPage({ id, nuovoIn }: { id?: string; nuovoIn?: string }) 
                 margine={mat.margine}
                 titolo={f.titolo}
                 striscia={f.striscia}
-                pezzi={mat.pezzi}
+                // gli stessi pezzi visti dal motore: senza venatura girano
+                // tutti, e la legenda deve dire la verità
+                pezzi={pezziCalcolo}
                 venatura={mat.venatura}
                 imposti={mat.orientamenti}
                 onGira={giraPezzo}
@@ -1127,8 +1137,10 @@ export function NestingPage({ id, nuovoIn }: { id?: string; nuovoIn?: string }) 
         )}
 
         <p className="nest-nota">
-          Nesting <strong>libero</strong> (MaxRects, Best-Area-Fit), calcolato per ogni essenza
-          separatamente provando più ordini di inserimento e tenendo il più efficiente. La <em>resa</em> è l’area dei pezzi finiti sull’area del materiale usato;
+          Nesting <strong>libero</strong> (MaxRects), calcolato per ogni essenza separatamente:
+          si provano tutti gli ordini di inserimento, i versi e i criteri di riempimento, poi si
+          gira un pezzo alla volta finché il lavoro si accorcia. Senza venatura i pezzi girano da
+          soli; con la venatura restano nel loro verso. La <em>resa</em> è l’area dei pezzi finiti sull’area del materiale usato;
           lo <em>sfrido</em> comprende lama, abbondanze e margini. Il rotolo viene
           impaginato come una striscia unica e poi spezzato in blocchi maneggevoli, tagliando
           solo dove non passa nessun pezzo: quello che vedi qui è quello che trovi nel PDF.
@@ -1276,6 +1288,13 @@ function Lastra({
   for (let x = passo; x < L; x += passo) linee.push([x, 0, x, A]);
   for (let y = passo; y < A; y += passo) linee.push([0, y, L, y]);
 
+  // con la venatura il verso non è una scelta: i pezzi bloccati non si girano
+  // né a mano né in automatico, e toccarli non deve promettere il contrario
+  const bloccati = new Set(
+    venatura === 'nessuna' ? [] : pezzi.filter((p) => !p.ruotabile).map((p) => p.id)
+  );
+  const siGira = (chiave: string) => !bloccati.has(chiave.slice(0, chiave.lastIndexOf('#')));
+
   return (
     <section className="nest-lastra">
       <div className="testa">
@@ -1352,22 +1371,33 @@ function Lastra({
                     minimo: inUnita(5)
                   })
                 : null;
+            const girabile = siGira(pc.chiave);
             return (
               <g
                 key={i}
-                role="button"
-                tabIndex={0}
-                aria-label={`${pc.nome || 'pezzo'} ${misura}: gira di 90°`}
-                style={{ cursor: 'pointer' }}
-                onClick={() => onGira(pc.chiave, pc.ruotato)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    onGira(pc.chiave, pc.ruotato);
-                  }
-                }}
+                role={girabile ? 'button' : undefined}
+                tabIndex={girabile ? 0 : undefined}
+                aria-label={
+                  girabile ? `${pc.nome || 'pezzo'} ${misura}: gira di 90°` : undefined
+                }
+                style={girabile ? { cursor: 'pointer' } : undefined}
+                onClick={girabile ? () => onGira(pc.chiave, pc.ruotato) : undefined}
+                onKeyDown={
+                  girabile
+                    ? (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          onGira(pc.chiave, pc.ruotato);
+                        }
+                      }
+                    : undefined
+                }
               >
-                <title>{`${pc.nome || 'Pezzo'} ${misura} — tocca per girare di 90°`}</title>
+                <title>
+                  {girabile
+                    ? `${pc.nome || 'Pezzo'} ${misura} — tocca per girare di 90°`
+                    : `${pc.nome || 'Pezzo'} ${misura} — bloccato dalla venatura`}
+                </title>
                 <rect
                   x={pc.x}
                   y={pc.y}
@@ -1376,7 +1406,7 @@ function Lastra({
                   rx={1.5}
                   fill={tintaSfondo(pc.tinta)}
                   stroke={tintaBordo(pc.tinta)}
-                  strokeWidth={imposti[pc.chiave] != null ? 3 : 1.5}
+                  strokeWidth={girabile && imposti[pc.chiave] != null ? 3 : 1.5}
                   vectorEffect="non-scaling-stroke"
                 />
                 {/* venatura: righe parallele nel verso del materiale, ritagliate

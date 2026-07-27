@@ -70,7 +70,28 @@ export interface ParametriNesting {
    * I versi imposti a mano restano comunque intoccabili.
    */
   verso?: Verso;
+  /**
+   * Come si sceglie, fra tutti gli spazi liberi, quello dove mettere il pezzo.
+   * Nessun criterio vince sempre: vedi `calcolaNestingMigliore`, che li prova
+   * tutti. Assente = «area».
+   */
+  criterio?: Criterio;
 }
+
+/**
+ * Criterio di scelta dello spazio libero.
+ *
+ * - «area» (Best-Area-Fit): lo spazio che avanza meno area. Riempie bene le
+ *   tasche, ma può lasciare un pezzo isolato lontano dagli altri.
+ * - «latoCorto» (Best-Short-Side-Fit): lo spazio che avanza la striscia più
+ *   stretta. Tiene i pezzi allineati e fa crescere le file compatte.
+ * - «bassoSinistra»: il posto più in alto possibile (e poi il più a sinistra).
+ *   Non lascia mai un pezzo indietro se davanti c'è posto: sulla bobina è
+ *   quello che accorcia il metraggio.
+ */
+export type Criterio = 'area' | 'latoCorto' | 'bassoSinistra';
+
+export const CRITERI: Criterio[] = ['area', 'latoCorto', 'bassoSinistra'];
 
 /** verso di partenza dei pezzi liberi di girare */
 export type Verso = 'auto' | 'diritto' | 'girato';
@@ -147,6 +168,25 @@ interface Posizione {
 }
 
 /**
+ * Quanto è buona questa posizione, secondo il criterio scelto: numeri più
+ * bassi sono migliori. Il fattore 1e5 tiene separati i due livelli — prima
+ * conta la grandezza principale, poi lo spareggio — restando ben dentro la
+ * precisione dei numeri interi in virgola mobile.
+ */
+function punteggioPosizione(criterio: Criterio, f: Spazio, w: number, h: number): number {
+  const restoL = f.w - w;
+  const restoA = f.h - h;
+  if (criterio === 'latoCorto') {
+    return Math.min(restoL, restoA) * 1e5 + Math.max(restoL, restoA);
+  }
+  if (criterio === 'bassoSinistra') {
+    return (f.y + h) * 1e5 + f.x;
+  }
+  // area: lo spazio che avanza meno; a pari area quello che resta meno sbilenco
+  return (f.w * f.h - w * h) * 1e5 + Math.min(restoL, restoA);
+}
+
+/**
  * Contenitore MaxRects: tiene l'elenco degli spazi liberi (rettangoli massimali,
  * anche sovrapposti) e li ritaglia a ogni pezzo piazzato.
  */
@@ -158,31 +198,30 @@ class Contenitore {
     this.liberi = [{ x: 0, y: 0, w: larghezza, h: altezza }];
   }
 
-  /** miglior posizione per un pezzo, o null se non ce n'è (Best-Area-Fit) */
-  cercaPosizione(w: number, h: number, ruotabile: boolean): Posizione | null {
+  /** miglior posizione per un pezzo, o null se non ce n'è */
+  cercaPosizione(
+    w: number,
+    h: number,
+    ruotabile: boolean,
+    criterio: Criterio = 'area'
+  ): Posizione | null {
     let migliore: Posizione | null = null;
+    const prova = (f: Spazio, pw: number, ph: number, ruotato: boolean) => {
+      if (pw > f.w || ph > f.h) return;
+      const punteggio = punteggioPosizione(criterio, f, pw, ph);
+      if (!migliore || punteggio < migliore.punteggio) {
+        migliore = { x: f.x, y: f.y, w: pw, h: ph, ruotato, punteggio };
+      }
+    };
     for (const f of this.liberi) {
-      if (w <= f.w && h <= f.h) {
-        // a pari area residua vince lo spazio che resta meno "sbilenco"
-        const resto = Math.min(f.w - w, f.h - h);
-        const punteggio = (f.w * f.h - w * h) * 1e5 + resto;
-        if (!migliore || punteggio < migliore.punteggio) {
-          migliore = { x: f.x, y: f.y, w, h, ruotato: false, punteggio };
-        }
-      }
-      if (ruotabile && h <= f.w && w <= f.h) {
-        const resto = Math.min(f.w - h, f.h - w);
-        const punteggio = (f.w * f.h - w * h) * 1e5 + resto;
-        if (!migliore || punteggio < migliore.punteggio) {
-          migliore = { x: f.x, y: f.y, w: h, h: w, ruotato: true, punteggio };
-        }
-      }
+      prova(f, w, h, false);
+      if (ruotabile) prova(f, h, w, true);
     }
     return migliore;
   }
 
   /** occupa la posizione: gli spazi liberi che la toccano vengono ritagliati */
-  occupa(n: Posizione): void {
+  occupa(n: Spazio): void {
     const out: Spazio[] = [];
     for (const f of this.liberi) {
       if (!this.taglia(f, n, out)) out.push(f);
@@ -191,7 +230,7 @@ class Contenitore {
     this.potatura();
   }
 
-  private taglia(f: Spazio, n: Posizione, out: Spazio[]): boolean {
+  private taglia(f: Spazio, n: Spazio, out: Spazio[]): boolean {
     if (n.x >= f.x + f.w || n.x + n.w <= f.x || n.y >= f.y + f.h || n.y + n.h <= f.y) return false;
     if (n.x > f.x && n.x < f.x + f.w) out.push({ x: f.x, y: f.y, w: n.x - f.x, h: f.h });
     if (n.x + n.w < f.x + f.w)
@@ -252,7 +291,10 @@ export function calcolaNesting(par: ParametriNesting, pezzi: PezzoNesting[]): Es
     const q = Math.max(0, Math.round(p.quantita) || 0);
     for (let i = 0; i < q; i++) {
       const chiave = `${p.id}#${i}`;
-      const imposto = par.orientamenti?.[chiave];
+      // un pezzo che NON può girare non si lascia forzare: con la venatura la
+      // fibra comanda, e un verso imposto a mano quando la venatura non c'era
+      // non deve sopravviverle
+      const imposto = p.ruotabile ? par.orientamenti?.[chiave] : undefined;
       istanze.push({
         chiave,
         id: p.id,
@@ -325,7 +367,7 @@ export function calcolaNesting(par: ParametriNesting, pezzi: PezzoNesting[]): Es
     let migliore: Posizione | null = null;
     let lastraScelta: Contenitore | null = null;
     for (const c of lastre) {
-      const pos = c.cercaPosizione(usaL, usaA, puoGirare);
+      const pos = c.cercaPosizione(usaL, usaA, puoGirare, par.criterio);
       if (pos && (!migliore || pos.punteggio < migliore.punteggio)) {
         migliore = pos;
         lastraScelta = c;
@@ -345,7 +387,7 @@ export function calcolaNesting(par: ParametriNesting, pezzi: PezzoNesting[]): Es
       }
       const nuova = new Contenitore(binL, binA);
       lastre.push(nuova);
-      migliore = nuova.cercaPosizione(usaL, usaA, puoGirare);
+      migliore = nuova.cercaPosizione(usaL, usaA, puoGirare, par.criterio);
       lastraScelta = nuova;
     }
     if (!migliore || !lastraScelta) continue;
@@ -367,6 +409,149 @@ export function calcolaNesting(par: ParametriNesting, pezzi: PezzoNesting[]): Es
   }
 
   return { lastre: lastre.map((c) => ({ piazzamenti: c.piazzamenti })), scartati };
+}
+
+/** com'è fatta una copia: misure d'ingombro e libertà di girare */
+interface IngombroCopia {
+  packL: number;
+  packA: number;
+  /** libero di girare: nessuna venatura e nessun verso imposto a mano */
+  libero: boolean;
+}
+
+function ingombriPerCopia(par: ParametriNesting, pezzi: PezzoNesting[]): Map<string, IngombroCopia> {
+  const mappa = new Map<string, IngombroCopia>();
+  for (const p of pezzi) {
+    const q = Math.max(0, Math.round(p.quantita) || 0);
+    for (let i = 0; i < q; i++) {
+      const chiave = `${p.id}#${i}`;
+      const imposto = p.ruotabile ? par.orientamenti?.[chiave] : undefined;
+      mappa.set(chiave, {
+        packL: p.larghezza + par.abbondanza + par.lama,
+        packA: p.altezza + par.abbondanza + par.lama,
+        libero: imposto == null && p.ruotabile
+      });
+    }
+  }
+  return mappa;
+}
+
+/**
+ * COMPATTAZIONE: nessun pezzo resta indietro se davanti c'è posto.
+ *
+ * L'impacchettamento è avido — piazza un pezzo alla volta e non torna mai
+ * indietro — così capita che l'ultimo pezzo piccolo finisca da solo in coda,
+ * allungando la bobina di mezzo metro, mentre a fianco dei pezzi già messi
+ * c'era una tasca dove entrava benissimo.
+ *
+ * Qui si rimette in discussione un pezzo alla volta, partendo dai più
+ * arretrati: si toglie, si guarda dove starebbe meglio nel disegno rimasto —
+ * girandolo, se è libero di girare — e lo si sposta solo se finisce più
+ * avanti di dov'era. Gli altri pezzi non si muovono, quindi ogni spostamento
+ * è un guadagno netto e il procedimento si ferma da solo.
+ *
+ * Alla fine si riprovano i pezzi rimasti fuori: lo spazio recuperato può
+ * bastare a farceli entrare.
+ */
+function compatta(
+  par: ParametriNesting,
+  pezzi: PezzoNesting[],
+  esito: EsitoNesting,
+  giriMassimi = 3
+): EsitoNesting {
+  const { lama, margine } = par;
+  const binL = par.lastra.larghezza - 2 * margine + lama;
+  const binA = par.lastra.altezza - 2 * margine + lama;
+  const ingombri = ingombriPerCopia(par, pezzi);
+
+  /** contenitore che rispecchia una lastra, meno un pezzo eventualmente escluso */
+  const ricostruisci = (piazzamenti: Piazzamento[], escluso?: Piazzamento) => {
+    const c = new Contenitore(binL, binA);
+    for (const p of piazzamenti) {
+      if (p === escluso) continue;
+      c.occupa({
+        x: p.x - margine,
+        y: p.y - margine,
+        w: p.larghezza + lama,
+        h: p.altezza + lama
+      });
+    }
+    return c;
+  };
+
+  const lastre = esito.lastre.map((l) => ({ piazzamenti: [...l.piazzamenti] }));
+
+  for (const lastra of lastre) {
+    for (let giro = 0; giro < giriMassimi; giro++) {
+      let mosso = false;
+      // dai più arretrati ai più avanzati: sono quelli che allungano il lavoro
+      const ordine = [...lastra.piazzamenti].sort(
+        (a, b) => b.y + b.altezza - (a.y + a.altezza)
+      );
+      for (const pc of ordine) {
+        const ing = ingombri.get(pc.chiave);
+        if (!ing) continue;
+        const usaL = pc.ruotato ? ing.packA : ing.packL;
+        const usaA = pc.ruotato ? ing.packL : ing.packA;
+        const pos = ricostruisci(lastra.piazzamenti, pc).cercaPosizione(
+          usaL,
+          usaA,
+          ing.libero,
+          'bassoSinistra'
+        );
+        if (!pos) continue;
+        if (pos.y + pos.h >= pc.y - margine + pc.altezza + lama - 1e-6) continue;
+        pc.x = pos.x + margine;
+        pc.y = pos.y + margine;
+        pc.larghezza = pos.w - lama;
+        pc.altezza = pos.h - lama;
+        // `pos.ruotato` è relativo al verso attuale: girarlo di nuovo lo riporta
+        // com'era all'inizio
+        if (pos.ruotato) pc.ruotato = !pc.ruotato;
+        mosso = true;
+      }
+      if (!mosso) break;
+    }
+  }
+
+  // i pezzi rimasti fuori: con lo spazio recuperato qualcuno può rientrare
+  const scartati: PezzoScartato[] = [];
+  for (const s of esito.scartati) {
+    const ing = ingombri.get(s.chiave);
+    let entrato = false;
+    if (ing) {
+      for (const lastra of lastre) {
+        const pos = ricostruisci(lastra.piazzamenti).cercaPosizione(
+          ing.packL,
+          ing.packA,
+          ing.libero,
+          'bassoSinistra'
+        );
+        if (!pos) continue;
+        lastra.piazzamenti.push({
+          x: pos.x + margine,
+          y: pos.y + margine,
+          larghezza: pos.w - lama,
+          altezza: pos.h - lama,
+          larghezzaFinita: s.larghezzaFinita,
+          altezzaFinita: s.altezzaFinita,
+          nome: s.nome,
+          tinta: tintaDi(pezzi, s.id),
+          ruotato: pos.ruotato,
+          chiave: s.chiave
+        });
+        entrato = true;
+        break;
+      }
+    }
+    if (!entrato) scartati.push(s);
+  }
+
+  return { lastre, scartati };
+}
+
+function tintaDi(pezzi: PezzoNesting[], id: string): number {
+  return pezzi.find((p) => p.id === id)?.tinta ?? 0;
 }
 
 /**
@@ -451,19 +636,105 @@ export function calcolaNestingMigliore(
     a[2] - b[2] ||
     (Math.abs(a[3] - b[3]) < 1e-9 ? 0 : a[3] - b[3]);
 
+  const valuta = (e: EsitoNesting) =>
+    qualita(e, opzioni, par.margine, par.lastra.larghezza, par.lama);
+
   let migliore: EsitoNesting | null = null;
   let punteggio: Punteggio | null = null;
+  let strategia: Pick<ParametriNesting, 'ordinamento' | 'verso' | 'criterio'> = {};
   for (const ordinamento of ORDINAMENTI) {
     for (const verso of VERSI) {
-      const e = calcolaNesting({ ...par, ordinamento, verso }, pezzi);
-      const q = qualita(e, opzioni, par.margine, par.lastra.larghezza, par.lama);
-      if (!punteggio || confronta(q, punteggio) < 0) {
-        migliore = e;
-        punteggio = q;
+      for (const criterio of CRITERI) {
+        const e = calcolaNesting({ ...par, ordinamento, verso, criterio }, pezzi);
+        const q = valuta(e);
+        if (!punteggio || confronta(q, punteggio) < 0) {
+          migliore = e;
+          punteggio = q;
+          strategia = { ordinamento, verso, criterio };
+        }
       }
     }
   }
-  return migliore ?? { lastre: [], scartati: [] };
+  if (!migliore || !punteggio) return { lastre: [], scartati: [] };
+
+  // poi si gira un pezzo alla volta, tenendo solo i giri che migliorano
+  const raffinato = affina(par, pezzi, strategia, migliore, punteggio, valuta, confronta);
+  migliore = raffinato.esito;
+  punteggio = raffinato.punteggio;
+
+  // infine si recuperano i pezzi rimasti indietro
+  const stretto = compatta(par, pezzi, migliore);
+  return confronta(valuta(stretto), punteggio) <= 0 ? stretto : migliore;
+}
+
+/**
+ * RAFFINATURA: si prova a girare un pezzo alla volta.
+ *
+ * La ricerca per strategie gira i pezzi tutti insieme, e questo non basta:
+ * spesso il guadagno sta nel girarne DUE su venti, quelli che sbloccano una
+ * fila. È il lavoro che finora toccava fare a mano nell'anteprima, un pezzo
+ * dopo l'altro, guardando cosa succedeva.
+ *
+ * Qui lo fa il programma: prende la disposizione migliore, prova a rovesciare
+ * il verso di ogni singola copia libera, rifà i conti e tiene il cambiamento
+ * solo se il risultato migliora davvero. Ripete finché c'è da guadagnare (al
+ * massimo due giri, perché il grosso si prende al primo).
+ *
+ * Restano fuori i pezzi bloccati dalla venatura e quelli girati a mano: quelli
+ * hanno già il loro verso, deciso da chi lavora.
+ */
+function affina(
+  par: ParametriNesting,
+  pezzi: PezzoNesting[],
+  strategia: Pick<ParametriNesting, 'ordinamento' | 'verso' | 'criterio'>,
+  esito: EsitoNesting,
+  punteggio: [number, number, number, number],
+  valuta: (e: EsitoNesting) => [number, number, number, number],
+  confronta: (a: [number, number, number, number], b: [number, number, number, number]) => number,
+  giriMassimi = 2
+): { esito: EsitoNesting; punteggio: [number, number, number, number] } {
+  const candidate: string[] = [];
+  for (const p of pezzi) {
+    if (!p.ruotabile) continue;
+    const q = Math.max(0, Math.round(p.quantita) || 0);
+    for (let i = 0; i < q; i++) {
+      const chiave = `${p.id}#${i}`;
+      if (par.orientamenti?.[chiave] == null) candidate.push(chiave);
+    }
+  }
+  if (candidate.length === 0) return { esito, punteggio };
+
+  let forzati: Record<string, boolean> = { ...(par.orientamenti ?? {}) };
+  let corrente = esito;
+  let q = punteggio;
+  // tetto al lavoro: su liste lunghissime la raffinatura si ferma prima invece
+  // di far aspettare chi sta scrivendo le misure
+  let rifatti = 0;
+  const massimoRifatti = 160;
+
+  for (let giro = 0; giro < giriMassimi; giro++) {
+    let migliorato = false;
+    for (const chiave of candidate) {
+      if (rifatti >= massimoRifatti) break;
+      rifatti++;
+      // il verso che il pezzo ha adesso: rovesciarlo è la mossa da provare
+      const attuale = corrente.lastre
+        .flatMap((l) => l.piazzamenti)
+        .find((pc) => pc.chiave === chiave)?.ruotato;
+      if (attuale == null) continue;
+      const prova = { ...forzati, [chiave]: !attuale };
+      const e = calcolaNesting({ ...par, ...strategia, orientamenti: prova }, pezzi);
+      const nq = valuta(e);
+      if (confronta(nq, q) < 0) {
+        forzati = prova;
+        corrente = e;
+        q = nq;
+        migliorato = true;
+      }
+    }
+    if (!migliorato) break;
+  }
+  return { esito: corrente, punteggio: q };
 }
 
 /** Riepilogo per le statistiche mostrate accanto al disegno. */

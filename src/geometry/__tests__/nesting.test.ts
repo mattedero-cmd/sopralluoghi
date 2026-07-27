@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   calcolaNesting,
   calcolaNestingMigliore,
+  CRITERI,
   ORDINAMENTI,
+  VERSI,
   passoGriglia,
   lunghezzaUsata,
   riepilogaNesting,
+  type EsitoNesting,
   type ParametriNesting,
   type PezzoNesting
 } from '../nesting';
@@ -273,13 +276,13 @@ describe('verso imposto a mano (venatura)', () => {
 
   it('imporre il verso ruotato gira il pezzo anche se sarebbe stato diritto', () => {
     const libero = calcolaNesting(PIANA, [
-      pezzo({ id: 'a', larghezza: 400, altezza: 200, quantita: 1, ruotabile: false })
+      pezzo({ id: 'a', larghezza: 400, altezza: 200, quantita: 1, ruotabile: true })
     ]);
     expect(libero.lastre[0].piazzamenti[0].ruotato).toBe(false);
     expect(libero.lastre[0].piazzamenti[0].larghezza).toBe(400);
 
     const imposto = calcolaNesting({ ...PIANA, orientamenti: { 'a#0': true } }, [
-      pezzo({ id: 'a', larghezza: 400, altezza: 200, quantita: 1, ruotabile: false })
+      pezzo({ id: 'a', larghezza: 400, altezza: 200, quantita: 1, ruotabile: true })
     ]);
     const pc = imposto.lastre[0].piazzamenti[0];
     expect(pc.ruotato).toBe(true);
@@ -287,6 +290,16 @@ describe('verso imposto a mano (venatura)', () => {
     expect(pc.larghezza).toBe(200);
     expect(pc.altezza).toBe(400);
     expect(pc.larghezzaFinita).toBe(400);
+  });
+
+  it('la VENATURA vince sul verso imposto: un pezzo bloccato non si gira', () => {
+    // il verso girato a mano prima di accendere la venatura non le sopravvive
+    const e = calcolaNesting({ ...PIANA, orientamenti: { 'a#0': true } }, [
+      pezzo({ id: 'a', larghezza: 400, altezza: 200, quantita: 1, ruotabile: false })
+    ]);
+    const pc = e.lastre[0].piazzamenti[0];
+    expect(pc.ruotato).toBe(false);
+    expect(pc.larghezza).toBe(400);
   });
 
   it('imporre il verso diritto impedisce la rotazione automatica', () => {
@@ -312,7 +325,7 @@ describe('verso imposto a mano (venatura)', () => {
 
   it('il verso imposto vale solo per la copia indicata', () => {
     const e = calcolaNesting({ ...PIANA, orientamenti: { 'c#1': true } }, [
-      pezzo({ id: 'c', larghezza: 300, altezza: 150, quantita: 3, ruotabile: false })
+      pezzo({ id: 'c', larghezza: 300, altezza: 150, quantita: 3, ruotabile: true })
     ]);
     const per = new Map(e.lastre[0].piazzamenti.map((p) => [p.chiave, p.ruotato]));
     expect(per.get('c#0')).toBe(false);
@@ -533,10 +546,14 @@ describe('ricerca attenta ai blocchi maneggevoli', () => {
     { id: 'f', nome: 'Testiera', larghezza: 950, altezza: 860, quantita: 4, ruotabile: true, tinta: 0 }
   ];
 
-  it('senza il vincolo sceglie il più stretto, e non si lascia spezzare', () => {
-    const e = calcolaNestingMigliore(par, pelle);
-    const s = segmentaBobina(e.lastre[0], 3000, par.margine);
-    expect(s.some((x) => x.oltreMassimo)).toBe(true);
+  const usata = (e: ReturnType<typeof calcolaNestingMigliore>) =>
+    e.lastre[0].piazzamenti.reduce((f, p) => Math.max(f, p.y + p.altezza), 0);
+
+  it('senza il vincolo conta solo il materiale: sceglie il più stretto', () => {
+    // la tagliabilità si paga in rotolo, quindi senza vincolo non si spende
+    expect(usata(calcolaNestingMigliore(par, pelle))).toBeLessThanOrEqual(
+      usata(calcolaNestingMigliore(par, pelle, { bloccoMassimo: 3000 }))
+    );
   });
 
   it('con il blocco maneggevole preferisce la disposizione tagliabile', () => {
@@ -555,10 +572,120 @@ describe('ricerca attenta ai blocchi maneggevoli', () => {
   });
 
   it('il prezzo in materiale resta piccolo', () => {
-    const usata = (e: ReturnType<typeof calcolaNestingMigliore>) =>
-      e.lastre[0].piazzamenti.reduce((f, p) => Math.max(f, p.y + p.altezza), 0);
     const senza = usata(calcolaNestingMigliore(par, pelle));
     const con = usata(calcolaNestingMigliore(par, pelle, { bloccoMassimo: 3000 }));
     expect(con / senza).toBeLessThan(1.1);
+  });
+});
+
+/**
+ * Il motore deve girare i pezzi DA SÉ: girarne uno a mano nell'anteprima e
+ * vedere il lavoro accorciarsi vuol dire che il calcolo non aveva finito.
+ */
+describe('raffinatura: gira un pezzo alla volta', () => {
+  const bobina = {
+    lastra: { larghezza: 1220, altezza: 50000 },
+    lama: 0,
+    abbondanza: 0,
+    margine: 0,
+    massimoLastre: 1
+  };
+
+  const p = (l: number, a: number, q: number, i: number): PezzoNesting => ({
+    id: `p${i}`,
+    nome: `P${i}`,
+    larghezza: l,
+    altezza: a,
+    quantita: q,
+    ruotabile: true,
+    tinta: 0
+  });
+
+  const usata = (e: EsitoNesting) =>
+    e.lastre.reduce(
+      (s, l) => s + l.piazzamenti.reduce((f, x) => Math.max(f, x.y + x.altezza), 0),
+      0
+    );
+
+  /** il meglio che si ottiene provando solo ordini, versi globali e criteri */
+  const soloStrategie = (pezzi: PezzoNesting[]): number => {
+    let best = Infinity;
+    for (const ordinamento of ORDINAMENTI)
+      for (const verso of VERSI)
+        for (const criterio of CRITERI)
+          best = Math.min(
+            best,
+            usata(calcolaNesting({ ...bobina, ordinamento, verso, criterio }, pezzi))
+          );
+    return best;
+  };
+
+  it('trova quello che le strategie globali non vedono', () => {
+    // qui il guadagno sta nel girare DUE copie su nove: nessun verso globale
+    // ci arriva, perché girarle tutte peggiora
+    const lista = [p(200, 550, 3, 1), p(250, 600, 3, 2), p(250, 550, 3, 3)];
+    expect(usata(calcolaNestingMigliore(bobina, lista))).toBeLessThan(soloStrategie(lista));
+  });
+
+  it('su una lista mista accorcia il rotolo di parecchio', () => {
+    const lista = [
+      p(150, 550, 2, 1),
+      p(250, 350, 1, 2),
+      p(300, 400, 3, 3),
+      p(350, 550, 3, 4),
+      p(100, 150, 1, 5)
+    ];
+    expect(usata(calcolaNestingMigliore(bobina, lista))).toBeLessThanOrEqual(
+      soloStrategie(lista) * 0.9
+    );
+  });
+
+  it('non tocca i pezzi bloccati dalla venatura', () => {
+    const lista: PezzoNesting[] = [
+      { ...p(200, 550, 3, 1), ruotabile: false },
+      { ...p(250, 600, 3, 2), ruotabile: false },
+      { ...p(250, 550, 3, 3), ruotabile: false }
+    ];
+    const e = calcolaNestingMigliore(bobina, lista);
+    for (const pc of e.lastre.flatMap((l) => l.piazzamenti)) expect(pc.ruotato).toBe(false);
+  });
+
+  it('non tocca i versi imposti a mano', () => {
+    const lista = [p(200, 550, 3, 1), p(250, 600, 3, 2), p(250, 550, 3, 3)];
+    const e = calcolaNestingMigliore({ ...bobina, orientamenti: { 'p1#0': true } }, lista);
+    const pc = e.lastre.flatMap((l) => l.piazzamenti).find((x) => x.chiave === 'p1#0');
+    expect(pc?.ruotato).toBe(true);
+  });
+
+  it('qualunque cosa faccia, i pezzi restano dentro la lastra e non si toccano', () => {
+    let seme = 7;
+    const caso = () => ((seme = (seme * 1103515245 + 12345) % 2147483648) / 2147483648);
+    for (let prova = 0; prova < 12; prova++) {
+      const lista: PezzoNesting[] = [];
+      const n = 3 + Math.floor(caso() * 5);
+      for (let i = 0; i < n; i++)
+        lista.push(
+          p(100 + Math.round(caso() * 10) * 100, 100 + Math.round(caso() * 10) * 100, 1 + Math.floor(caso() * 3), i)
+        );
+      const e = calcolaNestingMigliore({ ...bobina, lama: 3, margine: 10 }, lista);
+      for (const l of e.lastre) {
+        for (const pc of l.piazzamenti) {
+          expect(pc.x).toBeGreaterThanOrEqual(10 - 1e-9);
+          expect(pc.y).toBeGreaterThanOrEqual(10 - 1e-9);
+          expect(pc.x + pc.larghezza).toBeLessThanOrEqual(1220 - 10 + 3 + 1e-9);
+        }
+        for (let i = 0; i < l.piazzamenti.length; i++)
+          for (let j = i + 1; j < l.piazzamenti.length; j++) {
+            const a = l.piazzamenti[i];
+            const b = l.piazzamenti[j];
+            expect(
+              a.x + a.larghezza <= b.x + 1e-9 ||
+                b.x + b.larghezza <= a.x + 1e-9 ||
+                a.y + a.altezza <= b.y + 1e-9 ||
+                b.y + b.altezza <= a.y + 1e-9
+            ).toBe(true);
+          }
+      }
+    }
   });
 });
