@@ -1,3 +1,4 @@
+import { ingombroTaglio, type PezzoDaMisura } from '../geometry/pezziDaSopralluogo';
 import { pdfMake } from './engine';
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { db } from '../db/db';
@@ -708,6 +709,12 @@ interface RigaMisura {
   collegati?: string[];
   /** copia richiamata: codice della misura ORIGINALE da cui deriva (es. "A1") */
   derivaDa?: string;
+  /**
+   * Ingombro DI TAGLIO in millimetri (abbondanze comprese): il rettangolo da
+   * cui ricavare il pezzo. Serve al nesting, che impagina rettangoli; nel PDF
+   * non si stampa, perché lì contano le misure vere della forma.
+   */
+  taglioMm?: { larghezza: number; altezza: number };
   stato: StatoMisura;
 }
 
@@ -763,6 +770,8 @@ function dettaglioPoligono(formaMis: QuotaPoligono, fotoMis: Foto): Partial<Riga
       .filter(Boolean)
       .join('   ');
   }
+  // l'ingombro di taglio segue la stessa fonte della misura: l'originale
+  out.taglioMm = ingombroTaglio(formaMis, fotoMis) ?? undefined;
   const perimetro = perimetroReale(formaMis);
   if (perimetro !== null) out.perimetro = `perim. ${formattaNumero(perimetro)} ${formaMis.unita}`;
   const angoli = angoliTriangolo(formaMis);
@@ -827,6 +836,7 @@ function righeMisureFoto(
       }
       // area del cerchio = π r² dalla misura reale
       riga.pezzo = true;
+      riga.taglioMm = ingombroTaglio(a, foto) ?? undefined;
       if (ragg !== null) {
         const m2 = areaLineareInM2(Math.PI * ragg * ragg, a.unita);
         riga.area = formattaArea({ m2, affidabile: true, metodo: 'rettangolo' });
@@ -845,6 +855,7 @@ function righeMisureFoto(
         reale = `B ${n(m.baseSup)} · b ${n(m.baseInf)} · h ${n(m.latoSx)} ${a.unita}`;
       else reale = `${n(m.baseSup)} · ${n(m.latoDx)} · ${n(m.baseInf)} · ${n(m.latoSx)} ${a.unita}`;
       const rigaR: RigaMisura = { codice: codiceForma(a), forma: nome, reale, stato: a.stato, pezzo: true };
+      rigaR.taglioMm = ingombroTaglio(a, foto) ?? undefined;
       const areaR = areaElemento(a, foto);
       if (areaR) {
         rigaR.area = formattaArea(areaR);
@@ -1501,4 +1512,51 @@ async function blobInDataUrlRidotto(blob: Blob, latoMax: number): Promise<string
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
   return canvas.toDataURL('image/jpeg', 0.82);
+}
+
+// ---------------------------------------------------------------------------
+// DAL SOPRALLUOGO AL PIANO DI TAGLIO
+// ---------------------------------------------------------------------------
+
+/**
+ * I pezzi di un progetto, ricavati con LO STESSO MOTORE della distinta di
+ * taglio del PDF.
+ *
+ * Passare di qui, invece di leggere le annotazioni una per una, porta con sé
+ * tutto quello che il report sa già fare:
+ * - le forme riconosciute per quello che sono (triangolo, rettangolo,
+ *   trapezio, rombo, esagono…) invece di un generico «poligono»;
+ * - il codice della forma (es. «A1», «P2.3»), che lega il pezzo alla foto;
+ * - le FAMIGLIE di copie: una forma richiamata più volte compare una volta
+ *   sola, con la quantità giusta, invece di sparire o moltiplicarsi;
+ * - le misure DI TAGLIO, abbondanze comprese, prese dall'originale della
+ *   famiglia, che è la fonte unica della misura.
+ */
+export async function pezziDaProgetto(progettoId: string): Promise<PezzoDaMisura[]> {
+  const progetto = await db.progetti.get(progettoId);
+  if (!progetto) return [];
+  const foto = (await db.foto.where('progettoId').equals(progettoId).toArray()).sort(
+    (a, b) => a.ordine - b.ordine
+  );
+  if (foto.length === 0) return [];
+  const cartelle = await db.cartelle.toArray();
+  const percorsoBase = percorsoEtichette(progetto, cartelle);
+  const ctx = await caricaContestoGlobale();
+
+  const pezzi: PezzoDaMisura[] = [];
+  for (const f of foto) {
+    const annotazioni = await db.annotazioni.where('fotoId').equals(f.id).toArray();
+    const percorso = ctx.percorsoFoto.get(f.id) ?? percorsoBase;
+    for (const r of righeMisureFoto(annotazioni, f, ctx, percorso)) {
+      if (!r.pezzo || !r.taglioMm) continue;
+      pezzi.push({
+        nome: [r.forma, r.codice].filter(Boolean).join(' '),
+        larghezza: r.taglioMm.larghezza,
+        altezza: r.taglioMm.altezza,
+        quantita: Math.max(1, Math.round(r.quantita ?? 1)),
+        conAbbondanze: !!r.abbondanze
+      });
+    }
+  }
+  return pezzi;
 }

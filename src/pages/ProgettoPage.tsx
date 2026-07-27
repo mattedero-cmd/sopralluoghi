@@ -228,28 +228,32 @@ export function ProgettoPage({ id }: { id: string }) {
   const creaPianoDiTaglio = async () => {
     try {
       const [
-        { pezziDaAnnotazioni, raggruppaPezzi, diagnosiPezzi },
+        { pezziDaProgetto },
+        { raggruppaPezzi, diagnosiPezzi },
         { materialeNuovo },
         { prossimaTinta }
-      ] =
-        await Promise.all([
-          import('../geometry/pezziDaSopralluogo'),
-          import('../utils/documentoNesting'),
-          import('../utils/tinte')
-        ]);
+      ] = await Promise.all([
+        import('../pdf/report'),
+        import('../geometry/pezziDaSopralluogo'),
+        import('../utils/documentoNesting'),
+        import('../utils/tinte')
+      ]);
 
-      const trovati = [];
+      // stesso motore della distinta di taglio del PDF: forme riconosciute,
+      // codici, famiglie di copie e misure con le abbondanze
+      const pezzi = raggruppaPezzi(await pezziDaProgetto(progetto.id));
+
       const conto = { formeChiuse: 0, senzaMisura: 0, quoteLineari: 0, altre: 0 };
-      for (const f of foto) {
-        const ann = await db.annotazioni.where('fotoId').equals(f.id).toArray();
-        trovati.push(...pezziDaAnnotazioni(ann, f));
-        const d = diagnosiPezzi(ann, f);
-        conto.formeChiuse += d.formeChiuse;
-        conto.senzaMisura += d.senzaMisura;
-        conto.quoteLineari += d.quoteLineari;
-        conto.altre += d.altre;
+      if (pezzi.length === 0) {
+        for (const f of foto) {
+          const ann = await db.annotazioni.where('fotoId').equals(f.id).toArray();
+          const d = diagnosiPezzi(ann, f);
+          conto.formeChiuse += d.formeChiuse;
+          conto.senzaMisura += d.senzaMisura;
+          conto.quoteLineari += d.quoteLineari;
+          conto.altre += d.altre;
+        }
       }
-      const pezzi = raggruppaPezzi(trovati);
       if (pezzi.length === 0) {
         // meglio dire che cosa si è trovato che lasciare un vicolo cieco
         mostraToast(

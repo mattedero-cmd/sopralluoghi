@@ -94,73 +94,97 @@ function ingombroPoligono(
 }
 
 /**
- * I pezzi ricavati dalle annotazioni di una foto.
+ * INGOMBRO DI TAGLIO di una forma, in millimetri.
  *
- * Le quote lineari, gli angoli e i testi non sono pezzi e vengono ignorati:
- * si tiene solo ciò che ha una superficie da tagliare.
+ * È il rettangolo minimo da cui ricavare il pezzo, abbondanze comprese. Vale
+ * per i tre tipi di forma chiusa; per tutto il resto (quote lineari, angoli,
+ * testi) restituisce null, perché non sono pezzi da tagliare.
+ */
+export function ingombroTaglio(
+  a: Annotazione,
+  foto: CalibFoto
+): { larghezza: number; altezza: number; conAbbondanze: boolean } | null {
+  if (a.tipo === 'quotaRett') {
+    const m = misureElemento(a);
+    // di un trapezio o di un quadrilatero si prende l'ingombro: il lato
+    // più lungo in orizzontale e quello più lungo in verticale
+    const larg = Math.max(m.baseSup ?? 0, m.baseInf ?? 0);
+    const alt = Math.max(m.latoSx ?? 0, m.latoDx ?? 0);
+    if (larg <= 0 || alt <= 0) return null;
+    return { larghezza: mm(larg, a.unita), altezza: mm(alt, a.unita), conAbbondanze: false };
+  }
+
+  if (a.tipo === 'quotaRaggio') {
+    const diametro = a.modo === 'diametro' ? a.valore : a.valore === null ? null : a.valore * 2;
+    if (diametro === null || diametro <= 0) return null;
+    const margine = a.margine ?? 0;
+    // il cerchio si taglia da un quadrato: il suo ingombro
+    const lato = diametro + 2 * margine;
+    return {
+      larghezza: mm(lato, a.unita),
+      altezza: mm(lato, a.unita),
+      conAbbondanze: margine > 0
+    };
+  }
+
+  if (a.tipo === 'quotaPoligono') {
+    const segs = segmentiPoligono(a);
+    const ing = ingombroPoligono(a.punti, segs, foto, a.unita);
+    if (!ing) return null;
+    // le abbondanze allungano i lati: quelle dei lati orizzontali entrano
+    // nella larghezza, quelle dei lati verticali nell'altezza
+    let extraL = 0;
+    let extraA = 0;
+    for (const s of segs) {
+      const tot = abbondanzaTotale(s);
+      if (tot <= 0 || !segmentoELato(s, a.punti.length)) continue;
+      const p1 = a.punti[s.da];
+      const p2 = a.punti[s.a];
+      if (!p1 || !p2) continue;
+      const orizzontale = Math.abs(p2.x - p1.x) >= Math.abs(p2.y - p1.y);
+      if (orizzontale) extraL = Math.max(extraL, tot);
+      else extraA = Math.max(extraA, tot);
+    }
+    return {
+      larghezza: mm(ing.larghezza + extraL, a.unita),
+      altezza: mm(ing.altezza + extraA, a.unita),
+      conAbbondanze: extraL > 0 || extraA > 0
+    };
+  }
+
+  return null;
+}
+
+/**
+ * I pezzi ricavati dalle annotazioni di una foto, per via diretta.
+ *
+ * Nomi elementari e una riga per forma: il percorso completo — con i codici,
+ * le forme riconosciute e le famiglie di copie — passa da `pezziDaProgetto`,
+ * che usa il motore del report.
  */
 export function pezziDaAnnotazioni(
   annotazioni: Annotazione[],
   foto: CalibFoto
 ): PezzoDaMisura[] {
   const pezzi: PezzoDaMisura[] = [];
-
   for (const a of annotazioni) {
-    if (a.tipo === 'quotaRett') {
-      const m = misureElemento(a);
-      // di un trapezio o di un quadrilatero si prende l'ingombro: il lato
-      // più lungo in orizzontale e quello più lungo in verticale
-      const larg = Math.max(m.baseSup ?? 0, m.baseInf ?? 0);
-      const alt = Math.max(m.latoSx ?? 0, m.latoDx ?? 0);
-      if (larg <= 0 || alt <= 0) continue;
-      pezzi.push({
-        nome: nomeDi(a.etichetta, undefined, nomeForma(m.forma)),
-        larghezza: mm(larg, a.unita),
-        altezza: mm(alt, a.unita),
-        quantita: 1,
-        conAbbondanze: false
-      });
-    } else if (a.tipo === 'quotaRaggio') {
-      const diametro = a.modo === 'diametro' ? a.valore : a.valore === null ? null : a.valore * 2;
-      if (diametro === null || diametro <= 0) continue;
-      const margine = a.margine ?? 0;
-      // il cerchio si taglia da un quadrato: il suo ingombro
-      const lato = diametro + 2 * margine;
-      pezzi.push({
-        nome: nomeDi(undefined, a.nota, 'Cerchio'),
-        larghezza: mm(lato, a.unita),
-        altezza: mm(lato, a.unita),
-        quantita: 1,
-        conAbbondanze: margine > 0
-      });
-    } else if (a.tipo === 'quotaPoligono') {
-      const segs = segmentiPoligono(a);
-      const ing = ingombroPoligono(a.punti, segs, foto, a.unita);
-      if (!ing) continue;
-      // le abbondanze allungano i lati: quelle dei lati orizzontali entrano
-      // nella larghezza, quelle dei lati verticali nell'altezza
-      let extraL = 0;
-      let extraA = 0;
-      for (const s of segs) {
-        const tot = abbondanzaTotale(s);
-        if (tot <= 0 || !segmentoELato(s, a.punti.length)) continue;
-        const p1 = a.punti[s.da];
-        const p2 = a.punti[s.a];
-        if (!p1 || !p2) continue;
-        const orizzontale = Math.abs(p2.x - p1.x) >= Math.abs(p2.y - p1.y);
-        if (orizzontale) extraL = Math.max(extraL, tot);
-        else extraA = Math.max(extraA, tot);
-      }
-      pezzi.push({
-        nome: nomeDi(a.etichetta, undefined, `Poligono ${a.punti.length} lati`),
-        larghezza: mm(ing.larghezza + extraL, a.unita),
-        altezza: mm(ing.altezza + extraA, a.unita),
-        quantita: 1,
-        conAbbondanze: extraL > 0 || extraA > 0
-      });
-    }
+    const ing = ingombroTaglio(a, foto);
+    if (!ing) continue;
+    let nome: string;
+    if (a.tipo === 'quotaRaggio') nome = nomeDi(undefined, a.nota, 'Cerchio');
+    else if (a.tipo === 'quotaPoligono')
+      nome = nomeDi(a.etichetta, undefined, `Poligono ${a.punti.length} lati`);
+    else if (a.tipo === 'quotaRett')
+      nome = nomeDi(a.etichetta, undefined, nomeForma(misureElemento(a).forma));
+    else continue;
+    pezzi.push({
+      nome,
+      larghezza: ing.larghezza,
+      altezza: ing.altezza,
+      quantita: 1,
+      conAbbondanze: ing.conAbbondanze
+    });
   }
-
   return pezzi;
 }
 
