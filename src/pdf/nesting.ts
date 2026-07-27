@@ -8,7 +8,7 @@ import {
   type EsitoNesting,
   type LastraNesting
 } from '../geometry/nesting';
-import { segmentaBobina } from '../geometry/segmenti';
+import { BLOCCO_MANEGGEVOLE, segmentaBobina } from '../geometry/segmenti';
 import { OPZIONI_PDF_PREDEFINITE, type OpzioniPdfNesting } from './opzioni';
 import {
   etichettaSupporto,
@@ -317,7 +317,9 @@ export async function generaPdfNesting(
     // stessi pezzi e stesso motore dell'anteprima: il PDF non può mostrare
     // una disposizione diversa da quella che si vede a schermo
     const pezzi = pezziDi(m);
-    const esito = calcolaNestingMigliore(par, pezzi);
+    const esito = calcolaNestingMigliore(par, pezzi, {
+      bloccoMassimo: m.modo === 'bobina' ? BLOCCO_MANEGGEVOLE : undefined
+    });
     const riep = riepilogaNesting(par, pezzi, esito);
     const fogli = fogliDi(m, esito, opzioni);
     const usataTotale = esito.lastre.reduce((s, l) => s + lunghezzaUsata(l, m.margine), 0);

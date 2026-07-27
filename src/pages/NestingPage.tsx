@@ -11,6 +11,7 @@ import {
   type LastraNesting,
   type PezzoNesting
 } from '../geometry/nesting';
+import { BLOCCO_MANEGGEVOLE } from '../geometry/segmenti';
 import { analizzaTestoPezzi, type PezzoTestuale } from '../utils/parserPezzi';
 import { formattaData, formattaNumero } from '../utils/format';
 import { pianoEtichetta } from '../utils/etichettaNesting';
@@ -269,8 +270,13 @@ export function NestingPage() {
   // verso, provando più ordini di inserimento e tenendo il migliore
   const pezziCalcolo = useMemo(() => pezziDi(mat), [mat]);
   const esito = useMemo(
-    () => calcolaNestingMigliore(parametri, pezziCalcolo),
-    [parametri, pezziCalcolo]
+    () =>
+      calcolaNestingMigliore(parametri, pezziCalcolo, {
+        // sulla bobina si preferisce una disposizione che si lasci spezzare
+        // in blocchi maneggevoli, anche a costo di qualche centimetro in più
+        bloccoMassimo: mat.modo === 'bobina' ? BLOCCO_MANEGGEVOLE : undefined
+      }),
+    [parametri, pezziCalcolo, mat.modo]
   );
   const riepilogo = useMemo(
     () => riepilogaNesting(parametri, pezziCalcolo, esito),

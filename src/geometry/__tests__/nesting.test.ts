@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   calcolaNesting,
   calcolaNestingMigliore,
+  ORDINAMENTI,
   passoGriglia,
   lunghezzaUsata,
   riepilogaNesting,
   type ParametriNesting,
   type PezzoNesting
 } from '../nesting';
+import { segmentaBobina } from '../segmenti';
 
 function pezzo(p: Partial<PezzoNesting> & { larghezza: number; altezza: number }): PezzoNesting {
   return {
@@ -419,5 +421,144 @@ describe('calcolaNestingMigliore', () => {
     const imposto = e.lastre.flatMap((l) => l.piazzamenti).find((p) => p.chiave === 'a#0');
     expect(imposto?.ruotato).toBe(true);
     expect(imposto?.larghezza).toBe(300);
+  });
+});
+
+describe('verso globale: la leva che serve sui pezzi tutti uguali', () => {
+  // il caso segnalato: 3 pezzi 610×400 su una bobina larga 1220.
+  // Diritti ne stanno 2 per fila (1220) e il terzo va sotto: 800 mm di rotolo.
+  // Girati sono larghi 400: ci stanno tutti e tre in fila, 610 mm di rotolo.
+  const bobina = {
+    lastra: { larghezza: 1220, altezza: 50000 },
+    lama: 0,
+    abbondanza: 0,
+    margine: 0,
+    massimoLastre: 1
+  };
+  const tre: PezzoNesting[] = [
+    { id: 'a', nome: 'Fianco', larghezza: 610, altezza: 400, quantita: 3, ruotabile: true, tinta: 0 }
+  ];
+  const usata = (e: ReturnType<typeof calcolaNesting>) =>
+    e.lastre[0].piazzamenti.reduce((f, p) => Math.max(f, p.y + p.altezza), 0);
+
+  it('l’ordine da solo non basta: i pezzi uguali si ordinano allo stesso modo', () => {
+    for (const ordinamento of ORDINAMENTI) {
+      expect(usata(calcolaNesting({ ...bobina, ordinamento }, tre))).toBe(800);
+    }
+  });
+
+  it('girandoli tutti il rotolo consumato scende da 800 a 610 mm', () => {
+    expect(usata(calcolaNesting({ ...bobina, verso: 'girato' }, tre))).toBe(610);
+    expect(usata(calcolaNestingMigliore(bobina, tre))).toBe(610);
+  });
+
+  it('la ricerca sceglie «diritto» quando girare peggiorerebbe', () => {
+    const larghi: PezzoNesting[] = [
+      { id: 'a', nome: 'Fascia', larghezza: 1200, altezza: 200, quantita: 4, ruotabile: true, tinta: 0 }
+    ];
+    expect(usata(calcolaNestingMigliore(bobina, larghi))).toBe(800);
+  });
+
+  it('il verso forzato non tocca i pezzi vincolati dalla venatura', () => {
+    const fissi: PezzoNesting[] = [
+      { id: 'a', nome: 'Anta', larghezza: 610, altezza: 400, quantita: 3, ruotabile: false, tinta: 0 }
+    ];
+    const e = calcolaNesting({ ...bobina, verso: 'girato' }, fissi);
+    for (const p of e.lastre[0].piazzamenti) {
+      expect(p.ruotato).toBe(false);
+      expect(p.larghezza).toBe(610);
+    }
+  });
+
+  it('il verso forzato non tocca i versi imposti a mano dall’anteprima', () => {
+    const e = calcolaNesting({ ...bobina, verso: 'diritto', orientamenti: { 'a#1': true } }, tre);
+    const imposto = e.lastre[0].piazzamenti.find((p) => p.chiave === 'a#1');
+    expect(imposto?.ruotato).toBe(true);
+    expect(imposto?.larghezza).toBe(400);
+  });
+
+  it('un pezzo girato dichiara di esserlo, così l’anteprima lo mostra giusto', () => {
+    const e = calcolaNesting({ ...bobina, verso: 'girato' }, tre);
+    for (const p of e.lastre[0].piazzamenti) {
+      expect(p.ruotato).toBe(true);
+      expect(p.larghezza).toBe(400);
+      expect(p.altezza).toBe(610);
+      // le misure FINITE restano quelle richieste dall'utente
+      expect(p.larghezzaFinita).toBe(610);
+      expect(p.altezzaFinita).toBe(400);
+    }
+  });
+
+  it('i pezzi non si sovrappongono nemmeno col verso forzato', () => {
+    const misti: PezzoNesting[] = [
+      { id: 'a', nome: 'A', larghezza: 610, altezza: 400, quantita: 5, ruotabile: true, tinta: 0 },
+      { id: 'b', nome: 'B', larghezza: 300, altezza: 300, quantita: 6, ruotabile: true, tinta: 0 },
+      { id: 'c', nome: 'C', larghezza: 900, altezza: 250, quantita: 3, ruotabile: false, tinta: 0 }
+    ];
+    const e = calcolaNestingMigliore({ ...bobina, lama: 3, margine: 10 }, misti);
+    for (const l of e.lastre) {
+      for (let i = 0; i < l.piazzamenti.length; i++) {
+        for (let j = i + 1; j < l.piazzamenti.length; j++) {
+          const a = l.piazzamenti[i];
+          const b = l.piazzamenti[j];
+          const separati =
+            a.x + a.larghezza <= b.x + 1e-9 ||
+            b.x + b.larghezza <= a.x + 1e-9 ||
+            a.y + a.altezza <= b.y + 1e-9 ||
+            b.y + b.altezza <= a.y + 1e-9;
+          expect(separati).toBe(true);
+        }
+      }
+    }
+  });
+});
+
+describe('ricerca attenta ai blocchi maneggevoli', () => {
+  // la pelle chiara della camera: impaginata "al più stretto" viene un unico
+  // blocco da 4,58 m che al banco non si maneggia; 16 cm di rotolo in più la
+  // spezzano in due blocchi sotto i 3 m
+  const par = {
+    lastra: { larghezza: 1400, altezza: 50000 },
+    lama: 3,
+    abbondanza: 0,
+    margine: 10,
+    massimoLastre: 1
+  };
+  const pelle: PezzoNesting[] = [
+    { id: 'a', nome: 'Fianco armadio', larghezza: 2000, altezza: 450, quantita: 1, ruotabile: true, tinta: 0 },
+    { id: 'b', nome: 'Sopra armadio', larghezza: 1650, altezza: 100, quantita: 1, ruotabile: true, tinta: 0 },
+    { id: 'c', nome: 'Frontale', larghezza: 1000, altezza: 150, quantita: 1, ruotabile: true, tinta: 0 },
+    { id: 'd', nome: 'Frontali com', larghezza: 500, altezza: 150, quantita: 2, ruotabile: true, tinta: 0 },
+    { id: 'e', nome: 'Retro frigo', larghezza: 750, altezza: 610, quantita: 1, ruotabile: true, tinta: 0 },
+    { id: 'f', nome: 'Testiera', larghezza: 950, altezza: 860, quantita: 4, ruotabile: true, tinta: 0 }
+  ];
+
+  it('senza il vincolo sceglie il più stretto, e non si lascia spezzare', () => {
+    const e = calcolaNestingMigliore(par, pelle);
+    const s = segmentaBobina(e.lastre[0], 3000, par.margine);
+    expect(s.some((x) => x.oltreMassimo)).toBe(true);
+  });
+
+  it('con il blocco maneggevole preferisce la disposizione tagliabile', () => {
+    const e = calcolaNestingMigliore(par, pelle, { bloccoMassimo: 3000 });
+    const s = segmentaBobina(e.lastre[0], 3000, par.margine);
+    expect(s.every((x) => !x.oltreMassimo)).toBe(true);
+    expect(s.length).toBeGreaterThan(1);
+    for (const x of s) expect(x.fine - x.inizio).toBeLessThanOrEqual(3000);
+  });
+
+  it('non sacrifica MAI un pezzo piazzato per la tagliabilità', () => {
+    const senza = calcolaNestingMigliore(par, pelle);
+    const con = calcolaNestingMigliore(par, pelle, { bloccoMassimo: 3000 });
+    const conta = (e: typeof senza) => e.lastre.reduce((n, l) => n + l.piazzamenti.length, 0);
+    expect(conta(con)).toBe(conta(senza));
+  });
+
+  it('il prezzo in materiale resta piccolo', () => {
+    const usata = (e: ReturnType<typeof calcolaNestingMigliore>) =>
+      e.lastre[0].piazzamenti.reduce((f, p) => Math.max(f, p.y + p.altezza), 0);
+    const senza = usata(calcolaNestingMigliore(par, pelle));
+    const con = usata(calcolaNestingMigliore(par, pelle, { bloccoMassimo: 3000 }));
+    expect(con / senza).toBeLessThan(1.1);
   });
 });

@@ -14,6 +14,13 @@
 
 import type { LastraNesting, Piazzamento } from './nesting';
 
+/**
+ * Lunghezza di riferimento di un blocco maneggevole al banco (mm).
+ * Non è un limite rigido — se i pezzi non lasciano passare la lama il blocco
+ * viene più lungo — ma è la misura attorno a cui conviene impaginare.
+ */
+export const BLOCCO_MANEGGEVOLE = 3000;
+
 export interface SegmentoBobina {
   /** estremi lungo il rotolo, in mm dall'inizio */
   inizio: number;
@@ -49,44 +56,68 @@ export function segmentaBobina(
     ];
   }
 
-  // un taglio in y è libero se nessun pezzo lo attraversa
-  const libero = (y: number) =>
-    !pezzi.some((p) => p.y < y - EPS && p.y + p.altezza > y + EPS);
+  // Le fasce di rotolo davvero occupate, unite fra loro. Fuori da queste il
+  // rotolo è libero per tutta la larghezza: lì la lama può passare. Guardare
+  // solo le "fini dei pezzi" non basta — una fine può essere attraversata da
+  // un pezzo accanto, e viceversa una linea libera può cadere in mezzo al
+  // vuoto fra due file.
+  const coperte: Array<{ a: number; b: number }> = [];
+  for (const p of [...pezzi].sort((x, y) => x.y - y.y)) {
+    const a = p.y;
+    const b = p.y + p.altezza;
+    const ultima = coperte[coperte.length - 1];
+    // si uniscono solo le fasce che si SOVRAPPONGONO: due pezzi che si
+    // toccano lasciano comunque passare la lama sulla linea di contatto
+    if (ultima && a < ultima.b - EPS) ultima.b = Math.max(ultima.b, b);
+    else coperte.push({ a, b });
+  }
 
-  // i candidati sono le fini dei pezzi: tagliare altrove sprecherebbe
-  // materiale senza guadagnare nulla
-  const candidati = [...new Set(pezzi.map((p) => p.y + p.altezza))]
-    .filter((y) => y > 0 && y < fineTotale && libero(y))
-    .sort((a, b) => a - b);
+  /** la fascia occupata che attraversa `y`, se c'è */
+  const attraversa = (y: number) => coperte.find((c) => c.a < y - EPS && c.b > y + EPS);
 
-  const segmenti: SegmentoBobina[] = [];
+  const blocchi: Array<{ inizio: number; fine: number; oltre: boolean }> = [];
   let inizio = 0;
   let guardia = 0;
 
   while (inizio < fineTotale - EPS && guardia++ < 10_000) {
     if (fineTotale - inizio <= massimo + EPS) {
-      segmenti.push(blocco(pezzi, inizio, fineTotale, false));
+      blocchi.push({ inizio, fine: fineTotale, oltre: false });
       break;
     }
-    // il taglio libero più lontano entro il massimo
-    let taglio = 0;
-    for (const y of candidati) {
-      if (y > inizio + EPS && y <= inizio + massimo + EPS) taglio = y;
-    }
-    if (taglio > 0) {
-      segmenti.push(blocco(pezzi, inizio, taglio, false));
+    // il punto libero più lontano entro il massimo: il limite stesso se lì il
+    // rotolo è sgombro, altrimenti l'inizio della fascia che lo attraversa
+    const limite = inizio + massimo;
+    const sopra = attraversa(limite);
+    const taglio = sopra ? sopra.a : limite;
+    if (taglio > inizio + EPS) {
+      blocchi.push({ inizio, fine: taglio, oltre: false });
       inizio = taglio;
       continue;
     }
-    // nessun taglio libero prima del massimo: si allunga fino al primo
-    // possibile, altrimenti si va in fondo
-    const oltre = candidati.find((y) => y > inizio + massimo + EPS);
-    const fine = oltre ?? fineTotale;
-    segmenti.push(blocco(pezzi, inizio, fine, true));
+    // la fascia occupata comincia prima del blocco e finisce dopo il massimo:
+    // non c'è nessun punto dove passare, il blocco va allungato
+    const fine = sopra ? Math.min(sopra.b, fineTotale) : fineTotale;
+    blocchi.push({ inizio, fine, oltre: true });
     inizio = fine;
   }
 
-  return segmenti;
+  // I margini di testa e di coda sono rotolo senza pezzi dentro: da soli non
+  // sono un segmento da staccare, appartengono al blocco che hanno accanto.
+  const quanti = (a: number, b: number) =>
+    pezzi.filter((p) => p.y >= a - EPS && p.y + p.altezza <= b + EPS).length;
+  for (let i = blocchi.length - 1; i >= 0 && blocchi.length > 1; i--) {
+    if (quanti(blocchi[i].inizio, blocchi[i].fine) > 0) continue;
+    if (i > 0) {
+      blocchi[i - 1].fine = blocchi[i].fine;
+      blocchi[i - 1].oltre = blocchi[i - 1].oltre || blocchi[i].oltre;
+    } else {
+      blocchi[1].inizio = blocchi[0].inizio;
+      blocchi[1].oltre = blocchi[1].oltre || blocchi[0].oltre;
+    }
+    blocchi.splice(i, 1);
+  }
+
+  return blocchi.map((b) => blocco(pezzi, b.inizio, b.fine, b.oltre));
 }
 
 function blocco(

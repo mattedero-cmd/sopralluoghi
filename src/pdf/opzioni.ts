@@ -5,6 +5,8 @@
  * dover caricare pdfmake: il generatore vero arriva solo quando si esporta.
  */
 
+import { BLOCCO_MANEGGEVOLE } from '../geometry/segmenti';
+
 export interface OpzioniPdfNesting {
   /** spezzare le bobine in blocchi maneggevoli */
   segmenta: boolean;
@@ -14,5 +16,5 @@ export interface OpzioniPdfNesting {
 
 export const OPZIONI_PDF_PREDEFINITE: OpzioniPdfNesting = {
   segmenta: true,
-  massimoSegmento: 3000
+  massimoSegmento: BLOCCO_MANEGGEVOLE
 };

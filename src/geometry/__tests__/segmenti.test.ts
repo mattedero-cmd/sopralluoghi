@@ -114,3 +114,88 @@ describe('segmentaBobina', () => {
     }
   });
 });
+
+describe('code vuote', () => {
+  it('il margine dopo l’ultimo pezzo non diventa un segmento a sé', () => {
+    // due pezzi da 1 m con massimo 1 m: il taglio cade a 1000 e a 2000, ma
+    // fineTotale è 2010 per via del margine
+    const s = segmentaBobina(lastra([0, 1000], [1000, 1000]), 1000, 10);
+    expect(s).toHaveLength(2);
+    expect(s.every((x) => x.lastra.piazzamenti.length > 0)).toBe(true);
+    expect(s[s.length - 1].fine).toBe(2010);
+  });
+
+  it('nessun segmento resta senza pezzi, con qualunque massimo', () => {
+    const l = lastra([0, 700], [700, 500], [1200, 900], [2100, 600], [2700, 800]);
+    for (const massimo of [600, 800, 1000, 1500, 2000, 3000, 4000]) {
+      const s = segmentaBobina(l, massimo, 10);
+      for (const seg of s) {
+        expect(seg.lastra.piazzamenti.length, `massimo ${massimo}`).toBeGreaterThan(0);
+      }
+      // e continuano a coprire tutto il tratto
+      expect(s[0].inizio).toBe(0);
+      expect(s[s.length - 1].fine).toBe(3510);
+      for (let i = 1; i < s.length; i++) expect(s[i].inizio).toBe(s[i - 1].fine);
+    }
+  });
+});
+
+describe('linee libere che non sono fini di pezzo', () => {
+  it('taglia anche nel vuoto fra due file lontane', () => {
+    // un pezzo in cima, poi 2,5 m di rotolo sgombro, poi un altro pezzo.
+    // Guardando solo le fini dei pezzi si taglierebbe subito a 500 e il
+    // blocco successivo verrebbe lungo 3 m; il vuoto invece si può tagliare
+    // dove si vuole.
+    const s = segmentaBobina(lastra([0, 500], [3000, 500]), 2000);
+    expect(s).toHaveLength(2);
+    expect(s.every((x) => x.fine - x.inizio <= 2000 + 1e-6)).toBe(true);
+    expect(s.every((x) => !x.oltreMassimo)).toBe(true);
+    expect(s.every((x) => x.lastra.piazzamenti.length === 1)).toBe(true);
+  });
+
+  it('due pezzi che si toccano lasciano passare la lama sul contatto', () => {
+    const s = segmentaBobina(lastra([0, 1000], [1000, 1000]), 1000);
+    expect(s.map((x) => [x.inizio, x.fine])).toEqual([
+      [0, 1000],
+      [1000, 2000]
+    ]);
+  });
+
+  it('due pezzi affiancati e sfalsati bloccano il taglio in mezzo', () => {
+    // P1 copre 0..1000 a sinistra, P2 copre 900..1600 a destra: fra 900 e
+    // 1000 la lama non passa, e nemmeno a 1000
+    const l = lastra([0, 1000, 0], [900, 700, 500]);
+    const s = segmentaBobina(l, 1200);
+    expect(s).toHaveLength(1);
+    expect(s[0].fine).toBe(1600);
+    expect(s[0].oltreMassimo).toBe(true);
+  });
+});
+
+describe('margini senza pezzi dentro', () => {
+  it('il margine di TESTA non diventa un segmento a sé', () => {
+    // come nel calcolo vero: i pezzi partono a y = margine
+    const s = segmentaBobina(lastra([10, 2000], [2010, 1500]), 1800, 10);
+    expect(s.every((x) => x.lastra.piazzamenti.length > 0)).toBe(true);
+    expect(s[0].inizio).toBe(0);
+  });
+
+  it('un solo pezzo lunghissimo resta un blocco solo, non tre', () => {
+    const s = segmentaBobina(lastra([10, 4000]), 1000, 10);
+    expect(s).toHaveLength(1);
+    expect(s[0]).toMatchObject({ inizio: 0, fine: 4020, oltreMassimo: true });
+    expect(s[0].lastra.piazzamenti).toHaveLength(1);
+  });
+
+  it('i blocchi restano contigui e coprono tutto anche dopo le fusioni', () => {
+    const l = lastra([10, 900], [910, 1200], [2110, 400], [2510, 1500]);
+    for (const massimo of [500, 900, 1300, 2000, 2600, 5000]) {
+      const s = segmentaBobina(l, massimo, 10);
+      expect(s[0].inizio).toBe(0);
+      expect(s[s.length - 1].fine).toBe(4020);
+      for (let i = 1; i < s.length; i++) expect(s[i].inizio).toBe(s[i - 1].fine);
+      expect(s.every((x) => x.lastra.piazzamenti.length > 0)).toBe(true);
+      expect(s.reduce((n, x) => n + x.lastra.piazzamenti.length, 0)).toBe(4);
+    }
+  });
+});

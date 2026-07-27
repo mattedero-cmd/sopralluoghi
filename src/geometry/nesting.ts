@@ -1,3 +1,5 @@
+import { segmentaBobina } from './segmenti';
+
 /**
  * NESTING RETTANGOLARE (ottimizzazione del taglio).
  *
@@ -58,7 +60,22 @@ export interface ParametriNesting {
    * li prova tutti e tiene il più efficiente. Assente = per area decrescente.
    */
   ordinamento?: Ordinamento;
+  /**
+   * Verso di partenza dei pezzi liberi di girare.
+   *
+   * «auto» lascia scegliere allo spazio libero, pezzo per pezzo: è il criterio
+   * migliore in media ma è avido, e su liste di pezzi tutti uguali si blocca
+   * sulla prima scelta. Forzando tutti diritti o tutti girati si esplorano le
+   * disposizioni «a colonne» e «a righe», che spesso sono le più compatte.
+   * I versi imposti a mano restano comunque intoccabili.
+   */
+  verso?: Verso;
 }
+
+/** verso di partenza dei pezzi liberi di girare */
+export type Verso = 'auto' | 'diritto' | 'girato';
+
+export const VERSI: Verso[] = ['auto', 'diritto', 'girato'];
 
 /** criteri di ordinamento dei pezzi prima dell'impacchettamento */
 export type Ordinamento = 'area' | 'latoLungo' | 'altezza' | 'larghezza' | 'perimetro';
@@ -218,6 +235,8 @@ export function calcolaNesting(par: ParametriNesting, pezzi: PezzoNesting[]): Es
     ruotabile: boolean;
     /** verso imposto a mano: true ruotato, false diritto, undefined libero */
     imposto?: boolean;
+    /** il pezzo è davvero libero di girare (nessun verso imposto) */
+    libero: boolean;
     finitaL: number;
     finitaA: number;
     packL: number;
@@ -236,6 +255,7 @@ export function calcolaNesting(par: ParametriNesting, pezzi: PezzoNesting[]): Es
         // con un verso imposto il pezzo non è più libero di girare
         ruotabile: imposto == null ? p.ruotabile : false,
         imposto: imposto ?? undefined,
+        libero: imposto == null && p.ruotabile,
         finitaL: p.larghezza,
         finitaA: p.altezza,
         packL: p.larghezza + abbondanza + lama,
@@ -271,13 +291,20 @@ export function calcolaNesting(par: ParametriNesting, pezzi: PezzoNesting[]): Es
   const lastre: Contenitore[] = [];
   const scartati: PezzoScartato[] = [];
 
+  const verso = par.verso ?? 'auto';
+
   for (const it of istanze) {
-    // con un verso imposto si prova SOLO quello: le misure d'ingombro sono
+    // il verso può essere imposto a mano (vince su tutto) oppure forzato dalla
+    // strategia in prova; altrimenti lo sceglie lo spazio libero
+    const fissato: boolean | undefined =
+      it.imposto ?? (it.libero && verso !== 'auto' ? verso === 'girato' : undefined);
+    // con un verso fissato si prova SOLO quello: le misure d'ingombro sono
     // già scambiate e la rotazione automatica è disattivata
-    const usaL = it.imposto ? it.packA : it.packL;
-    const usaA = it.imposto ? it.packL : it.packA;
+    const usaL = fissato ? it.packA : it.packL;
+    const usaA = fissato ? it.packL : it.packA;
+    const puoGirare = fissato == null && it.ruotabile;
     const entra = usaL <= binL && usaA <= binA;
-    const entraGirato = it.ruotabile && usaA <= binL && usaL <= binA;
+    const entraGirato = puoGirare && usaA <= binL && usaL <= binA;
     if (!entra && !entraGirato) {
       scartati.push({ nome: it.nome, larghezzaFinita: it.finitaL, altezzaFinita: it.finitaA });
       continue;
@@ -286,7 +313,7 @@ export function calcolaNesting(par: ParametriNesting, pezzi: PezzoNesting[]): Es
     let migliore: Posizione | null = null;
     let lastraScelta: Contenitore | null = null;
     for (const c of lastre) {
-      const pos = c.cercaPosizione(usaL, usaA, it.ruotabile);
+      const pos = c.cercaPosizione(usaL, usaA, puoGirare);
       if (pos && (!migliore || pos.punteggio < migliore.punteggio)) {
         migliore = pos;
         lastraScelta = c;
@@ -300,7 +327,7 @@ export function calcolaNesting(par: ParametriNesting, pezzi: PezzoNesting[]): Es
       }
       const nuova = new Contenitore(binL, binA);
       lastre.push(nuova);
-      migliore = nuova.cercaPosizione(usaL, usaA, it.ruotabile);
+      migliore = nuova.cercaPosizione(usaL, usaA, puoGirare);
       lastraScelta = nuova;
     }
     if (!migliore || !lastraScelta) continue;
@@ -315,8 +342,8 @@ export function calcolaNesting(par: ParametriNesting, pezzi: PezzoNesting[]): Es
       altezzaFinita: it.finitaA,
       nome: it.nome,
       tinta: it.tinta,
-      // con un verso imposto è quello a dire se il pezzo è girato
-      ruotato: it.imposto ?? migliore.ruotato,
+      // con un verso fissato è quello a dire se il pezzo è girato
+      ruotato: fissato ?? migliore.ruotato,
       chiave: it.chiave
     });
   }
@@ -334,7 +361,11 @@ export function calcolaNesting(par: ParametriNesting, pezzi: PezzoNesting[]): Es
  *
  * Numeri più bassi sono migliori.
  */
-function qualita(e: EsitoNesting): [number, number, number] {
+function qualita(
+  e: EsitoNesting,
+  opzioni?: OpzioniRicerca,
+  margine = 0
+): [number, number, number, number] {
   let piazzati = 0;
   let occupata = 0;
   for (const l of e.lastre) {
@@ -343,36 +374,73 @@ function qualita(e: EsitoNesting): [number, number, number] {
     for (const pc of l.piazzamenti) fine = Math.max(fine, pc.y + pc.altezza);
     occupata += fine;
   }
-  return [-piazzati, e.lastre.length, occupata];
+  // su bobina conta anche poter STACCARE il rotolo a blocchi maneggevoli:
+  // un blocco da 4,5 m che non si può spezzare è peggio di 16 cm di materiale
+  // in più, perché al banco non si maneggia
+  let ingestibili = 0;
+  if (opzioni?.bloccoMassimo && opzioni.bloccoMassimo > 0) {
+    for (const l of e.lastre) {
+      for (const s of segmentaBobina(l, opzioni.bloccoMassimo, margine)) {
+        if (s.oltreMassimo) ingestibili++;
+      }
+    }
+  }
+  return [-piazzati, e.lastre.length, ingestibili, occupata];
+}
+
+export interface OpzioniRicerca {
+  /**
+   * Solo per la BOBINA: lunghezza del blocco che si riesce a maneggiare.
+   * Fra due disposizioni quasi equivalenti si preferisce quella che si lascia
+   * spezzare in blocchi di questa misura (vedi geometry/segmenti).
+   */
+  bloccoMassimo?: number;
 }
 
 /**
  * IMPACCHETTAMENTO MIGLIORE.
  *
- * Nessun ordine di inserimento è il migliore su tutte le liste: lo stesso
- * insieme di pezzi può occupare una lastra in meno solo perché si è partiti
- * dai più alti invece che dai più grandi. Qui si prova ogni ordine e si tiene
- * il risultato migliore — il programma cerca da sé, senza chiedere nulla.
+ * Nessuna strategia è la migliore su tutte le liste: lo stesso insieme di
+ * pezzi può occupare una lastra in meno solo perché si è partiti dai più alti
+ * invece che dai più grandi, o perché li si è messi tutti in piedi invece che
+ * tutti coricati. Qui si provano tutte le combinazioni di ordine e verso e si
+ * tiene il risultato migliore — il programma cerca da sé, senza chiedere nulla.
+ *
+ * Il verso è la leva decisiva quando i pezzi sono tutti uguali: lì cambiare
+ * l'ordine non cambia niente, mentre girarli tutti può far entrare una fila
+ * in più (tre pezzi da 400 su un rotolo da 1220 invece di due da 610).
+ *
+ * Con `bloccoMassimo` la ricerca tiene conto anche di quanto la bobina si
+ * lascia spezzare: fra due disposizioni si preferisce quella tagliabile in
+ * blocchi maneggevoli, perché serve a poco risparmiare tre centimetri di
+ * rotolo se poi il pezzo che ne esce non si riesce a girare al banco.
  *
  * A parità di qualità vince il primo ordine provato, così il risultato è
  * sempre lo stesso a parità di dati.
  */
 export function calcolaNestingMigliore(
   par: ParametriNesting,
-  pezzi: PezzoNesting[]
+  pezzi: PezzoNesting[],
+  opzioni?: OpzioniRicerca
 ): EsitoNesting {
+  type Punteggio = [number, number, number, number];
   /** confronto lessicografico: <0 se «a» è meglio di «b» */
-  const confronta = (a: [number, number, number], b: [number, number, number]) =>
-    a[0] - b[0] || a[1] - b[1] || (Math.abs(a[2] - b[2]) < 1e-9 ? 0 : a[2] - b[2]);
+  const confronta = (a: Punteggio, b: Punteggio) =>
+    a[0] - b[0] ||
+    a[1] - b[1] ||
+    a[2] - b[2] ||
+    (Math.abs(a[3] - b[3]) < 1e-9 ? 0 : a[3] - b[3]);
 
   let migliore: EsitoNesting | null = null;
-  let punteggio: [number, number, number] | null = null;
+  let punteggio: Punteggio | null = null;
   for (const ordinamento of ORDINAMENTI) {
-    const e = calcolaNesting({ ...par, ordinamento }, pezzi);
-    const q = qualita(e);
-    if (!punteggio || confronta(q, punteggio) < 0) {
-      migliore = e;
-      punteggio = q;
+    for (const verso of VERSI) {
+      const e = calcolaNesting({ ...par, ordinamento, verso }, pezzi);
+      const q = qualita(e, opzioni, par.margine);
+      if (!punteggio || confronta(q, punteggio) < 0) {
+        migliore = e;
+        punteggio = q;
+      }
     }
   }
   return migliore ?? { lastre: [], scartati: [] };
