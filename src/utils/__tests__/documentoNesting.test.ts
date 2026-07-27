@@ -39,7 +39,7 @@ describe('etichettaSupporto', () => {
   it('descrive lastre e bobina', () => {
     const m = materialeNuovo('m1', 'Legno');
     expect(etichettaSupporto(m)).toBe('lastre 2500 × 1250 mm');
-    expect(etichettaSupporto({ ...m, modo: 'bobina' })).toBe('bobina 1000 mm × 50 m');
+    expect(etichettaSupporto({ ...m, modo: 'bobina' })).toBe('bobina 1220 mm × 50 m');
   });
 });
 

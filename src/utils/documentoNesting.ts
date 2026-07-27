@@ -47,7 +47,8 @@ export interface DocumentoNesting {
 }
 
 export const LASTRA_PREDEFINITA = { larghezza: 2500, altezza: 1250 };
-export const BOBINA_PREDEFINITA = { larghezza: 1000, metri: 50 };
+/** la bobina più comune in laboratorio: 1220 mm di fascia */
+export const BOBINA_PREDEFINITA = { larghezza: 1220, metri: 50 };
 
 export function materialeNuovo(id: string, nome: string): MaterialeNesting {
   return {
