@@ -17,6 +17,7 @@ import { formattaData, formattaNumero } from '../utils/format';
 import { pianoEtichetta } from '../utils/etichettaNesting';
 import { prossimaTinta, tintaBordo, tintaSfondo } from '../utils/tinte';
 import {
+  cambioVenatura,
   materialeNuovo,
   migraDocumento,
   parametriDi,
@@ -305,6 +306,8 @@ export function NestingPage() {
   const aggiornaPezzo = (id: string, modifiche: Partial<PezzoNesting>) =>
     aggiornaMat({ pezzi: mat.pezzi.map((p) => (p.id === id ? { ...p, ...modifiche } : p)) });
 
+  const cambiaVenatura = (v: Venatura) => aggiornaMat(cambioVenatura(mat, v));
+
   const aggiungiPezzo = () =>
     aggiornaMat({
       pezzi: [
@@ -433,7 +436,8 @@ export function NestingPage() {
           larghezza: p.larghezza,
           altezza: p.altezza,
           quantita: p.quantita,
-          ruotabile: p.ruotabile,
+          // in un'essenza con venatura il pezzo nasce vincolato al suo verso
+          ruotabile: p.ruotabile && bersaglio.venatura === 'nessuna',
           tinta: prossimaTinta(bersaglio.pezzi.length)
         });
         toccati.add(bersaglio.id);
@@ -628,19 +632,19 @@ export function NestingPage() {
           <div className="segmenti" role="group" aria-label="Venatura del materiale">
             <button
               className={mat.venatura === 'nessuna' ? 'attivo' : ''}
-              onClick={() => aggiornaMat({ venatura: 'nessuna' })}
+              onClick={() => cambiaVenatura('nessuna')}
             >
               Nessuna
             </button>
             <button
               className={mat.venatura === 'orizzontale' ? 'attivo' : ''}
-              onClick={() => aggiornaMat({ venatura: 'orizzontale' })}
+              onClick={() => cambiaVenatura('orizzontale')}
             >
               ↔ Orizzontale
             </button>
             <button
               className={mat.venatura === 'verticale' ? 'attivo' : ''}
-              onClick={() => aggiornaMat({ venatura: 'verticale' })}
+              onClick={() => cambiaVenatura('verticale')}
             >
               ↕ Verticale
             </button>
@@ -648,7 +652,7 @@ export function NestingPage() {
           <small>
             {mat.venatura === 'nessuna'
               ? 'Senza venatura il verso non conta: il programma gira i pezzi da solo e sceglie l’impacchettamento più efficiente.'
-              : 'Togli la spunta «Ruota» ai pezzi che devono seguire la venatura. Nell’anteprima tocca un pezzo per girarlo di 90°.'}
+              : 'Con la venatura i pezzi restano nel verso in cui li hai inseriti. Spunta «Ruota» solo su quelli che possono girare lo stesso; nell’anteprima puoi girarne uno toccandolo.'}
           </small>
         </div>
 

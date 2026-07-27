@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  cambioVenatura,
   etichettaSupporto,
   materialeNuovo,
   migraDocumento,
@@ -161,5 +162,48 @@ describe('pezziDi', () => {
     const m = conVerso(materialeNuovo('m1', 'Legno'));
     pezziDi(m);
     expect(m.pezzi[0].ruotabile).toBe(false);
+  });
+});
+
+describe('cambioVenatura', () => {
+  const conPezzi2 = () => ({
+    ...materialeNuovo('m1', 'Legno'),
+    orientamenti: { 'a#0': true },
+    pezzi: [
+      { id: 'a', nome: 'Anta', larghezza: 600, altezza: 400, quantita: 2, ruotabile: true, tinta: 0 },
+      { id: 'b', nome: 'Fianco', larghezza: 300, altezza: 800, quantita: 1, ruotabile: false, tinta: 0 }
+    ]
+  });
+
+  it('accendendo la venatura blocca il verso di tutti i pezzi', () => {
+    const patch = cambioVenatura(conPezzi2(), 'verticale');
+    expect(patch.venatura).toBe('verticale');
+    expect(patch.pezzi?.map((p) => p.ruotabile)).toEqual([false, false]);
+  });
+
+  it('accendendo la venatura decadono i versi girati a mano', () => {
+    expect(cambioVenatura(conPezzi2(), 'orizzontale').orientamenti).toEqual({});
+  });
+
+  it('cambiando direzione non si tocca ciò che l’utente ha già deciso', () => {
+    const m = { ...conPezzi2(), venatura: 'verticale' as const };
+    const patch = cambioVenatura(m, 'orizzontale');
+    expect(patch).toEqual({ venatura: 'orizzontale' });
+  });
+
+  it('spegnendo la venatura non si tocca nulla: i valori restano per dopo', () => {
+    const m = { ...conPezzi2(), venatura: 'verticale' as const };
+    expect(cambioVenatura(m, 'nessuna')).toEqual({ venatura: 'nessuna' });
+  });
+
+  it('riscegliere la stessa venatura non azzera niente', () => {
+    const m = { ...conPezzi2(), venatura: 'verticale' as const };
+    expect(cambioVenatura(m, 'verticale')).toEqual({ venatura: 'verticale' });
+  });
+
+  it('dopo il blocco il motore non gira più nessun pezzo', () => {
+    const m = conPezzi2();
+    const bloccato = { ...m, ...cambioVenatura(m, 'verticale') } as typeof m;
+    expect(pezziDi(bloccato).every((p) => !p.ruotabile)).toBe(true);
   });
 });

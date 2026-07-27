@@ -92,6 +92,27 @@ export function pezziDi(m: MaterialeNesting): PezzoNesting[] {
   return m.pezzi.map((p) => (p.ruotabile ? p : { ...p, ruotabile: true }));
 }
 
+/**
+ * Cosa cambia in un materiale quando si sceglie la venatura.
+ *
+ * Accendendola il verso dei pezzi conta: tutti si bloccano nel verso in cui
+ * sono stati inseriti — la fibra deve andare per il suo verso — e i versi
+ * girati a mano nell'anteprima decadono, perché erano stati scelti quando il
+ * verso era indifferente. Restano liberi solo i pezzi che si spunta a mano.
+ *
+ * Spegnendola non si tocca nulla: senza venatura ci pensa `pezziDi`, e i
+ * valori per pezzo restano lì pronti per quando la si riaccende.
+ */
+export function cambioVenatura(m: MaterialeNesting, v: Venatura): Partial<MaterialeNesting> {
+  if (v === m.venatura) return { venatura: v };
+  if (v === 'nessuna' || m.venatura !== 'nessuna') return { venatura: v };
+  return {
+    venatura: v,
+    pezzi: m.pezzi.map((p) => (p.ruotabile ? { ...p, ruotabile: false } : p)),
+    orientamenti: {}
+  };
+}
+
 /** com'è fatto il supporto, in una riga (intestazioni, PDF, elenchi) */
 export function etichettaSupporto(m: MaterialeNesting): string {
   if (m.modo === 'bobina') {
