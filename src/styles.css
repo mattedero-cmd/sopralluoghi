@@ -2605,6 +2605,22 @@ a {
   }
 }
 
+/* riga di un pezzo che non entra nel supporto: si vede subito nella lista,
+   senza dover leggere l'avviso più in basso */
+.nest-riga.fuori {
+  box-shadow: inset 3px 0 0 var(--pericolo);
+  background: color-mix(in srgb, var(--pericolo) 8%, transparent);
+}
+
+.nest-fuori {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--pericolo);
+}
+
 /* pastiglia col colore del pezzo: nella riga della tabella e nella legenda */
 .nest-tinta {
   width: 15px;

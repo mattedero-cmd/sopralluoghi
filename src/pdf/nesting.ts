@@ -249,9 +249,14 @@ function distinta(m: MaterialeNesting, esito: EsitoNesting): Content {
       { text: 'Verso', style: 'th' }
     ]
   ];
+  // quante copie di ogni pezzo sono rimaste fuori
+  const fuori = new Map<string, number>();
+  for (const s of esito.scartati) fuori.set(s.id, (fuori.get(s.id) ?? 0) + 1);
+
   for (const p of m.pezzi) {
     const q = Math.max(0, Math.round(p.quantita) || 0);
     if (q === 0) continue;
+    const mancanti = fuori.get(p.id) ?? 0;
     righe.push([
       {
         // pastiglia del colore, per ritrovare il pezzo nel disegno
@@ -269,17 +274,35 @@ function distinta(m: MaterialeNesting, esito: EsitoNesting): Content {
           }
         ]
       },
-      { text: p.nome || '—', style: 'td' },
+      {
+        text: p.nome || '—',
+        style: 'td',
+        color: mancanti > 0 ? '#b3261e' : undefined
+      },
       { text: `${mm(p.larghezza)} × ${mm(p.altezza)}`, style: 'td', alignment: 'right' },
-      { text: String(q), style: 'td', alignment: 'right', bold: true },
-      { text: p.ruotabile ? 'libero' : 'fisso', style: 'td' }
+      {
+        // «2 / 8» dice a colpo d'occhio quante copie sono rimaste fuori
+        text: mancanti > 0 ? `${q - mancanti} / ${q}` : String(q),
+        style: 'td',
+        alignment: 'right',
+        bold: true,
+        color: mancanti > 0 ? '#b3261e' : undefined
+      },
+      {
+        text: mancanti > 0 ? 'NON ENTRA' : p.ruotabile ? 'libero' : 'fisso',
+        style: 'td',
+        color: mancanti > 0 ? '#b3261e' : undefined,
+        bold: mancanti > 0
+      }
     ]);
   }
   if (esito.scartati.length > 0) {
     righe.push([
       { text: '', style: 'td' },
       {
-        text: `${esito.scartati.length} pezzi NON entrano nel supporto`,
+        text: `${esito.scartati.length} ${
+          esito.scartati.length === 1 ? 'pezzo non entra' : 'pezzi non entrano'
+        } nel supporto: o sono più grandi del materiale, o il materiale non basta`,
         style: 'td',
         color: '#b3261e',
         colSpan: 4,
@@ -291,7 +314,8 @@ function distinta(m: MaterialeNesting, esito: EsitoNesting): Content {
     ]);
   }
   return {
-    table: { headerRows: 1, widths: [12, '*', 90, 32, 40], body: righe },
+    // la colonna del verso deve tenere «NON ENTRA» su una riga sola
+    table: { headerRows: 1, widths: [12, '*', 90, 36, 56], body: righe },
     layout: 'lightHorizontalLines',
     margin: [0, 4, 0, 0]
   };

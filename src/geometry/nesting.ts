@@ -116,6 +116,10 @@ export interface LastraNesting {
 
 /** pezzo che non entra nella lastra nemmeno da solo */
 export interface PezzoScartato {
+  /** id del pezzo in lista: serve a segnalarlo nella riga da cui viene */
+  id: string;
+  /** identità della singola copia rimasta fuori (`idPezzo#indice`) */
+  chiave: string;
   nome: string;
   larghezzaFinita: number;
   altezzaFinita: number;
@@ -230,6 +234,7 @@ export function calcolaNesting(par: ParametriNesting, pezzi: PezzoNesting[]): Es
 
   interface Istanza {
     chiave: string;
+    id: string;
     nome: string;
     tinta: number;
     ruotabile: boolean;
@@ -250,6 +255,7 @@ export function calcolaNesting(par: ParametriNesting, pezzi: PezzoNesting[]): Es
       const imposto = par.orientamenti?.[chiave];
       istanze.push({
         chiave,
+        id: p.id,
         nome: p.nome,
         tinta: p.tinta,
         // con un verso imposto il pezzo non è più libero di girare
@@ -306,7 +312,13 @@ export function calcolaNesting(par: ParametriNesting, pezzi: PezzoNesting[]): Es
     const entra = usaL <= binL && usaA <= binA;
     const entraGirato = puoGirare && usaA <= binL && usaL <= binA;
     if (!entra && !entraGirato) {
-      scartati.push({ nome: it.nome, larghezzaFinita: it.finitaL, altezzaFinita: it.finitaA });
+      scartati.push({
+        id: it.id,
+        chiave: it.chiave,
+        nome: it.nome,
+        larghezzaFinita: it.finitaL,
+        altezzaFinita: it.finitaA
+      });
       continue;
     }
 
@@ -322,7 +334,13 @@ export function calcolaNesting(par: ParametriNesting, pezzi: PezzoNesting[]): Es
     if (!migliore) {
       // con un tetto al numero di lastre (bobina) ciò che non entra resta fuori
       if (par.massimoLastre != null && lastre.length >= par.massimoLastre) {
-        scartati.push({ nome: it.nome, larghezzaFinita: it.finitaL, altezzaFinita: it.finitaA });
+        scartati.push({
+        id: it.id,
+        chiave: it.chiave,
+        nome: it.nome,
+        larghezzaFinita: it.finitaL,
+        altezzaFinita: it.finitaA
+      });
         continue;
       }
       const nuova = new Contenitore(binL, binA);

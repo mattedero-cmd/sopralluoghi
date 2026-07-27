@@ -325,6 +325,13 @@ export function NestingPage() {
       ]
     });
 
+  /** quante copie di ogni pezzo sono rimaste fuori: si segnala nella sua riga */
+  const fuoriPerPezzo = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const s of esito.scartati) m.set(s.id, (m.get(s.id) ?? 0) + 1);
+    return m;
+  }, [esito]);
+
   const scartatiRaggruppati = useMemo(() => {
     const mappa = new Map<string, { nome: string; l: number; a: number; n: number }>();
     for (const s of esito.scartati) {
@@ -694,8 +701,11 @@ export function NestingPage() {
               </span>
               <span />
             </div>
-            {mat.pezzi.map((p) => (
-              <div className="nest-riga" key={p.id}>
+            {mat.pezzi.map((p) => {
+              const fuori = fuoriPerPezzo.get(p.id) ?? 0;
+              const totale = Math.max(0, Math.round(p.quantita) || 0);
+              return (
+              <div className={fuori > 0 ? 'nest-riga fuori' : 'nest-riga'} key={p.id}>
                 <span
                   className="nest-tinta"
                   style={{ background: tintaSfondo(p.tinta), borderColor: tintaBordo(p.tinta) }}
@@ -755,8 +765,19 @@ export function NestingPage() {
                 >
                   <Icona nome="chiudi" dimensione={16} />
                 </button>
+                {fuori > 0 && (
+                  <span className="nest-fuori">
+                    <Icona nome="avviso" dimensione={14} />
+                    {fuori === totale
+                      ? 'non entra nel supporto'
+                      : `${fuori} ${fuori === 1 ? 'copia' : 'copie'} su ${totale} non ${
+                          fuori === 1 ? 'entra' : 'entrano'
+                        }`}
+                  </span>
+                )}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
         <div className="riga-pulsanti">
