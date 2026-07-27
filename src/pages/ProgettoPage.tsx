@@ -227,7 +227,11 @@ export function ProgettoPage({ id }: { id: string }) {
    */
   const creaPianoDiTaglio = async () => {
     try {
-      const [{ pezziDaAnnotazioni, raggruppaPezzi }, { materialeNuovo }, { prossimaTinta }] =
+      const [
+        { pezziDaAnnotazioni, raggruppaPezzi, diagnosiPezzi },
+        { materialeNuovo },
+        { prossimaTinta }
+      ] =
         await Promise.all([
           import('../geometry/pezziDaSopralluogo'),
           import('../utils/documentoNesting'),
@@ -235,15 +239,26 @@ export function ProgettoPage({ id }: { id: string }) {
         ]);
 
       const trovati = [];
+      const conto = { formeChiuse: 0, senzaMisura: 0, quoteLineari: 0, altre: 0 };
       for (const f of foto) {
         const ann = await db.annotazioni.where('fotoId').equals(f.id).toArray();
         trovati.push(...pezziDaAnnotazioni(ann, f));
+        const d = diagnosiPezzi(ann, f);
+        conto.formeChiuse += d.formeChiuse;
+        conto.senzaMisura += d.senzaMisura;
+        conto.quoteLineari += d.quoteLineari;
+        conto.altre += d.altre;
       }
       const pezzi = raggruppaPezzi(trovati);
       if (pezzi.length === 0) {
+        // meglio dire che cosa si è trovato che lasciare un vicolo cieco
         mostraToast(
           'info',
-          'Nessuna forma quotata da tagliare in questo sopralluogo: quota un rettangolo, un poligono o un cerchio.'
+          conto.formeChiuse === 0
+            ? conto.quoteLineari > 0
+              ? `Ci sono ${conto.quoteLineari} quote lineari ma nessuna forma chiusa: i pezzi nascono da rettangoli, poligoni e cerchi quotati.`
+              : 'In questo sopralluogo non ci sono forme quotate: disegna un rettangolo, un poligono o un cerchio e quotalo.'
+            : `${conto.formeChiuse} forme trovate, ma senza misure utilizzabili: scrivi le misure sui lati (o calibra la foto).`
         );
         return;
       }

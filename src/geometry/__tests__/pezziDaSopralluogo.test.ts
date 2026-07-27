@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pezziDaAnnotazioni, raggruppaPezzi } from '../pezziDaSopralluogo';
+import { diagnosiPezzi, pezziDaAnnotazioni, raggruppaPezzi } from '../pezziDaSopralluogo';
 import type { Annotazione } from '../../db/types';
 
 /** foto calibrata: 1 px = 1 cm, così le misure sono facili da leggere */
@@ -135,7 +135,12 @@ describe('pezziDaAnnotazioni', () => {
       ],
       FOTO
     );
-    expect(p[0]).toMatchObject({ larghezza: 2000, altezza: 1000, conAbbondanze: false });
+    // l'abbondanza da 100 cm sulla diagonale non entra da nessuna parte:
+    // l'ingombro resta quello del rettangolo 200×100, in scala sulla diagonale
+    expect(p[0].conAbbondanze).toBe(false);
+    expect(p[0].larghezza).toBeGreaterThan(1900);
+    expect(p[0].larghezza).toBeLessThan(2010);
+    expect(p[0].altezza).toBeLessThan(1010);
   });
 
   it('quote lineari, angoli e testi non sono pezzi', () => {
@@ -179,5 +184,95 @@ describe('raggruppaPezzi', () => {
     const lista = [uno, { ...uno }];
     raggruppaPezzi(lista);
     expect(lista[0].quantita).toBe(1);
+  });
+});
+
+describe('forme quotate su foto NON calibrate', () => {
+  /** la foto non ha né scala né piano: le misure stanno solo nelle quote */
+  const SENZA = { scala: null, piano: null };
+
+  it('un poligono quotato si misura lo stesso: la scala viene dai suoi lati', () => {
+    // disegno 400×200 px, ma il lato lungo è quotato 200 cm → 1 px = 0,5 cm
+    const p = pezziDaAnnotazioni(
+      [
+        poligono(
+          [[0, 0], [400, 0], [400, 200], [0, 200]],
+          [
+            { da: 0, a: 1, valore: 200 },
+            { da: 1, a: 2, valore: 100 },
+            { da: 2, a: 3, valore: 200 },
+            { da: 3, a: 0, valore: 100 }
+          ]
+        )
+      ],
+      SENZA
+    );
+    expect(p[0]).toMatchObject({ larghezza: 2000, altezza: 1000 });
+  });
+
+  it('le abbondanze valgono anche senza calibrazione', () => {
+    const p = pezziDaAnnotazioni(
+      [
+        poligono(
+          [[0, 0], [400, 0], [400, 200], [0, 200]],
+          [
+            { da: 0, a: 1, valore: 200, abbInizio: 5, abbFine: 5 },
+            { da: 1, a: 2, valore: 100, abbInizio: 3 },
+            { da: 2, a: 3, valore: 200 },
+            { da: 3, a: 0, valore: 100 }
+          ]
+        )
+      ],
+      SENZA
+    );
+    expect(p[0]).toMatchObject({ larghezza: 2100, altezza: 1030, conAbbondanze: true });
+  });
+
+  it('un rettangolo quotato non ha mai avuto bisogno della calibrazione', () => {
+    const p = pezziDaAnnotazioni([rett(120, 60)], SENZA);
+    expect(p[0]).toMatchObject({ larghezza: 1200, altezza: 600 });
+  });
+
+  it('un cerchio quotato nemmeno', () => {
+    const p = pezziDaAnnotazioni([cerchio(40, 2)], SENZA);
+    expect(p[0]).toMatchObject({ larghezza: 440, altezza: 440 });
+  });
+
+  it('solo una forma senza misure e senza calibrazione resta fuori', () => {
+    const p = pezziDaAnnotazioni([poligono([[0, 0], [400, 0], [400, 200]])], SENZA);
+    expect(p).toEqual([]);
+  });
+
+  it('bastano le quote di un verso solo: l’altro segue le proporzioni', () => {
+    const p = pezziDaAnnotazioni(
+      [
+        poligono(
+          [[0, 0], [400, 0], [400, 200], [0, 200]],
+          [{ da: 0, a: 1, valore: 200 }]
+        )
+      ],
+      SENZA
+    );
+    expect(p[0]).toMatchObject({ larghezza: 2000, altezza: 1000 });
+  });
+});
+
+describe('diagnosiPezzi', () => {
+  const SENZA = { scala: null, piano: null };
+
+  it('distingue le forme chiuse dalle quote lineari', () => {
+    const quota = { ...base, tipo: 'quota', unita: 'cm', valore: 100 } as unknown as Annotazione;
+    const d = diagnosiPezzi([rett(120, 60), quota, quota], FOTO);
+    expect(d).toMatchObject({ formeChiuse: 1, senzaMisura: 0, quoteLineari: 2 });
+  });
+
+  it('conta le forme trovate ma senza misure utilizzabili', () => {
+    const d = diagnosiPezzi([rett(null, null), poligono([[0, 0], [10, 0], [10, 5]])], SENZA);
+    expect(d).toMatchObject({ formeChiuse: 2, senzaMisura: 2 });
+  });
+
+  it('il resto finisce fra le «altre»', () => {
+    const testo = { ...base, tipo: 'testo', testo: 'ciao' } as unknown as Annotazione;
+    expect(diagnosiPezzi([testo], FOTO)).toMatchObject({ altre: 1, formeChiuse: 0 });
   });
 });
