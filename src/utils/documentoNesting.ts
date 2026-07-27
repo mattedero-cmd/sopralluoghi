@@ -38,6 +38,12 @@ export interface DocumentoNesting {
   materiali: MaterialeNesting[];
   /** id del materiale mostrato a schermo */
   attivo: string;
+  /**
+   * Come stampare il piano di taglio. Resta col lavoro perché il PDF viene
+   * rifatto da solo a ogni modifica: senza memoria, la lunghezza massima
+   * scelta a mano andrebbe persa al primo salvataggio.
+   */
+  stampa?: { segmenta: boolean; massimoSegmento: number };
 }
 
 export const LASTRA_PREDEFINITA = { larghezza: 2500, altezza: 1250 };
@@ -203,11 +209,21 @@ export function migraDocumento(grezzo: unknown): DocumentoNesting | null {
       typeof g.attivo === 'string' && materiali.some((m) => m.id === g.attivo)
         ? g.attivo
         : materiali[0].id;
-    return { versione: 2, nome, materiali, attivo };
+    return { versione: 2, nome, materiali, attivo, stampa: normalizzaStampa(g.stampa) };
   }
 
   // formato v1: un unico materiale con i campi in radice
   if (!Array.isArray(g.pezzi)) return null;
   const unico = normalizzaMateriale({ ...g, nome: g.nomeMateriale ?? 'Materiale 1' }, 0);
   return { versione: 2, nome, materiali: [unico], attivo: unico.id };
+}
+
+function normalizzaStampa(
+  g: unknown
+): { segmenta: boolean; massimoSegmento: number } | undefined {
+  if (!g || typeof g !== 'object') return undefined;
+  const s = g as Record<string, unknown>;
+  const massimo = numero(s.massimoSegmento, 0, 1);
+  if (!(massimo > 0)) return undefined;
+  return { segmenta: s.segmenta !== false, massimoSegmento: massimo };
 }

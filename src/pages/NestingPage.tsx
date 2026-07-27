@@ -422,8 +422,10 @@ export function NestingPage({ id, nuovoIn }: { id?: string; nuovoIn?: string }) 
   const rigeneraPdf = async (idLavoro: string, documento: DocumentoNesting) => {
     try {
       const { generaPdfNesting } = await import('../pdf/nesting');
-      const blob = await generaPdfNesting(documento);
-      await salvaPdfNesting(idLavoro, blob);
+      // le stesse opzioni scelte a mano nell'esportazione: il PDF salvato non
+      // può essere diverso da quello che si è visto in anteprima
+      const blob = await generaPdfNesting(documento, documento.stampa ?? OPZIONI_PDF_PREDEFINITE);
+      await salvaPdfNesting(idLavoro, blob, __BUILD__);
     } catch {
       // un PDF non riuscito non deve far perdere il lavoro: resta il
       // precedente, e `pdfIl` più vecchio dirà che va rifatto
@@ -464,9 +466,12 @@ export function NestingPage({ id, nuovoIn }: { id?: string; nuovoIn?: string }) 
   const esportaPdf = async (opzioni: OpzioniPdfNesting) => {
     setEsporta(false);
     setPdfInCorso(true);
+    // la scelta resta nel lavoro: da qui in poi anche il PDF rifatto da solo
+    // userà questa lunghezza massima
+    setDoc((d) => ({ ...d, stampa: opzioni }));
     try {
       const { generaPdfNesting } = await import('../pdf/nesting');
-      const blob = await generaPdfNesting(doc, opzioni);
+      const blob = await generaPdfNesting({ ...doc, stampa: opzioni }, opzioni);
       // prima si guarda, poi semmai si manda: l'anteprima è nell'app
       setAnteprima(blob);
     } catch (e) {
@@ -1034,6 +1039,7 @@ export function NestingPage({ id, nuovoIn }: { id?: string; nuovoIn?: string }) 
       {esporta && (
         <ModaleEsporta
           conBobine={doc.materiali.some((m) => m.modo === 'bobina')}
+          iniziali={doc.stampa ?? OPZIONI_PDF_PREDEFINITE}
           onChiudi={() => setEsporta(false)}
           onEsporta={esportaPdf}
         />
@@ -1353,15 +1359,17 @@ function Lastra({
  */
 function ModaleEsporta({
   conBobine,
+  iniziali,
   onChiudi,
   onEsporta
 }: {
   conBobine: boolean;
+  iniziali: OpzioniPdfNesting;
   onChiudi: () => void;
   onEsporta: (opzioni: OpzioniPdfNesting) => void;
 }) {
-  const [segmenta, setSegmenta] = useState(OPZIONI_PDF_PREDEFINITE.segmenta);
-  const [massimo, setMassimo] = useState(OPZIONI_PDF_PREDEFINITE.massimoSegmento);
+  const [segmenta, setSegmenta] = useState(iniziali.segmenta);
+  const [massimo, setMassimo] = useState(iniziali.massimoSegmento);
 
   return (
     <Modale titolo="Esporta il piano di taglio" onChiudi={onChiudi}>

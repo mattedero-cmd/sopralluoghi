@@ -1078,4 +1078,10 @@ export interface LavoroNesting {
    */
   pdf?: Blob;
   pdfIl?: number;
+  /**
+   * Build dell'app che ha prodotto il PDF. Se l'app nel frattempo è stata
+   * aggiornata, il disegno può essere cambiato: il PDF salvato è vecchio
+   * anche se il lavoro non è stato toccato, e va rifatto.
+   */
+  pdfApp?: string;
 }

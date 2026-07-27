@@ -836,11 +836,22 @@ export async function salvaNesting(
   return record;
 }
 
-/** aggiorna il solo PDF di un lavoro già salvato */
-export async function salvaPdfNesting(id: ID, pdf: Blob): Promise<void> {
+/** aggiorna il solo PDF di un lavoro già salvato, con la build che l'ha fatto */
+export async function salvaPdfNesting(id: ID, pdf: Blob, app: string): Promise<void> {
   await scrivi('salvare il PDF del piano di taglio', () =>
-    db.nesting.update(id, { pdf, pdfIl: ora() })
+    db.nesting.update(id, { pdf, pdfIl: ora(), pdfApp: app })
   );
+}
+
+/**
+ * Il PDF salvato è ancora buono?
+ *
+ * No se manca, se il lavoro è stato modificato dopo l'ultima stampa, oppure
+ * se l'ha prodotto una versione precedente dell'app: il disegno cambia con
+ * gli aggiornamenti, e un piano di taglio vecchio è peggio di nessun piano.
+ */
+export function pdfDaRifare(l: LavoroNesting, app: string): boolean {
+  return !l.pdf || (l.pdfIl ?? 0) < l.modificatoIl || l.pdfApp !== app;
 }
 
 export async function rinominaNesting(id: ID, nome: string): Promise<void> {

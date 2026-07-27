@@ -11,6 +11,7 @@ import {
   eliminaCartella,
   eliminaNesting,
   eliminaProgetto,
+  pdfDaRifare,
   rinominaNesting,
   salvaPdfNesting,
   spostaCartella,
@@ -158,16 +159,19 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
     setPdfInCorso(l.id);
     try {
       let blob = l.pdf;
-      if (!blob || (l.pdfIl ?? 0) < l.modificatoIl) {
-        const [{ generaPdfNesting }, { migraDocumento }] = await Promise.all([
-          import('../pdf/nesting'),
-          import('../utils/documentoNesting')
-        ]);
+      if (pdfDaRifare(l, __BUILD__)) {
+        const [{ generaPdfNesting }, { migraDocumento }, { OPZIONI_PDF_PREDEFINITE }] =
+          await Promise.all([
+            import('../pdf/nesting'),
+            import('../utils/documentoNesting'),
+            import('../pdf/opzioni')
+          ]);
         const documento = migraDocumento(l.documento);
         if (!documento) throw new Error('Il lavoro salvato non è leggibile.');
-        blob = await generaPdfNesting(documento);
-        await salvaPdfNesting(l.id, blob);
+        blob = await generaPdfNesting(documento, documento.stampa ?? OPZIONI_PDF_PREDEFINITE);
+        await salvaPdfNesting(l.id, blob, __BUILD__);
       }
+      if (!blob) throw new Error('PDF non disponibile.');
       setAnteprima({ blob, titolo: l.nome });
     } catch (e) {
       mostraToast('errore', e instanceof Error ? e.message : 'PDF non disponibile.');

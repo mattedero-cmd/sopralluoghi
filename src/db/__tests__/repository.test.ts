@@ -15,6 +15,7 @@ import {
   eliminaProgetto,
   migraFotoLegacy,
   nestingInCartella,
+  pdfDaRifare,
   prossimoNumeroPreventivo,
   rinominaNesting,
   salvaNesting,
@@ -312,9 +313,10 @@ describe('lavori di nesting in archivio', () => {
     expect(dopo!.pdfIl!).toBeLessThan(dopo!.modificatoIl);
 
     // rigenerato: torna allineato
-    await salvaPdfNesting('n3', new Blob(['%PDF-1.4 nuovo']));
+    await salvaPdfNesting('n3', new Blob(['%PDF-1.4 nuovo']), 'build-1');
     const rifatto = await db.nesting.get('n3');
     expect(rifatto!.pdfIl!).toBeGreaterThanOrEqual(rifatto!.modificatoIl);
+    expect(rifatto!.pdfApp).toBe('build-1');
   });
 
   it('spostare e rinominare non toccano il documento', async () => {
@@ -324,6 +326,19 @@ describe('lavori di nesting in archivio', () => {
     const l = await db.nesting.get('n4');
     expect(l).toMatchObject({ cartellaId: 'altra', nome: 'Nuovo nome' });
     expect(l!.documento).toEqual({ materiali: ['x'] });
+  });
+
+  it('un PDF fatto da una build precedente va rifatto, anche senza modifiche', async () => {
+    await salvaNesting('n6', 'Taglio', { a: 1 });
+    await salvaPdfNesting('n6', new Blob(['%PDF']), 'build-1');
+    const l = (await db.nesting.get('n6'))!;
+    expect(pdfDaRifare(l, 'build-1')).toBe(false);
+    // l'app è stata aggiornata: il disegno può essere cambiato
+    expect(pdfDaRifare(l, 'build-2')).toBe(true);
+    // e senza PDF si rifà comunque
+    expect(pdfDaRifare({ ...l, pdf: undefined }, 'build-1')).toBe(true);
+    // così come dopo una modifica al lavoro
+    expect(pdfDaRifare({ ...l, modificatoIl: l.pdfIl! + 1 }, 'build-1')).toBe(true);
   });
 
   it('il backup non porta con sé il Blob del PDF, che in JSON andrebbe perso', async () => {

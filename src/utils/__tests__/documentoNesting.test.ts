@@ -207,3 +207,33 @@ describe('cambioVenatura', () => {
     expect(pezziDi(bloccato).every((p) => !p.ruotabile)).toBe(true);
   });
 });
+
+describe('opzioni di stampa nel documento', () => {
+  it('la lunghezza massima scelta a mano sopravvive al salvataggio', () => {
+    const d = migraDocumento({
+      versione: 2,
+      materiali: [materialeNuovo('m1', 'Legno')],
+      stampa: { segmenta: true, massimoSegmento: 2000 }
+    });
+    expect(d?.stampa).toEqual({ segmenta: true, massimoSegmento: 2000 });
+  });
+
+  it('senza opzioni valide non ne inventa', () => {
+    expect(migraDocumento({ versione: 2, materiali: [] })?.stampa).toBeUndefined();
+    expect(
+      migraDocumento({ versione: 2, materiali: [], stampa: { massimoSegmento: 0 } })?.stampa
+    ).toBeUndefined();
+    expect(
+      migraDocumento({ versione: 2, materiali: [], stampa: 'boh' })?.stampa
+    ).toBeUndefined();
+  });
+
+  it('«non segmentare» è una scelta, non un valore mancante', () => {
+    const d = migraDocumento({
+      versione: 2,
+      materiali: [],
+      stampa: { segmenta: false, massimoSegmento: 3000 }
+    });
+    expect(d?.stampa).toEqual({ segmenta: false, massimoSegmento: 3000 });
+  });
+});
