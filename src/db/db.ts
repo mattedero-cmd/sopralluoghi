@@ -55,6 +55,27 @@ export class SopralluoghiDB extends Dexie {
       preventivi: 'id, progettoId, clienteId, numero',
       nesting: 'id, nome, modificatoIl'
     });
+    // Fase 5: i lavori di nesting vivono nelle cartelle dell'archivio
+    this.version(4)
+      .stores({
+        cartelle: 'id, parentId',
+        progetti: 'id, cartellaId, clienteId, modificatoIl',
+        foto: 'id, progettoId',
+        annotazioni: 'id, fotoId',
+        impostazioni: 'id',
+        clienti: 'id, nome',
+        preventivi: 'id, progettoId, clienteId, numero',
+        nesting: 'id, nome, cartellaId, modificatoIl'
+      })
+      .upgrade(async (tx) => {
+        // i lavori salvati prima non avevano una cartella: vanno in radice
+        await tx
+          .table('nesting')
+          .toCollection()
+          .modify((l: { cartellaId?: string | null }) => {
+            if (l.cartellaId === undefined) l.cartellaId = null;
+          });
+      });
   }
 }
 

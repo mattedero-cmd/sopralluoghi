@@ -14,11 +14,17 @@ import {
   eliminaFoto,
   eliminaProgetto,
   migraFotoLegacy,
+  nestingInCartella,
   prossimoNumeroPreventivo,
+  rinominaNesting,
+  salvaNesting,
+  salvaPdfNesting,
+  spostaNesting,
   salvaAnnotazioniFoto,
   spostaCartella,
   totaliPreventivo
 } from '../repository';
+import { costruisciIndice } from '../backup';
 import type { Foto, Quota } from '../types';
 
 function datiFoto(): Omit<Foto, 'id' | 'progettoId' | 'ordine' | 'creataIl' | 'modificataIl'> {
@@ -270,5 +276,66 @@ describe('preventivi (Fase 3)', () => {
     expect(totali.scontato).toBe(450);
     expect(totali.iva).toBeCloseTo(99);
     expect(totali.totale).toBeCloseTo(549);
+  });
+});
+
+describe('lavori di nesting in archivio', () => {
+  it('nasce nella cartella indicata e ci resta', async () => {
+    const c = await creaCartella('Camera Rossi', null);
+    await salvaNesting('n1', 'Taglio camera', { versione: 2, materiali: [] }, {
+      cartellaId: c.id
+    });
+    expect((await nestingInCartella(c.id)).map((l) => l.nome)).toEqual(['Taglio camera']);
+    expect(await nestingInCartella(null)).toEqual([]);
+  });
+
+  it('il salvataggio successivo non perde la cartella né la data di creazione', async () => {
+    const primo = await salvaNesting('n2', 'Taglio', { a: 1 }, { cartellaId: 'cart' });
+    const dopo = await salvaNesting('n2', 'Taglio rinominato', { a: 2 });
+    expect(dopo.cartellaId).toBe('cart');
+    expect(dopo.creatoIl).toBe(primo.creatoIl);
+    expect(dopo.documento).toEqual({ a: 2 });
+  });
+
+  it('il PDF resta finché non ne arriva uno nuovo, e la data dice se è vecchio', async () => {
+    const pdf = new Blob(['%PDF-1.4'], { type: 'application/pdf' });
+    await salvaNesting('n3', 'Taglio', { a: 1 }, { pdf });
+    const conPdf = await db.nesting.get('n3');
+    expect(conPdf?.pdf).toBeInstanceOf(Blob);
+    expect(conPdf!.pdfIl).toBe(conPdf!.modificatoIl);
+
+    // una modifica senza nuovo PDF: il vecchio resta ma risulta da rifare
+    await new Promise((r) => setTimeout(r, 2));
+    await salvaNesting('n3', 'Taglio', { a: 2 });
+    const dopo = await db.nesting.get('n3');
+    expect(dopo?.pdf).toBeInstanceOf(Blob);
+    expect(dopo!.pdfIl!).toBeLessThan(dopo!.modificatoIl);
+
+    // rigenerato: torna allineato
+    await salvaPdfNesting('n3', new Blob(['%PDF-1.4 nuovo']));
+    const rifatto = await db.nesting.get('n3');
+    expect(rifatto!.pdfIl!).toBeGreaterThanOrEqual(rifatto!.modificatoIl);
+  });
+
+  it('spostare e rinominare non toccano il documento', async () => {
+    await salvaNesting('n4', 'Taglio', { materiali: ['x'] }, { cartellaId: null });
+    await spostaNesting('n4', 'altra');
+    await rinominaNesting('n4', 'Nuovo nome');
+    const l = await db.nesting.get('n4');
+    expect(l).toMatchObject({ cartellaId: 'altra', nome: 'Nuovo nome' });
+    expect(l!.documento).toEqual({ materiali: ['x'] });
+  });
+
+  it('il backup non porta con sé il Blob del PDF, che in JSON andrebbe perso', async () => {
+    await salvaNesting('n5', 'Taglio', { a: 1 }, {
+      pdf: new Blob(['%PDF'], { type: 'application/pdf' })
+    });
+    const indice = await costruisciIndice();
+    const voce = indice.nesting?.find((l) => l.id === 'n5');
+    expect(voce).toBeTruthy();
+    expect(voce).not.toHaveProperty('pdf');
+    // e ciò che resta sopravvive a un giro in JSON
+    const giro = JSON.parse(JSON.stringify(indice.nesting));
+    expect(giro.find((l: { id: string }) => l.id === 'n5').documento).toEqual({ a: 1 });
   });
 });

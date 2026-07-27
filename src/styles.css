@@ -263,6 +263,11 @@ textarea {
   background: linear-gradient(160deg, #f0a500, #d98800);
 }
 
+/* piano di taglio: si distingue a colpo d'occhio dai sopralluoghi */
+.glifo.taglio {
+  background: linear-gradient(160deg, #12a594, #0d7d70);
+}
+
 .scheda .sotto {
   color: var(--testo-2);
   font-size: 14px;

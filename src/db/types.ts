@@ -1064,8 +1064,18 @@ export const COLORE_QUOTA_TECNICA = '#00A896';
 export interface LavoroNesting {
   id: ID;
   nome: string;
+  /** cartella dell'archivio in cui vive il lavoro (null = radice) */
+  cartellaId: ID | null;
   creatoIl: number;
   modificatoIl: number;
   /** DocumentoNesting serializzabile */
   documento: unknown;
+  /**
+   * PDF del piano di taglio salvato insieme al lavoro: si apre con un tocco
+   * dall'archivio, senza rigenerarlo. Viene riscritto a ogni modifica; se
+   * l'app si chiude prima, `pdfIl` resta indietro rispetto a `modificatoIl` e
+   * il PDF viene rifatto la prima volta che serve.
+   */
+  pdf?: Blob;
+  pdfIl?: number;
 }

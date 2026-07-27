@@ -27,7 +27,13 @@ import {
   type MaterialeNesting,
   type Venatura
 } from '../utils/documentoNesting';
-import { elencaNesting, eliminaNesting, salvaNesting } from '../db/repository';
+import {
+  elencaNesting,
+  eliminaNesting,
+  leggiNesting,
+  salvaNesting,
+  salvaPdfNesting
+} from '../db/repository';
 import type { LavoroNesting } from '../db/types';
 import { mostraToast } from '../state/toast';
 import { condividiOScarica, nomeFileSicuro } from '../utils/share';
@@ -129,6 +135,12 @@ function useLarghezza() {
   return [ref, larghezza] as const;
 }
 
+/** lavoro nuovo e vuoto: un'essenza sola, pronta da riempire */
+function documentoVuoto(): DocumentoNesting {
+  const m = materialeNuovo('m1', 'Materiale 1');
+  return { versione: 2, nome: 'Lavoro senza nome', attivo: m.id, materiali: [m] };
+}
+
 function documentoEsempio(): DocumentoNesting {
   const m = materialeNuovo('m1', 'Legno scuro');
   return {
@@ -198,27 +210,55 @@ function leggiBozza(): Bozza | null {
   }
 }
 
-export function NestingPage() {
-  const iniziale = useMemo(() => leggiBozza(), []);
+export function NestingPage({ id, nuovoIn }: { id?: string; nuovoIn?: string }) {
+  // un lavoro nuovo dentro una cartella parte pulito, non dalla bozza
+  const iniziale = useMemo(() => (id || nuovoIn ? null : leggiBozza()), [id, nuovoIn]);
   const [doc, setDoc] = useState<DocumentoNesting>(
-    () => iniziale?.documento ?? documentoEsempio()
+    () => iniziale?.documento ?? (nuovoIn ? documentoVuoto() : documentoEsempio())
   );
-  const [idArchivio, setIdArchivio] = useState<string | null>(iniziale?.idArchivio ?? null);
+  const [idArchivio, setIdArchivio] = useState<string | null>(
+    id ?? iniziale?.idArchivio ?? null
+  );
+  const [cartellaId, setCartellaId] = useState<string | null>(nuovoIn ?? null);
+  const [caricamento, setCaricamento] = useState(!!id);
   const [incolla, setIncolla] = useState(false);
   const [apri, setApri] = useState(false);
   const [chiediNome, setChiediNome] = useState(false);
   const [esporta, setEsporta] = useState(false);
   const [pdfInCorso, setPdfInCorso] = useState(false);
 
+  // apertura di un lavoro dell'archivio: il documento arriva dal database
+  useEffect(() => {
+    if (!id) return;
+    let vivo = true;
+    leggiNesting(id)
+      .then((l) => {
+        if (!vivo) return;
+        const documento = l && migraDocumento(l.documento);
+        if (documento) {
+          setDoc({ ...documento, nome: l!.nome });
+          setCartellaId(l!.cartellaId ?? null);
+        } else {
+          mostraToast('errore', 'Il lavoro non è stato trovato in archivio.');
+        }
+        setCaricamento(false);
+      })
+      .catch(() => vivo && setCaricamento(false));
+    return () => {
+      vivo = false;
+    };
+  }, [id]);
+
   // il lavoro resta fra una navigazione e l'altra (e fra le sessioni)
   useEffect(() => {
+    if (caricamento) return;
     try {
       localStorage.setItem(CHIAVE_BOZZA, JSON.stringify({ documento: doc, idArchivio }));
       localStorage.removeItem(CHIAVE_VECCHIA);
     } catch {
       // spazio esaurito o modalità privata: si continua senza salvare
     }
-  }, [doc, idArchivio]);
+  }, [doc, idArchivio, caricamento]);
 
   const mat = doc.materiali.find((m) => m.id === doc.attivo) ?? doc.materiali[0];
 
@@ -357,14 +397,67 @@ export function NestingPage() {
     const id = idArchivio ?? nuovoId();
     const documento = { ...doc, nome: titolo };
     try {
-      await salvaNesting(id, titolo, documento);
+      await salvaNesting(id, titolo, documento, { cartellaId });
       setDoc(documento);
       setIdArchivio(id);
+      // il PDF nasce insieme al lavoro: nell'archivio si apre con un tocco
+      await rigeneraPdf(id, documento);
       mostraToast('successo', `Lavoro «${titolo}» salvato in archivio.`);
+      // da qui in poi l'indirizzo è quello del lavoro in archivio: ricaricando
+      // la pagina si riapre lo stesso, non se ne crea un altro
+      if (!idArchivio) naviga({ nome: 'nesting', id });
     } catch {
       // il repository ha già mostrato l'errore
     }
   };
+
+  /**
+   * Rifà il PDF del lavoro e lo mette accanto al documento.
+   *
+   * Il PDF segue il progetto: chi lo apre dall'archivio trova sempre il piano
+   * di taglio dell'ultima versione, senza doverlo esportare a mano.
+   */
+  const rigeneraPdf = async (idLavoro: string, documento: DocumentoNesting) => {
+    try {
+      const { generaPdfNesting } = await import('../pdf/nesting');
+      const blob = await generaPdfNesting(documento);
+      await salvaPdfNesting(idLavoro, blob);
+    } catch {
+      // un PDF non riuscito non deve far perdere il lavoro: resta il
+      // precedente, e `pdfIl` più vecchio dirà che va rifatto
+    }
+  };
+
+  /**
+   * SALVATAGGIO AUTOMATICO.
+   *
+   * Una volta che il lavoro è in archivio non si deve più pensare a salvarlo:
+   * ogni modifica viene scritta da sola poco dopo, e il PDF rifatto subito
+   * dopo di lei. Le due attese sono diverse perché il documento costa poco e
+   * il PDF costa: mentre si digita una misura non ha senso rigenerarlo.
+   */
+  const primoGiro = useRef(true);
+  useEffect(() => {
+    if (!idArchivio || caricamento) return;
+    // al primo render dopo l'apertura non c'è niente di nuovo da scrivere
+    if (primoGiro.current) {
+      primoGiro.current = false;
+      return;
+    }
+    const scrittura = setTimeout(() => {
+      void salvaNesting(idArchivio, doc.nome.trim() || 'Lavoro senza nome', doc, {
+        cartellaId
+      });
+    }, 700);
+    const stampa = setTimeout(() => {
+      void rigeneraPdf(idArchivio, doc);
+    }, 2500);
+    return () => {
+      clearTimeout(scrittura);
+      clearTimeout(stampa);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc, idArchivio, cartellaId, caricamento]);
 
   const esportaPdf = async (opzioni: OpzioniPdfNesting) => {
     setEsporta(false);
@@ -491,7 +584,7 @@ export function NestingPage() {
         <button
           className="btn icona"
           aria-label="Indietro"
-          onClick={() => naviga({ nome: 'archivio', cartellaId: null })}
+          onClick={() => naviga({ nome: 'archivio', cartellaId })}
         >
           <Icona nome="indietro" />
         </button>
@@ -507,9 +600,9 @@ export function NestingPage() {
         </button>
         <button
           className="btn icona"
-          aria-label="Salva il lavoro"
-          title="Salva il lavoro"
-          onClick={() => (idArchivio ? salva() : setChiediNome(true))}
+          aria-label={idArchivio ? 'Salva ora' : 'Salva il lavoro in archivio'}
+          title={idArchivio ? 'Salva ora' : 'Salva il lavoro in archivio'}
+          onClick={() => (idArchivio ? void salva() : setChiediNome(true))}
         >
           <Icona nome="check" />
         </button>
@@ -533,6 +626,11 @@ export function NestingPage() {
             placeholder="Es. Camera Rossi"
             onChange={(e) => setDoc((d) => ({ ...d, nome: e.target.value }))}
           />
+          <small>
+            {idArchivio
+              ? 'In archivio: ogni modifica viene salvata da sola e il PDF del piano di taglio si aggiorna insieme.'
+              : 'Bozza. Con ✓ finisce in archivio, con il suo PDF sempre aggiornato.'}
+          </small>
         </label>
 
         {/* --- Essenze --------------------------------------------------- */}
@@ -938,22 +1036,11 @@ export function NestingPage() {
           idCorrente={idArchivio}
           onChiudi={() => setApri(false)}
           onApri={(lavoro) => {
-            const documento = migraDocumento(lavoro.documento);
-            if (!documento) {
-              mostraToast('errore', 'Il lavoro salvato non è leggibile.');
-              return;
-            }
-            setDoc({ ...documento, nome: lavoro.nome });
-            setIdArchivio(lavoro.id);
             setApri(false);
+            naviga({ nome: 'nesting', id: lavoro.id });
           }}
           onNuovo={() => {
-            setDoc({
-              versione: 2,
-              nome: 'Lavoro senza nome',
-              attivo: 'm1',
-              materiali: [materialeNuovo('m1', 'Materiale 1')]
-            });
+            setDoc(documentoVuoto());
             setIdArchivio(null);
             setApri(false);
           }}

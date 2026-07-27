@@ -793,6 +793,14 @@ export async function elencaNesting(): Promise<LavoroNesting[]> {
   return tutti.sort((a, b) => b.modificatoIl - a.modificatoIl);
 }
 
+/** i lavori dentro una cartella dell'archivio */
+export async function nestingInCartella(cartellaId: ID | null): Promise<LavoroNesting[]> {
+  const tutti = await db.nesting.toArray();
+  return tutti
+    .filter((l) => (l.cartellaId ?? null) === cartellaId)
+    .sort((a, b) => b.modificatoIl - a.modificatoIl);
+}
+
 export async function leggiNesting(id: ID): Promise<LavoroNesting | undefined> {
   return db.nesting.get(id);
 }
@@ -801,22 +809,50 @@ export async function leggiNesting(id: ID): Promise<LavoroNesting | undefined> {
  * Salva un lavoro: crea il record se l'id non esiste ancora, altrimenti
  * lo sovrascrive. Il chiamante decide l'id, così «salva» e «salva come»
  * sono la stessa operazione con un id diverso.
+ *
+ * Il PDF si passa solo quando è stato rigenerato: se manca, resta quello di
+ * prima e `pdfIl` più vecchio di `modificatoIl` dice che è da rifare.
  */
 export async function salvaNesting(
   id: ID,
   nome: string,
-  documento: unknown
+  documento: unknown,
+  opzioni?: { cartellaId?: ID | null; pdf?: Blob }
 ): Promise<LavoroNesting> {
   const esistente = await db.nesting.get(id);
+  const adesso = ora();
   const record: LavoroNesting = {
     id,
     nome,
-    creatoIl: esistente?.creatoIl ?? ora(),
-    modificatoIl: ora(),
-    documento
+    cartellaId:
+      opzioni?.cartellaId !== undefined ? opzioni.cartellaId : (esistente?.cartellaId ?? null),
+    creatoIl: esistente?.creatoIl ?? adesso,
+    modificatoIl: adesso,
+    documento,
+    pdf: opzioni?.pdf ?? esistente?.pdf,
+    pdfIl: opzioni?.pdf ? adesso : esistente?.pdfIl
   };
   await scrivi('salvare il lavoro di nesting', () => db.nesting.put(record));
   return record;
+}
+
+/** aggiorna il solo PDF di un lavoro già salvato */
+export async function salvaPdfNesting(id: ID, pdf: Blob): Promise<void> {
+  await scrivi('salvare il PDF del piano di taglio', () =>
+    db.nesting.update(id, { pdf, pdfIl: ora() })
+  );
+}
+
+export async function rinominaNesting(id: ID, nome: string): Promise<void> {
+  await scrivi('rinominare il lavoro di nesting', () =>
+    db.nesting.update(id, { nome, modificatoIl: ora() })
+  );
+}
+
+export async function spostaNesting(id: ID, cartellaId: ID | null): Promise<void> {
+  await scrivi('spostare il lavoro di nesting', () =>
+    db.nesting.update(id, { cartellaId, modificatoIl: ora() })
+  );
 }
 
 export async function eliminaNesting(id: ID): Promise<void> {

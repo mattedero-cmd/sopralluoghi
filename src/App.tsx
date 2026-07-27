@@ -19,7 +19,13 @@ export function App() {
       {rotta.nome === 'clienti' && <ClientiPage />}
       {rotta.nome === 'cliente' && <ClientePage id={rotta.id} key={rotta.id} />}
       {rotta.nome === 'preventivo' && <PreventivoPage id={rotta.id} key={rotta.id} />}
-      {rotta.nome === 'nesting' && <NestingPage />}
+      {rotta.nome === 'nesting' && (
+        <NestingPage
+          key={rotta.id ?? rotta.nuovoIn ?? 'bozza'}
+          id={rotta.id}
+          nuovoIn={rotta.nuovoIn}
+        />
+      )}
       {rotta.nome === 'impostazioni' && <ImpostazioniPage />}
       <PromemoriaSync />
       <Toasts />

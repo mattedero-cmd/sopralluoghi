@@ -65,8 +65,11 @@ export async function esportaBackup(avanzamento?: Avanzamento): Promise<Blob> {
     annotazioni,
     impostazioni: impostazioni ?? null,
     clienti,
+    // il PDF del piano di taglio è un Blob: dentro un JSON diventerebbe un
+    // oggetto vuoto. Non si esporta — si rifà da solo dal documento alla
+    // prima apertura, che è anche l'unico modo di averlo aggiornato.
     preventivi,
-    nesting
+    nesting: nesting.map(({ pdf: _pdf, pdfIl: _pdfIl, ...resto }) => resto)
   };
 
   const zip = new JSZip();
@@ -237,7 +240,8 @@ export async function costruisciIndice(): Promise<IndiceArchivio> {
     annotazioni,
     clienti,
     preventivi,
-    nesting,
+    // come nel backup: il Blob del PDF non viaggia, si rigenera
+    nesting: nesting.map(({ pdf: _pdf, pdfIl: _pdfIl, ...resto }) => resto),
     // mai pubblicare la sessione cloud (token) nell'indice condiviso
     impostazioni: impostazioni ? { ...impostazioni, cloud: null } : null
   };

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import type { Cartella, Progetto } from '../db/types';
+import type { Cartella, LavoroNesting, Progetto } from '../db/types';
 import {
   aggiornaCartella,
   contenutoCartella,
@@ -9,8 +9,12 @@ import {
   creaProgetto,
   duplicaProgetto,
   eliminaCartella,
+  eliminaNesting,
   eliminaProgetto,
+  rinominaNesting,
+  salvaPdfNesting,
   spostaCartella,
+  spostaNesting,
   spostaProgetto
 } from '../db/repository';
 import { naviga } from '../router';
@@ -35,11 +39,15 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
   const [nuovoProgetto, setNuovoProgetto] = useState(false);
   const [rinomina, setRinomina] = useState<Cartella | null>(null);
   const [daSpostare, setDaSpostare] = useState<
-    { tipo: 'cartella'; id: string } | { tipo: 'progetto'; id: string } | null
+    | { tipo: 'cartella'; id: string }
+    | { tipo: 'progetto'; id: string }
+    | { tipo: 'nesting'; id: string }
+    | null
   >(null);
   const [conferma, setConferma] = useState<RichiestaConferma | null>(null);
   const [menu, setMenu] = useState<{ pos: { x: number; y: number }; voci: VoceMenu[] } | null>(null);
   const [reportCartella, setReportCartella] = useState<Cartella | null>(null);
+  const [rinominaLavoro, setRinominaLavoro] = useState<LavoroNesting | null>(null);
   const [pdfInCorso, setPdfInCorso] = useState<string | null>(null);
 
   const corrente = useLiveQuery(
@@ -60,6 +68,15 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
       const tutti = await db.progetti.toArray();
       return tutti
         .filter((p) => p.cartellaId === cartellaId)
+        .sort((a, b) => b.modificatoIl - a.modificatoIl);
+    },
+    [cartellaId]
+  );
+  const lavori = useLiveQuery(
+    async () => {
+      const tutti = await db.nesting.toArray();
+      return tutti
+        .filter((l) => (l.cartellaId ?? null) === cartellaId)
         .sort((a, b) => b.modificatoIl - a.modificatoIl);
     },
     [cartellaId]
@@ -122,6 +139,62 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
               onConferma: () => void eliminaCartella(c.id)
             });
           }
+        }
+      ]
+    });
+  };
+
+  /**
+   * Apre il PDF del piano di taglio salvato insieme al lavoro.
+   *
+   * Se il lavoro è stato modificato dopo l'ultima stampa (l'app chiusa a metà
+   * modifica), il PDF viene rifatto adesso: quello che si apre corrisponde
+   * sempre al progetto.
+   */
+  const apriPdfNesting = async (l: LavoroNesting) => {
+    setPdfInCorso(l.id);
+    try {
+      let blob = l.pdf;
+      if (!blob || (l.pdfIl ?? 0) < l.modificatoIl) {
+        const [{ generaPdfNesting }, { migraDocumento }] = await Promise.all([
+          import('../pdf/nesting'),
+          import('../utils/documentoNesting')
+        ]);
+        const documento = migraDocumento(l.documento);
+        if (!documento) throw new Error('Il lavoro salvato non è leggibile.');
+        blob = await generaPdfNesting(documento);
+        await salvaPdfNesting(l.id, blob);
+      }
+      await condividiOScarica(blob, nomeFileSicuro(l.nome || 'piano-di-taglio', 'pdf'), l.nome);
+    } catch (e) {
+      mostraToast('errore', e instanceof Error ? e.message : 'PDF non disponibile.');
+    } finally {
+      setPdfInCorso(null);
+    }
+  };
+
+  const apriMenuNesting = (l: LavoroNesting, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setMenu({
+      pos: { x: e.clientX, y: e.clientY },
+      voci: [
+        { testo: 'Apri il PDF', icona: 'documento', onClick: () => void apriPdfNesting(l) },
+        { testo: 'Rinomina…', icona: 'matita', onClick: () => setRinominaLavoro(l) },
+        {
+          testo: 'Sposta…',
+          icona: 'sposta',
+          onClick: () => setDaSpostare({ tipo: 'nesting', id: l.id })
+        },
+        {
+          testo: 'Elimina…',
+          icona: 'cestino',
+          pericolo: true,
+          onClick: () =>
+            setConferma({
+              titolo: `Eliminare il piano di taglio "${l.nome}"?`,
+              messaggio: 'Verranno persi le essenze, le misure e il PDF.\nL’operazione NON è annullabile.',
+              onConferma: () => void eliminaNesting(l.id)
+            })
         }
       ]
     });
@@ -221,8 +294,13 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
             {/* strumenti non legati a un progetto: qui con l'etichetta, perché
                 la sola icona nella barra non dice cosa fanno */}
             <div className="riga-pulsanti" style={{ marginBottom: 16 }}>
-              <button className="btn" onClick={() => naviga({ nome: 'nesting' })}>
-                <Icona nome="griglia" dimensione={20} /> Nesting — ottimizza il taglio
+              <button
+                className="btn"
+                onClick={() =>
+                  naviga({ nome: 'nesting', nuovoIn: cartellaId ?? undefined })
+                }
+              >
+                <Icona nome="griglia" dimensione={20} /> Nuovo piano di taglio
               </button>
             </div>
 
@@ -284,9 +362,56 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
                 </span>
               </button>
             ))}
+
+            {(lavori ?? []).map((l) => {
+              const essenze = Array.isArray((l.documento as { materiali?: unknown[] })?.materiali)
+                ? ((l.documento as { materiali: unknown[] }).materiali as unknown[]).length
+                : 1;
+              return (
+                <button
+                  key={l.id}
+                  className="scheda"
+                  onClick={() => naviga({ nome: 'nesting', id: l.id })}
+                >
+                  <span className="glifo taglio">
+                    <Icona nome="griglia" dimensione={22} />
+                  </span>
+                  <span className="corpo">
+                    <div className="titolo">
+                      {l.nome}
+                      <span className="badge-etichetta">Taglio</span>
+                    </div>
+                    <div className="sotto">
+                      {essenze} {essenze === 1 ? 'essenza' : 'essenze'} ·{' '}
+                      {formattaData(l.modificatoIl)}
+                    </div>
+                  </span>
+                  <span
+                    className="btn icona"
+                    role="button"
+                    aria-label={`Apri il PDF di ${l.nome}`}
+                    title="Apri il PDF del piano di taglio"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void apriPdfNesting(l);
+                    }}
+                  >
+                    {pdfInCorso === l.id ? '…' : <Icona nome="documento" />}
+                  </span>
+                  <span
+                    className="btn icona"
+                    role="button"
+                    aria-label={`Azioni piano di taglio ${l.nome}`}
+                    onClick={(e) => apriMenuNesting(l, e)}
+                  >
+                    <Icona nome="altro" />
+                  </span>
+                </button>
+              );
+            })}
             </div>
 
-            {cartelle?.length === 0 && progetti?.length === 0 && (
+            {cartelle?.length === 0 && progetti?.length === 0 && lavori?.length === 0 && (
               <div className="vuoto">
                 <div className="grande">
                   <Icona nome="archivio" dimensione={46} />
@@ -355,11 +480,23 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
           onScegli={async (destinazione) => {
             try {
               if (daSpostare.tipo === 'cartella') await spostaCartella(daSpostare.id, destinazione);
+              else if (daSpostare.tipo === 'nesting') await spostaNesting(daSpostare.id, destinazione);
               else await spostaProgetto(daSpostare.id, destinazione);
               mostraToast('successo', 'Spostato.');
             } catch (e) {
               mostraToast('errore', e instanceof Error ? e.message : 'Spostamento non riuscito.');
             }
+          }}
+        />
+      )}
+      {rinominaLavoro && (
+        <FormNome
+          titolo="Rinomina il piano di taglio"
+          valore={rinominaLavoro.nome}
+          onChiudi={() => setRinominaLavoro(null)}
+          onSalva={async (nome) => {
+            await rinominaNesting(rinominaLavoro.id, nome);
+            setRinominaLavoro(null);
           }}
         />
       )}
@@ -372,6 +509,50 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
 export function EtichettaStato({ stato }: { stato: Progetto['stato'] }) {
   const testo = stato === 'bozza' ? 'Bozza' : stato === 'in_corso' ? 'In corso' : 'Completato';
   return <span className={`badge ${stato}`}>{testo}</span>;
+}
+
+/** Modale minima per un solo campo di testo (rinomina). */
+function FormNome({
+  titolo,
+  valore,
+  onChiudi,
+  onSalva
+}: {
+  titolo: string;
+  valore: string;
+  onChiudi: () => void;
+  onSalva: (nome: string) => void | Promise<void>;
+}) {
+  const [nome, setNome] = useState(valore);
+  return (
+    <Modale titolo={titolo} onChiudi={onChiudi}>
+      <div className="campo">
+        <label>Nome</label>
+        <input
+          type="text"
+          autoFocus
+          value={nome}
+          onChange={(e) => setNome(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && nome.trim()) void onSalva(nome.trim());
+          }}
+        />
+      </div>
+      <div className="riga-pulsanti">
+        <button className="btn" onClick={onChiudi}>
+          Annulla
+        </button>
+        <button
+          className="btn primario"
+          style={{ flex: 1 }}
+          disabled={!nome.trim()}
+          onClick={() => void onSalva(nome.trim())}
+        >
+          Salva
+        </button>
+      </div>
+    </Modale>
+  );
 }
 
 function FormCartella({
