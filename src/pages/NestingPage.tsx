@@ -11,7 +11,12 @@ import {
   type LastraNesting,
   type PezzoNesting
 } from '../geometry/nesting';
-import { segmentaBobina, strisciaResidua } from '../geometry/segmenti';
+import {
+  frasiRitagli,
+  ritagliUtili,
+  segmentaBobina,
+  type Ritaglio
+} from '../geometry/segmenti';
 import { analizzaTestoPezzi, type PezzoTestuale } from '../utils/parserPezzi';
 import { formattaData, formattaNumero } from '../utils/format';
 import { pianoEtichetta } from '../utils/etichettaNesting';
@@ -726,7 +731,7 @@ export function NestingPage({
         lastra,
         titolo: `Lastra ${i + 1}`,
         misure: { ...mat.lastra },
-        striscia: null as ReturnType<typeof strisciaResidua>
+        striscia: ritagliUtili(lastra, mat.lastra.larghezza, mat.lastra.altezza)
       }));
     }
     const rotolo = esito.lastre[0];
@@ -740,7 +745,7 @@ export function NestingPage({
           lastra: rotolo,
           titolo: 'Bobina',
           misure,
-          striscia: strisciaResidua(rotolo, misure.larghezza, misure.altezza)
+          striscia: ritagliUtili(rotolo, misure.larghezza, misure.altezza)
         }
       ];
     }
@@ -760,7 +765,7 @@ export function NestingPage({
         lastra: sg.lastra,
         titolo: `Segmento ${i + 1} di ${segmenti.length}`,
         misure,
-        striscia: strisciaResidua(sg.lastra, misure.larghezza, misure.altezza)
+        striscia: ritagliUtili(sg.lastra, misure.larghezza, misure.altezza)
       };
     });
   }, [esito, mat.modo, mat.lastra, mat.bobina.larghezza, mat.margine, mat.lama, stampa]);
@@ -1346,7 +1351,8 @@ function Lastra({
   margine: number;
   titolo: string;
   /** il ritaglio buono che avanza, se ce n'è uno */
-  striscia?: { larghezza: number; lunghezza: number } | null;
+  /** i pezzi interi che avanzano dal foglio, dal più grande */
+  striscia?: Ritaglio[];
   pezzi: PezzoNesting[];
   venatura: Venatura;
   imposti: Record<string, boolean>;
@@ -1399,11 +1405,10 @@ function Lastra({
         <div className="misure">
           {lastra.piazzamenti.length} pezzi · resa{' '}
           <strong>{formattaNumero(Math.round(resa * 10) / 10)}%</strong>
-          {striscia && (
+          {striscia && striscia.length > 0 && (
             <>
               <br />
-              avanza {formattaNumero(Math.round(striscia.larghezza))}×
-              {formattaNumero(Math.round(striscia.lunghezza))} mm
+              {frasiRitagli(striscia)}
             </>
           )}
         </div>

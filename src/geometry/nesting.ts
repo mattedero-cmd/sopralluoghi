@@ -630,22 +630,31 @@ function qualita(par: ParametriNesting, e: EsitoNesting, opzioni?: OpzioniRicerc
       }
     }
   }
-  return [
-    -piazzati,
-    e.lastre.length,
-    ingestibili,
-    -ritaglioTotale(par, e, opzioni),
-    buchiTotali(par, e, opzioni),
-    occupata
-  ];
+  // i ritagli si contano una volta sola per lastra: sono la parte cara del
+  // conto, e questo punteggio si calcola centinaia di volte per ogni ricerca
+  let ritaglio = 0;
+  let buchi = 0;
+  if (opzioni?.sfridoRettangolare) {
+    for (const l of e.lastre) {
+      ritaglio += ritaglioLastra(par, l);
+      buchi += buchiLastra(par, l);
+    }
+  }
+  return [-piazzati, e.lastre.length, ingestibili, -allaTolleranza(par, ritaglio), buchi, occupata];
 }
 
 /**
- * IL RITAGLIO BUONO, cioè il pezzo di lastra che torna in magazzino.
+ * IL RITAGLIO BUONO, cioè i pezzi di lastra che tornano in magazzino.
  *
  * Di quello che avanza conta una cosa sola: quanto è grande il RETTANGOLO
  * INTERO che ci si ricava. Un avanzo a gradini, per quanta area abbia, si
  * butta; lo stesso avanzo tutto da una parte è materiale.
+ *
+ * Conta il ritaglio più grande di ogni lastra. Contare anche i ritagli minori
+ * è stato provato e misurato: sul lavoro vero non cambia una disposizione,
+ * perché quando il ritaglio grande pareggia decidono già il verso dei pezzi e
+ * l'ingombro chiuso — e costava il doppio del tempo di calcolo. Restano
+ * comunque contati per essere MOSTRATI: quello che avanza si vede tutto.
  *
  * Da qui la regola che decide dove va un pezzo corto: sotto la colonna PIÙ
  * ALTA, non sotto una più bassa. Sotto la più alta sta nella sua ombra e le
@@ -655,16 +664,12 @@ function qualita(par: ParametriNesting, e: EsitoNesting, opzioni?: OpzioniRicerc
  *
  * TOLLERANZA. Due ritagli che differiscono di poco sono lo stesso ritaglio:
  * in laboratorio nessuno sceglie fra 2,74 e 2,77 m². Sotto quella soglia i
- * conti si pareggiano e a decidere passa il criterio dopo — l'ingombro
- * chiuso — che è quello che gira i pezzi per completare una riga.
+ * conti si pareggiano e a decidere passano i criteri dopo — il verso dei
+ * pezzi e l'ingombro chiuso.
  */
-function ritaglioTotale(par: ParametriNesting, e: EsitoNesting, opzioni?: OpzioniRicerca): number {
-  if (!opzioni?.sfridoRettangolare) return 0;
-  let totale = 0;
-  for (const l of e.lastre) totale += ritaglioLastra(par, l);
-  // quantizzato alla tolleranza: sotto, i due ritagli valgono uguale
+function allaTolleranza(par: ParametriNesting, area: number): number {
   const passo = par.lastra.larghezza * par.lastra.altezza * TOLLERANZA_RITAGLIO;
-  return passo > 0 ? Math.round(totale / passo) * passo : totale;
+  return passo > 0 ? Math.round(area / passo) * passo : area;
 }
 
 /**
@@ -672,12 +677,6 @@ function ritaglioTotale(par: ParametriNesting, e: EsitoNesting, opzioni?: Opzion
  * differenza che al banco non cambia cosa ci si ricava.
  */
 const TOLLERANZA_RITAGLIO = 0.03;
-
-/** il rettangolo intero più grande che avanza da una lastra, in area */
-function ritaglioLastra(par: ParametriNesting, lastra: LastraNesting): number {
-  const r = strisciaResidua(lastra, par.lastra.larghezza, par.lastra.altezza);
-  return r ? r.larghezza * r.lunghezza : 0;
-}
 
 /**
  * L'INGOMBRO CHIUSO, cioè quanto i pezzi riempiono il rettangolo che occupano.
@@ -692,11 +691,10 @@ function ritaglioLastra(par: ParametriNesting, lastra: LastraNesting): number {
  * Il ritaglio, in quel caso, è praticamente identico nei due modi — decide
  * questo.
  */
-function buchiTotali(par: ParametriNesting, e: EsitoNesting, opzioni?: OpzioniRicerca): number {
-  if (!opzioni?.sfridoRettangolare) return 0;
-  let totale = 0;
-  for (const l of e.lastre) totale += buchiLastra(par, l);
-  return totale;
+/** il ritaglio principale di una lastra, quello che comanda nel punteggio */
+function ritaglioLastra(par: ParametriNesting, lastra: LastraNesting): number {
+  const r = strisciaResidua(lastra, par.lastra.larghezza, par.lastra.altezza);
+  return r ? r.larghezza * r.lunghezza : 0;
 }
 
 /** vuoto rimasto dentro l'ingombro dei pezzi di una lastra */

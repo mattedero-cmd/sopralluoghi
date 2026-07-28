@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { segmentaBobina, strisciaResidua } from '../segmenti';
+import { frasiRitagli, ritagliUtili, segmentaBobina, strisciaResidua } from '../segmenti';
 import { calcolaNesting, type LastraNesting, type Piazzamento } from '../nesting';
 
 /** costruisce una lastra fittizia: solo y/altezza contano per il taglio */
@@ -488,5 +488,104 @@ describe('pezzi giustificati in fondo al segmento', () => {
     expect(s[0].lastra.piazzamenti.map((p) => p.y)).toEqual(
       rotolo.piazzamenti.map((p) => p.y)
     );
+  });
+});
+
+/**
+ * QUELLO CHE AVANZA, TUTTO.
+ *
+ * Di una lastra impaginata non conta l'area libera — è un numero che non dice
+ * niente — ma in quanti pezzi interi si riesce a raccoglierla.
+ */
+describe('ritagliUtili', () => {
+  const lastra = (...r: Array<[number, number, number, number]>): LastraNesting => ({
+    piazzamenti: r.map(([x, y, l, a], i) => ({
+      x,
+      y,
+      larghezza: l,
+      altezza: a,
+      larghezzaFinita: l,
+      altezzaFinita: a,
+      nome: `p${i}`,
+      tinta: 0,
+      ruotato: false,
+      chiave: `p${i}#0`
+    }))
+  });
+  const area = (r: ReturnType<typeof ritagliUtili>) =>
+    r.reduce((t, x) => t + x.larghezza * x.lunghezza, 0);
+
+  it('una lastra vuota avanza tutta intera', () => {
+    expect(ritagliUtili({ piazzamenti: [] }, 1000, 2000)).toEqual([
+      { x: 0, y: 0, larghezza: 1000, lunghezza: 2000 }
+    ]);
+  });
+
+  it('una colonna a sinistra lascia la fascia a destra', () => {
+    const r = ritagliUtili(lastra([0, 0, 300, 2000]), 1000, 2000);
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({ x: 300, larghezza: 700, lunghezza: 2000 });
+  });
+
+  it('una L lascia due rettangoli, e insieme fanno tutto il libero', () => {
+    const r = ritagliUtili(lastra([0, 0, 600, 1200]), 1000, 2000);
+    expect(r).toHaveLength(2);
+    // 1000×2000 meno il pezzo 600×1200: il libero si raccoglie tutto
+    expect(area(r)).toBe(1000 * 2000 - 600 * 1200);
+  });
+
+  it('il pezzetto sotto la colonna alta lascia più materiale di quello sotto la bassa', () => {
+    const sottoLaBassa = lastra(
+      [4, 4, 290, 2800],
+      [298, 4, 290, 2470],
+      [298, 2478, 290, 185],
+      [592, 4, 290, 2470],
+      [886, 4, 290, 2470],
+      [1180, 4, 290, 2470]
+    );
+    const sottoLAlta = lastra(
+      [4, 4, 290, 2800],
+      [4, 2808, 290, 185],
+      [298, 4, 290, 2470],
+      [592, 4, 290, 2470],
+      [886, 4, 290, 2470],
+      [1180, 4, 290, 2470]
+    );
+    // sotto l'alta: un rettangolo solo che attraversa le altre quattro colonne
+    const buono = ritagliUtili(sottoLAlta, 1500, 3050);
+    expect(buono).toHaveLength(1);
+    expect(buono[0].larghezza).toBeGreaterThan(1200);
+    expect(area(buono)).toBeGreaterThan(area(ritagliUtili(sottoLaBassa, 1500, 3050)));
+  });
+
+  it('gli scampoli troppo stretti non si contano: non sono materiale', () => {
+    // resta una bandella da 40 mm: si butta
+    expect(ritagliUtili(lastra([0, 0, 960, 2000]), 1000, 2000)).toEqual([]);
+  });
+
+  it('non si conta due volte lo stesso pezzo di lastra', () => {
+    const r = ritagliUtili(lastra([0, 0, 600, 1200]), 1000, 2000, 5);
+    expect(area(r)).toBeLessThanOrEqual(1000 * 2000 - 600 * 1200 + 1e-6);
+  });
+});
+
+describe('frasiRitagli', () => {
+  it('un ritaglio solo', () => {
+    expect(frasiRitagli([{ x: 0, y: 0, larghezza: 1500, lunghezza: 442 }])).toBe(
+      'avanza 1.500×442 mm'
+    );
+  });
+
+  it('due ritagli', () => {
+    expect(
+      frasiRitagli([
+        { x: 0, y: 0, larghezza: 1500, lunghezza: 442 },
+        { x: 0, y: 0, larghezza: 912, lunghezza: 155 }
+      ])
+    ).toBe('avanzano 1.500×442 e 912×155 mm');
+  });
+
+  it('niente da tenere, niente da dire', () => {
+    expect(frasiRitagli([])).toBe('');
   });
 });

@@ -9,7 +9,7 @@ import {
   type EsitoNesting,
   type LastraNesting
 } from '../geometry/nesting';
-import { segmentaBobina, strisciaResidua } from '../geometry/segmenti';
+import { frasiRitagli, ritagliUtili, segmentaBobina } from '../geometry/segmenti';
 import { OPZIONI_PDF_PREDEFINITE, type OpzioniPdfNesting } from './opzioni';
 import {
   etichettaSupporto,
@@ -131,8 +131,9 @@ function paginaFoglio(m: MaterialeNesting, foglio: Foglio): Content[] {
   const disegnate = { larghezza: foglio.larghezza, altezza: foglio.altezza };
 
   const titolo = foglio.titolo;
-  // lo sfrido buono: la striscia che resta intera per tutta la lunghezza
-  const striscia = strisciaResidua(lastra, foglio.larghezza, foglio.altezza);
+  // lo sfrido buono: i pezzi interi che restano, dal più grande
+  const ritagli = ritagliUtili(lastra, foglio.larghezza, foglio.altezza);
+  const avanzo = frasiRitagli(ritagli);
   const sottotitolo =
     foglio.daTagliare !== null
       ? `${mm(foglio.larghezza)} × ${mm(foglio.altezza)} mm · da staccare ${formattaNumero(
@@ -255,10 +256,8 @@ function paginaFoglio(m: MaterialeNesting, foglio: Foglio): Content[] {
       columns: [
         { text: sottotitolo, style: 'sottotitolo' },
         {
-          text: striscia
-            ? `${lastra.piazzamenti.length} pezzi · avanza una striscia ${mm(
-                striscia.larghezza
-              )} × ${mm(striscia.lunghezza)} mm`
+          text: avanzo
+            ? `${lastra.piazzamenti.length} pezzi · ${avanzo}`
             : `${lastra.piazzamenti.length} pezzi`,
           style: 'sottotitolo',
           alignment: 'right'

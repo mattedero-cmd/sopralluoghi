@@ -351,6 +351,149 @@ export function strisciaResidua(
   return migliore.larghezza >= STRISCIA_UTILE && migliore.lunghezza > 0 ? migliore : null;
 }
 
+/** un pezzo di lastra che avanza intero, in coordinate della lastra */
+export interface Ritaglio {
+  x: number;
+  y: number;
+  larghezza: number;
+  lunghezza: number;
+}
+
+/**
+ * TUTTO QUELLO CHE AVANZA E VALE LA PENA TENERE.
+ *
+ * Di una lastra impaginata non conta l'area libera — quella è un numero che
+ * non dice niente — ma in quanti PEZZI INTERI si riesce a raccogliere. Si
+ * prende quindi il rettangolo vuoto più grande, lo si mette da parte, e si
+ * cerca il più grande di quello che resta, finché quel che avanza è troppo
+ * stretto per essere materiale (meno di `STRISCIA_UTILE`).
+ *
+ * Guardare un rettangolo solo non basta: due lastre che lasciano lo stesso
+ * ritaglio grande non si equivalgono, se una lascia anche una seconda fascia
+ * buona e l'altra solo scarto. La somma di questi rettangoli è quanto vale
+ * davvero l'avanzo.
+ *
+ * Il conto si fa su una griglia compressa: le uniche righe e colonne che
+ * contano sono i bordi dei pezzi, quindi la griglia resta piccola anche con
+ * molti pezzi — e su un'impaginazione a colonne, dove i bordi si ripetono,
+ * piccolissima.
+ */
+export function ritagliUtili(
+  lastra: LastraNesting | undefined,
+  larghezza: number,
+  lunghezza: number,
+  massimo = 3
+): Ritaglio[] {
+  const pezzi = lastra?.piazzamenti ?? [];
+  if (!(larghezza > 0) || !(lunghezza > 0)) return [];
+
+  const bordi = (valori: number[], fine: number) =>
+    [...new Set([0, fine, ...valori])]
+      .filter((v) => v >= -EPS && v <= fine + EPS)
+      .sort((a, b) => a - b);
+  const xs = bordi(pezzi.flatMap((p) => [p.x, p.x + p.larghezza]), larghezza);
+  const ys = bordi(pezzi.flatMap((p) => [p.y, p.y + p.altezza]), lunghezza);
+  if (xs.length < 2 || ys.length < 2) return [];
+
+  const nc = xs.length - 1;
+  const nr = ys.length - 1;
+  const larghezzaCella = Array.from({ length: nc }, (_, i) => xs[i + 1] - xs[i]);
+  const altezzaCella = Array.from({ length: nr }, (_, j) => ys[j + 1] - ys[j]);
+
+  // occupato[riga][colonna]: la cella è sotto un pezzo?
+  const occupato: boolean[][] = [];
+  for (let j = 0; j < nr; j++) {
+    const cy = (ys[j] + ys[j + 1]) / 2;
+    const riga: boolean[] = [];
+    for (let i = 0; i < nc; i++) {
+      const cx = (xs[i] + xs[i + 1]) / 2;
+      riga.push(
+        pezzi.some(
+          (p) => p.x < cx && p.x + p.larghezza > cx && p.y < cy && p.y + p.altezza > cy
+        )
+      );
+    }
+    occupato.push(riga);
+  }
+
+  const trovati: Ritaglio[] = [];
+  for (let giro = 0; giro < massimo; giro++) {
+    const r = rettangoloMassimo(occupato, larghezzaCella, altezzaCella, xs, ys);
+    if (!r || Math.min(r.larghezza, r.lunghezza) < STRISCIA_UTILE) break;
+    trovati.push(r);
+    // messo da parte: non lo si può contare due volte
+    for (let j = 0; j < nr; j++)
+      for (let i = 0; i < nc; i++)
+        if (
+          xs[i] >= r.x - EPS &&
+          xs[i + 1] <= r.x + r.larghezza + EPS &&
+          ys[j] >= r.y - EPS &&
+          ys[j + 1] <= r.y + r.lunghezza + EPS
+        )
+          occupato[j][i] = true;
+  }
+  return trovati;
+}
+
+/**
+ * Il rettangolo vuoto più grande della griglia (algoritmo classico
+ * dell'istogramma, riga per riga, con le misure vere delle celle).
+ */
+function rettangoloMassimo(
+  occupato: boolean[][],
+  larghezzaCella: number[],
+  altezzaCella: number[],
+  xs: number[],
+  ys: number[]
+): Ritaglio | null {
+  const nr = occupato.length;
+  const nc = larghezzaCella.length;
+  const alte = new Array<number>(nc).fill(0);
+  let migliore: Ritaglio | null = null;
+  let area = 0;
+
+  for (let j = 0; j < nr; j++) {
+    for (let i = 0; i < nc; i++) alte[i] = occupato[j][i] ? 0 : alte[i] + altezzaCella[j];
+    // pila crescente: ogni colonna si allarga all'indietro finché trova
+    // colonne alte almeno quanto lei
+    const pila: Array<{ i: number; alta: number }> = [];
+    const chiudi = (fino: number, alta: number, da: number) => {
+      const larg = xs[fino] - xs[da];
+      const a = larg * alta;
+      if (a > area + EPS && Math.min(larg, alta) > 0) {
+        area = a;
+        migliore = { x: xs[da], y: ys[j + 1] - alta, larghezza: larg, lunghezza: alta };
+      }
+    };
+    for (let i = 0; i <= nc; i++) {
+      const alta = i < nc ? alte[i] : 0;
+      let da = i;
+      while (pila.length && pila[pila.length - 1].alta >= alta - EPS) {
+        const t = pila.pop()!;
+        chiudi(i, t.alta, t.i);
+        da = t.i;
+      }
+      if (i < nc) pila.push({ i: da, alta });
+    }
+  }
+  return migliore;
+}
+
+/**
+ * Quello che avanza, detto in una riga: «avanzano 1.500×442 e 912×155 mm».
+ * Vuoto se non resta niente di abbastanza grande da tenere.
+ */
+export function frasiRitagli(ritagli: Ritaglio[]): string {
+  if (ritagli.length === 0) return '';
+  const mis = (v: number) => {
+    const n = Math.round(v);
+    return n >= 1000 ? `${Math.floor(n / 1000)}.${String(n % 1000).padStart(3, '0')}` : String(n);
+  };
+  const pezzi = ritagli.map((r) => `${mis(r.larghezza)}×${mis(r.lunghezza)}`);
+  if (pezzi.length === 1) return `avanza ${pezzi[0]} mm`;
+  return `avanzano ${pezzi.slice(0, -1).join(', ')} e ${pezzi[pezzi.length - 1]} mm`;
+}
+
 /** riporta i pezzi all'origine del segmento: il disegno parte sempre da 0 */
 function trasla(pezzi: Piazzamento[], inizio: number): LastraNesting {
   return { piazzamenti: pezzi.map((p) => ({ ...p, y: p.y - inizio })) };
