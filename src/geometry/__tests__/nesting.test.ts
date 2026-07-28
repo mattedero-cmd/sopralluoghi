@@ -807,15 +807,48 @@ describe('forma dello sfrido sulle lastre', () => {
     tinta: 0
   });
 
-  /** il ritaglio rettangolare che avanza da ogni lastra */
-  const ritagli = (e: EsitoNesting) =>
-    e.lastre.map((l) => {
-      const r = strisciaResidua(l, par.lastra.larghezza, par.lastra.altezza);
-      return r ? r.larghezza * r.lunghezza : 0;
+  /**
+   * Il vuoto rimasto dentro l'ingombro dei pezzi: zero vuol dire che i pezzi
+   * riempiono un rettangolo e quindi che l'avanzo è una L pulita.
+   */
+  const buchi = (l: { piazzamenti: Array<{ x: number; y: number; larghezza: number; altezza: number }> }) => {
+    if (l.piazzamenti.length === 0) return 0;
+    let dx = 0;
+    let dy = 0;
+    let area = 0;
+    for (const q of l.piazzamenti) {
+      dx = Math.max(dx, q.x + q.larghezza + par.lama);
+      dy = Math.max(dy, q.y + q.altezza + par.lama);
+      area += (q.larghezza + par.lama) * (q.altezza + par.lama);
+    }
+    return Math.max(0, (dx - par.margine) * (dy - par.margine) - area);
+  };
+  const buchiTotali = (e: EsitoNesting) => e.lastre.reduce((t, l) => t + buchi(l), 0);
+  const ingombro = (l: EsitoNesting['lastre'][number]) => ({
+    larghezza: Math.max(...l.piazzamenti.map((q) => q.x + q.larghezza)) - par.margine,
+    altezza: Math.max(...l.piazzamenti.map((q) => q.y + q.altezza)) - par.margine
+  });
+
+  it('un pezzo corto sotto due colonne si gira per chiudere il rettangolo', () => {
+    // il caso visto sul foglio: in piedi allunga l'ingombro e lascia un buco
+    // grande quanto lui; coricato riempie la riga e l'avanzo diventa una L
+    const e = calcolaNestingMigliore(par, [p('Retro B', 290, 1845, 2), p('Retro A', 290, 590, 1)], {
+      sfridoRettangolare: true
     });
+    const corto = e.lastre[0].piazzamenti.find((q) => q.altezzaFinita === 590)!;
+    expect(corto.ruotato).toBe(true);
+    expect(corto.larghezza).toBe(590);
+    // l'ingombro è largo quanto le due colonne più il pezzo coricato, e pieno
+    expect(buchi(e.lastre[0])).toBeLessThan(20_000);
+  });
+
+  it('senza il criterio quel pezzo resta in piedi e buca l’ingombro', () => {
+    const e = calcolaNestingMigliore(par, [p('Retro B', 290, 1845, 2), p('Retro A', 290, 590, 1)]);
+    expect(buchi(e.lastre[0])).toBeGreaterThan(100_000);
+  });
 
   // dieci colonne alte (cinque per lastra, esatte) e tre pezzetti
-  const lista = [
+  const conPezzetti = [
     p('Lato 1 B', 290, 2300, 5),
     p('Lato 3 B', 290, 2300, 5),
     p('Lato 1 D', 290, 185, 1),
@@ -823,36 +856,32 @@ describe('forma dello sfrido sulle lastre', () => {
     p('Lato 3 D', 290, 185, 1)
   ];
 
-  it('i pezzetti si raccolgono e una lastra resta con l’avanzo intero', () => {
-    const e = calcolaNestingMigliore(par, lista, { sfridoRettangolare: true });
-    // una lastra conserva il rettangolo pieno: tutta la larghezza per l'altezza
-    // che avanza sotto le colonne
-    const pulita = e.lastre.find(
-      (l) => !l.piazzamenti.some((pc) => pc.altezzaFinita === 185)
-    );
+  it('i pezzetti si allineano invece di sporgere, e una lastra resta pulita', () => {
+    const e = calcolaNestingMigliore(par, conPezzetti, { sfridoRettangolare: true });
+    // una lastra non ha nessun pezzetto: sotto le colonne resta il foglio intero
+    const pulita = e.lastre.find((l) => !l.piazzamenti.some((q) => q.altezzaFinita === 185));
     expect(pulita).toBeDefined();
+    expect(buchi(pulita!)).toBe(0);
     const r = strisciaResidua(pulita!, par.lastra.larghezza, par.lastra.altezza);
     expect(r!.larghezza).toBe(1500);
     expect(r!.lunghezza).toBeGreaterThan(700);
   });
 
-  it('l’avanzo recuperabile cresce rispetto a non guardarlo affatto', () => {
-    const somma = (e: EsitoNesting) => ritagli(e).reduce((a, b) => a + b, 0);
-    const senza = calcolaNestingMigliore(par, lista);
-    const con = calcolaNestingMigliore(par, lista, { sfridoRettangolare: true });
-    expect(somma(con)).toBeGreaterThan(somma(senza));
+  it('l’ingombro si chiude meglio che a non guardarlo affatto', () => {
+    expect(buchiTotali(calcolaNestingMigliore(par, conPezzetti, { sfridoRettangolare: true })))
+      .toBeLessThan(buchiTotali(calcolaNestingMigliore(par, conPezzetti)));
   });
 
   it('non apre mai una lastra in più per fare bella figura', () => {
-    const senza = calcolaNestingMigliore(par, lista);
-    const con = calcolaNestingMigliore(par, lista, { sfridoRettangolare: true });
+    const senza = calcolaNestingMigliore(par, conPezzetti);
+    const con = calcolaNestingMigliore(par, conPezzetti, { sfridoRettangolare: true });
     expect(con.lastre.length).toBe(senza.lastre.length);
     const conta = (e: EsitoNesting) => e.lastre.reduce((n, l) => n + l.piazzamenti.length, 0);
     expect(conta(con)).toBe(conta(senza));
   });
 
   it('i pezzi restano dentro la lastra e non si sovrappongono', () => {
-    const e = calcolaNestingMigliore(par, lista, { sfridoRettangolare: true });
+    const e = calcolaNestingMigliore(par, conPezzetti, { sfridoRettangolare: true });
     for (const l of e.lastre) {
       for (const pc of l.piazzamenti) {
         expect(pc.x).toBeGreaterThanOrEqual(par.margine - 1e-9);
@@ -875,9 +904,62 @@ describe('forma dello sfrido sulle lastre', () => {
   });
 
   it('ogni copia resta una sola: raccogliere non duplica né perde niente', () => {
-    const e = calcolaNestingMigliore(par, lista, { sfridoRettangolare: true });
+    const e = calcolaNestingMigliore(par, conPezzetti, { sfridoRettangolare: true });
     const chiavi = e.lastre.flatMap((l) => l.piazzamenti.map((pc) => pc.chiave));
     expect(new Set(chiavi).size).toBe(chiavi.length);
     expect(chiavi).toHaveLength(13);
+  });
+
+  /**
+   * IL LAVORO VERO: una camera intera, tutti i pezzi larghi 290 e alti da 185
+   * a 2807. Su una lastra da 1500 ci stanno cinque colonne esatte (1465 mm):
+   * l'ingombro di ogni lastra deve venire largo proprio così, senza pezzi che
+   * sporgono a rompere l'allineamento.
+   */
+  const camera: PezzoNesting[] = [
+    p('ING A', 290, 595, 4),
+    p('ING B', 290, 625, 2),
+    p('ING C', 290, 2470, 3),
+    p('LATO 1 A', 290, 600, 5),
+    p('LATO 1 B', 290, 2300, 4),
+    p('LATO 1 C', 290, 2100, 2),
+    p('LATO 1 D', 290, 185, 2),
+    p('LATO 1 E', 290, 2470, 3),
+    p('LATO 1 F', 290, 2000, 2),
+    p('LATO 1 G', 290, 1175, 1),
+    p('LATO 2 A', 290, 600, 5),
+    p('LATO 2 B', 290, 2450, 4),
+    p('LATO 2 D', 290, 185, 2),
+    p('LATO 2 E', 290, 2470, 3),
+    p('LATO 2 G', 290, 1150, 1),
+    p('LATO 2 H', 290, 2806.67, 3),
+    p('LATO 3 A', 290, 600, 5),
+    p('LATO 3 B', 290, 2300, 4),
+    p('LATO 3 D', 290, 185, 1),
+    p('LATO 3 E', 290, 2470, 3),
+    p('LATO 3 I', 290, 2800, 3),
+    p('RETRO A', 290, 590, 3),
+    p('RETRO B', 290, 1845, 4),
+    p('RETRO C', 290, 2650, 3)
+  ];
+
+  it('sulla camera intera nessun pezzo sporge dalle cinque colonne', () => {
+    const e = calcolaNestingMigliore(par, camera, { sfridoRettangolare: true });
+    for (const l of e.lastre) expect(ingombro(l).larghezza).toBeLessThanOrEqual(1465);
+  });
+
+  it('sulla camera intera l’ingombro si chiude molto meglio', () => {
+    const senza = buchiTotali(calcolaNestingMigliore(par, camera));
+    const con = buchiTotali(calcolaNestingMigliore(par, camera, { sfridoRettangolare: true }));
+    expect(con).toBeLessThan(senza * 0.75);
+  });
+
+  it('sulla camera intera non serve una lastra in più', () => {
+    const senza = calcolaNestingMigliore(par, camera);
+    const con = calcolaNestingMigliore(par, camera, { sfridoRettangolare: true });
+    expect(con.lastre.length).toBeLessThanOrEqual(senza.lastre.length);
+    const conta = (e: EsitoNesting) => e.lastre.reduce((n, l) => n + l.piazzamenti.length, 0);
+    expect(conta(con)).toBe(conta(senza));
+    expect(conta(con)).toBe(camera.reduce((n, x) => n + x.quantita, 0));
   });
 });

@@ -1,4 +1,4 @@
-import { segmentaBobina, strisciaResidua } from './segmenti';
+import { segmentaBobina } from './segmenti';
 
 /**
  * NESTING RETTANGOLARE (ottimizzazione del taglio).
@@ -630,35 +630,53 @@ function qualita(par: ParametriNesting, e: EsitoNesting, opzioni?: OpzioniRicerc
       }
     }
   }
-  return [-piazzati, e.lastre.length, ingestibili, -ritaglioTotale(par, e, opzioni), occupata];
+  return [-piazzati, e.lastre.length, ingestibili, buchiTotali(par, e, opzioni), occupata];
 }
 
 /**
- * QUANTO SI SALVA DELLO SFRIDO.
+ * LA FORMA DI QUEL CHE AVANZA.
  *
- * Su lastra i pezzi sono gli stessi e le lastre aperte sono già decise: quello
- * che resta da scegliere è la FORMA di ciò che avanza. Un avanzo a gradini si
- * butta, lo stesso avanzo raccolto in un rettangolo intero torna in magazzino
- * e domani è un pezzo. Due pezzetti lasciati soli sotto una fila di colonne
- * costano poco in materiale e moltissimo in forma: mordono il rettangolo
- * grande e lo dimezzano.
+ * Su lastra i pezzi sono gli stessi e le lastre aperte sono già decise: resta
+ * da scegliere la FORMA dell'avanzo. Un avanzo a gradini si butta; lo stesso
+ * avanzo raccolto in una L pulita — una fascia in fondo e una di fianco —
+ * torna in magazzino e domani è un pezzo.
  *
- * Qui si somma, lastra per lastra, il ritaglio rettangolare più grande che
- * avanza — lo stesso che il disegno segna come «avanza una striscia». Più è
- * grande, meglio è; a parità di tutto il resto è questo a decidere.
+ * L'avanzo è una L pulita quando i pezzi, tutti insieme, riempiono un
+ * RETTANGOLO nell'angolo della lastra. Basta quindi misurare quanto vuoto
+ * resta dentro il loro ingombro: zero vuol dire ingombro pieno e avanzo a L
+ * perfetta; tanto vuol dire gradini.
+ *
+ * È la stessa quantità vista dall'altra parte: fra il libero della lastra e
+ * le due fasce della L, la differenza è esattamente il vuoto dentro
+ * l'ingombro — quindi meno buchi qui, più materiale recuperabile là.
+ *
+ * Un esempio concreto: due colonne alte e un pezzo corto sotto. Se il pezzo
+ * corto sta in piedi, l'ingombro si allunga senza allargarsi e resta un buco
+ * grande quanto il pezzo; girato di novanta gradi riempie la riga sotto le
+ * colonne, l'ingombro torna un rettangolo e la L si pulisce.
  */
-function ritaglioTotale(
-  par: ParametriNesting,
-  e: EsitoNesting,
-  opzioni?: OpzioniRicerca
-): number {
+function buchiTotali(par: ParametriNesting, e: EsitoNesting, opzioni?: OpzioniRicerca): number {
   if (!opzioni?.sfridoRettangolare) return 0;
   let totale = 0;
-  for (const l of e.lastre) {
-    const r = strisciaResidua(l, par.lastra.larghezza, par.lastra.altezza);
-    if (r) totale += r.larghezza * r.lunghezza;
-  }
+  for (const l of e.lastre) totale += buchiLastra(par, l);
   return totale;
+}
+
+/** vuoto rimasto dentro l'ingombro dei pezzi di una lastra */
+function buchiLastra(par: ParametriNesting, lastra: LastraNesting): number {
+  if (lastra.piazzamenti.length === 0) return 0;
+  const { lama, margine } = par;
+  let dx = 0;
+  let dy = 0;
+  let area = 0;
+  for (const p of lastra.piazzamenti) {
+    // l'ingombro comprende la lama: fra due pezzi accostati non c'è vuoto,
+    // c'è il taglio, e non va contato come spreco
+    dx = Math.max(dx, p.x + p.larghezza + lama);
+    dy = Math.max(dy, p.y + p.altezza + lama);
+    area += (p.larghezza + lama) * (p.altezza + lama);
+  }
+  return Math.max(0, (dx - margine) * (dy - margine) - area);
 }
 
 export interface OpzioniRicerca {
@@ -768,13 +786,12 @@ function confronta(a: Punteggio, b: Punteggio): number {
  * RACCOGLIE I RIMASUGLI (solo su lastra).
  *
  * Il difetto si vede a colpo d'occhio: cinque colonne piene e, sotto, due
- * pezzetti soli. In materiale costano niente, ma mordono l'avanzo e da un
- * rettangolo intero alto settantacinque centimetri ne fanno uno alto
- * cinquantasei più uno scalino inutilizzabile — e quei due pezzetti, spesso,
- * entravano benissimo in una lastra già aperta.
+ * pezzetti soli. In materiale costano niente, ma fanno dell'ingombro una
+ * scala invece che un rettangolo, e l'avanzo smette di essere una L — e quei
+ * due pezzetti, spesso, entravano benissimo in una lastra già aperta.
  *
- * Qui si cercano proprio quelli: i pezzi che, tolti, farebbero crescere il
- * ritaglio buono della loro lastra. Si prova a rimetterli altrove — in
+ * Qui si cercano proprio quelli: i pezzi che, tolti, lascerebbero l'ingombro
+ * della loro lastra più pieno. Si prova a rimetterli altrove — in
  * un'altra lastra o in un altro angolo della stessa — e si tiene lo
  * spostamento solo se il piano nel suo insieme migliora. Nessun pezzo viene
  * mai perso: se non trova posto, resta dov'è.
@@ -800,13 +817,13 @@ function raccogliRimasugli(
     // sono i pezzi che mordono il ritaglio
     const candidati: Array<{ lastra: number; indice: number; guadagno: number }> = [];
     corrente.lastre.forEach((l, iL) => {
-      const ora = ritaglioLastra(par, l);
+      const ora = buchiLastra(par, l);
       l.piazzamenti.forEach((_, iP) => {
         const senza = {
           piazzamenti: l.piazzamenti.filter((_, k) => k !== iP)
         };
-        const dopo = ritaglioLastra(par, senza);
-        if (dopo > ora + 1e-6) candidati.push({ lastra: iL, indice: iP, guadagno: dopo - ora });
+        const dopo = buchiLastra(par, senza);
+        if (dopo < ora - 1e-6) candidati.push({ lastra: iL, indice: iP, guadagno: ora - dopo });
       });
     });
     if (candidati.length === 0) break;
@@ -853,12 +870,6 @@ function raccogliRimasugli(
     if (!mosso) break;
   }
   return { esito: corrente, punteggio };
-}
-
-/** il ritaglio rettangolare che avanza da una lastra, in area */
-function ritaglioLastra(par: ParametriNesting, lastra: LastraNesting): number {
-  const r = strisciaResidua(lastra, par.lastra.larghezza, par.lastra.altezza);
-  return r ? r.larghezza * r.lunghezza : 0;
 }
 
 /** sposta una copia da una lastra all'altra, senza toccare le altre */
