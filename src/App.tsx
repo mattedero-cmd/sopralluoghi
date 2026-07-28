@@ -25,6 +25,7 @@ export function App() {
           key={rotta.id ?? rotta.nuovoIn ?? 'bozza'}
           id={rotta.id}
           nuovoIn={rotta.nuovoIn}
+          dentro={rotta.dentro}
         />
       )}
       {rotta.nome === 'disegno' && <DisegnoPage id={rotta.id} key={rotta.id} />}

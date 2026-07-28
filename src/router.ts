@@ -11,7 +11,7 @@ export type Rotta =
   | { nome: 'clienti' }
   | { nome: 'cliente'; id: string }
   | { nome: 'preventivo'; id: string }
-  | { nome: 'nesting'; id?: string; nuovoIn?: string }
+  | { nome: 'nesting'; id?: string; nuovoIn?: string; dentro?: string }
   | { nome: 'disegno'; id: string }
   | { nome: 'impostazioni' };
 
@@ -28,7 +28,10 @@ export function analizzaHash(hash: string): Rotta {
     // #/nesting              → bozza corrente
     // #/nesting/<id>         → lavoro salvato in archivio
     // #/nesting/nuovo/<cart> → lavoro nuovo dentro una cartella
+    // #/nesting/in/<cart>    → bozza corrente, aperta DA una cartella: se non
+    //                          è ancora in archivio, quella diventa casa sua
     if (parti[1] === 'nuovo') return { nome: 'nesting', nuovoIn: parti[2] };
+    if (parti[1] === 'in' && parti[2]) return { nome: 'nesting', dentro: parti[2] };
     if (parti[1]) return { nome: 'nesting', id: parti[1] };
     return { nome: 'nesting' };
   }
@@ -54,6 +57,7 @@ export function urlRotta(r: Rotta): string {
     case 'nesting':
       if (r.id) return `#/nesting/${r.id}`;
       if (r.nuovoIn) return `#/nesting/nuovo/${r.nuovoIn}`;
+      if (r.dentro) return `#/nesting/in/${r.dentro}`;
       return '#/nesting';
     case 'disegno':
       return `#/disegno/${r.id}`;

@@ -334,7 +334,7 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
           className="btn icona"
           aria-label="Nesting: ottimizzazione del taglio"
           title="Nesting: ottimizzazione del taglio"
-          onClick={() => naviga({ nome: 'nesting' })}
+          onClick={() => naviga({ nome: 'nesting', dentro: cartellaId ?? undefined })}
         >
           <Icona nome="griglia" />
         </button>

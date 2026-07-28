@@ -212,7 +212,16 @@ function leggiBozza(): Bozza | null {
   }
 }
 
-export function NestingPage({ id, nuovoIn }: { id?: string; nuovoIn?: string }) {
+export function NestingPage({
+  id,
+  nuovoIn,
+  dentro
+}: {
+  id?: string;
+  nuovoIn?: string;
+  /** cartella da cui si è aperto lo strumento: casa di una bozza mai archiviata */
+  dentro?: string;
+}) {
   // un lavoro nuovo dentro una cartella parte pulito, non dalla bozza
   const iniziale = useMemo(() => (id || nuovoIn ? null : leggiBozza()), [id, nuovoIn]);
   const [doc, setDoc] = useState<DocumentoNesting>(
@@ -229,8 +238,16 @@ export function NestingPage({ id, nuovoIn }: { id?: string; nuovoIn?: string }) 
    * «metti questo lavoro nella radice» e «lascialo dov'è»: senza, riprendendo
    * una bozza il piano di taglio uscirebbe dalla cartella del progetto da cui
    * è nato.
+   *
+   * Una bozza MAI archiviata invece una casa non ce l'ha, e la prende dalla
+   * cartella da cui si è aperto lo strumento: chi comincia un piano di taglio
+   * stando dentro «Rossi — Cucina» se lo aspetta lì, non nella radice.
    */
-  const [cartellaId, setCartellaId] = useState<string | null | undefined>(nuovoIn ?? undefined);
+  const [cartellaId, setCartellaId] = useState<string | null | undefined>(() => {
+    if (nuovoIn) return nuovoIn;
+    if (!id && !iniziale?.idArchivio && dentro) return dentro;
+    return undefined;
+  });
   const [caricamento, setCaricamento] = useState(!!id);
   const [incolla, setIncolla] = useState(false);
   const [apri, setApri] = useState(false);
