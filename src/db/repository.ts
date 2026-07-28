@@ -4,6 +4,7 @@ import {
   type Annotazione,
   type Cartella,
   type Cliente,
+  type DisegnoSvg,
   type Foto,
   type ID,
   type Impostazioni,
@@ -878,4 +879,72 @@ export async function spostaNesting(id: ID, cartellaId: ID | null): Promise<void
 
 export async function eliminaNesting(id: ID): Promise<void> {
   await scrivi('eliminare il lavoro di nesting', () => db.nesting.delete(id));
+}
+
+/* --- disegni SVG ----------------------------------------------------- */
+
+/**
+ * Salva un disegno: crea il record se l'id è nuovo, altrimenti lo sovrascrive.
+ * Come per i piani di taglio, una cartella non indicata NON vuol dire radice:
+ * vuol dire «lascialo dov'è».
+ */
+export async function salvaDisegno(
+  id: ID,
+  nome: string,
+  svg: string,
+  opzioni?: {
+    cartellaId?: ID | null;
+    larghezzaMm?: number | null;
+    altezzaMm?: number | null;
+    misureReali?: boolean;
+    origine?: 'taglio' | 'file';
+    nestingId?: ID | null;
+  }
+): Promise<DisegnoSvg> {
+  const esistente = await db.disegni.get(id);
+  const adesso = ora();
+  const record: DisegnoSvg = {
+    id,
+    nome,
+    cartellaId:
+      opzioni?.cartellaId !== undefined ? opzioni.cartellaId : (esistente?.cartellaId ?? null),
+    creatoIl: esistente?.creatoIl ?? adesso,
+    modificatoIl: adesso,
+    svg,
+    larghezzaMm: opzioni?.larghezzaMm ?? esistente?.larghezzaMm ?? null,
+    altezzaMm: opzioni?.altezzaMm ?? esistente?.altezzaMm ?? null,
+    misureReali: opzioni?.misureReali ?? esistente?.misureReali,
+    origine: opzioni?.origine ?? esistente?.origine,
+    nestingId: opzioni?.nestingId !== undefined ? opzioni.nestingId : (esistente?.nestingId ?? null)
+  };
+  await scrivi('salvare il disegno', () => db.disegni.put(record));
+  return record;
+}
+
+export async function leggiDisegno(id: ID): Promise<DisegnoSvg | undefined> {
+  return db.disegni.get(id);
+}
+
+/** i disegni dentro una cartella dell'archivio, dal più recente */
+export async function disegniInCartella(cartellaId: ID | null): Promise<DisegnoSvg[]> {
+  const tutti = await db.disegni.toArray();
+  return tutti
+    .filter((d) => (d.cartellaId ?? null) === cartellaId)
+    .sort((a, b) => b.modificatoIl - a.modificatoIl);
+}
+
+export async function rinominaDisegno(id: ID, nome: string): Promise<void> {
+  await scrivi('rinominare il disegno', () =>
+    db.disegni.update(id, { nome, modificatoIl: ora() })
+  );
+}
+
+export async function spostaDisegno(id: ID, cartellaId: ID | null): Promise<void> {
+  await scrivi('spostare il disegno', () =>
+    db.disegni.update(id, { cartellaId, modificatoIl: ora() })
+  );
+}
+
+export async function eliminaDisegno(id: ID): Promise<void> {
+  await scrivi('eliminare il disegno', () => db.disegni.delete(id));
 }

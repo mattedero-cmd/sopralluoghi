@@ -1061,6 +1061,34 @@ export const COLORE_QUOTA_TECNICA = '#00A896';
  * la sua forma e le migrazioni stanno in utils/documentoNesting.ts, così il
  * database non deve sapere nulla dell'ottimizzazione del taglio.
  */
+/**
+ * DISEGNO SVG in archivio.
+ *
+ * Un file di taglio — esportato da qui o arrivato da fuori — tenuto insieme al
+ * lavoro a cui appartiene, così si riapre in cantiere senza cercarlo fra i
+ * download. Il testo del file si conserva com'è: quello che si consegna alla
+ * macchina dev'essere identico a quello che si è guardato.
+ */
+export interface DisegnoSvg {
+  id: ID;
+  nome: string;
+  /** cartella dell'archivio in cui vive il disegno (null = radice) */
+  cartellaId: ID | null;
+  creatoIl: number;
+  modificatoIl: number;
+  /** il file, testo com'è */
+  svg: string;
+  /** misure reali del disegno in millimetri, se il file le dichiara */
+  larghezzaMm?: number | null;
+  altezzaMm?: number | null;
+  /** vero se le misure sono dichiarate nel file e non dedotte dal viewBox */
+  misureReali?: boolean;
+  /** da dove viene: «taglio» se l'ha prodotto l'app, «file» se importato */
+  origine?: 'taglio' | 'file';
+  /** piano di taglio da cui è stato esportato, se è nato qui */
+  nestingId?: ID | null;
+}
+
 export interface LavoroNesting {
   id: ID;
   nome: string;

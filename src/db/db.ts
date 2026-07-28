@@ -3,6 +3,7 @@ import type {
   Annotazione,
   Cartella,
   Cliente,
+  DisegnoSvg,
   Foto,
   Impostazioni,
   LavoroNesting,
@@ -24,6 +25,7 @@ export class SopralluoghiDB extends Dexie {
   clienti!: Table<Cliente, string>;
   preventivi!: Table<Preventivo, string>;
   nesting!: Table<LavoroNesting, string>;
+  disegni!: Table<DisegnoSvg, string>;
 
   constructor() {
     super('sopralluoghi');
@@ -76,6 +78,18 @@ export class SopralluoghiDB extends Dexie {
             if (l.cartellaId === undefined) l.cartellaId = null;
           });
       });
+    // Fase 6: disegni SVG (file di taglio) tenuti in archivio
+    this.version(5).stores({
+      cartelle: 'id, parentId',
+      progetti: 'id, cartellaId, clienteId, modificatoIl',
+      foto: 'id, progettoId',
+      annotazioni: 'id, fotoId',
+      impostazioni: 'id',
+      clienti: 'id, nome',
+      preventivi: 'id, progettoId, clienteId, numero',
+      nesting: 'id, nome, cartellaId, modificatoIl',
+      disegni: 'id, nome, cartellaId, modificatoIl'
+    });
   }
 }
 

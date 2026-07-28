@@ -18,6 +18,12 @@ import {
   pdfDaRifare,
   prossimoNumeroPreventivo,
   rinominaNesting,
+  disegniInCartella,
+  eliminaDisegno,
+  leggiDisegno,
+  rinominaDisegno,
+  salvaDisegno,
+  spostaDisegno,
   salvaNesting,
   salvaPdfNesting,
   spostaNesting,
@@ -364,5 +370,55 @@ describe('lavori di nesting in archivio', () => {
     // e ciò che resta sopravvive a un giro in JSON
     const giro = JSON.parse(JSON.stringify(indice.nesting));
     expect(giro.find((l: { id: string }) => l.id === 'n5').documento).toEqual({ a: 1 });
+  });
+});
+
+describe('disegni SVG in archivio', () => {
+  const SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="1220mm" height="500mm"></svg>';
+
+  beforeEach(async () => {
+    await db.disegni.clear();
+  });
+
+  it('il disegno si salva con le sue misure e si ritrova nella cartella', async () => {
+    await salvaDisegno('d1', 'Taglio rovere', SVG, {
+      cartellaId: 'cart',
+      larghezzaMm: 1220,
+      altezzaMm: 500,
+      misureReali: true,
+      origine: 'taglio'
+    });
+    const dentro = await disegniInCartella('cart');
+    expect(dentro.map((d) => d.nome)).toEqual(['Taglio rovere']);
+    expect(dentro[0]).toMatchObject({ larghezzaMm: 1220, altezzaMm: 500, origine: 'taglio' });
+    expect(await disegniInCartella(null)).toEqual([]);
+  });
+
+  it('il file si conserva identico: è quello che va in macchina', async () => {
+    await salvaDisegno('d2', 'Disegno', SVG, { cartellaId: null });
+    expect((await leggiDisegno('d2'))!.svg).toBe(SVG);
+  });
+
+  it('«non so dov’è» lascia il disegno dov’è, «radice» lo sposta', async () => {
+    await salvaDisegno('d3', 'Disegno', SVG, { cartellaId: 'cart' });
+    expect((await salvaDisegno('d3', 'Disegno', SVG)).cartellaId).toBe('cart');
+    expect((await salvaDisegno('d3', 'Disegno', SVG, { cartellaId: null })).cartellaId).toBe(null);
+  });
+
+  it('si rinomina, si sposta e si elimina', async () => {
+    await salvaDisegno('d4', 'Vecchio', SVG, { cartellaId: null });
+    await rinominaDisegno('d4', 'Nuovo');
+    await spostaDisegno('d4', 'altra');
+    expect(await leggiDisegno('d4')).toMatchObject({ nome: 'Nuovo', cartellaId: 'altra' });
+    await eliminaDisegno('d4');
+    expect(await leggiDisegno('d4')).toBeUndefined();
+  });
+
+  it('la data di creazione non si perde a ogni salvataggio', async () => {
+    const primo = await salvaDisegno('d5', 'Disegno', SVG, { cartellaId: null });
+    await new Promise((r) => setTimeout(r, 2));
+    const dopo = await salvaDisegno('d5', 'Disegno', SVG);
+    expect(dopo.creatoIl).toBe(primo.creatoIl);
+    expect(dopo.modificatoIl).toBeGreaterThan(primo.creatoIl - 1);
   });
 });

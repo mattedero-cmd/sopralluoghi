@@ -5,6 +5,7 @@ import { ImpostazioniPage } from './pages/ImpostazioniPage';
 import { ClientiPage, ClientePage } from './pages/ClientiPage';
 import { PreventivoPage } from './pages/PreventivoPage';
 import { NestingPage } from './pages/NestingPage';
+import { DisegnoPage } from './pages/DisegnoPage';
 import { EditorFoto } from './editor/EditorFoto';
 import { Toasts } from './components/comuni';
 import { PromemoriaSync } from './components/PromemoriaSync';
@@ -26,6 +27,7 @@ export function App() {
           nuovoIn={rotta.nuovoIn}
         />
       )}
+      {rotta.nome === 'disegno' && <DisegnoPage id={rotta.id} key={rotta.id} />}
       {rotta.nome === 'impostazioni' && <ImpostazioniPage />}
       <PromemoriaSync />
       <Toasts />

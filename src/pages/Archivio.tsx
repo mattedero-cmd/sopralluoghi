@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import type { Cartella, LavoroNesting, Progetto } from '../db/types';
+import type { Cartella, DisegnoSvg, LavoroNesting, Progetto } from '../db/types';
 import {
   aggiornaCartella,
   contenutoCartella,
@@ -9,17 +9,23 @@ import {
   creaProgetto,
   duplicaProgetto,
   eliminaCartella,
+  eliminaDisegno,
   eliminaNesting,
   eliminaProgetto,
   pdfDaRifare,
+  rinominaDisegno,
   rinominaNesting,
   salvaPdfNesting,
   spostaCartella,
+  spostaDisegno,
   spostaNesting,
+  salvaDisegno,
   spostaProgetto
 } from '../db/repository';
 import { naviga } from '../router';
 import { condividiOScarica, nomeFileSicuro } from '../utils/share';
+import { nuovoId } from '../utils/id';
+import { eSvg, misureSvg, nomeDaFile } from '../utils/svgDisegno';
 import type { OpzioniReport } from '../pdf/report';
 import {
   ConfermaDialog,
@@ -30,7 +36,7 @@ import {
   type VoceMenu
 } from '../components/comuni';
 import { mostraToast } from '../state/toast';
-import { formattaData } from '../utils/format';
+import { formattaData, formattaNumero } from '../utils/format';
 import { Icona } from '../components/Icona';
 import { PannelloOpzioniPdf } from '../components/OpzioniPdf';
 import { ModaleAnteprimaPdf } from '../components/ModaleAnteprimaPdf';
@@ -44,12 +50,15 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
     | { tipo: 'cartella'; id: string }
     | { tipo: 'progetto'; id: string }
     | { tipo: 'nesting'; id: string }
+    | { tipo: 'disegno'; id: string }
     | null
   >(null);
   const [conferma, setConferma] = useState<RichiestaConferma | null>(null);
   const [menu, setMenu] = useState<{ pos: { x: number; y: number }; voci: VoceMenu[] } | null>(null);
   const [reportCartella, setReportCartella] = useState<Cartella | null>(null);
   const [rinominaLavoro, setRinominaLavoro] = useState<LavoroNesting | null>(null);
+  const [rinominaDisegnoScelto, setRinominaDisegnoScelto] = useState<DisegnoSvg | null>(null);
+  const fileSvgRef = useRef<HTMLInputElement>(null);
   /** PDF da guardare nell'app prima di mandarlo via */
   const [anteprima, setAnteprima] = useState<{ blob: Blob; titolo: string } | null>(null);
   const [pdfInCorso, setPdfInCorso] = useState<string | null>(null);
@@ -81,6 +90,15 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
       const tutti = await db.nesting.toArray();
       return tutti
         .filter((l) => (l.cartellaId ?? null) === cartellaId)
+        .sort((a, b) => b.modificatoIl - a.modificatoIl);
+    },
+    [cartellaId]
+  );
+  const disegni = useLiveQuery(
+    async () => {
+      const tutti = await db.disegni.toArray();
+      return tutti
+        .filter((d) => (d.cartellaId ?? null) === cartellaId)
         .sort((a, b) => b.modificatoIl - a.modificatoIl);
     },
     [cartellaId]
@@ -178,6 +196,72 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
     } finally {
       setPdfInCorso(null);
     }
+  };
+
+  /**
+   * IMPORTA UN DISEGNO SVG dal telefono.
+   *
+   * Si legge il testo del file e si controlla che sia davvero un SVG: capita
+   * di ricevere un PDF rinominato, e aprirlo darebbe una pagina bianca senza
+   * spiegazioni. Le misure vere si leggono dall'intestazione, così l'archivio
+   * può dire subito quanto è grande il disegno.
+   */
+  const importaSvg = async (file: File) => {
+    try {
+      const testo = await file.text();
+      if (!eSvg(testo)) {
+        mostraToast('errore', `«${file.name}» non è un disegno SVG.`);
+        return;
+      }
+      const m = misureSvg(testo);
+      const id = nuovoId();
+      await salvaDisegno(id, nomeDaFile(file.name), testo, {
+        cartellaId,
+        larghezzaMm: m.larghezzaMm,
+        altezzaMm: m.altezzaMm,
+        misureReali: m.reali,
+        origine: 'file'
+      });
+      naviga({ nome: 'disegno', id });
+    } catch (e) {
+      mostraToast('errore', e instanceof Error ? e.message : 'Importazione non riuscita.');
+    }
+  };
+
+  const apriMenuDisegno = (d: DisegnoSvg, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setMenu({
+      pos: { x: e.clientX, y: e.clientY },
+      voci: [
+        {
+          testo: 'Condividi il file',
+          icona: 'condividi',
+          onClick: () =>
+            void condividiOScarica(
+              new Blob([d.svg], { type: 'image/svg+xml' }),
+              nomeFileSicuro(d.nome, 'svg'),
+              d.nome
+            )
+        },
+        { testo: 'Rinomina…', icona: 'matita', onClick: () => setRinominaDisegnoScelto(d) },
+        {
+          testo: 'Sposta…',
+          icona: 'sposta',
+          onClick: () => setDaSpostare({ tipo: 'disegno', id: d.id })
+        },
+        {
+          testo: 'Elimina…',
+          icona: 'cestino',
+          pericolo: true,
+          onClick: () =>
+            setConferma({
+              titolo: `Eliminare il disegno "${d.nome}"?`,
+              messaggio: 'Il file verrà tolto dall’archivio.\nL’operazione NON è annullabile.',
+              onConferma: () => void eliminaDisegno(d.id)
+            })
+        }
+      ]
+    });
   };
 
   const apriMenuNesting = (l: LavoroNesting, e: React.MouseEvent) => {
@@ -309,6 +393,20 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
               >
                 <Icona nome="griglia" dimensione={20} /> Nuovo piano di taglio
               </button>
+              <button className="btn" onClick={() => fileSvgRef.current?.click()}>
+                <Icona nome="disegno" dimensione={20} /> Apri un SVG
+              </button>
+              <input
+                ref={fileSvgRef}
+                type="file"
+                accept=".svg,image/svg+xml"
+                hidden
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = '';
+                  if (f) void importaSvg(f);
+                }}
+              />
             </div>
 
             <div className="lista-griglia">
@@ -416,9 +514,46 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
                 </button>
               );
             })}
+
+            {(disegni ?? []).map((d) => (
+              <button
+                key={d.id}
+                className="scheda"
+                onClick={() => naviga({ nome: 'disegno', id: d.id })}
+              >
+                <span className="glifo disegno">
+                  <Icona nome="disegno" dimensione={22} />
+                </span>
+                <span className="corpo">
+                  <div className="titolo">
+                    {d.nome}
+                    <span className="badge-etichetta">SVG</span>
+                  </div>
+                  <div className="sotto">
+                    {d.larghezzaMm && d.altezzaMm
+                      ? `${formattaNumero(Math.round(d.larghezzaMm))} × ${formattaNumero(
+                          Math.round(d.altezzaMm)
+                        )} mm · `
+                      : ''}
+                    {formattaData(d.modificatoIl)}
+                  </div>
+                </span>
+                <span
+                  className="btn icona"
+                  role="button"
+                  aria-label={`Azioni disegno ${d.nome}`}
+                  onClick={(e) => apriMenuDisegno(d, e)}
+                >
+                  <Icona nome="altro" />
+                </span>
+              </button>
+            ))}
             </div>
 
-            {cartelle?.length === 0 && progetti?.length === 0 && lavori?.length === 0 && (
+            {cartelle?.length === 0 &&
+              progetti?.length === 0 &&
+              lavori?.length === 0 &&
+              disegni?.length === 0 && (
               <div className="vuoto">
                 <div className="grande">
                   <Icona nome="archivio" dimensione={46} />
@@ -488,6 +623,7 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
             try {
               if (daSpostare.tipo === 'cartella') await spostaCartella(daSpostare.id, destinazione);
               else if (daSpostare.tipo === 'nesting') await spostaNesting(daSpostare.id, destinazione);
+              else if (daSpostare.tipo === 'disegno') await spostaDisegno(daSpostare.id, destinazione);
               else await spostaProgetto(daSpostare.id, destinazione);
               mostraToast('successo', 'Spostato.');
             } catch (e) {
@@ -513,6 +649,17 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
           onSalva={async (nome) => {
             await rinominaNesting(rinominaLavoro.id, nome);
             setRinominaLavoro(null);
+          }}
+        />
+      )}
+      {rinominaDisegnoScelto && (
+        <FormNome
+          titolo="Rinomina il disegno"
+          valore={rinominaDisegnoScelto.nome}
+          onChiudi={() => setRinominaDisegnoScelto(null)}
+          onSalva={async (nome) => {
+            await rinominaDisegno(rinominaDisegnoScelto.id, nome);
+            setRinominaDisegnoScelto(null);
           }}
         />
       )}

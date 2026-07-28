@@ -4,6 +4,7 @@ import type {
   Annotazione,
   Cartella,
   Cliente,
+  DisegnoSvg,
   ConfigCloud,
   Foto,
   Impostazioni,
@@ -12,7 +13,7 @@ import type {
   Progetto
 } from './types';
 
-const VERSIONE_BACKUP = 3;
+const VERSIONE_BACKUP = 4;
 
 /**
  * Callback di avanzamento: messaggio per l'utente e, quando è nota, la
@@ -35,6 +36,8 @@ interface ManifestBackup {
   preventivi?: Preventivo[];
   /** dalla versione 3 */
   nesting?: LavoroNesting[];
+  /** dalla versione 4: i disegni SVG in archivio */
+  disegni?: DisegnoSvg[];
 }
 
 /**
@@ -43,7 +46,7 @@ interface ManifestBackup {
  */
 export async function esportaBackup(avanzamento?: Avanzamento): Promise<Blob> {
   avanzamento?.('Lettura archivio…');
-  const [cartelle, progetti, foto, annotazioni, impostazioni, clienti, preventivi, nesting] =
+  const [cartelle, progetti, foto, annotazioni, impostazioni, clienti, preventivi, nesting, disegni] =
     await Promise.all([
       db.cartelle.toArray(),
       db.progetti.toArray(),
@@ -52,7 +55,8 @@ export async function esportaBackup(avanzamento?: Avanzamento): Promise<Blob> {
       db.impostazioni.get('app'),
       db.clienti.toArray(),
       db.preventivi.toArray(),
-      db.nesting.toArray()
+      db.nesting.toArray(),
+      db.disegni.toArray()
     ]);
 
   const manifest: ManifestBackup = {
@@ -69,7 +73,9 @@ export async function esportaBackup(avanzamento?: Avanzamento): Promise<Blob> {
     // oggetto vuoto. Non si esporta — si rifà da solo dal documento alla
     // prima apertura, che è anche l'unico modo di averlo aggiornato.
     preventivi,
-    nesting: nesting.map(({ pdf: _pdf, pdfIl: _pdfIl, ...resto }) => resto)
+    nesting: nesting.map(({ pdf: _pdf, pdfIl: _pdfIl, ...resto }) => resto),
+    // il testo di un SVG è già JSON-compatibile: viaggia intero
+    disegni
   };
 
   const zip = new JSZip();
@@ -166,7 +172,8 @@ export async function importaBackup(
       db.impostazioni,
       db.clienti,
       db.preventivi,
-      db.nesting
+      db.nesting,
+      db.disegni
     ],
     async () => {
       await db.cartelle.bulkPut(manifest.cartelle);
@@ -184,6 +191,8 @@ export async function importaBackup(
       if (manifest.preventivi) await db.preventivi.bulkPut(manifest.preventivi);
       // presenti dalla versione 3 del backup
       if (manifest.nesting) await db.nesting.bulkPut(manifest.nesting);
+      // presenti dalla versione 4 del backup
+      if (manifest.disegni) await db.disegni.bulkPut(manifest.disegni);
     }
   );
 
@@ -214,12 +223,14 @@ export interface IndiceArchivio {
   preventivi: Preventivo[];
   /** dalla versione 3 */
   nesting?: LavoroNesting[];
+  /** dalla versione 4 */
+  disegni?: DisegnoSvg[];
   impostazioni: Impostazioni | null;
 }
 
 /** Costruisce l'indice dell'archivio locale (metadati, niente binari) da pubblicare sul cloud. */
 export async function costruisciIndice(): Promise<IndiceArchivio> {
-  const [cartelle, progetti, foto, annotazioni, impostazioni, clienti, preventivi, nesting] =
+  const [cartelle, progetti, foto, annotazioni, impostazioni, clienti, preventivi, nesting, disegni] =
     await Promise.all([
       db.cartelle.toArray(),
       db.progetti.toArray(),
@@ -228,7 +239,8 @@ export async function costruisciIndice(): Promise<IndiceArchivio> {
       db.impostazioni.get('app'),
       db.clienti.toArray(),
       db.preventivi.toArray(),
-      db.nesting.toArray()
+      db.nesting.toArray(),
+      db.disegni.toArray()
     ]);
   return {
     app: 'sopralluoghi',
@@ -242,6 +254,7 @@ export async function costruisciIndice(): Promise<IndiceArchivio> {
     preventivi,
     // come nel backup: il Blob del PDF non viaggia, si rigenera
     nesting: nesting.map(({ pdf: _pdf, pdfIl: _pdfIl, ...resto }) => resto),
+    disegni,
     // mai pubblicare la sessione cloud (token) nell'indice condiviso
     impostazioni: impostazioni ? { ...impostazioni, cloud: null } : null
   };
@@ -270,7 +283,8 @@ export async function applicaMetadati(indice: IndiceArchivio): Promise<void> {
       db.impostazioni,
       db.clienti,
       db.preventivi,
-      db.nesting
+      db.nesting,
+      db.disegni
     ],
     async () => {
       await db.cartelle.bulkPut(indice.cartelle);
@@ -279,6 +293,7 @@ export async function applicaMetadati(indice: IndiceArchivio): Promise<void> {
       if (indice.clienti) await db.clienti.bulkPut(indice.clienti);
       if (indice.preventivi) await db.preventivi.bulkPut(indice.preventivi);
       if (indice.nesting) await db.nesting.bulkPut(indice.nesting);
+      if (indice.disegni) await db.disegni.bulkPut(indice.disegni);
       if (impRemoteNuove) {
         await db.impostazioni.put({ ...indice.impostazioni!, cloud: cloudLocale });
       }

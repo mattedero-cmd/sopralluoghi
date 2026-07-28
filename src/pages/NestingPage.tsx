@@ -523,6 +523,55 @@ export function NestingPage({ id, nuovoIn }: { id?: string; nuovoIn?: string }) 
    * Uno solo si manda com'è; più d'uno finiscono in uno zip, perché la
    * condivisione di sistema accetta un file per volta.
    */
+  /**
+   * SALVA GLI SVG DI TAGLIO IN ARCHIVIO.
+   *
+   * Gli stessi file dell'esportazione, ma tenuti nella cartella del lavoro:
+   * si riaprono nel visore quando servono, senza cercarli fra i download del
+   * telefono, e si rimandano da lì a chi deve tagliarli.
+   */
+  const archiviaSvg = async (opzioni: OpzioniSvgTaglio) => {
+    setEsporta(false);
+    setPdfInCorso(true);
+    try {
+      const [{ fileSvgTaglio }, { salvaDisegno }, { misureSvg }] = await Promise.all([
+        import('../utils/esportaTaglio'),
+        import('../db/repository'),
+        import('../utils/svgDisegno')
+      ]);
+      const file = fileSvgTaglio(doc, opzioni);
+      if (file.length === 0) {
+        mostraToast('info', 'Non c’è niente da tagliare: aggiungi dei pezzi.');
+        return;
+      }
+      let primo = '';
+      for (const f of file) {
+        const id = nuovoId();
+        if (!primo) primo = id;
+        const m = misureSvg(f.contenuto);
+        await salvaDisegno(id, f.nome, f.contenuto, {
+          cartellaId: cartellaId ?? null,
+          larghezzaMm: m.larghezzaMm,
+          altezzaMm: m.altezzaMm,
+          misureReali: m.reali,
+          origine: 'taglio',
+          nestingId: idArchivio
+        });
+      }
+      mostraToast(
+        'successo',
+        file.length === 1
+          ? 'Disegno salvato in archivio.'
+          : `${file.length} disegni salvati in archivio.`
+      );
+      naviga({ nome: 'disegno', id: primo });
+    } catch (e) {
+      mostraToast('errore', e instanceof Error ? e.message : 'Salvataggio non riuscito.');
+    } finally {
+      setPdfInCorso(false);
+    }
+  };
+
   const esportaSvg = async (opzioni: OpzioniSvgTaglio) => {
     setEsporta(false);
     setPdfInCorso(true);
@@ -1200,6 +1249,7 @@ export function NestingPage({ id, nuovoIn }: { id?: string; nuovoIn?: string }) 
           onChiudi={() => setEsporta(false)}
           onEsporta={esportaPdf}
           onEsportaSvg={esportaSvg}
+          onArchiviaSvg={archiviaSvg}
         />
       )}
 
@@ -1548,13 +1598,15 @@ function ModaleEsporta({
   iniziali,
   onChiudi,
   onEsporta,
-  onEsportaSvg
+  onEsportaSvg,
+  onArchiviaSvg
 }: {
   conBobine: boolean;
   iniziali: OpzioniPdfNesting;
   onChiudi: () => void;
   onEsporta: (opzioni: OpzioniPdfNesting) => void;
   onEsportaSvg: (opzioni: OpzioniSvgTaglio) => void;
+  onArchiviaSvg: (opzioni: OpzioniSvgTaglio) => void;
 }) {
   const [segmenta, setSegmenta] = useState(iniziali.segmenta);
   const [massimo, setMassimo] = useState(iniziali.massimoSegmento);
@@ -1648,6 +1700,19 @@ function ModaleEsporta({
           }
         >
           <Icona nome="condividi" dimensione={18} /> Esporta SVG
+        </button>
+        <button
+          className="btn"
+          style={{ flex: 1 }}
+          onClick={() =>
+            onArchiviaSvg({
+              perSegmento: conBobine ? !svgUnico : true,
+              massimoSegmento: massimo,
+              etichette: svgEtichette
+            })
+          }
+        >
+          <Icona nome="disegno" dimensione={18} /> Salva in archivio
         </button>
       </div>
     </Modale>

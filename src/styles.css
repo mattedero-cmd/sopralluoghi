@@ -268,6 +268,11 @@ textarea {
   background: linear-gradient(160deg, #12a594, #0d7d70);
 }
 
+/* disegno SVG: il magenta dei contorni di taglio */
+.glifo.disegno {
+  background: linear-gradient(160deg, #d6408f, #a8266d);
+}
+
 .scheda .sotto {
   color: var(--testo-2);
   font-size: 14px;
@@ -3105,4 +3110,132 @@ a {
   color: var(--testo-2);
   font-size: 11.5px;
   line-height: 1.45;
+}
+
+
+/* --- VISORE SVG ------------------------------------------------------ */
+
+.svg-visore {
+  border: 1px solid var(--bordo);
+  border-radius: var(--raggio);
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.svg-visore .tela {
+  /* il disegno è posizionato a mano: una traccia di griglia si dimensionerebbe
+     sul contenuto — un metro e venti di bobina — e lo spingerebbe fuori campo */
+  position: relative;
+  display: block;
+  height: min(62vh, 560px);
+  overflow: hidden;
+  touch-action: none;
+  cursor: grab;
+  /* il quadrettato dice dov'è il vuoto: i file di taglio sono trasparenti */
+  background-color: #f4f5f7;
+  background-image:
+    linear-gradient(45deg, #e6e8ec 25%, transparent 25%),
+    linear-gradient(-45deg, #e6e8ec 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #e6e8ec 75%),
+    linear-gradient(-45deg, transparent 75%, #e6e8ec 75%);
+  background-size: 18px 18px;
+  background-position: 0 0, 0 9px, 9px -9px, -9px 0;
+}
+
+.svg-visore.scuro .tela {
+  background-color: #14171c;
+  background-image: none;
+}
+
+.svg-visore .tela:active {
+  cursor: grabbing;
+}
+
+.svg-visore .disegno {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-origin: center center;
+  /* il disegno è la figura, il fondo a quadretti è il vuoto attorno */
+  background: #ffffff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+.svg-visore .disegno svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/*
+ * MODO LEGGIBILE. Un file di taglio disegna con linee da un quarto di
+ * millimetro: adattate allo schermo sparirebbero. Qui tutte le linee prendono
+ * la stessa grossezza, misurata in pixel di schermo e ferma allo zoom, così
+ * il disegno si vede a qualsiasi ingrandimento. Il file non cambia: cambia
+ * solo come lo si guarda.
+ */
+.svg-visore.leggibile .disegno svg * {
+  vector-effect: non-scaling-stroke;
+  stroke-width: 1.3px;
+}
+
+.svg-visore .comandi {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--bordo);
+  background: var(--sfondo-2);
+}
+
+.svg-visore .comandi .btn.attivo {
+  background: var(--accento);
+  color: #fff;
+  border-color: var(--accento);
+}
+
+.svg-visore .comandi .ingrandimento {
+  margin-left: auto;
+  color: var(--testo-2);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.svg-guasto {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  color: var(--pericolo);
+  padding: 24px;
+  text-align: center;
+  margin: 0;
+}
+
+.svg-dati {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 6px;
+}
+
+.svg-dati > div {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.svg-dati dt {
+  color: var(--testo-2);
+  font-size: 13px;
+}
+
+.svg-dati dd {
+  margin: 0;
+  font-size: 15px;
+}
+
+.svg-dati dd small {
+  color: var(--testo-2);
+  font-size: 12px;
 }
