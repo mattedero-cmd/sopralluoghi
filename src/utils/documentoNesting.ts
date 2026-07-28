@@ -8,7 +8,8 @@
  * materiale nei parametri del motore di calcolo.
  */
 
-import type { ParametriNesting, PezzoNesting } from '../geometry/nesting';
+import type { OpzioniRicerca, ParametriNesting, PezzoNesting } from '../geometry/nesting';
+import { BLOCCO_MANEGGEVOLE } from '../geometry/segmenti';
 
 /** supporto: lastre uguali a volontà, oppure un rotolo di lunghezza data */
 export type ModoSupporto = 'lastre' | 'bobina';
@@ -84,6 +85,19 @@ export function parametriDi(m: MaterialeNesting): ParametriNesting {
     ...comuni,
     massimoLastre: 1
   };
+}
+
+/**
+ * Cosa cerca il motore, secondo il supporto.
+ *
+ * Sta qui, in un posto solo, perché l'anteprima, il PDF e l'SVG devono
+ * chiedere esattamente la stessa cosa: se divergessero, il disegno che si
+ * guarda a schermo non sarebbe quello che si porta in laboratorio.
+ */
+export function opzioniRicerca(m: MaterialeNesting): OpzioniRicerca {
+  return m.modo === 'bobina'
+    ? { bloccoMassimo: BLOCCO_MANEGGEVOLE }
+    : { sfridoRettangolare: true };
 }
 
 /**

@@ -1,4 +1,4 @@
-import { segmentaBobina } from './segmenti';
+import { segmentaBobina, strisciaResidua } from './segmenti';
 
 /**
  * NESTING RETTANGOLARE (ottimizzazione del taglio).
@@ -604,13 +604,7 @@ function tintaDi(pezzi: PezzoNesting[], id: string): number {
  *
  * Numeri più bassi sono migliori.
  */
-function qualita(
-  e: EsitoNesting,
-  opzioni?: OpzioniRicerca,
-  margine = 0,
-  larghezza = 0,
-  lama = 0
-): [number, number, number, number] {
+function qualita(par: ParametriNesting, e: EsitoNesting, opzioni?: OpzioniRicerca): Punteggio {
   let piazzati = 0;
   let occupata = 0;
   for (const l of e.lastre) {
@@ -625,12 +619,46 @@ function qualita(
   let ingestibili = 0;
   if (opzioni?.bloccoMassimo && opzioni.bloccoMassimo > 0) {
     for (const l of e.lastre) {
-      for (const s of segmentaBobina(l, opzioni.bloccoMassimo, margine, larghezza, lama)) {
+      for (const s of segmentaBobina(
+        l,
+        opzioni.bloccoMassimo,
+        par.margine,
+        par.lastra.larghezza,
+        par.lama
+      )) {
         if (s.oltreMassimo) ingestibili++;
       }
     }
   }
-  return [-piazzati, e.lastre.length, ingestibili, occupata];
+  return [-piazzati, e.lastre.length, ingestibili, -ritaglioTotale(par, e, opzioni), occupata];
+}
+
+/**
+ * QUANTO SI SALVA DELLO SFRIDO.
+ *
+ * Su lastra i pezzi sono gli stessi e le lastre aperte sono già decise: quello
+ * che resta da scegliere è la FORMA di ciò che avanza. Un avanzo a gradini si
+ * butta, lo stesso avanzo raccolto in un rettangolo intero torna in magazzino
+ * e domani è un pezzo. Due pezzetti lasciati soli sotto una fila di colonne
+ * costano poco in materiale e moltissimo in forma: mordono il rettangolo
+ * grande e lo dimezzano.
+ *
+ * Qui si somma, lastra per lastra, il ritaglio rettangolare più grande che
+ * avanza — lo stesso che il disegno segna come «avanza una striscia». Più è
+ * grande, meglio è; a parità di tutto il resto è questo a decidere.
+ */
+function ritaglioTotale(
+  par: ParametriNesting,
+  e: EsitoNesting,
+  opzioni?: OpzioniRicerca
+): number {
+  if (!opzioni?.sfridoRettangolare) return 0;
+  let totale = 0;
+  for (const l of e.lastre) {
+    const r = strisciaResidua(l, par.lastra.larghezza, par.lastra.altezza);
+    if (r) totale += r.larghezza * r.lunghezza;
+  }
+  return totale;
 }
 
 export interface OpzioniRicerca {
@@ -640,7 +668,16 @@ export interface OpzioniRicerca {
    * spezzare in blocchi di questa misura (vedi geometry/segmenti).
    */
   bloccoMassimo?: number;
+  /**
+   * Solo per le LASTRE: fra due disposizioni che aprono lo stesso numero di
+   * lastre si preferisce quella che lascia l'avanzo più rettangolare, e i
+   * pezzi sparsi vengono raccolti dove non mordono il ritaglio buono.
+   */
+  sfridoRettangolare?: boolean;
 }
+
+/** i quattro criteri di `qualita`, in ordine di importanza */
+type Punteggio = [number, number, number, number, number];
 
 /**
  * IMPACCHETTAMENTO MIGLIORE.
@@ -668,16 +705,7 @@ export function calcolaNestingMigliore(
   pezzi: PezzoNesting[],
   opzioni?: OpzioniRicerca
 ): EsitoNesting {
-  type Punteggio = [number, number, number, number];
-  /** confronto lessicografico: <0 se «a» è meglio di «b» */
-  const confronta = (a: Punteggio, b: Punteggio) =>
-    a[0] - b[0] ||
-    a[1] - b[1] ||
-    a[2] - b[2] ||
-    (Math.abs(a[3] - b[3]) < 1e-9 ? 0 : a[3] - b[3]);
-
-  const valuta = (e: EsitoNesting) =>
-    qualita(e, opzioni, par.margine, par.lastra.larghezza, par.lama);
+  const valuta = (e: EsitoNesting) => qualita(par, e, opzioni);
 
   let migliore: EsitoNesting | null = null;
   let punteggio: Punteggio | null = null;
@@ -698,7 +726,7 @@ export function calcolaNestingMigliore(
   if (!migliore || !punteggio) return { lastre: [], scartati: [] };
 
   // poi si gira un pezzo alla volta, tenendo solo i giri che migliorano
-  const raffinato = affina(par, pezzi, strategia, migliore, punteggio, valuta, confronta);
+  const raffinato = affina(par, pezzi, strategia, migliore, punteggio, valuta);
   migliore = raffinato.esito;
   punteggio = raffinato.punteggio;
 
@@ -719,7 +747,147 @@ export function calcolaNestingMigliore(
       punteggio = q;
     }
   }
+
+  // su lastra, l'ultima parola è alla forma di quello che avanza
+  if (opzioni?.sfridoRettangolare) {
+    const raccolto = raccogliRimasugli(par, pezzi, migliore, valuta, punteggio);
+    if (confronta(raccolto.punteggio, punteggio) < 0) migliore = raccolto.esito;
+  }
   return migliore;
+}
+
+/** confronto lessicografico dei punteggi: <0 se «a» è meglio di «b» */
+function confronta(a: Punteggio, b: Punteggio): number {
+  for (let i = 0; i < a.length; i++) {
+    if (Math.abs(a[i] - b[i]) > 1e-9) return a[i] - b[i];
+  }
+  return 0;
+}
+
+/**
+ * RACCOGLIE I RIMASUGLI (solo su lastra).
+ *
+ * Il difetto si vede a colpo d'occhio: cinque colonne piene e, sotto, due
+ * pezzetti soli. In materiale costano niente, ma mordono l'avanzo e da un
+ * rettangolo intero alto settantacinque centimetri ne fanno uno alto
+ * cinquantasei più uno scalino inutilizzabile — e quei due pezzetti, spesso,
+ * entravano benissimo in una lastra già aperta.
+ *
+ * Qui si cercano proprio quelli: i pezzi che, tolti, farebbero crescere il
+ * ritaglio buono della loro lastra. Si prova a rimetterli altrove — in
+ * un'altra lastra o in un altro angolo della stessa — e si tiene lo
+ * spostamento solo se il piano nel suo insieme migliora. Nessun pezzo viene
+ * mai perso: se non trova posto, resta dov'è.
+ */
+function raccogliRimasugli(
+  par: ParametriNesting,
+  pezzi: PezzoNesting[],
+  esito: EsitoNesting,
+  valuta: (e: EsitoNesting) => Punteggio,
+  partenza: Punteggio,
+  giriMassimi = 2
+): { esito: EsitoNesting; punteggio: Punteggio } {
+  const { lama, margine } = par;
+  const binL = par.lastra.larghezza - 2 * margine + lama;
+  const binA = par.lastra.altezza - 2 * margine + lama;
+  const ingombri = ingombriPerCopia(par, pezzi);
+
+  let corrente = esito;
+  let punteggio = partenza;
+
+  for (let giro = 0; giro < giriMassimi; giro++) {
+    // quanto guadagnerebbe ogni lastra a perdere un suo pezzo: i candidati
+    // sono i pezzi che mordono il ritaglio
+    const candidati: Array<{ lastra: number; indice: number; guadagno: number }> = [];
+    corrente.lastre.forEach((l, iL) => {
+      const ora = ritaglioLastra(par, l);
+      l.piazzamenti.forEach((_, iP) => {
+        const senza = {
+          piazzamenti: l.piazzamenti.filter((_, k) => k !== iP)
+        };
+        const dopo = ritaglioLastra(par, senza);
+        if (dopo > ora + 1e-6) candidati.push({ lastra: iL, indice: iP, guadagno: dopo - ora });
+      });
+    });
+    if (candidati.length === 0) break;
+    candidati.sort((a, b) => b.guadagno - a.guadagno);
+
+    let mosso = false;
+    for (const c of candidati.slice(0, 8)) {
+      const partenzaLastra = corrente.lastre[c.lastra];
+      const pc = partenzaLastra?.piazzamenti[c.indice];
+      if (!pc) continue;
+      const ing = ingombri.get(pc.chiave);
+      if (!ing) continue;
+
+      let meglio: { esito: EsitoNesting; punteggio: Punteggio } | null = null;
+      for (let iL = 0; iL < corrente.lastre.length; iL++) {
+        // il contenitore della lastra di destinazione, senza il pezzo in viaggio
+        const c2 = new Contenitore(binL, binA);
+        for (const q of corrente.lastre[iL].piazzamenti) {
+          if (q === pc) continue;
+          c2.occupa({
+            x: q.x - margine,
+            y: q.y - margine,
+            w: q.larghezza + lama,
+            h: q.altezza + lama
+          });
+        }
+        for (const criterio of CRITERI) {
+          const pos = c2.cercaPosizione(ing.packL, ing.packA, ing.libero, criterio);
+          if (!pos) continue;
+          const prova = trasloca(corrente, c.lastra, c.indice, iL, pos, margine, lama);
+          const q = valuta(prova);
+          if (confronta(q, punteggio) < 0 && (!meglio || confronta(q, meglio.punteggio) < 0)) {
+            meglio = { esito: prova, punteggio: q };
+          }
+        }
+      }
+      if (meglio) {
+        corrente = meglio.esito;
+        punteggio = meglio.punteggio;
+        mosso = true;
+        break; // le posizioni sono cambiate: si ricomincia dai candidati
+      }
+    }
+    if (!mosso) break;
+  }
+  return { esito: corrente, punteggio };
+}
+
+/** il ritaglio rettangolare che avanza da una lastra, in area */
+function ritaglioLastra(par: ParametriNesting, lastra: LastraNesting): number {
+  const r = strisciaResidua(lastra, par.lastra.larghezza, par.lastra.altezza);
+  return r ? r.larghezza * r.lunghezza : 0;
+}
+
+/** sposta una copia da una lastra all'altra, senza toccare le altre */
+function trasloca(
+  esito: EsitoNesting,
+  daLastra: number,
+  indice: number,
+  aLastra: number,
+  pos: Posizione,
+  margine: number,
+  lama: number
+): EsitoNesting {
+  const pc = esito.lastre[daLastra].piazzamenti[indice];
+  const spostato: Piazzamento = {
+    ...pc,
+    x: pos.x + margine,
+    y: pos.y + margine,
+    larghezza: pos.w - lama,
+    altezza: pos.h - lama,
+    ruotato: pos.ruotato
+  };
+  const lastre = esito.lastre.map((l, i) => {
+    let piazzamenti = l.piazzamenti;
+    if (i === daLastra) piazzamenti = piazzamenti.filter((_, k) => k !== indice);
+    if (i === aLastra) piazzamenti = [...piazzamenti.filter((p) => p !== pc), spostato];
+    return { piazzamenti };
+  });
+  // una lastra svuotata non si tiene aperta
+  return { lastre: lastre.filter((l) => l.piazzamenti.length > 0), scartati: esito.scartati };
 }
 
 /**
@@ -743,11 +911,10 @@ function affina(
   pezzi: PezzoNesting[],
   strategia: Pick<ParametriNesting, 'ordinamento' | 'verso' | 'criterio'>,
   esito: EsitoNesting,
-  punteggio: [number, number, number, number],
-  valuta: (e: EsitoNesting) => [number, number, number, number],
-  confronta: (a: [number, number, number, number], b: [number, number, number, number]) => number,
+  punteggio: Punteggio,
+  valuta: (e: EsitoNesting) => Punteggio,
   giriMassimi = 2
-): { esito: EsitoNesting; punteggio: [number, number, number, number] } {
+): { esito: EsitoNesting; punteggio: Punteggio } {
   const candidate: string[] = [];
   for (const p of pezzi) {
     if (!p.ruotabile) continue;

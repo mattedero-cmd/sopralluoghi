@@ -3,11 +3,13 @@ import {
   cambioVenatura,
   etichettaSupporto,
   materialeNuovo,
+  opzioniRicerca,
   migraDocumento,
   parametriDi,
   pezziDi,
   pezziRichiesti
 } from '../documentoNesting';
+import { BLOCCO_MANEGGEVOLE } from '../../geometry/segmenti';
 
 const conPezzi = (m: ReturnType<typeof materialeNuovo>) => ({
   ...m,
@@ -235,5 +237,16 @@ describe('opzioni di stampa nel documento', () => {
       stampa: { segmenta: false, massimoSegmento: 3000 }
     });
     expect(d?.stampa).toEqual({ segmenta: false, massimoSegmento: 3000 });
+  });
+});
+
+describe('opzioniRicerca', () => {
+  it('la bobina cerca blocchi maneggevoli', () => {
+    const m = { ...materialeNuovo('m', 'Rovere'), modo: 'bobina' as const };
+    expect(opzioniRicerca(m)).toEqual({ bloccoMassimo: BLOCCO_MANEGGEVOLE });
+  });
+
+  it('la lastra cerca un avanzo rettangolare', () => {
+    expect(opzioniRicerca(materialeNuovo('m', 'Rovere'))).toEqual({ sfridoRettangolare: true });
   });
 });

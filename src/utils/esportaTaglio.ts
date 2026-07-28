@@ -10,9 +10,14 @@
  */
 
 import { calcolaNestingMigliore, lunghezzaUsata } from '../geometry/nesting';
-import { BLOCCO_MANEGGEVOLE, segmentaBobina } from '../geometry/segmenti';
+import { segmentaBobina } from '../geometry/segmenti';
 import { nomeFoglioSvg, svgTaglio } from '../geometry/svgTaglio';
-import { parametriDi, pezziDi, type DocumentoNesting } from './documentoNesting';
+import {
+  opzioniRicerca,
+  parametriDi,
+  pezziDi,
+  type DocumentoNesting
+} from './documentoNesting';
 
 export interface FileTaglio {
   /** nome senza estensione */
@@ -40,9 +45,7 @@ export function fileSvgTaglio(
 
   for (const m of doc.materiali) {
     const par = parametriDi(m);
-    const esito = calcolaNestingMigliore(par, pezziDi(m), {
-      bloccoMassimo: m.modo === 'bobina' ? BLOCCO_MANEGGEVOLE : undefined
-    });
+    const esito = calcolaNestingMigliore(par, pezziDi(m), opzioniRicerca(m));
 
     const aggiungi = (
       lastra: Parameters<typeof svgTaglio>[0],

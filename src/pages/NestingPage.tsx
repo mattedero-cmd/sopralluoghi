@@ -11,7 +11,7 @@ import {
   type LastraNesting,
   type PezzoNesting
 } from '../geometry/nesting';
-import { BLOCCO_MANEGGEVOLE, segmentaBobina, strisciaResidua } from '../geometry/segmenti';
+import { segmentaBobina, strisciaResidua } from '../geometry/segmenti';
 import { analizzaTestoPezzi, type PezzoTestuale } from '../utils/parserPezzi';
 import { formattaData, formattaNumero } from '../utils/format';
 import { pianoEtichetta } from '../utils/etichettaNesting';
@@ -20,6 +20,7 @@ import {
   cambioVenatura,
   materialeNuovo,
   migraDocumento,
+  opzioniRicerca,
   parametriDi,
   pezziDi,
   pezziRichiesti,
@@ -359,11 +360,10 @@ export function NestingPage({
   const pezziCalcolo = useMemo(() => pezziDi(mat), [mat]);
   const esito = useMemo(
     () =>
-      calcolaNestingMigliore(parametri, pezziCalcolo, {
-        // sulla bobina si preferisce una disposizione che si lasci spezzare
-        // in blocchi maneggevoli, anche a costo di qualche centimetro in più
-        bloccoMassimo: mat.modo === 'bobina' ? BLOCCO_MANEGGEVOLE : undefined
-      }),
+      // sulla bobina si cercano blocchi maneggevoli, su lastra un avanzo
+      // rettangolare: le opzioni stanno in un posto solo, così l'anteprima,
+      // il PDF e l'SVG mostrano sempre la stessa disposizione
+      calcolaNestingMigliore(parametri, pezziCalcolo, opzioniRicerca(mat)),
     [parametri, pezziCalcolo, mat.modo]
   );
   const riepilogo = useMemo(

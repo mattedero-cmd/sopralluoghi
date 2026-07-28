@@ -13,7 +13,7 @@ import {
   type ParametriNesting,
   type PezzoNesting
 } from '../nesting';
-import { segmentaBobina } from '../segmenti';
+import { segmentaBobina, strisciaResidua } from '../segmenti';
 
 function pezzo(p: Partial<PezzoNesting> & { larghezza: number; altezza: number }): PezzoNesting {
   return {
@@ -778,5 +778,106 @@ describe('risalita verso la testa del rotolo', () => {
       .sort((a, b) => a.y - b.y);
     expect(stretti[0].y).toBe(10);
     expect(stretti[1].y).toBe(10 + 1200 + 3);
+  });
+});
+
+/**
+ * LO SFRIDO SU LASTRA DEVE ESSERE RETTANGOLARE.
+ *
+ * Cinque colonne piene e, sotto, due pezzetti soli: in materiale non costano
+ * niente, ma mordono l'avanzo e da un rettangolo alto 74 cm ne fanno uno alto
+ * 55 più uno scalino che si butta. Quei pezzetti stanno benissimo su una
+ * lastra già aperta, tutti insieme.
+ */
+describe('forma dello sfrido sulle lastre', () => {
+  const par = {
+    lastra: { larghezza: 1500, altezza: 3050 },
+    lama: 3,
+    abbondanza: 0,
+    margine: 10
+  };
+
+  const p = (nome: string, l: number, a: number, q: number): PezzoNesting => ({
+    id: nome,
+    nome,
+    larghezza: l,
+    altezza: a,
+    quantita: q,
+    ruotabile: true,
+    tinta: 0
+  });
+
+  /** il ritaglio rettangolare che avanza da ogni lastra */
+  const ritagli = (e: EsitoNesting) =>
+    e.lastre.map((l) => {
+      const r = strisciaResidua(l, par.lastra.larghezza, par.lastra.altezza);
+      return r ? r.larghezza * r.lunghezza : 0;
+    });
+
+  // dieci colonne alte (cinque per lastra, esatte) e tre pezzetti
+  const lista = [
+    p('Lato 1 B', 290, 2300, 5),
+    p('Lato 3 B', 290, 2300, 5),
+    p('Lato 1 D', 290, 185, 1),
+    p('Lato 2 D', 290, 185, 1),
+    p('Lato 3 D', 290, 185, 1)
+  ];
+
+  it('i pezzetti si raccolgono e una lastra resta con l’avanzo intero', () => {
+    const e = calcolaNestingMigliore(par, lista, { sfridoRettangolare: true });
+    // una lastra conserva il rettangolo pieno: tutta la larghezza per l'altezza
+    // che avanza sotto le colonne
+    const pulita = e.lastre.find(
+      (l) => !l.piazzamenti.some((pc) => pc.altezzaFinita === 185)
+    );
+    expect(pulita).toBeDefined();
+    const r = strisciaResidua(pulita!, par.lastra.larghezza, par.lastra.altezza);
+    expect(r!.larghezza).toBe(1500);
+    expect(r!.lunghezza).toBeGreaterThan(700);
+  });
+
+  it('l’avanzo recuperabile cresce rispetto a non guardarlo affatto', () => {
+    const somma = (e: EsitoNesting) => ritagli(e).reduce((a, b) => a + b, 0);
+    const senza = calcolaNestingMigliore(par, lista);
+    const con = calcolaNestingMigliore(par, lista, { sfridoRettangolare: true });
+    expect(somma(con)).toBeGreaterThan(somma(senza));
+  });
+
+  it('non apre mai una lastra in più per fare bella figura', () => {
+    const senza = calcolaNestingMigliore(par, lista);
+    const con = calcolaNestingMigliore(par, lista, { sfridoRettangolare: true });
+    expect(con.lastre.length).toBe(senza.lastre.length);
+    const conta = (e: EsitoNesting) => e.lastre.reduce((n, l) => n + l.piazzamenti.length, 0);
+    expect(conta(con)).toBe(conta(senza));
+  });
+
+  it('i pezzi restano dentro la lastra e non si sovrappongono', () => {
+    const e = calcolaNestingMigliore(par, lista, { sfridoRettangolare: true });
+    for (const l of e.lastre) {
+      for (const pc of l.piazzamenti) {
+        expect(pc.x).toBeGreaterThanOrEqual(par.margine - 1e-9);
+        expect(pc.y).toBeGreaterThanOrEqual(par.margine - 1e-9);
+        expect(pc.x + pc.larghezza).toBeLessThanOrEqual(1500 - par.margine + par.lama + 1e-9);
+        expect(pc.y + pc.altezza).toBeLessThanOrEqual(3050 - par.margine + par.lama + 1e-9);
+      }
+      for (let i = 0; i < l.piazzamenti.length; i++)
+        for (let j = i + 1; j < l.piazzamenti.length; j++) {
+          const a = l.piazzamenti[i];
+          const b = l.piazzamenti[j];
+          expect(
+            a.x + a.larghezza <= b.x + 1e-9 ||
+              b.x + b.larghezza <= a.x + 1e-9 ||
+              a.y + a.altezza <= b.y + 1e-9 ||
+              b.y + b.altezza <= a.y + 1e-9
+          ).toBe(true);
+        }
+    }
+  });
+
+  it('ogni copia resta una sola: raccogliere non duplica né perde niente', () => {
+    const e = calcolaNestingMigliore(par, lista, { sfridoRettangolare: true });
+    const chiavi = e.lastre.flatMap((l) => l.piazzamenti.map((pc) => pc.chiave));
+    expect(new Set(chiavi).size).toBe(chiavi.length);
+    expect(chiavi).toHaveLength(13);
   });
 });
