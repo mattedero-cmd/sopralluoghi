@@ -66,6 +66,77 @@ describe('svgTaglio', () => {
     expect(taglio).not.toContain('<text');
   });
 
+  it('l’etichetta porta nome E misura, come sul PDF', () => {
+    const con = svgTaglio(lastra([10, 10, 600, 400, 'I1 Rettangolo']), {
+      larghezza: 1220,
+      altezza: 2000
+    }, { etichette: true });
+    expect(con).toContain('>I1 Rettangolo<');
+    expect(con).toContain('>600×400<');
+  });
+
+  it('le scritte sono grandi abbastanza da leggersi', () => {
+    // il difetto da cui si è partiti: dodici millimetri su un foglio da due
+    // metri sono illeggibili appena il disegno si guarda rimpicciolito
+    const con = svgTaglio(lastra([10, 10, 600, 400, 'Anta']), {
+      larghezza: 1220,
+      altezza: 2000
+    }, { etichette: true });
+    const corpi = [...con.matchAll(/font-size="([\d.]+)"/g)].map((m) => Number(m[1]));
+    expect(corpi.length).toBeGreaterThan(0);
+    expect(Math.max(...corpi)).toBeGreaterThanOrEqual(30);
+  });
+
+  it('il nome è in evidenza, la misura no', () => {
+    const con = svgTaglio(lastra([10, 10, 600, 400, 'Anta']), {
+      larghezza: 1220,
+      altezza: 2000
+    }, { etichette: true });
+    /** il tag <text …> che contiene questo testo */
+    const tag = (testo: string) => {
+      const fine = con.indexOf(`>${testo}<`);
+      return con.slice(con.lastIndexOf('<text', fine), fine);
+    };
+    expect(tag('Anta')).toContain('font-weight="600"');
+    expect(tag('600×400')).not.toContain('font-weight');
+  });
+
+  it('su un pezzo stretto la scritta gira per lungo', () => {
+    const con = svgTaglio(lastra([10, 10, 200, 1800, 'Montante']), {
+      larghezza: 1220,
+      altezza: 2000
+    }, { etichette: true });
+    expect(con).toMatch(/<g transform="rotate\(-90 110 910\)">/);
+    expect(con).toContain('>Montante<');
+  });
+
+  it('su un pezzo largo la scritta resta dritta', () => {
+    const con = svgTaglio(lastra([10, 10, 900, 700, 'Schienale']), {
+      larghezza: 1220,
+      altezza: 2000
+    }, { etichette: true });
+    const et = con.slice(con.indexOf('id="etichette"'));
+    expect(et).not.toContain('rotate(');
+  });
+
+  it('su un pezzo minuscolo si tace invece di scrivere l’illeggibile', () => {
+    const con = svgTaglio(lastra([0, 0, 6, 6, 'Tassello']), { larghezza: 200, altezza: 200 }, {
+      etichette: true
+    });
+    expect(con).not.toContain('<text');
+  });
+
+  it('un nome lungo su un pezzo piccolo viene troncato, non rimpicciolito all’infinito', () => {
+    const con = svgTaglio(
+      lastra([0, 0, 120, 90, 'Frontale cassettone centrale inferiore']),
+      { larghezza: 400, altezza: 400 },
+      { etichette: true }
+    );
+    expect(con).toContain('…');
+    const corpi = [...con.matchAll(/font-size="([\d.]+)"/g)].map((m) => Number(m[1]));
+    expect(Math.min(...corpi)).toBeGreaterThanOrEqual(3.5);
+  });
+
   it('i caratteri speciali non rompono il file', () => {
     const con = svgTaglio(lastra([0, 0, 100, 100, 'Anta & <fianco>']), {
       larghezza: 200,

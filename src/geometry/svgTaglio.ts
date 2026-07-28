@@ -12,9 +12,15 @@
  * Le misure sono in millimetri reali: `width`/`height` in mm e viewBox con
  * un'unità = un millimetro, così il disegno arriva in scala 1:1 senza che
  * nessuno debba riscalarlo a mano.
+ *
+ * Le etichette — livello a parte, che la macchina non taglia — sono impaginate
+ * dallo stesso motore del PDF: nome e misura dentro il pezzo, grandi quanto il
+ * pezzo consente, girati per lungo sui pezzi stretti. Così quello che si legge
+ * sul foglio e quello che si legge nel file sono la stessa cosa.
  */
 
-import type { LastraNesting } from './nesting';
+import type { LastraNesting, Piazzamento } from './nesting';
+import { pianoEtichetta } from '../utils/etichettaNesting';
 
 /** magenta 100% in quadricromia, come lo rende lo schermo */
 export const MAGENTA_TAGLIO = '#EC008C';
@@ -66,17 +72,8 @@ export function svgTaglio(
 
   const etichette = opzioni?.etichette
     ? lastra.piazzamenti
-        .map((p) => {
-          const cx = p.x + p.larghezza / 2;
-          const cy = p.y + p.altezza / 2;
-          const corpo = Math.max(3, Math.min(12, Math.min(p.larghezza, p.altezza) / 6));
-          const gira = p.altezza > p.larghezza * 1.15;
-          const rot = gira ? ` transform="rotate(-90 ${num(cx)} ${num(cy)})"` : '';
-          return (
-            `    <text x="${num(cx)}" y="${num(cy)}" font-size="${num(corpo)}"` +
-            ` text-anchor="middle" dominant-baseline="central"${rot}>${perXml(p.nome || '')}</text>`
-          );
-        })
+        .map(etichettaPezzo)
+        .filter(Boolean)
         .join('\n')
     : '';
 
@@ -92,13 +89,60 @@ export function svgTaglio(
     contorni,
     '  </g>',
     etichette
-      ? `  <g id="etichette" fill="#808080" stroke="none" font-family="sans-serif">\n${etichette}\n  </g>`
+      ? `  <g id="etichette" fill="${GRIGIO_ETICHETTA}" stroke="none" font-family="sans-serif">\n${etichette}\n  </g>`
       : '',
     '</svg>',
     ''
   ]
     .filter((r) => r !== '')
     .join('\n');
+}
+
+/**
+ * CORPI DELLE ETICHETTE, in millimetri reali del disegno.
+ *
+ * Un file di taglio si guarda quasi sempre rimpicciolito — un foglio da due
+ * metri e mezzo su uno schermo largo dieci centimetri — quindi le scritte
+ * vanno prese larghe: il tetto è alto, e la soglia sotto la quale conviene
+ * troncare il nome invece di rimpicciolirlo ancora sta a un centimetro.
+ */
+const CORPI_ETICHETTA = { massimo: 50, comodo: 10, dueRighe: 8, minimo: 3.5 };
+
+/** grigio scuro: si distingue dal nero del supporto e si legge sul chiaro */
+const GRIGIO_ETICHETTA = '#4d4d4d';
+
+/** interlinea, come nell'impaginazione del PDF */
+const INTERLINEA = 1.15;
+
+/** l'etichetta di un pezzo: nome e misura, o quel che ci sta */
+function etichettaPezzo(p: Piazzamento): string {
+  const cx = p.x + p.larghezza / 2;
+  const cy = p.y + p.altezza / 2;
+  const misura = `${num(p.larghezzaFinita)}×${num(p.altezzaFinita)}`;
+  const piano = pianoEtichetta(p.larghezza, p.altezza, p.nome || '', misura, CORPI_ETICHETTA);
+  if (!piano) return '';
+
+  const riga = (testo: string, corpo: number, dy: number, forte: boolean) =>
+    `      <text x="${num(cx)}" y="${num(cy + dy)}" font-size="${num(corpo)}"` +
+    `${forte ? ' font-weight="600"' : ''}` +
+    ` text-anchor="middle" dominant-baseline="central">${perXml(testo)}</text>`;
+
+  const righe: string[] = [];
+  if (piano.ampia && piano.nome && piano.misura) {
+    // due righe centrate sul pezzo: il nome sopra, la misura sotto
+    righe.push(riga(piano.nome, piano.corpoNome, -(piano.corpoMisura * INTERLINEA) / 2, true));
+    righe.push(riga(piano.misura, piano.corpoMisura, (piano.corpoNome * INTERLINEA) / 2, false));
+  } else if (piano.nome) {
+    righe.push(riga(piano.nome, piano.corpoNome, 0, true));
+  } else if (piano.misura) {
+    righe.push(riga(piano.misura, piano.corpoMisura, 0, false));
+  }
+  if (righe.length === 0) return '';
+
+  // sui pezzi stretti la scritta va per lungo: gira tutto il gruppo attorno al
+  // centro del pezzo, così le due righe restano in colonna
+  const rot = piano.ruotata ? ` transform="rotate(-90 ${num(cx)} ${num(cy)})"` : '';
+  return `    <g${rot}>\n${righe.join('\n')}\n    </g>`;
 }
 
 /** nome file sicuro e riconoscibile per un foglio */
