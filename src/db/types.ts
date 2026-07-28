@@ -1074,6 +1074,12 @@ export interface DisegnoSvg {
   nome: string;
   /** cartella dell'archivio in cui vive il disegno (null = radice) */
   cartellaId: ID | null;
+  /**
+   * Progetto in cui è archiviato, se ci sta dentro. Un disegno dentro un
+   * progetto non compare più sciolto nella cartella: si trova aprendo il
+   * sopralluogo a cui appartiene.
+   */
+  progettoId?: ID | null;
   creatoIl: number;
   modificatoIl: number;
   /** il file, testo com'è */
@@ -1094,7 +1100,11 @@ export interface LavoroNesting {
   nome: string;
   /** cartella dell'archivio in cui vive il lavoro (null = radice) */
   cartellaId: ID | null;
-  /** sopralluogo da cui è nato: il report può allegargli questo piano */
+  /**
+   * Progetto in cui è archiviato. Vale due cose insieme: il report di quel
+   * sopralluogo può allegarsi questo piano, e il piano si trova aprendo il
+   * progetto invece che sciolto nella cartella.
+   */
   progettoId?: ID | null;
   creatoIl: number;
   modificatoIl: number;

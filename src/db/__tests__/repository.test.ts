@@ -27,6 +27,10 @@ import {
   salvaNesting,
   salvaPdfNesting,
   spostaNesting,
+  spostaProgetto,
+  nestingInProgetto,
+  disegniInProgetto,
+  dentroProgetto,
   salvaAnnotazioniFoto,
   spostaCartella,
   totaliPreventivo
@@ -339,7 +343,7 @@ describe('lavori di nesting in archivio', () => {
 
   it('spostare e rinominare non toccano il documento', async () => {
     await salvaNesting('n4', 'Taglio', { materiali: ['x'] }, { cartellaId: null });
-    await spostaNesting('n4', 'altra');
+    await spostaNesting('n4', { cartellaId: 'altra', progettoId: null });
     await rinominaNesting('n4', 'Nuovo nome');
     const l = await db.nesting.get('n4');
     expect(l).toMatchObject({ cartellaId: 'altra', nome: 'Nuovo nome' });
@@ -408,7 +412,7 @@ describe('disegni SVG in archivio', () => {
   it('si rinomina, si sposta e si elimina', async () => {
     await salvaDisegno('d4', 'Vecchio', SVG, { cartellaId: null });
     await rinominaDisegno('d4', 'Nuovo');
-    await spostaDisegno('d4', 'altra');
+    await spostaDisegno('d4', { cartellaId: 'altra', progettoId: null });
     expect(await leggiDisegno('d4')).toMatchObject({ nome: 'Nuovo', cartellaId: 'altra' });
     await eliminaDisegno('d4');
     expect(await leggiDisegno('d4')).toBeUndefined();
@@ -420,5 +424,74 @@ describe('disegni SVG in archivio', () => {
     const dopo = await salvaDisegno('d5', 'Disegno', SVG);
     expect(dopo.creatoIl).toBe(primo.creatoIl);
     expect(dopo.modificatoIl).toBeGreaterThan(primo.creatoIl - 1);
+  });
+});
+
+/**
+ * DENTRO UN PROGETTO. L'archivio ha due contenitori, non uno: le cartelle e i
+ * progetti. Un piano di taglio o un disegno archiviato dentro un sopralluogo
+ * si trova aprendo quel sopralluogo, e non compare più fra i file sciolti
+ * della cartella.
+ */
+describe('piani e disegni dentro un progetto', () => {
+  const SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="50mm"></svg>';
+
+  beforeEach(async () => {
+    await Promise.all([db.nesting.clear(), db.disegni.clear()]);
+  });
+
+  it('quello che sta dentro un progetto non è più sciolto nella cartella', async () => {
+    const c = await creaCartella('Rossi', null);
+    const p = await creaProgetto({ nome: 'Cucina', cliente: '', luogo: '' }, c.id);
+    await salvaNesting('n1', 'Taglio', { materiali: [] }, {
+      cartellaId: c.id,
+      progettoId: p.id
+    });
+    await salvaDisegno('d1', 'Disegno', SVG, { cartellaId: c.id, progettoId: p.id });
+
+    expect(await nestingInCartella(c.id)).toEqual([]);
+    expect(await disegniInCartella(c.id)).toEqual([]);
+    expect((await nestingInProgetto(p.id)).map((l) => l.nome)).toEqual(['Taglio']);
+    expect((await disegniInProgetto(p.id)).map((d) => d.nome)).toEqual(['Disegno']);
+  });
+
+  it('si sposta dentro e si tira fuori, e la cartella resta segnata', async () => {
+    const c = await creaCartella('Rossi', null);
+    const p = await creaProgetto({ nome: 'Cucina', cliente: '', luogo: '' }, c.id);
+    await salvaNesting('n2', 'Taglio', { materiali: [] }, { cartellaId: c.id });
+    expect((await nestingInCartella(c.id)).map((l) => l.id)).toEqual(['n2']);
+
+    await spostaNesting('n2', await dentroProgetto(p.id));
+    expect(await nestingInCartella(c.id)).toEqual([]);
+    expect((await nestingInProgetto(p.id)).map((l) => l.id)).toEqual(['n2']);
+    // la cartella resta segnata: serve a ritrovarlo se il progetto sparisce
+    expect((await db.nesting.get('n2'))!.cartellaId).toBe(c.id);
+
+    await spostaNesting('n2', { cartellaId: c.id, progettoId: null });
+    expect((await nestingInCartella(c.id)).map((l) => l.id)).toEqual(['n2']);
+    expect(await nestingInProgetto(p.id)).toEqual([]);
+  });
+
+  it('spostando il progetto, quello che ha dentro lo segue', async () => {
+    const a = await creaCartella('A', null);
+    const b = await creaCartella('B', null);
+    const p = await creaProgetto({ nome: 'Cucina', cliente: '', luogo: '' }, a.id);
+    await salvaNesting('n3', 'Taglio', { materiali: [] }, await dentroProgetto(p.id));
+    await spostaProgetto(p.id, b.id);
+    expect((await db.nesting.get('n3'))!.cartellaId).toBe(b.id);
+    expect((await nestingInProgetto(p.id)).map((l) => l.id)).toEqual(['n3']);
+  });
+
+  it('eliminando il progetto il lavoro NON si butta: torna sciolto nella cartella', async () => {
+    const c = await creaCartella('Rossi', null);
+    const p = await creaProgetto({ nome: 'Cucina', cliente: '', luogo: '' }, c.id);
+    await salvaNesting('n4', 'Taglio', { materiali: ['x'] }, await dentroProgetto(p.id));
+    await salvaDisegno('d4', 'Disegno', SVG, await dentroProgetto(p.id));
+
+    await eliminaProgetto(p.id);
+
+    expect((await nestingInCartella(c.id)).map((l) => l.id)).toEqual(['n4']);
+    expect((await disegniInCartella(c.id)).map((d) => d.id)).toEqual(['d4']);
+    expect((await db.nesting.get('n4'))!.documento).toEqual({ materiali: ['x'] });
   });
 });

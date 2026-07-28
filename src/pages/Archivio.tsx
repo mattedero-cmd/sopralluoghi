@@ -19,6 +19,7 @@ import {
   spostaCartella,
   spostaDisegno,
   spostaNesting,
+  type Destinazione,
   salvaDisegno,
   spostaProgetto
 } from '../db/repository';
@@ -88,8 +89,10 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
   const lavori = useLiveQuery(
     async () => {
       const tutti = await db.nesting.toArray();
+      // quello che sta DENTRO un progetto non è sciolto qui: si trova
+      // aprendo il sopralluogo a cui appartiene
       return tutti
-        .filter((l) => (l.cartellaId ?? null) === cartellaId)
+        .filter((l) => (l.cartellaId ?? null) === cartellaId && !l.progettoId)
         .sort((a, b) => b.modificatoIl - a.modificatoIl);
     },
     [cartellaId]
@@ -98,7 +101,7 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
     async () => {
       const tutti = await db.disegni.toArray();
       return tutti
-        .filter((d) => (d.cartellaId ?? null) === cartellaId)
+        .filter((d) => (d.cartellaId ?? null) === cartellaId && !d.progettoId)
         .sort((a, b) => b.modificatoIl - a.modificatoIl);
     },
     [cartellaId]
@@ -618,13 +621,17 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
       {daSpostare && (
         <SelettoreCartella
           escludiCartellaId={daSpostare.tipo === 'cartella' ? daSpostare.id : undefined}
+          soloCartelle={daSpostare.tipo === 'cartella' || daSpostare.tipo === 'progetto'}
           onChiudi={() => setDaSpostare(null)}
           onScegli={async (destinazione) => {
             try {
-              if (daSpostare.tipo === 'cartella') await spostaCartella(daSpostare.id, destinazione);
-              else if (daSpostare.tipo === 'nesting') await spostaNesting(daSpostare.id, destinazione);
-              else if (daSpostare.tipo === 'disegno') await spostaDisegno(daSpostare.id, destinazione);
-              else await spostaProgetto(daSpostare.id, destinazione);
+              if (daSpostare.tipo === 'cartella')
+                await spostaCartella(daSpostare.id, destinazione.cartellaId);
+              else if (daSpostare.tipo === 'nesting')
+                await spostaNesting(daSpostare.id, destinazione);
+              else if (daSpostare.tipo === 'disegno')
+                await spostaDisegno(daSpostare.id, destinazione);
+              else await spostaProgetto(daSpostare.id, destinazione.cartellaId);
               mostraToast('successo', 'Spostato.');
             } catch (e) {
               mostraToast('errore', e instanceof Error ? e.message : 'Spostamento non riuscito.');
@@ -816,14 +823,22 @@ function FormProgetto({ cartellaId, onChiudi }: { cartellaId: string | null; onC
 /** Albero cartelle per scegliere una destinazione di spostamento */
 export function SelettoreCartella({
   escludiCartellaId,
+  soloCartelle,
   onChiudi,
   onScegli
 }: {
   escludiCartellaId?: string;
+  /** vero quando la cosa da spostare è una cartella o un progetto: quelli
+   *  stanno solo dentro cartelle, non dentro un altro progetto */
+  soloCartelle?: boolean;
   onChiudi: () => void;
-  onScegli: (cartellaId: string | null) => Promise<void> | void;
+  onScegli: (dove: Destinazione) => Promise<void> | void;
 }) {
   const cartelle = useLiveQuery(() => db.cartelle.toArray(), []);
+  const progetti = useLiveQuery(
+    async () => (soloCartelle ? [] : await db.progetti.toArray()),
+    [soloCartelle]
+  );
   const albero = useMemo(() => {
     if (!cartelle) return [];
     const escluse = new Set<string>();
@@ -841,28 +856,37 @@ export function SelettoreCartella({
         }
       }
     }
-    const righe: Array<{ c: Cartella; livello: number }> = [];
+    type Riga =
+      | { tipo: 'cartella'; c: Cartella; livello: number }
+      | { tipo: 'progetto'; p: Progetto; livello: number };
+    const righe: Riga[] = [];
+    const progettiDi = (cartellaId: string | null) =>
+      (progetti ?? [])
+        .filter((p) => (p.cartellaId ?? null) === cartellaId)
+        .sort((a, b) => a.nome.localeCompare(b.nome, 'it'));
     const aggiungi = (parentId: string | null, livello: number) => {
       cartelle
         .filter((c) => c.parentId === parentId && !escluse.has(c.id))
         .sort((a, b) => a.nome.localeCompare(b.nome, 'it'))
         .forEach((c) => {
-          righe.push({ c, livello });
+          righe.push({ tipo: 'cartella', c, livello });
           aggiungi(c.id, livello + 1);
+          for (const p of progettiDi(c.id)) righe.push({ tipo: 'progetto', p, livello: livello + 1 });
         });
     };
     aggiungi(null, 0);
+    for (const p of progettiDi(null)) righe.push({ tipo: 'progetto', p, livello: 0 });
     return righe;
-  }, [cartelle, escludiCartellaId]);
+  }, [cartelle, progetti, escludiCartellaId]);
 
-  const scegli = async (id: string | null) => {
-    await onScegli(id);
+  const scegli = async (dove: Destinazione) => {
+    await onScegli(dove);
     onChiudi();
   };
 
   return (
     <Modale titolo="Sposta in…" onChiudi={onChiudi}>
-      <button className="scheda" onClick={() => scegli(null)}>
+      <button className="scheda" onClick={() => scegli({ cartellaId: null, progettoId: null })}>
         <span className="glifo neutro">
           <Icona nome="archivio" dimensione={20} />
         </span>
@@ -870,26 +894,42 @@ export function SelettoreCartella({
           <div className="titolo">Archivio (radice)</div>
         </span>
       </button>
-      {albero.map(({ c, livello }) => (
-        <button
-          key={c.id}
-          className="scheda"
-          style={{ marginLeft: livello * 18 }}
-          onClick={() => scegli(c.id)}
-        >
-          <span className="glifo neutro">
-            <Icona nome="cartella" dimensione={20} />
-          </span>
-          <span className="corpo">
-            <div className="titolo">{c.nome}</div>
-          </span>
-        </button>
-      ))}
+      {albero.map((r) =>
+        r.tipo === 'cartella' ? (
+          <button
+            key={r.c.id}
+            className="scheda"
+            style={{ marginLeft: r.livello * 18 }}
+            onClick={() => scegli({ cartellaId: r.c.id, progettoId: null })}
+          >
+            <span className="glifo neutro">
+              <Icona nome="cartella" dimensione={20} />
+            </span>
+            <span className="corpo">
+              <div className="titolo">{r.c.nome}</div>
+            </span>
+          </button>
+        ) : (
+          <button
+            key={r.p.id}
+            className="scheda"
+            style={{ marginLeft: r.livello * 18 }}
+            onClick={() => scegli({ cartellaId: r.p.cartellaId ?? null, progettoId: r.p.id })}
+          >
+            <span className="glifo verde">
+              <Icona nome="progetto" dimensione={20} />
+            </span>
+            <span className="corpo">
+              <div className="titolo">{r.p.nome}</div>
+              <div className="sotto">dentro il sopralluogo</div>
+            </span>
+          </button>
+        )
+      )}
     </Modale>
   );
 }
 
-/** Ricerca testuale su progetti, foto, clienti e preventivi */
 function RisultatiRicerca({ query }: { query: string }) {
   const risultati = useLiveQuery(async () => {
     const q = query.toLowerCase();

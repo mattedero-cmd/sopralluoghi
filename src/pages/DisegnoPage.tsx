@@ -61,7 +61,13 @@ export function DisegnoPage({ id }: { id: string }) {
         <button
           className="btn icona"
           aria-label="Indietro"
-          onClick={() => naviga({ nome: 'archivio', cartellaId: disegno?.cartellaId ?? null })}
+          onClick={() =>
+            naviga(
+              disegno?.progettoId
+                ? { nome: 'progetto', id: disegno.progettoId }
+                : { nome: 'archivio', cartellaId: disegno?.cartellaId ?? null }
+            )
+          }
         >
           <Icona nome="indietro" />
         </button>

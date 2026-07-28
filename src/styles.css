@@ -3239,3 +3239,13 @@ a {
   color: var(--testo-2);
   font-size: 12px;
 }
+
+
+/* titolo di una sezione dentro una pagina (es. gli allegati del progetto) */
+.sez-titolo {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--testo-2);
+  letter-spacing: 0.02em;
+  margin: 22px 0 10px;
+}

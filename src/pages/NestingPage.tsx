@@ -249,6 +249,8 @@ export function NestingPage({
    * cartella da cui si è aperto lo strumento: chi comincia un piano di taglio
    * stando dentro «Rossi — Cucina» se lo aspetta lì, non nella radice.
    */
+  /** progetto in cui è archiviato il lavoro, se ci sta dentro */
+  const [progettoId, setProgettoId] = useState<string | null>(null);
   const [cartellaId, setCartellaId] = useState<string | null | undefined>(() => {
     if (nuovoIn) return nuovoIn;
     if (!id && !iniziale?.idArchivio && dentro) return dentro;
@@ -274,6 +276,7 @@ export function NestingPage({
         if (documento) {
           setDoc({ ...documento, nome: l!.nome });
           setCartellaId(l!.cartellaId ?? null);
+          setProgettoId(l!.progettoId ?? null);
         } else {
           mostraToast('errore', 'Il lavoro non è stato trovato in archivio.');
         }
@@ -292,7 +295,9 @@ export function NestingPage({
     if (id || !idArchivio || cartellaId !== undefined) return;
     let vivo = true;
     void leggiNesting(idArchivio).then((l) => {
-      if (vivo && l) setCartellaId(l.cartellaId ?? null);
+      if (!vivo || !l) return;
+      setCartellaId(l.cartellaId ?? null);
+      setProgettoId(l.progettoId ?? null);
     });
     return () => {
       vivo = false;
@@ -572,7 +577,10 @@ export function NestingPage({
         if (!primo) primo = id;
         const m = misureSvg(f.contenuto);
         await salvaDisegno(id, f.nome, f.contenuto, {
+          // il disegno si archivia dove sta il piano di taglio: se il piano è
+          // dentro un sopralluogo, il disegno ci va dentro anche lui
           cartellaId: cartellaId ?? null,
+          progettoId,
           larghezzaMm: m.larghezzaMm,
           altezzaMm: m.altezzaMm,
           misureReali: m.reali,
@@ -776,7 +784,13 @@ export function NestingPage({
         <button
           className="btn icona"
           aria-label="Indietro"
-          onClick={() => naviga({ nome: 'archivio', cartellaId: cartellaId ?? null })}
+          onClick={() =>
+            naviga(
+              progettoId
+                ? { nome: 'progetto', id: progettoId }
+                : { nome: 'archivio', cartellaId: cartellaId ?? null }
+            )
+          }
         >
           <Icona nome="indietro" />
         </button>

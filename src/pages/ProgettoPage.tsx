@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import type { Foto, Progetto, StatoProgetto } from '../db/types';
+import type { DisegnoSvg, Foto, LavoroNesting, Progetto, StatoProgetto } from '../db/types';
 import {
   aggiungiFoto,
   aggiornaProgetto,
@@ -13,7 +13,12 @@ import {
   creaSezione,
   eliminaFoto,
   eliminaSezione,
+  eliminaDisegno,
+  eliminaNesting,
   leggiImpostazioni,
+  rinominaDisegno,
+  rinominaNesting,
+  salvaDisegno,
   salvaNesting
 } from '../db/repository';
 import { nuovoId } from '../utils/id';
@@ -37,6 +42,7 @@ import { condividiOScarica, nomeFileSicuro } from '../utils/share';
 import { renderFotoAnnotata } from '../render/renderAnnotata';
 import { codiceLocaleForma, numeriProgetto } from '../geometry/nomenclatura';
 import { Icona } from '../components/Icona';
+import { formattaData } from '../utils/format';
 import { PannelloOpzioniPdf } from '../components/OpzioniPdf';
 
 export function ProgettoPage({ id }: { id: string }) {
@@ -57,6 +63,26 @@ export function ProgettoPage({ id }: { id: string }) {
   );
   const [conferma, setConferma] = useState<RichiestaConferma | null>(null);
   const [menu, setMenu] = useState<{ pos: { x: number; y: number }; voci: VoceMenu[] } | null>(null);
+  const inputSvg = useRef<HTMLInputElement>(null);
+  const [rinominaAllegato, setRinominaAllegato] = useState<
+    { tipo: 'nesting' | 'disegno'; id: string; nome: string } | null
+  >(null);
+
+  // quello che è archiviato DENTRO questo progetto: piani di taglio e disegni
+  const pianiDiTaglio = useLiveQuery(
+    async () =>
+      (await db.nesting.toArray())
+        .filter((l) => l.progettoId === id)
+        .sort((a, b) => b.modificatoIl - a.modificatoIl),
+    [id]
+  );
+  const disegni = useLiveQuery(
+    async () =>
+      (await db.disegni.toArray())
+        .filter((d) => d.progettoId === id)
+        .sort((a, b) => b.modificatoIl - a.modificatoIl),
+    [id]
+  );
   const [modificaDati, setModificaDati] = useState(false);
   const [importInCorso, setImportInCorso] = useState(false);
   const [pdfInCorso, setPdfInCorso] = useState<string | null>(null);
@@ -225,6 +251,75 @@ export function ProgettoPage({ id }: { id: string }) {
    * rettangoli con la misura DI TAGLIO — reale più le abbondanze inserite —
    * dentro un piano di taglio nuovo, nella stessa cartella del sopralluogo.
    */
+  /** importa un disegno SVG e lo archivia DENTRO questo progetto */
+  const importaSvg = async (file: File) => {
+    try {
+      const [testo, { eSvg, misureSvg, nomeDaFile }] = await Promise.all([
+        file.text(),
+        import('../utils/svgDisegno')
+      ]);
+      if (!eSvg(testo)) {
+        mostraToast('errore', `«${file.name}» non è un disegno SVG.`);
+        return;
+      }
+      const m = misureSvg(testo);
+      const id = nuovoId();
+      await salvaDisegno(id, nomeDaFile(file.name), testo, {
+        cartellaId: progetto.cartellaId,
+        progettoId: progetto.id,
+        larghezzaMm: m.larghezzaMm,
+        altezzaMm: m.altezzaMm,
+        misureReali: m.reali,
+        origine: 'file'
+      });
+      naviga({ nome: 'disegno', id });
+    } catch (e) {
+      mostraToast('errore', e instanceof Error ? e.message : 'Importazione non riuscita.');
+    }
+  };
+
+  const menuAllegato = (
+    tipo: 'nesting' | 'disegno',
+    voce: { id: string; nome: string },
+    e: React.MouseEvent
+  ) => {
+    e.stopPropagation();
+    const parola = tipo === 'nesting' ? 'piano di taglio' : 'disegno';
+    setMenu({
+      pos: { x: e.clientX, y: e.clientY },
+      voci: [
+        {
+          testo: 'Rinomina…',
+          icona: 'matita',
+          onClick: () => setRinominaAllegato({ tipo, id: voce.id, nome: voce.nome })
+        },
+        {
+          testo: 'Togli dal progetto',
+          icona: 'sposta',
+          onClick: async () => {
+            const { spostaNesting, spostaDisegno } = await import('../db/repository');
+            const dove = { cartellaId: progetto.cartellaId, progettoId: null };
+            if (tipo === 'nesting') await spostaNesting(voce.id, dove);
+            else await spostaDisegno(voce.id, dove);
+            mostraToast('successo', `Spostato nella cartella del progetto.`);
+          }
+        },
+        {
+          testo: 'Elimina…',
+          icona: 'cestino',
+          pericolo: true,
+          onClick: () =>
+            setConferma({
+              titolo: `Eliminare il ${parola} "${voce.nome}"?`,
+              messaggio: 'L’operazione NON è annullabile.',
+              onConferma: () =>
+                void (tipo === 'nesting' ? eliminaNesting(voce.id) : eliminaDisegno(voce.id))
+            })
+        }
+      ]
+    });
+  };
+
   const creaPianoDiTaglio = async () => {
     try {
       const [
@@ -512,7 +607,88 @@ export function ProgettoPage({ id }: { id: string }) {
           <button className="btn" onClick={() => void creaPianoDiTaglio()}>
             <Icona nome="griglia" dimensione={20} /> Piano di taglio
           </button>
+          <button className="btn" onClick={() => inputSvg.current?.click()}>
+            <Icona nome="disegno" dimensione={20} /> Apri un SVG
+          </button>
+          <input
+            ref={inputSvg}
+            type="file"
+            accept=".svg,image/svg+xml"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = '';
+              if (f) void importaSvg(f);
+            }}
+          />
         </div>
+
+        {/* quello che è archiviato dentro il progetto: sta qui, non sciolto
+            nella cartella, e si apre con un tocco */}
+        {((pianiDiTaglio?.length ?? 0) > 0 || (disegni?.length ?? 0) > 0) && (
+          <>
+            <h2 className="sez-titolo">Piani di taglio e disegni</h2>
+            <div className="lista-griglia">
+              {(pianiDiTaglio ?? []).map((l: LavoroNesting) => (
+                <button
+                  key={l.id}
+                  className="scheda"
+                  onClick={() => naviga({ nome: 'nesting', id: l.id })}
+                >
+                  <span className="glifo taglio">
+                    <Icona nome="griglia" dimensione={22} />
+                  </span>
+                  <span className="corpo">
+                    <div className="titolo">
+                      {l.nome}
+                      <span className="badge-etichetta">Taglio</span>
+                    </div>
+                    <div className="sotto">{formattaData(l.modificatoIl)}</div>
+                  </span>
+                  <span
+                    className="btn icona"
+                    role="button"
+                    aria-label={`Azioni piano di taglio ${l.nome}`}
+                    onClick={(e) => menuAllegato('nesting', l, e)}
+                  >
+                    <Icona nome="altro" />
+                  </span>
+                </button>
+              ))}
+              {(disegni ?? []).map((d: DisegnoSvg) => (
+                <button
+                  key={d.id}
+                  className="scheda"
+                  onClick={() => naviga({ nome: 'disegno', id: d.id })}
+                >
+                  <span className="glifo disegno">
+                    <Icona nome="disegno" dimensione={22} />
+                  </span>
+                  <span className="corpo">
+                    <div className="titolo">
+                      {d.nome}
+                      <span className="badge-etichetta">SVG</span>
+                    </div>
+                    <div className="sotto">
+                      {d.larghezzaMm && d.altezzaMm
+                        ? `${Math.round(d.larghezzaMm)} × ${Math.round(d.altezzaMm)} mm · `
+                        : ''}
+                      {formattaData(d.modificatoIl)}
+                    </div>
+                  </span>
+                  <span
+                    className="btn icona"
+                    role="button"
+                    aria-label={`Azioni disegno ${d.nome}`}
+                    onClick={(e) => menuAllegato('disegno', d, e)}
+                  >
+                    <Icona nome="altro" />
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
         {importInCorso && <p style={{ color: 'var(--testo-2)' }}>Importazione foto in corso…</p>}
         {pdfInCorso && <p style={{ color: 'var(--testo-2)' }}>{pdfInCorso}</p>}
 
@@ -665,6 +841,38 @@ export function ProgettoPage({ id }: { id: string }) {
             setAssegnaFoto(null);
           }}
         />
+      )}
+      {rinominaAllegato && (
+        <Modale titolo="Rinomina" onChiudi={() => setRinominaAllegato(null)}>
+          <div className="campo">
+            <label>Nome</label>
+            <input
+              type="text"
+              autoFocus
+              defaultValue={rinominaAllegato.nome}
+              onChange={(e) =>
+                setRinominaAllegato({ ...rinominaAllegato, nome: e.target.value })
+              }
+            />
+          </div>
+          <div className="riga-pulsanti">
+            <button className="btn" onClick={() => setRinominaAllegato(null)}>
+              Annulla
+            </button>
+            <button
+              className="btn primario"
+              disabled={!rinominaAllegato.nome.trim()}
+              onClick={async () => {
+                const { tipo, id: idAll, nome } = rinominaAllegato;
+                setRinominaAllegato(null);
+                if (tipo === 'nesting') await rinominaNesting(idAll, nome.trim());
+                else await rinominaDisegno(idAll, nome.trim());
+              }}
+            >
+              Salva
+            </button>
+          </div>
+        </Modale>
       )}
       <ConfermaDialog richiesta={conferma} onChiudi={() => setConferma(null)} />
       {menu && <MenuContesto posizione={menu.pos} voci={menu.voci} onChiudi={() => setMenu(null)} />}

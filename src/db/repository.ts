@@ -169,6 +169,12 @@ export async function aggiornaProgetto(
 
 export async function spostaProgetto(id: ID, cartellaId: ID | null): Promise<void> {
   await aggiornaProgetto(id, { cartellaId });
+  // quello che sta dentro il progetto viaggia con lui: la cartella segnata
+  // serve a ritrovarlo se un giorno il progetto non c'è più
+  await scrivi('spostare il contenuto del progetto', async () => {
+    await db.nesting.where('progettoId').equals(id).modify({ cartellaId });
+    await db.disegni.where('progettoId').equals(id).modify({ cartellaId });
+  });
 }
 
 // --- Sezioni interne del progetto (piani/aree) -----------------------------
@@ -235,14 +241,22 @@ export async function assegnaFotoSezione(fotoId: ID, sezioneId: ID | null): Prom
 
 export async function eliminaProgetto(id: ID): Promise<void> {
   await scrivi('eliminare il progetto', () =>
-    db.transaction('rw', [db.progetti, db.foto, db.annotazioni, db.preventivi], async () => {
-      const foto = await db.foto.where('progettoId').equals(id).primaryKeys();
-      await db.annotazioni.where('fotoId').anyOf(foto).delete();
-      await db.foto.bulkDelete(foto);
-      // i preventivi sono documenti commerciali: si scollegano, non si eliminano
-      await db.preventivi.where('progettoId').equals(id).modify({ progettoId: null });
-      await db.progetti.delete(id);
-    })
+    db.transaction(
+      'rw',
+      [db.progetti, db.foto, db.annotazioni, db.preventivi, db.nesting, db.disegni],
+      async () => {
+        const foto = await db.foto.where('progettoId').equals(id).primaryKeys();
+        await db.annotazioni.where('fotoId').anyOf(foto).delete();
+        await db.foto.bulkDelete(foto);
+        // i preventivi sono documenti commerciali: si scollegano, non si eliminano
+        await db.preventivi.where('progettoId').equals(id).modify({ progettoId: null });
+        // piani di taglio e disegni che stavano dentro: tornano sciolti nella
+        // cartella, non si buttano via col progetto
+        await db.nesting.where('progettoId').equals(id).modify({ progettoId: null });
+        await db.disegni.where('progettoId').equals(id).modify({ progettoId: null });
+        await db.progetti.delete(id);
+      }
+    )
   );
 }
 
@@ -794,11 +808,39 @@ export async function elencaNesting(): Promise<LavoroNesting[]> {
   return tutti.sort((a, b) => b.modificatoIl - a.modificatoIl);
 }
 
+/**
+ * DOVE STA UN LAVORO nell'archivio: sciolto in una cartella, oppure dentro un
+ * progetto. Sono due posti diversi, non due etichette dello stesso posto: un
+ * piano di taglio dentro il sopralluogo non compare più fra i file sciolti
+ * della cartella, si trova aprendo il progetto.
+ *
+ * La cartella resta comunque segnata anche per chi sta dentro un progetto: se
+ * il progetto viene eliminato, il lavoro non si perde — torna sciolto lì.
+ */
+export interface Destinazione {
+  cartellaId: ID | null;
+  progettoId: ID | null;
+}
+
+/** la destinazione di un progetto: dentro di lui, nella sua cartella */
+export async function dentroProgetto(progettoId: ID): Promise<Destinazione> {
+  const p = await db.progetti.get(progettoId);
+  return { cartellaId: p?.cartellaId ?? null, progettoId };
+}
+
 /** i lavori dentro una cartella dell'archivio */
 export async function nestingInCartella(cartellaId: ID | null): Promise<LavoroNesting[]> {
   const tutti = await db.nesting.toArray();
   return tutti
-    .filter((l) => (l.cartellaId ?? null) === cartellaId)
+    .filter((l) => (l.cartellaId ?? null) === cartellaId && !l.progettoId)
+    .sort((a, b) => b.modificatoIl - a.modificatoIl);
+}
+
+/** i piani di taglio archiviati dentro un progetto */
+export async function nestingInProgetto(progettoId: ID): Promise<LavoroNesting[]> {
+  const tutti = await db.nesting.toArray();
+  return tutti
+    .filter((l) => l.progettoId === progettoId)
     .sort((a, b) => b.modificatoIl - a.modificatoIl);
 }
 
@@ -871,9 +913,13 @@ export async function rinominaNesting(id: ID, nome: string): Promise<void> {
   );
 }
 
-export async function spostaNesting(id: ID, cartellaId: ID | null): Promise<void> {
+export async function spostaNesting(id: ID, dove: Destinazione): Promise<void> {
   await scrivi('spostare il lavoro di nesting', () =>
-    db.nesting.update(id, { cartellaId, modificatoIl: ora() })
+    db.nesting.update(id, {
+      cartellaId: dove.cartellaId,
+      progettoId: dove.progettoId,
+      modificatoIl: ora()
+    })
   );
 }
 
@@ -899,6 +945,7 @@ export async function salvaDisegno(
     misureReali?: boolean;
     origine?: 'taglio' | 'file';
     nestingId?: ID | null;
+    progettoId?: ID | null;
   }
 ): Promise<DisegnoSvg> {
   const esistente = await db.disegni.get(id);
@@ -915,7 +962,9 @@ export async function salvaDisegno(
     altezzaMm: opzioni?.altezzaMm ?? esistente?.altezzaMm ?? null,
     misureReali: opzioni?.misureReali ?? esistente?.misureReali,
     origine: opzioni?.origine ?? esistente?.origine,
-    nestingId: opzioni?.nestingId !== undefined ? opzioni.nestingId : (esistente?.nestingId ?? null)
+    nestingId: opzioni?.nestingId !== undefined ? opzioni.nestingId : (esistente?.nestingId ?? null),
+    progettoId:
+      opzioni?.progettoId !== undefined ? opzioni.progettoId : (esistente?.progettoId ?? null)
   };
   await scrivi('salvare il disegno', () => db.disegni.put(record));
   return record;
@@ -929,7 +978,15 @@ export async function leggiDisegno(id: ID): Promise<DisegnoSvg | undefined> {
 export async function disegniInCartella(cartellaId: ID | null): Promise<DisegnoSvg[]> {
   const tutti = await db.disegni.toArray();
   return tutti
-    .filter((d) => (d.cartellaId ?? null) === cartellaId)
+    .filter((d) => (d.cartellaId ?? null) === cartellaId && !d.progettoId)
+    .sort((a, b) => b.modificatoIl - a.modificatoIl);
+}
+
+/** i disegni archiviati dentro un progetto */
+export async function disegniInProgetto(progettoId: ID): Promise<DisegnoSvg[]> {
+  const tutti = await db.disegni.toArray();
+  return tutti
+    .filter((d) => d.progettoId === progettoId)
     .sort((a, b) => b.modificatoIl - a.modificatoIl);
 }
 
@@ -939,9 +996,13 @@ export async function rinominaDisegno(id: ID, nome: string): Promise<void> {
   );
 }
 
-export async function spostaDisegno(id: ID, cartellaId: ID | null): Promise<void> {
+export async function spostaDisegno(id: ID, dove: Destinazione): Promise<void> {
   await scrivi('spostare il disegno', () =>
-    db.disegni.update(id, { cartellaId, modificatoIl: ora() })
+    db.disegni.update(id, {
+      cartellaId: dove.cartellaId,
+      progettoId: dove.progettoId,
+      modificatoIl: ora()
+    })
   );
 }
 

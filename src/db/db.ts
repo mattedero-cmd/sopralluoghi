@@ -90,6 +90,18 @@ export class SopralluoghiDB extends Dexie {
       nesting: 'id, nome, cartellaId, modificatoIl',
       disegni: 'id, nome, cartellaId, modificatoIl'
     });
+    // Fase 7: piani di taglio e disegni possono stare DENTRO un progetto
+    this.version(6).stores({
+      cartelle: 'id, parentId',
+      progetti: 'id, cartellaId, clienteId, modificatoIl',
+      foto: 'id, progettoId',
+      annotazioni: 'id, fotoId',
+      impostazioni: 'id',
+      clienti: 'id, nome',
+      preventivi: 'id, progettoId, clienteId, numero',
+      nesting: 'id, nome, cartellaId, progettoId, modificatoIl',
+      disegni: 'id, nome, cartellaId, progettoId, modificatoIl'
+    });
   }
 }
 
