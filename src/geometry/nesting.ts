@@ -1,4 +1,4 @@
-import { segmentaBobina } from './segmenti';
+import { segmentaBobina, strisciaResidua } from './segmenti';
 
 /**
  * NESTING RETTANGOLARE (ottimizzazione del taglio).
@@ -630,30 +630,67 @@ function qualita(par: ParametriNesting, e: EsitoNesting, opzioni?: OpzioniRicerc
       }
     }
   }
-  return [-piazzati, e.lastre.length, ingestibili, buchiTotali(par, e, opzioni), occupata];
+  return [
+    -piazzati,
+    e.lastre.length,
+    ingestibili,
+    -ritaglioTotale(par, e, opzioni),
+    buchiTotali(par, e, opzioni),
+    occupata
+  ];
 }
 
 /**
- * LA FORMA DI QUEL CHE AVANZA.
+ * IL RITAGLIO BUONO, cioè il pezzo di lastra che torna in magazzino.
  *
- * Su lastra i pezzi sono gli stessi e le lastre aperte sono già decise: resta
- * da scegliere la FORMA dell'avanzo. Un avanzo a gradini si butta; lo stesso
- * avanzo raccolto in una L pulita — una fascia in fondo e una di fianco —
- * torna in magazzino e domani è un pezzo.
+ * Di quello che avanza conta una cosa sola: quanto è grande il RETTANGOLO
+ * INTERO che ci si ricava. Un avanzo a gradini, per quanta area abbia, si
+ * butta; lo stesso avanzo tutto da una parte è materiale.
  *
- * L'avanzo è una L pulita quando i pezzi, tutti insieme, riempiono un
- * RETTANGOLO nell'angolo della lastra. Basta quindi misurare quanto vuoto
- * resta dentro il loro ingombro: zero vuol dire ingombro pieno e avanzo a L
- * perfetta; tanto vuol dire gradini.
+ * Da qui la regola che decide dove va un pezzo corto: sotto la colonna PIÙ
+ * ALTA, non sotto una più bassa. Sotto la più alta sta nella sua ombra e le
+ * altre colonne restano pari, così l'avanzo è un rettangolo solo che le
+ * attraversa tutte; sotto una più bassa apre un gradino in mezzo e il
+ * rettangolo si dimezza.
  *
- * È la stessa quantità vista dall'altra parte: fra il libero della lastra e
- * le due fasce della L, la differenza è esattamente il vuoto dentro
- * l'ingombro — quindi meno buchi qui, più materiale recuperabile là.
+ * TOLLERANZA. Due ritagli che differiscono di poco sono lo stesso ritaglio:
+ * in laboratorio nessuno sceglie fra 2,74 e 2,77 m². Sotto quella soglia i
+ * conti si pareggiano e a decidere passa il criterio dopo — l'ingombro
+ * chiuso — che è quello che gira i pezzi per completare una riga.
+ */
+function ritaglioTotale(par: ParametriNesting, e: EsitoNesting, opzioni?: OpzioniRicerca): number {
+  if (!opzioni?.sfridoRettangolare) return 0;
+  let totale = 0;
+  for (const l of e.lastre) totale += ritaglioLastra(par, l);
+  // quantizzato alla tolleranza: sotto, i due ritagli valgono uguale
+  const passo = par.lastra.larghezza * par.lastra.altezza * TOLLERANZA_RITAGLIO;
+  return passo > 0 ? Math.round(totale / passo) * passo : totale;
+}
+
+/**
+ * Sotto questa frazione della lastra due ritagli si considerano uguali: è la
+ * differenza che al banco non cambia cosa ci si ricava.
+ */
+const TOLLERANZA_RITAGLIO = 0.03;
+
+/** il rettangolo intero più grande che avanza da una lastra, in area */
+function ritaglioLastra(par: ParametriNesting, lastra: LastraNesting): number {
+  const r = strisciaResidua(lastra, par.lastra.larghezza, par.lastra.altezza);
+  return r ? r.larghezza * r.lunghezza : 0;
+}
+
+/**
+ * L'INGOMBRO CHIUSO, cioè quanto i pezzi riempiono il rettangolo che occupano.
  *
- * Un esempio concreto: due colonne alte e un pezzo corto sotto. Se il pezzo
- * corto sta in piedi, l'ingombro si allunga senza allargarsi e resta un buco
- * grande quanto il pezzo; girato di novanta gradi riempie la riga sotto le
- * colonne, l'ingombro torna un rettangolo e la L si pulisce.
+ * Serve a spareggiare quando il ritaglio è lo stesso: fra due disposizioni che
+ * lasciano lo stesso rettangolo buono, è meglio quella in cui i pezzi stanno
+ * stretti in un rettangolo pieno.
+ *
+ * L'esempio è due colonne alte e un pezzo corto sotto: in piedi l'ingombro si
+ * allunga senza allargarsi e resta un buco grande quanto il pezzo; girato di
+ * novanta gradi riempie la riga sotto le colonne e l'ingombro torna pieno.
+ * Il ritaglio, in quel caso, è praticamente identico nei due modi — decide
+ * questo.
  */
 function buchiTotali(par: ParametriNesting, e: EsitoNesting, opzioni?: OpzioniRicerca): number {
   if (!opzioni?.sfridoRettangolare) return 0;
@@ -694,8 +731,8 @@ export interface OpzioniRicerca {
   sfridoRettangolare?: boolean;
 }
 
-/** i quattro criteri di `qualita`, in ordine di importanza */
-type Punteggio = [number, number, number, number, number];
+/** i criteri di `qualita`, in ordine di importanza */
+type Punteggio = [number, number, number, number, number, number];
 
 /**
  * IMPACCHETTAMENTO MIGLIORE.
@@ -790,8 +827,8 @@ function confronta(a: Punteggio, b: Punteggio): number {
  * scala invece che un rettangolo, e l'avanzo smette di essere una L — e quei
  * due pezzetti, spesso, entravano benissimo in una lastra già aperta.
  *
- * Qui si cercano proprio quelli: i pezzi che, tolti, lascerebbero l'ingombro
- * della loro lastra più pieno. Si prova a rimetterli altrove — in
+ * Qui si cercano proprio quelli: i pezzi che, tolti, farebbero crescere il
+ * ritaglio buono della loro lastra. Si prova a rimetterli altrove — in
  * un'altra lastra o in un altro angolo della stessa — e si tiene lo
  * spostamento solo se il piano nel suo insieme migliora. Nessun pezzo viene
  * mai perso: se non trova posto, resta dov'è.
@@ -817,13 +854,13 @@ function raccogliRimasugli(
     // sono i pezzi che mordono il ritaglio
     const candidati: Array<{ lastra: number; indice: number; guadagno: number }> = [];
     corrente.lastre.forEach((l, iL) => {
-      const ora = buchiLastra(par, l);
+      const ora = ritaglioLastra(par, l);
       l.piazzamenti.forEach((_, iP) => {
         const senza = {
           piazzamenti: l.piazzamenti.filter((_, k) => k !== iP)
         };
-        const dopo = buchiLastra(par, senza);
-        if (dopo < ora - 1e-6) candidati.push({ lastra: iL, indice: iP, guadagno: ora - dopo });
+        const dopo = ritaglioLastra(par, senza);
+        if (dopo > ora + 1e-6) candidati.push({ lastra: iL, indice: iP, guadagno: dopo - ora });
       });
     });
     if (candidati.length === 0) break;

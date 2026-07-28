@@ -867,9 +867,14 @@ describe('forma dello sfrido sulle lastre', () => {
     expect(r!.lunghezza).toBeGreaterThan(700);
   });
 
-  it('l’ingombro si chiude meglio che a non guardarlo affatto', () => {
-    expect(buchiTotali(calcolaNestingMigliore(par, conPezzetti, { sfridoRettangolare: true })))
-      .toBeLessThan(buchiTotali(calcolaNestingMigliore(par, conPezzetti)));
+  it('il ritaglio buono cresce rispetto a non guardarlo affatto', () => {
+    const ritagli = (e: EsitoNesting) =>
+      e.lastre.reduce((t, l) => {
+        const r = strisciaResidua(l, par.lastra.larghezza, par.lastra.altezza);
+        return t + (r ? r.larghezza * r.lunghezza : 0);
+      }, 0);
+    expect(ritagli(calcolaNestingMigliore(par, conPezzetti, { sfridoRettangolare: true })))
+      .toBeGreaterThan(ritagli(calcolaNestingMigliore(par, conPezzetti)));
   });
 
   it('non apre mai una lastra in più per fare bella figura', () => {
@@ -942,6 +947,42 @@ describe('forma dello sfrido sulle lastre', () => {
     p('RETRO B', 290, 1845, 4),
     p('RETRO C', 290, 2650, 3)
   ];
+
+  it('il pezzetto va sotto la colonna PIÙ ALTA, non sotto una più bassa', () => {
+    // sotto la più alta sta nella sua ombra e le altre colonne restano pari:
+    // l'avanzo è un rettangolo solo che le attraversa tutte. Sotto una più
+    // bassa aprirebbe un gradino in mezzo e il rettangolo si dimezzerebbe.
+    const quattro = { ...par, lama: 4, margine: 4 };
+    const e = calcolaNestingMigliore(
+      quattro,
+      [
+        p('Lato 3 I', 290, 2800, 1),
+        p('Lato 1 E', 290, 2470, 3),
+        p('Lato 2 E', 290, 2470, 1),
+        p('Lato 3 D', 290, 185, 1)
+      ],
+      { sfridoRettangolare: true }
+    );
+    const alto = e.lastre[0].piazzamenti.find((q) => q.altezzaFinita === 2800)!;
+    const corto = e.lastre[0].piazzamenti.find((q) => q.altezzaFinita === 185)!;
+    expect(Math.round(corto.x)).toBe(Math.round(alto.x));
+    // e l'avanzo è un rettangolo che copre le altre quattro colonne
+    const r = strisciaResidua(e.lastre[0], quattro.lastra.larghezza, quattro.lastra.altezza)!;
+    expect(r.larghezza).toBeGreaterThan(1150);
+    expect(r.lunghezza).toBeGreaterThan(550);
+  });
+
+  it('sulla camera intera i pezzi restano in colonna invece di coricarsi', () => {
+    // con tutti i pezzi larghi uguali la disposizione giusta è a colonne: un
+    // pezzo coricato si mangia la larghezza di due colonne per pochi
+    // centimetri di altezza, e quella larghezza ai pezzi alti serve
+    const quattro = { ...par, lama: 4, margine: 4 };
+    const girati = (e: EsitoNesting) =>
+      e.lastre.reduce((n, l) => n + l.piazzamenti.filter((q) => q.ruotato).length, 0);
+    const con = calcolaNestingMigliore(quattro, camera, { sfridoRettangolare: true });
+    expect(girati(con)).toBeLessThan(5);
+    expect(girati(con)).toBeLessThan(girati(calcolaNestingMigliore(quattro, camera)));
+  });
 
   it('sulla camera intera nessun pezzo sporge dalle cinque colonne', () => {
     const e = calcolaNestingMigliore(par, camera, { sfridoRettangolare: true });
