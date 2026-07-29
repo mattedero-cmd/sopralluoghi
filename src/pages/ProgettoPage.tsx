@@ -659,98 +659,6 @@ export function ProgettoPage({ id }: { id: string }) {
           />
         </div>
 
-        {/* quello che è archiviato dentro il progetto: sta qui, non sciolto
-            nella cartella, e si apre con un tocco */}
-        {((pianiDiTaglio?.length ?? 0) > 0 || (disegni?.length ?? 0) > 0) && (
-          <>
-            <div className="sez-testa">
-              <h2 className="sez-titolo">Piani di taglio e disegni</h2>
-              {!selezione && (
-                <button className="btn piccolo" onClick={() => setSelezione([])}>
-                  <Icona nome="check" dimensione={17} /> Seleziona
-                </button>
-              )}
-            </div>
-            <div className="lista-griglia">
-              {(pianiDiTaglio ?? []).map((l: LavoroNesting) => (
-                <button
-                  key={l.id}
-                  className={`scheda${preso('nesting', l.id) ? ' presa' : ''}`}
-                  onClick={() =>
-                    selezione ? cambia('nesting', l.id) : naviga({ nome: 'nesting', id: l.id })
-                  }
-                >
-                  {selezione ? (
-                    <span className={`spunta${preso('nesting', l.id) ? ' presa' : ''}`}>
-                      {preso('nesting', l.id) && <Icona nome="check" dimensione={16} />}
-                    </span>
-                  ) : (
-                    <span className="glifo taglio">
-                      <Icona nome="griglia" dimensione={22} />
-                    </span>
-                  )}
-                  <span className="corpo">
-                    <div className="titolo">
-                      <span className="nome">{l.nome}</span>
-                      <span className="badge-etichetta">Taglio</span>
-                    </div>
-                    <div className="sotto">{formattaData(l.modificatoIl)}</div>
-                  </span>
-                  <span
-                    className="btn icona"
-                    role="button"
-                    aria-label={`Azioni piano di taglio ${l.nome}`}
-                    onClick={(e) => menuAllegato('nesting', l, e)}
-                  >
-                    <Icona nome="altro" />
-                  </span>
-                </button>
-              ))}
-              {(disegni ?? []).map((d: DisegnoSvg) => (
-                <button
-                  key={d.id}
-                  className={`scheda${preso('disegno', d.id) ? ' presa' : ''}`}
-                  onClick={() =>
-                    selezione ? cambia('disegno', d.id) : naviga({ nome: 'disegno', id: d.id })
-                  }
-                >
-                  {selezione ? (
-                    <span className={`spunta${preso('disegno', d.id) ? ' presa' : ''}`}>
-                      {preso('disegno', d.id) && <Icona nome="check" dimensione={16} />}
-                    </span>
-                  ) : (
-                    <span className="glifo disegno">
-                      <Icona nome="disegno" dimensione={22} />
-                    </span>
-                  )}
-                  <span className="corpo">
-                    <div className="titolo">
-                      <span className="nome">{d.nome}</span>
-                      <span className="badge-etichetta">SVG</span>
-                    </div>
-                    <div className="sotto">
-                      {d.larghezzaMm && d.altezzaMm
-                        ? `${Math.round(d.larghezzaMm)} × ${Math.round(d.altezzaMm)} mm · `
-                        : ''}
-                      {formattaData(d.modificatoIl)}
-                    </div>
-                  </span>
-                  <span
-                    className="btn icona"
-                    role="button"
-                    aria-label={`Azioni disegno ${d.nome}`}
-                    onClick={(e) => menuAllegato('disegno', d, e)}
-                  >
-                    <Icona nome="altro" />
-                  </span>
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-        {importInCorso && <p style={{ color: 'var(--testo-2)' }}>Importazione foto in corso…</p>}
-        {pdfInCorso && <p style={{ color: 'var(--testo-2)' }}>{pdfInCorso}</p>}
-
         <input
           ref={inputCamera}
           type="file"
@@ -857,6 +765,98 @@ export function ProgettoPage({ id }: { id: string }) {
             <Icona nome="piu" dimensione={20} /> Nuovo preventivo
           </button>
         </div>
+
+        {/* quello che è archiviato dentro il progetto: sta qui, non sciolto
+            nella cartella, e si apre con un tocco */}
+        {((pianiDiTaglio?.length ?? 0) > 0 || (disegni?.length ?? 0) > 0) && (
+          <>
+            <div className="sez-testa">
+              <h2 className="sez-titolo">Piani di taglio e disegni</h2>
+              {!selezione && (
+                <button className="btn piccolo" onClick={() => setSelezione([])}>
+                  <Icona nome="check" dimensione={17} /> Seleziona
+                </button>
+              )}
+            </div>
+            <div className="lista-griglia">
+              {(pianiDiTaglio ?? []).map((l: LavoroNesting) => (
+                <button
+                  key={l.id}
+                  className={`scheda${preso('nesting', l.id) ? ' presa' : ''}`}
+                  onClick={() =>
+                    selezione ? cambia('nesting', l.id) : naviga({ nome: 'nesting', id: l.id })
+                  }
+                >
+                  {selezione ? (
+                    <span className={`spunta${preso('nesting', l.id) ? ' presa' : ''}`}>
+                      {preso('nesting', l.id) && <Icona nome="check" dimensione={16} />}
+                    </span>
+                  ) : (
+                    <span className="glifo taglio">
+                      <Icona nome="griglia" dimensione={22} />
+                    </span>
+                  )}
+                  <span className="corpo">
+                    <div className="titolo">
+                      <span className="nome">{l.nome}</span>
+                      <span className="badge-etichetta">Taglio</span>
+                    </div>
+                    <div className="sotto">{formattaData(l.modificatoIl)}</div>
+                  </span>
+                  <span
+                    className="btn icona"
+                    role="button"
+                    aria-label={`Azioni piano di taglio ${l.nome}`}
+                    onClick={(e) => menuAllegato('nesting', l, e)}
+                  >
+                    <Icona nome="altro" />
+                  </span>
+                </button>
+              ))}
+              {(disegni ?? []).map((d: DisegnoSvg) => (
+                <button
+                  key={d.id}
+                  className={`scheda${preso('disegno', d.id) ? ' presa' : ''}`}
+                  onClick={() =>
+                    selezione ? cambia('disegno', d.id) : naviga({ nome: 'disegno', id: d.id })
+                  }
+                >
+                  {selezione ? (
+                    <span className={`spunta${preso('disegno', d.id) ? ' presa' : ''}`}>
+                      {preso('disegno', d.id) && <Icona nome="check" dimensione={16} />}
+                    </span>
+                  ) : (
+                    <span className="glifo disegno">
+                      <Icona nome="disegno" dimensione={22} />
+                    </span>
+                  )}
+                  <span className="corpo">
+                    <div className="titolo">
+                      <span className="nome">{d.nome}</span>
+                      <span className="badge-etichetta">SVG</span>
+                    </div>
+                    <div className="sotto">
+                      {d.larghezzaMm && d.altezzaMm
+                        ? `${Math.round(d.larghezzaMm)} × ${Math.round(d.altezzaMm)} mm · `
+                        : ''}
+                      {formattaData(d.modificatoIl)}
+                    </div>
+                  </span>
+                  <span
+                    className="btn icona"
+                    role="button"
+                    aria-label={`Azioni disegno ${d.nome}`}
+                    onClick={(e) => menuAllegato('disegno', d, e)}
+                  >
+                    <Icona nome="altro" />
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+        {importInCorso && <p style={{ color: 'var(--testo-2)' }}>Importazione foto in corso…</p>}
+        {pdfInCorso && <p style={{ color: 'var(--testo-2)' }}>{pdfInCorso}</p>}
       </main>
 
       {opzioniPdfAperte && (
