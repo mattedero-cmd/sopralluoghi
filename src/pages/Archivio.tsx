@@ -40,6 +40,8 @@ import { mostraToast } from '../state/toast';
 import { formattaData, formattaNumero } from '../utils/format';
 import { Icona } from '../components/Icona';
 import { PannelloOpzioniPdf } from '../components/OpzioniPdf';
+import { BarraSelezione } from '../components/comuni';
+import { condividiSelezione, type Selezionato } from '../utils/condivisione';
 import { ModaleAnteprimaPdf } from '../components/ModaleAnteprimaPdf';
 
 export function Archivio({ cartellaId }: { cartellaId: string | null }) {
@@ -55,11 +57,45 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
     | null
   >(null);
   const [conferma, setConferma] = useState<RichiestaConferma | null>(null);
-  const [menu, setMenu] = useState<{ pos: { x: number; y: number }; voci: VoceMenu[] } | null>(null);
+  const [menu, setMenu] = useState<{
+    pos: { x: number; y: number };
+    titolo?: string;
+    voci: VoceMenu[];
+  } | null>(null);
   const [reportCartella, setReportCartella] = useState<Cartella | null>(null);
   const [rinominaLavoro, setRinominaLavoro] = useState<LavoroNesting | null>(null);
   const [rinominaDisegnoScelto, setRinominaDisegnoScelto] = useState<DisegnoSvg | null>(null);
   const fileSvgRef = useRef<HTMLInputElement>(null);
+  /**
+   * Selezione multipla: si accende toccando «Seleziona» e si spegne da sola
+   * quando si annulla. Riguarda i FILE — piani di taglio e disegni — perché
+   * sono quelli che si mandano via.
+   */
+  const [selezione, setSelezione] = useState<Selezionato[] | null>(null);
+  const [invioInCorso, setInvioInCorso] = useState<string | null>(null);
+  const preso = (tipo: Selezionato['tipo'], id: string) =>
+    !!selezione?.some((x) => x.tipo === tipo && x.id === id);
+  const cambia = (tipo: Selezionato['tipo'], id: string) =>
+    setSelezione((s) =>
+      s?.some((x) => x.tipo === tipo && x.id === id)
+        ? s.filter((x) => !(x.tipo === tipo && x.id === id))
+        : [...(s ?? []), { tipo, id }]
+    );
+
+  const condividiScelti = async () => {
+    if (!selezione || selezione.length === 0) return;
+    setInvioInCorso('Preparazione…');
+    try {
+      const nome = corrente?.nome ?? 'Archivio';
+      const quanti = await condividiSelezione(selezione, nome, __BUILD__, setInvioInCorso);
+      if (quanti === 0) mostraToast('info', 'Non c’è niente da mandare.');
+      else setSelezione(null);
+    } catch (e) {
+      mostraToast('errore', e instanceof Error ? e.message : 'Condivisione non riuscita.');
+    } finally {
+      setInvioInCorso(null);
+    }
+  };
   /** PDF da guardare nell'app prima di mandarlo via */
   const [anteprima, setAnteprima] = useState<{ blob: Blob; titolo: string } | null>(null);
   const [pdfInCorso, setPdfInCorso] = useState<string | null>(null);
@@ -235,6 +271,7 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
     e.stopPropagation();
     setMenu({
       pos: { x: e.clientX, y: e.clientY },
+      titolo: d.nome,
       voci: [
         {
           testo: 'Condividi il file',
@@ -271,6 +308,7 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
     e.stopPropagation();
     setMenu({
       pos: { x: e.clientX, y: e.clientY },
+      titolo: l.nome,
       voci: [
         { testo: 'Guarda il PDF', icona: 'documento', onClick: () => void apriPdfNesting(l) },
         { testo: 'Rinomina…', icona: 'matita', onClick: () => setRinominaLavoro(l) },
@@ -326,7 +364,7 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
   };
 
   return (
-    <div className="app">
+    <div className={`app${selezione ? ' con-selezione' : ''}`}>
       <header className="barra">
         <h1>{corrente ? corrente.nome : 'Sopralluoghi'}</h1>
         <StatoApp />
@@ -399,6 +437,11 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
               <button className="btn" onClick={() => fileSvgRef.current?.click()}>
                 <Icona nome="disegno" dimensione={20} /> Apri un SVG
               </button>
+              {((lavori?.length ?? 0) > 0 || (disegni?.length ?? 0) > 0) && !selezione && (
+                <button className="btn" onClick={() => setSelezione([])}>
+                  <Icona nome="check" dimensione={20} /> Seleziona
+                </button>
+              )}
               <input
                 ref={fileSvgRef}
                 type="file"
@@ -424,7 +467,7 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
                 </span>
                 <span className="corpo">
                   <div className="titolo">
-                    {c.nome}
+                    <span className="nome">{c.nome}</span>
                     {c.etichetta ? <span className="badge-etichetta">{c.etichetta}</span> : null}
                   </div>
                 </span>
@@ -451,7 +494,7 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
                 </span>
                 <span className="corpo">
                   <div className="titolo">
-                    {p.nome}
+                    <span className="nome">{p.nome}</span>
                     {p.etichetta ? <span className="badge-etichetta">{p.etichetta}</span> : null}
                   </div>
                   <div className="sotto">
@@ -478,15 +521,25 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
               return (
                 <button
                   key={l.id}
-                  className="scheda"
-                  onClick={() => naviga({ nome: 'nesting', id: l.id })}
+                  className={`scheda${preso('nesting', l.id) ? ' presa' : ''}`}
+                  onClick={() =>
+                    selezione
+                      ? cambia('nesting', l.id)
+                      : naviga({ nome: 'nesting', id: l.id })
+                  }
                 >
-                  <span className="glifo taglio">
-                    <Icona nome="griglia" dimensione={22} />
-                  </span>
+                  {selezione ? (
+                    <span className={`spunta${preso('nesting', l.id) ? ' presa' : ''}`}>
+                      {preso('nesting', l.id) && <Icona nome="check" dimensione={16} />}
+                    </span>
+                  ) : (
+                    <span className="glifo taglio">
+                      <Icona nome="griglia" dimensione={22} />
+                    </span>
+                  )}
                   <span className="corpo">
                     <div className="titolo">
-                      {l.nome}
+                      <span className="nome">{l.nome}</span>
                       <span className="badge-etichetta">Taglio</span>
                     </div>
                     <div className="sotto">
@@ -521,15 +574,23 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
             {(disegni ?? []).map((d) => (
               <button
                 key={d.id}
-                className="scheda"
-                onClick={() => naviga({ nome: 'disegno', id: d.id })}
+                className={`scheda${preso('disegno', d.id) ? ' presa' : ''}`}
+                onClick={() =>
+                  selezione ? cambia('disegno', d.id) : naviga({ nome: 'disegno', id: d.id })
+                }
               >
-                <span className="glifo disegno">
-                  <Icona nome="disegno" dimensione={22} />
-                </span>
+                {selezione ? (
+                  <span className={`spunta${preso('disegno', d.id) ? ' presa' : ''}`}>
+                    {preso('disegno', d.id) && <Icona nome="check" dimensione={16} />}
+                  </span>
+                ) : (
+                  <span className="glifo disegno">
+                    <Icona nome="disegno" dimensione={22} />
+                  </span>
+                )}
                 <span className="corpo">
                   <div className="titolo">
-                    {d.nome}
+                    <span className="nome">{d.nome}</span>
                     <span className="badge-etichetta">SVG</span>
                   </div>
                   <div className="sotto">
@@ -671,7 +732,22 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
         />
       )}
       <ConfermaDialog richiesta={conferma} onChiudi={() => setConferma(null)} />
-      {menu && <MenuContesto posizione={menu.pos} voci={menu.voci} onChiudi={() => setMenu(null)} />}
+      {menu && (
+        <MenuContesto
+          posizione={menu.pos}
+          titolo={menu.titolo}
+          voci={menu.voci}
+          onChiudi={() => setMenu(null)}
+        />
+      )}
+      {selezione && (
+        <BarraSelezione
+          quante={selezione.length}
+          inCorso={invioInCorso}
+          onCondividi={() => void condividiScelti()}
+          onAnnulla={() => setSelezione(null)}
+        />
+      )}
     </div>
   );
 }
@@ -906,7 +982,7 @@ export function SelettoreCartella({
               <Icona nome="cartella" dimensione={20} />
             </span>
             <span className="corpo">
-              <div className="titolo">{r.c.nome}</div>
+              <div className="titolo"><span className="nome">{r.c.nome}</span></div>
             </span>
           </button>
         ) : (
@@ -920,7 +996,7 @@ export function SelettoreCartella({
               <Icona nome="progetto" dimensione={20} />
             </span>
             <span className="corpo">
-              <div className="titolo">{r.p.nome}</div>
+              <div className="titolo"><span className="nome">{r.p.nome}</span></div>
               <div className="sotto">dentro il sopralluogo</div>
             </span>
           </button>
@@ -976,7 +1052,7 @@ function RisultatiRicerca({ query }: { query: string }) {
             <Icona nome="persona" dimensione={22} />
           </span>
           <span className="corpo">
-            <div className="titolo">{c.nome}</div>
+            <div className="titolo"><span className="nome">{c.nome}</span></div>
             <div className="sotto">{[c.telefono, c.email].filter(Boolean).join(' · ')}</div>
           </span>
         </button>
@@ -987,7 +1063,7 @@ function RisultatiRicerca({ query }: { query: string }) {
             <Icona nome="documento" dimensione={22} />
           </span>
           <span className="corpo">
-            <div className="titolo">Preventivo {p.numero}</div>
+            <div className="titolo"><span className="nome">Preventivo {p.numero}</span></div>
             <div className="sotto">{formattaData(p.data)} · {p.voci.length} voci</div>
           </span>
         </button>
@@ -998,7 +1074,7 @@ function RisultatiRicerca({ query }: { query: string }) {
             <Icona nome="progetto" dimensione={22} />
           </span>
           <span className="corpo">
-            <div className="titolo">{p.nome}</div>
+            <div className="titolo"><span className="nome">{p.nome}</span></div>
             <div className="sotto">{[p.cliente, p.luogo].filter(Boolean).join(' — ')}</div>
           </span>
           <EtichettaStato stato={p.stato} />
@@ -1010,7 +1086,9 @@ function RisultatiRicerca({ query }: { query: string }) {
             <Icona nome="immagine" dimensione={22} />
           </span>
           <span className="corpo">
-            <div className="titolo">{f.didascalia || 'Foto senza didascalia'}</div>
+            <div className="titolo">
+              <span className="nome">{f.didascalia || 'Foto senza didascalia'}</span>
+            </div>
             <div className="sotto">
               {nomiProgetto.get(f.progettoId) ?? 'Progetto'} ·{' '}
               {f.noteDato ? f.noteDato.slice(0, 80) : formattaData(f.dataScatto)}

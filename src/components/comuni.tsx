@@ -140,20 +140,27 @@ export interface VoceMenu {
 
 export function MenuContesto({
   posizione,
+  titolo,
   voci,
   onChiudi
 }: {
   posizione: { x: number; y: number };
+  /**
+   * Nome dell'elemento, per intero. Nelle liste il nome lungo va a capo e poi
+   * si tronca: qui si legge tutto, senza dover aprire il file.
+   */
+  titolo?: string;
   voci: VoceMenu[];
   onChiudi: () => void;
 }) {
   const stile: React.CSSProperties = {
-    top: Math.min(posizione.y, window.innerHeight - voci.length * 52 - 20),
+    top: Math.min(posizione.y, window.innerHeight - voci.length * 52 - (titolo ? 80 : 20)),
     left: Math.min(posizione.x, window.innerWidth - 240)
   };
   return (
     <div className="velo" style={{ background: 'rgba(0,0,0,0.25)' }} onClick={onChiudi}>
       <div className="menu-contesto" style={stile} onClick={(e) => e.stopPropagation()}>
+        {titolo && <div className="titolo-menu">{titolo}</div>}
         {voci.map((v) => (
           <button
             key={v.testo}
@@ -168,6 +175,46 @@ export function MenuContesto({
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Selezione multipla: la barra che compare in fondo con quello che si è scelto
+// ---------------------------------------------------------------------------
+
+/**
+ * Barra della selezione. Sta in fondo allo schermo, sopra tutto, e dice
+ * quante cose sono state scelte e cosa ci si può fare. Sparisce da sola
+ * quando non c'è più niente di selezionato.
+ */
+export function BarraSelezione({
+  quante,
+  inCorso,
+  onCondividi,
+  onAnnulla
+}: {
+  quante: number;
+  /** messaggio di lavoro in corso: mentre si prepara, non si tocca niente */
+  inCorso?: string | null;
+  onCondividi: () => void;
+  onAnnulla: () => void;
+}) {
+  return (
+    <div className="barra-selezione" role="region" aria-label="Selezione">
+      <span className="conto">
+        {inCorso ? inCorso : `${quante} ${quante === 1 ? 'selezionato' : 'selezionati'}`}
+      </span>
+      <button className="btn" onClick={onAnnulla} disabled={!!inCorso}>
+        Annulla
+      </button>
+      <button
+        className="btn primario"
+        onClick={onCondividi}
+        disabled={quante === 0 || !!inCorso}
+      >
+        <Icona nome="condividi" dimensione={18} /> Condividi
+      </button>
     </div>
   );
 }

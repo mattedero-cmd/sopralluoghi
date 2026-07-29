@@ -42,6 +42,8 @@ import { condividiOScarica, nomeFileSicuro } from '../utils/share';
 import { renderFotoAnnotata } from '../render/renderAnnotata';
 import { codiceLocaleForma, numeriProgetto } from '../geometry/nomenclatura';
 import { Icona } from '../components/Icona';
+import { BarraSelezione } from '../components/comuni';
+import { condividiSelezione, type Selezionato } from '../utils/condivisione';
 import { formattaData } from '../utils/format';
 import { PannelloOpzioniPdf } from '../components/OpzioniPdf';
 
@@ -62,8 +64,41 @@ export function ProgettoPage({ id }: { id: string }) {
     [id]
   );
   const [conferma, setConferma] = useState<RichiestaConferma | null>(null);
-  const [menu, setMenu] = useState<{ pos: { x: number; y: number }; voci: VoceMenu[] } | null>(null);
+  const [menu, setMenu] = useState<{
+    pos: { x: number; y: number };
+    titolo?: string;
+    voci: VoceMenu[];
+  } | null>(null);
   const inputSvg = useRef<HTMLInputElement>(null);
+  /** selezione multipla dei file del progetto, per mandarli via insieme */
+  const [selezione, setSelezione] = useState<Selezionato[] | null>(null);
+  const [invioInCorso, setInvioInCorso] = useState<string | null>(null);
+  const preso = (tipo: Selezionato['tipo'], idEl: string) =>
+    !!selezione?.some((x) => x.tipo === tipo && x.id === idEl);
+  const cambia = (tipo: Selezionato['tipo'], idEl: string) =>
+    setSelezione((sel) =>
+      sel?.some((x) => x.tipo === tipo && x.id === idEl)
+        ? sel.filter((x) => !(x.tipo === tipo && x.id === idEl))
+        : [...(sel ?? []), { tipo, id: idEl }]
+    );
+  const condividiScelti = async () => {
+    if (!selezione || selezione.length === 0) return;
+    setInvioInCorso('Preparazione…');
+    try {
+      const quanti = await condividiSelezione(
+        selezione,
+        progetto?.nome ?? 'Sopralluogo',
+        __BUILD__,
+        setInvioInCorso
+      );
+      if (quanti === 0) mostraToast('info', 'Non c’è niente da mandare.');
+      else setSelezione(null);
+    } catch (e) {
+      mostraToast('errore', e instanceof Error ? e.message : 'Condivisione non riuscita.');
+    } finally {
+      setInvioInCorso(null);
+    }
+  };
   const [rinominaAllegato, setRinominaAllegato] = useState<
     { tipo: 'nesting' | 'disegno'; id: string; nome: string } | null
   >(null);
@@ -101,7 +136,7 @@ export function ProgettoPage({ id }: { id: string }) {
   }
   if (progetto === null || !progetto) {
     return (
-      <div className="app">
+      <div className={`app${selezione ? ' con-selezione' : ''}`}>
         <header className="barra">
           <button className="btn icona" onClick={() => naviga({ nome: 'archivio', cartellaId: null })}>
             ←
@@ -287,6 +322,7 @@ export function ProgettoPage({ id }: { id: string }) {
     const parola = tipo === 'nesting' ? 'piano di taglio' : 'disegno';
     setMenu({
       pos: { x: e.clientX, y: e.clientY },
+      titolo: voce.nome,
       voci: [
         {
           testo: 'Rinomina…',
@@ -627,20 +663,35 @@ export function ProgettoPage({ id }: { id: string }) {
             nella cartella, e si apre con un tocco */}
         {((pianiDiTaglio?.length ?? 0) > 0 || (disegni?.length ?? 0) > 0) && (
           <>
-            <h2 className="sez-titolo">Piani di taglio e disegni</h2>
+            <div className="sez-testa">
+              <h2 className="sez-titolo">Piani di taglio e disegni</h2>
+              {!selezione && (
+                <button className="btn piccolo" onClick={() => setSelezione([])}>
+                  <Icona nome="check" dimensione={17} /> Seleziona
+                </button>
+              )}
+            </div>
             <div className="lista-griglia">
               {(pianiDiTaglio ?? []).map((l: LavoroNesting) => (
                 <button
                   key={l.id}
-                  className="scheda"
-                  onClick={() => naviga({ nome: 'nesting', id: l.id })}
+                  className={`scheda${preso('nesting', l.id) ? ' presa' : ''}`}
+                  onClick={() =>
+                    selezione ? cambia('nesting', l.id) : naviga({ nome: 'nesting', id: l.id })
+                  }
                 >
-                  <span className="glifo taglio">
-                    <Icona nome="griglia" dimensione={22} />
-                  </span>
+                  {selezione ? (
+                    <span className={`spunta${preso('nesting', l.id) ? ' presa' : ''}`}>
+                      {preso('nesting', l.id) && <Icona nome="check" dimensione={16} />}
+                    </span>
+                  ) : (
+                    <span className="glifo taglio">
+                      <Icona nome="griglia" dimensione={22} />
+                    </span>
+                  )}
                   <span className="corpo">
                     <div className="titolo">
-                      {l.nome}
+                      <span className="nome">{l.nome}</span>
                       <span className="badge-etichetta">Taglio</span>
                     </div>
                     <div className="sotto">{formattaData(l.modificatoIl)}</div>
@@ -658,15 +709,23 @@ export function ProgettoPage({ id }: { id: string }) {
               {(disegni ?? []).map((d: DisegnoSvg) => (
                 <button
                   key={d.id}
-                  className="scheda"
-                  onClick={() => naviga({ nome: 'disegno', id: d.id })}
+                  className={`scheda${preso('disegno', d.id) ? ' presa' : ''}`}
+                  onClick={() =>
+                    selezione ? cambia('disegno', d.id) : naviga({ nome: 'disegno', id: d.id })
+                  }
                 >
-                  <span className="glifo disegno">
-                    <Icona nome="disegno" dimensione={22} />
-                  </span>
+                  {selezione ? (
+                    <span className={`spunta${preso('disegno', d.id) ? ' presa' : ''}`}>
+                      {preso('disegno', d.id) && <Icona nome="check" dimensione={16} />}
+                    </span>
+                  ) : (
+                    <span className="glifo disegno">
+                      <Icona nome="disegno" dimensione={22} />
+                    </span>
+                  )}
                   <span className="corpo">
                     <div className="titolo">
-                      {d.nome}
+                      <span className="nome">{d.nome}</span>
                       <span className="badge-etichetta">SVG</span>
                     </div>
                     <div className="sotto">
@@ -875,7 +934,22 @@ export function ProgettoPage({ id }: { id: string }) {
         </Modale>
       )}
       <ConfermaDialog richiesta={conferma} onChiudi={() => setConferma(null)} />
-      {menu && <MenuContesto posizione={menu.pos} voci={menu.voci} onChiudi={() => setMenu(null)} />}
+      {menu && (
+        <MenuContesto
+          posizione={menu.pos}
+          titolo={menu.titolo}
+          voci={menu.voci}
+          onChiudi={() => setMenu(null)}
+        />
+      )}
+      {selezione && (
+        <BarraSelezione
+          quante={selezione.length}
+          inCorso={invioInCorso}
+          onCondividi={() => void condividiScelti()}
+          onAnnulla={() => setSelezione(null)}
+        />
+      )}
     </div>
   );
 }
