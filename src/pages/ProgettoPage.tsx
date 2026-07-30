@@ -9,7 +9,6 @@ import {
   assegnaFotoSezione,
   creaPianta,
   creaPiantaDaFoto,
-  creaPreventivo,
   creaSezione,
   eliminaFoto,
   eliminaSezione,
@@ -25,7 +24,6 @@ import { nuovoId } from '../utils/id';
 import type { Sezione } from '../db/types';
 import type { OpzioniReport } from '../pdf/report';
 import { SelettoreCliente } from './ClientiPage';
-import { EtichettaStatoPreventivo } from './PreventivoPage';
 import { fotoIllegibile, importaFoto } from '../utils/image';
 import { naviga } from '../router';
 import {
@@ -53,13 +51,6 @@ export function ProgettoPage({ id }: { id: string }) {
     async () => {
       const lista = await db.foto.where('progettoId').equals(id).toArray();
       return lista.sort((a, b) => a.ordine - b.ordine);
-    },
-    [id]
-  );
-  const preventivi = useLiveQuery(
-    async () => {
-      const lista = await db.preventivi.where('progettoId').equals(id).toArray();
-      return lista.sort((a, b) => b.data - a.data);
     },
     [id]
   );
@@ -740,31 +731,6 @@ export function ProgettoPage({ id }: { id: string }) {
             {grigliaFoto(piante)}
           </section>
         )}
-
-        <h2>Preventivi ({preventivi?.length ?? 0})</h2>
-        {(preventivi ?? []).map((p) => (
-          <button key={p.id} className="scheda" onClick={() => naviga({ nome: 'preventivo', id: p.id })}>
-            <span className="glifo ambra">
-              <Icona nome="documento" dimensione={20} />
-            </span>
-            <span className="corpo">
-              <div className="titolo">Preventivo {p.numero}</div>
-              <div className="sotto">{p.voci.length} voci</div>
-            </span>
-            <EtichettaStatoPreventivo stato={p.stato} />
-          </button>
-        ))}
-        <div className="riga-pulsanti">
-          <button
-            className="btn"
-            onClick={async () => {
-              const p = await creaPreventivo(progetto.id, progetto.clienteId ?? null);
-              naviga({ nome: 'preventivo', id: p.id });
-            }}
-          >
-            <Icona nome="piu" dimensione={20} /> Nuovo preventivo
-          </button>
-        </div>
 
         {/* quello che è archiviato dentro il progetto: sta qui, non sciolto
             nella cartella, e si apre con un tocco */}
