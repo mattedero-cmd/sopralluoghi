@@ -10,6 +10,8 @@
 
 import type { OpzioniRicerca, ParametriNesting, PezzoNesting } from '../geometry/nesting';
 import { BLOCCO_MANEGGEVOLE } from '../geometry/segmenti';
+import { nuovoId } from './id';
+import { prossimaTinta } from './tinte';
 
 /** supporto: lastre uguali a volontà, oppure un rotolo di lunghezza data */
 export type ModoSupporto = 'lastre' | 'bobina';
@@ -65,6 +67,170 @@ export function materialeNuovo(id: string, nome: string): MaterialeNesting {
     orientamenti: {},
     pezzi: []
   };
+}
+
+/**
+ * Un'essenza vuota con lo stesso supporto della sua sorella.
+ *
+ * Quando un materiale ne genera un altro — una lista incollata che nomina
+ * un'essenza nuova, una bobina di fascia diversa — la macchina è la stessa:
+ * lama, abbondanze, margine e venatura si portano dietro, si cambia solo
+ * quello che serve.
+ */
+export function essenzaGemella(m: MaterialeNesting, nome: string): MaterialeNesting {
+  return {
+    ...materialeNuovo(nuovoId(), nome),
+    modo: m.modo,
+    lastra: { ...m.lastra },
+    bobina: { ...m.bobina },
+    venatura: m.venatura,
+    lama: m.lama,
+    abbondanza: m.abbondanza,
+    margine: m.margine
+  };
+}
+
+/** un nome che non è già di un'altra essenza: «Bianco» → «Bianco (2)» */
+export function nomeEssenzaLibero(materiali: MaterialeNesting[], base: string): string {
+  const usati = new Set(materiali.map((m) => m.nome.trim().toLowerCase()));
+  const pulito = base.trim() || 'Materiale';
+  if (!usati.has(pulito.toLowerCase())) return pulito;
+  for (let n = 2; ; n++) {
+    const tentativo = `${pulito} (${n})`;
+    if (!usati.has(tentativo.toLowerCase())) return tentativo;
+  }
+}
+
+/**
+ * TRASFERIMENTO DI PEZZI FRA ESSENZE.
+ *
+ * Le misure di un cantiere si prendono una volta sola e finiscono tutte sotto
+ * lo stesso materiale. Poi, per tagliare meglio, capita di dover mandare una
+ * parte della lista su un'altra bobina dello stesso materiale: senza questo,
+ * l'unica strada sarebbe ribattere a mano nomi, misure e quantità.
+ */
+export interface Trasferimento {
+  /** essenza di partenza */
+  da: string;
+  /** essenza di arrivo; `null` ne crea una gemella di quella di partenza */
+  a: string | null;
+  /** id dei pezzi da portare */
+  pezzi: string[];
+  /**
+   * Quante copie portare, pezzo per pezzo. Senza indicazione va la riga
+   * intera; portandone una parte, all'essenza di partenza restano le copie
+   * che avanzano — dieci ante, sei sulla bobina larga e quattro sulla
+   * stretta, senza riscrivere due volte la stessa misura.
+   */
+  quantita?: Record<string, number>;
+  /** vero per lasciare gli originali dov'erano */
+  copia?: boolean;
+  /** nome della nuova essenza, quando se ne crea una */
+  nome?: string;
+}
+
+/**
+ * Porta dei pezzi da un'essenza a un'altra e si posiziona sull'arrivo.
+ *
+ * Se non c'è niente da portare il documento torna com'era, per identità: chi
+ * chiama può accorgersene senza confrontare nulla.
+ */
+export function trasferisciPezzi(doc: DocumentoNesting, t: Trasferimento): DocumentoNesting {
+  if (t.a === t.da) return doc;
+  const origine = doc.materiali.find((m) => m.id === t.da);
+  if (!origine) return doc;
+
+  const scelti = new Set(t.pezzi);
+  const quante = (p: PezzoNesting) => {
+    const totale = Math.max(0, Math.round(p.quantita) || 0);
+    const chiesta = t.quantita?.[p.id];
+    if (chiesta === undefined || !Number.isFinite(chiesta)) return totale;
+    return Math.max(0, Math.min(totale, Math.round(chiesta)));
+  };
+  const daPortare = origine.pezzi.filter((p) => scelti.has(p.id) && quante(p) > 0);
+  if (daPortare.length === 0) return doc;
+
+  let materiali = doc.materiali;
+  let destinazione = t.a === null ? null : (materiali.find((m) => m.id === t.a) ?? null);
+  // un'essenza di arrivo indicata ma sparita: meglio non spostare niente
+  if (t.a !== null && !destinazione) return doc;
+  if (!destinazione) {
+    destinazione = essenzaGemella(origine, nomeEssenzaLibero(materiali, t.nome ?? origine.nome));
+    materiali = [...materiali, destinazione];
+  }
+  const arrivo = destinazione;
+
+  // passando da un materiale senza venatura a uno venato il verso comincia a
+  // contare: i pezzi arrivano bloccati come li avrebbe messi `cambioVenatura`
+  const siBlocca = arrivo.venatura !== 'nessuna' && origine.venatura === 'nessuna';
+  const arrivati = daPortare.map((p, i) => ({
+    ...p,
+    // identità nuova: nell'essenza di arrivo il pezzo è un'altra riga, e i
+    // versi imposti a mano nell'anteprima di partenza non lo seguono
+    id: nuovoId(),
+    quantita: quante(p),
+    ruotabile: siBlocca ? false : p.ruotabile,
+    tinta: prossimaTinta(arrivo.pezzi.length + i)
+  }));
+
+  /** i pezzi che alla partenza cambiano: spariscono o restano in meno */
+  const partiti = new Set(daPortare.map((p) => p.id));
+
+  materiali = materiali.map((m) => {
+    if (m.id === arrivo.id) return { ...m, pezzi: [...m.pezzi, ...arrivati] };
+    if (m.id === origine.id && !t.copia) {
+      return {
+        ...m,
+        pezzi: m.pezzi
+          .map((p) => {
+            if (!partiti.has(p.id)) return p;
+            const restano = Math.max(0, Math.round(p.quantita) || 0) - quante(p);
+            return restano > 0 ? { ...p, quantita: restano } : null;
+          })
+          .filter((p): p is PezzoNesting => p !== null),
+        // i versi imposti valgono per una copia precisa: cambiato il numero
+        // di copie non vogliono più dire niente, e si lasciano ricalcolare
+        orientamenti: senzaOrientamenti(m.orientamenti, partiti)
+      };
+    }
+    return m;
+  });
+
+  return { ...doc, materiali, attivo: arrivo.id };
+}
+
+/**
+ * Sdoppia un'essenza: stessa lista di pezzi, supporto da cambiare.
+ *
+ * È la scorciatoia del caso più frequente — lo stesso materiale su bobine di
+ * fascia diversa — e vale come punto di partenza: si duplica, si cambia la
+ * misura del rotolo e poi si spostano i pezzi che convengono di là.
+ */
+export function duplicaEssenza(doc: DocumentoNesting, id: string): DocumentoNesting {
+  const m = doc.materiali.find((x) => x.id === id);
+  if (!m) return doc;
+  if (m.pezzi.length === 0) {
+    const gemella = essenzaGemella(m, nomeEssenzaLibero(doc.materiali, m.nome));
+    return { ...doc, materiali: [...doc.materiali, gemella], attivo: gemella.id };
+  }
+  return trasferisciPezzi(doc, {
+    da: id,
+    a: null,
+    pezzi: m.pezzi.map((p) => p.id),
+    copia: true
+  });
+}
+
+/** i versi imposti che restano, tolti i pezzi andati via (chiave `id#indice`) */
+function senzaOrientamenti(
+  orientamenti: Record<string, boolean>,
+  andati: Set<string>
+): Record<string, boolean> {
+  const rimasti: Record<string, boolean> = {};
+  for (const [chiave, valore] of Object.entries(orientamenti)) {
+    if (!andati.has(chiave.slice(0, chiave.lastIndexOf('#')))) rimasti[chiave] = valore;
+  }
+  return rimasti;
 }
 
 /** i parametri del motore per un materiale, secondo il suo supporto */

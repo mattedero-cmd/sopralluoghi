@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   cambioVenatura,
+  duplicaEssenza,
+  nomeEssenzaLibero,
+  trasferisciPezzi,
+  type DocumentoNesting,
+  type MaterialeNesting,
   etichettaSupporto,
   materialeNuovo,
   opzioniRicerca,
@@ -10,6 +15,7 @@ import {
   pezziRichiesti
 } from '../documentoNesting';
 import { BLOCCO_MANEGGEVOLE } from '../../geometry/segmenti';
+import type { PezzoNesting } from '../../geometry/nesting';
 
 const conPezzi = (m: ReturnType<typeof materialeNuovo>) => ({
   ...m,
@@ -248,5 +254,173 @@ describe('opzioniRicerca', () => {
 
   it('la lastra cerca un avanzo rettangolare', () => {
     expect(opzioniRicerca(materialeNuovo('m', 'Rovere'))).toEqual({ sfridoRettangolare: true });
+  });
+});
+
+/* --- trasferimento di misure fra essenze ----------------------------- */
+
+const pezzo = (id: string, quantita = 1) => ({
+  id,
+  nome: `Pezzo ${id}`,
+  larghezza: 600,
+  altezza: 400,
+  quantita,
+  ruotabile: true,
+  tinta: 0
+});
+
+const documento = (materiali: MaterialeNesting[]): DocumentoNesting => ({
+  versione: 2,
+  nome: 'Cantiere Rossi',
+  materiali,
+  attivo: materiali[0].id
+});
+
+const essenza = (id: string, nome: string, pezzi: PezzoNesting[]): MaterialeNesting => ({
+  ...materialeNuovo(id, nome),
+  pezzi
+});
+
+describe('trasferisciPezzi', () => {
+  it('sposta i pezzi scelti nell’essenza di arrivo, con nome misure e quantità', () => {
+    const d = documento([
+      essenza('m1', 'Bobina larga', [pezzo('a', 3), pezzo('b', 2)]),
+      essenza('m2', 'Bobina stretta', [])
+    ]);
+    const dopo = trasferisciPezzi(d, { da: 'm1', a: 'm2', pezzi: ['b'] });
+
+    expect(dopo.materiali[0].pezzi.map((p) => p.id)).toEqual(['a']);
+    const arrivato = dopo.materiali[1].pezzi[0];
+    expect(arrivato).toMatchObject({ nome: 'Pezzo b', larghezza: 600, altezza: 400, quantita: 2 });
+    // identità nuova: nell'essenza di arrivo è un'altra riga
+    expect(arrivato.id).not.toBe('b');
+    // ci si posiziona dove sono finite le misure
+    expect(dopo.attivo).toBe('m2');
+  });
+
+  it('copiando, gli originali restano dov’erano', () => {
+    const d = documento([essenza('m1', 'Larga', [pezzo('a', 3)]), essenza('m2', 'Stretta', [])]);
+    const dopo = trasferisciPezzi(d, { da: 'm1', a: 'm2', pezzi: ['a'], copia: true });
+    expect(dopo.materiali[0].pezzi).toHaveLength(1);
+    expect(dopo.materiali[1].pezzi[0].quantita).toBe(3);
+  });
+
+  it('portando solo una parte delle copie, il resto rimane alla partenza', () => {
+    const d = documento([essenza('m1', 'Larga', [pezzo('a', 10)]), essenza('m2', 'Stretta', [])]);
+    const dopo = trasferisciPezzi(d, {
+      da: 'm1',
+      a: 'm2',
+      pezzi: ['a'],
+      quantita: { a: 4 }
+    });
+    expect(dopo.materiali[0].pezzi[0].quantita).toBe(6);
+    expect(dopo.materiali[1].pezzi[0].quantita).toBe(4);
+  });
+
+  it('una quantità oltre il disponibile porta via la riga intera', () => {
+    const d = documento([essenza('m1', 'Larga', [pezzo('a', 2)]), essenza('m2', 'Stretta', [])]);
+    const dopo = trasferisciPezzi(d, { da: 'm1', a: 'm2', pezzi: ['a'], quantita: { a: 99 } });
+    expect(dopo.materiali[0].pezzi).toHaveLength(0);
+    expect(dopo.materiali[1].pezzi[0].quantita).toBe(2);
+  });
+
+  it('con arrivo nullo nasce un’essenza gemella: stesso supporto, nome libero', () => {
+    const larga = {
+      ...essenza('m1', 'Pelle', [pezzo('a', 1)]),
+      modo: 'bobina' as const,
+      bobina: { larghezza: 1400, metri: 30 },
+      lama: 4,
+      margine: 12
+    };
+    const dopo = trasferisciPezzi(documento([larga]), { da: 'm1', a: null, pezzi: ['a'] });
+
+    expect(dopo.materiali).toHaveLength(2);
+    const nata = dopo.materiali[1];
+    expect(nata).toMatchObject({
+      nome: 'Pelle (2)',
+      modo: 'bobina',
+      bobina: { larghezza: 1400, metri: 30 },
+      lama: 4,
+      margine: 12
+    });
+    expect(nata.pezzi).toHaveLength(1);
+  });
+
+  it('il nome chiesto per la nuova essenza vale, se non è già di un’altra', () => {
+    const d = documento([essenza('m1', 'Pelle', [pezzo('a')]), essenza('m2', 'Bianco', [])]);
+    const dopo = trasferisciPezzi(d, { da: 'm1', a: null, pezzi: ['a'], nome: 'Bianco' });
+    expect(dopo.materiali[2].nome).toBe('Bianco (2)');
+  });
+
+  it('arrivando in un’essenza venata i pezzi liberi si bloccano nel loro verso', () => {
+    const d = documento([
+      essenza('m1', 'Liscio', [pezzo('a')]),
+      { ...essenza('m2', 'Venato', []), venatura: 'verticale' as const }
+    ]);
+    const dopo = trasferisciPezzi(d, { da: 'm1', a: 'm2', pezzi: ['a'] });
+    expect(dopo.materiali[1].pezzi[0].ruotabile).toBe(false);
+  });
+
+  it('i versi imposti a mano sui pezzi partiti non restano appesi', () => {
+    const partenza = {
+      ...essenza('m1', 'Larga', [pezzo('a', 3), pezzo('b', 1)]),
+      orientamenti: { 'a#0': true, 'b#0': false }
+    };
+    const dopo = trasferisciPezzi(documento([partenza, essenza('m2', 'Stretta', [])]), {
+      da: 'm1',
+      a: 'm2',
+      pezzi: ['a']
+    });
+    expect(dopo.materiali[0].orientamenti).toEqual({ 'b#0': false });
+    expect(dopo.materiali[1].orientamenti).toEqual({});
+  });
+
+  it('senza niente da portare il documento non si tocca', () => {
+    const d = documento([essenza('m1', 'Larga', [pezzo('a')]), essenza('m2', 'Stretta', [])]);
+    expect(trasferisciPezzi(d, { da: 'm1', a: 'm2', pezzi: [] })).toBe(d);
+    expect(trasferisciPezzi(d, { da: 'm1', a: 'm1', pezzi: ['a'] })).toBe(d);
+    expect(trasferisciPezzi(d, { da: 'ignoto', a: 'm2', pezzi: ['a'] })).toBe(d);
+    expect(trasferisciPezzi(d, { da: 'm1', a: 'ignoto', pezzi: ['a'] })).toBe(d);
+    expect(trasferisciPezzi(d, { da: 'm1', a: 'm2', pezzi: ['a'], quantita: { a: 0 } })).toBe(d);
+  });
+});
+
+describe('duplicaEssenza', () => {
+  it('sdoppia l’essenza con tutta la lista, lasciando intatta l’originale', () => {
+    const d = documento([essenza('m1', 'Rovere', [pezzo('a', 2), pezzo('b', 5)])]);
+    const dopo = duplicaEssenza(d, 'm1');
+
+    expect(dopo.materiali[0].pezzi).toHaveLength(2);
+    expect(dopo.materiali[0].pezzi[0].quantita).toBe(2);
+    const gemella = dopo.materiali[1];
+    expect(gemella.nome).toBe('Rovere (2)');
+    expect(gemella.pezzi.map((p) => [p.nome, p.quantita])).toEqual([
+      ['Pezzo a', 2],
+      ['Pezzo b', 5]
+    ]);
+    // liste distinte: toccare la copia non tocca l'originale
+    expect(gemella.pezzi[0].id).not.toBe(dopo.materiali[0].pezzi[0].id);
+    expect(dopo.attivo).toBe(gemella.id);
+  });
+
+  it('anche un’essenza ancora vuota si può sdoppiare', () => {
+    const d = documento([{ ...essenza('m1', 'Rovere', []), margine: 25 }]);
+    const dopo = duplicaEssenza(d, 'm1');
+    expect(dopo.materiali).toHaveLength(2);
+    expect(dopo.materiali[1]).toMatchObject({ nome: 'Rovere (2)', margine: 25, pezzi: [] });
+  });
+
+  it('un’essenza che non c’è non cambia niente', () => {
+    const d = documento([essenza('m1', 'Rovere', [])]);
+    expect(duplicaEssenza(d, 'ignoto')).toBe(d);
+  });
+});
+
+describe('nomeEssenzaLibero', () => {
+  it('scala i numeri finché il nome è libero, senza badare alle maiuscole', () => {
+    const m = [essenza('1', 'Bianco', []), essenza('2', 'bianco (2)', [])];
+    expect(nomeEssenzaLibero(m, 'Bianco')).toBe('Bianco (3)');
+    expect(nomeEssenzaLibero(m, 'Nero')).toBe('Nero');
+    expect(nomeEssenzaLibero(m, '  ')).toBe('Materiale');
   });
 });

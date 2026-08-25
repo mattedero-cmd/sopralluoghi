@@ -2922,6 +2922,75 @@ a {
   word-break: break-word;
 }
 
+/* scelta dei pezzi da portare in un'altra essenza */
+.scelta-testa {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pv-voce.scelta {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.pv-voce.scelta.attiva {
+  border-color: var(--accento);
+}
+
+.pv-voce.scelta .tocca {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  /* il bersaglio del tocco è tutta la riga del nome, non solo la casella */
+  min-height: 34px;
+  cursor: pointer;
+}
+
+.pv-voce.scelta .tocca input {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accento);
+}
+
+.pv-voce.scelta .q {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pv-voce.scelta .q input.c {
+  width: 54px;
+  min-height: 34px;
+  padding: 4px 6px;
+  text-align: center;
+  font-size: 13px;
+  background: var(--sfondo);
+  color: var(--testo);
+  border: 1px solid var(--bordo);
+  border-radius: 8px;
+}
+
+/* su telefono la riga va su due linee: nome sopra, misure e copie sotto */
+@media (max-width: 520px) {
+  .pv-voce.scelta {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 6px;
+  }
+  .pv-voce.scelta .tocca {
+    grid-column: 1 / -1;
+  }
+}
+
+.modale .et {
+  display: block;
+  margin: 12px 0 6px;
+  font-size: 12px;
+  color: var(--testo-2);
+}
+
 @media print {
   .nest-titolo,
   .nest-campi,

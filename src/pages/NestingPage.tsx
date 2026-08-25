@@ -23,14 +23,19 @@ import { pianoEtichetta } from '../utils/etichettaNesting';
 import { prossimaTinta, tintaBordo, tintaSfondo } from '../utils/tinte';
 import {
   cambioVenatura,
+  duplicaEssenza,
+  essenzaGemella,
+  etichettaSupporto,
   materialeNuovo,
   migraDocumento,
   opzioniRicerca,
   parametriDi,
   pezziDi,
   pezziRichiesti,
+  trasferisciPezzi,
   type DocumentoNesting,
   type MaterialeNesting,
+  type Trasferimento,
   type Venatura
 } from '../utils/documentoNesting';
 import {
@@ -258,6 +263,7 @@ export function NestingPage({
   });
   const [caricamento, setCaricamento] = useState(!!id);
   const [incolla, setIncolla] = useState(false);
+  const [trasferimento, setTrasferimento] = useState(false);
   const [apri, setApri] = useState(false);
   const [chiediNome, setChiediNome] = useState(false);
   const [esporta, setEsporta] = useState(false);
@@ -345,6 +351,44 @@ export function NestingPage({
       const materiali = d.materiali.filter((m) => m.id !== id);
       return { ...d, materiali, attivo: materiali[0].id };
     });
+
+  /**
+   * Sdoppia l'essenza corrente con tutta la sua lista.
+   *
+   * Lo stesso materiale su una bobina di fascia diversa: la lista è già
+   * quella giusta, si cambia solo il supporto e si tolgono i pezzi che
+   * conviene tagliare di là.
+   */
+  const duplicaMateriale = () => {
+    const dopo = duplicaEssenza(doc, doc.attivo);
+    if (dopo === doc) return;
+    setDoc(dopo);
+    mostraToast(
+      'successo',
+      `Essenza duplicata in «${dopo.materiali[dopo.materiali.length - 1].nome}»: cambia il supporto e togli quello che non ci va.`
+    );
+  };
+
+  /** porta i pezzi scelti in un'altra essenza (o in una nuova, gemella) */
+  const portaPezzi = (t: Omit<Trasferimento, 'da'>) => {
+    const dopo = trasferisciPezzi(doc, { ...t, da: doc.attivo });
+    setTrasferimento(false);
+    if (dopo === doc) return;
+    setDoc(dopo);
+    const arrivo = dopo.materiali.find((m) => m.id === dopo.attivo);
+    const n = t.pezzi.length;
+    const verbo = t.copia
+      ? n === 1
+        ? 'copiato'
+        : 'copiati'
+      : n === 1
+        ? 'spostato'
+        : 'spostati';
+    mostraToast(
+      'successo',
+      `${n} ${n === 1 ? 'pezzo' : 'pezzi'} ${verbo} in «${arrivo?.nome ?? ''}».`
+    );
+  };
 
   /** gira di 90° una singola copia già impaginata e ricalcola */
   const giraPezzo = (chiave: string, eraRuotato: boolean) =>
@@ -666,16 +710,7 @@ export function NestingPage({
           modello.nome = nome;
           return modello;
         }
-        const nuovo: MaterialeNesting = {
-          ...materialeNuovo(nuovoId(), nome),
-          modo: modello.modo,
-          lastra: { ...modello.lastra },
-          bobina: { ...modello.bobina },
-          venatura: modello.venatura,
-          lama: modello.lama,
-          abbondanza: modello.abbondanza,
-          margine: modello.margine
-        };
+        const nuovo = essenzaGemella(modello, nome);
         materiali.push(nuovo);
         return nuovo;
       };
@@ -865,6 +900,14 @@ export function NestingPage({
             value={mat.nome}
             onChange={(e) => aggiornaMat({ nome: e.target.value })}
           />
+          <button
+            className="btn icona piccolo"
+            aria-label={`Duplica l’essenza ${mat.nome}`}
+            title="Duplica l’essenza con tutta la lista (stesso materiale, altro supporto)"
+            onClick={duplicaMateriale}
+          >
+            <Icona nome="duplica" dimensione={16} />
+          </button>
           <button
             className="btn icona piccolo"
             aria-label={`Elimina l’essenza ${mat.nome}`}
@@ -1093,6 +1136,15 @@ export function NestingPage({
           </button>
           {mat.pezzi.length > 0 && (
             <button
+              className="btn"
+              title="Porta i pezzi scelti in un’altra essenza, senza ribattere le misure"
+              onClick={() => setTrasferimento(true)}
+            >
+              <Icona nome="sposta" dimensione={18} /> Porta in un’essenza
+            </button>
+          )}
+          {mat.pezzi.length > 0 && (
+            <button
               className="btn icona"
               aria-label="Svuota la lista dell’essenza"
               title="Svuota la lista"
@@ -1257,6 +1309,15 @@ export function NestingPage({
       </main>
 
       {incolla && <ModaleIncolla onChiudi={() => setIncolla(false)} onCompila={compilaDaTesto} />}
+
+      {trasferimento && (
+        <ModaleTrasferisci
+          origine={mat}
+          altre={doc.materiali.filter((m) => m.id !== mat.id)}
+          onChiudi={() => setTrasferimento(false)}
+          onPorta={portaPezzi}
+        />
+      )}
 
       {chiediNome && (
         <ModaleNome
@@ -1880,6 +1941,181 @@ function ModaleArchivio({
 }
 
 /** Modale "Incolla da testo": anteprima di verifica prima di compilare. */
+/**
+ * PORTA I PEZZI IN UN'ALTRA ESSENZA.
+ *
+ * Le misure di un cantiere si prendono una volta sola e finiscono tutte sotto
+ * lo stesso materiale. Quando conviene tagliarne una parte su un altro
+ * supporto — la stessa essenza, ma una bobina di fascia diversa — da qui si
+ * spuntano i pezzi e si mandano di là: nomi, misure e quantità li porta il
+ * programma, non la mano.
+ */
+function ModaleTrasferisci({
+  origine,
+  altre,
+  onChiudi,
+  onPorta
+}: {
+  origine: MaterialeNesting;
+  altre: MaterialeNesting[];
+  onChiudi: () => void;
+  onPorta: (t: Omit<Trasferimento, 'da'>) => void;
+}) {
+  const [scelti, setScelti] = useState<Record<string, boolean>>({});
+  /** copie da portare, solo dove si è cambiato il numero proposto */
+  const [copieDa, setCopieDa] = useState<Record<string, number>>({});
+  /** essenza di arrivo; null = una nuova, gemella di questa */
+  const [verso, setVerso] = useState<string | null>(altre[0]?.id ?? null);
+  const [copia, setCopia] = useState(false);
+  const [nome, setNome] = useState(origine.nome);
+
+  const intere = (p: PezzoNesting) => Math.max(0, Math.round(p.quantita) || 0);
+  const copie = (p: PezzoNesting) => Math.min(intere(p), copieDa[p.id] ?? intere(p));
+
+  const pezzi = origine.pezzi.filter((p) => scelti[p.id] && copie(p) > 0);
+  const totaleCopie = pezzi.reduce((n, p) => n + copie(p), 0);
+  const tuttiScelti = origine.pezzi.length > 0 && pezzi.length === origine.pezzi.length;
+  const arrivo = altre.find((m) => m.id === verso);
+
+  return (
+    <Modale titolo="Porta i pezzi in un’altra essenza" onChiudi={onChiudi}>
+      <p className="nest-sub">
+        Spunta i pezzi da tagliare su un altro supporto — lo stesso materiale su
+        una bobina di fascia diversa — e portali di là. Puoi portarne anche solo
+        una parte delle copie: quelle che avanzano restano qui.
+      </p>
+
+      <div className="pv-testa scelta-testa">
+        <span>
+          {pezzi.length} di {origine.pezzi.length} {origine.pezzi.length === 1 ? 'pezzo' : 'pezzi'}
+          {totaleCopie > 0 && ` · ${totaleCopie} ${totaleCopie === 1 ? 'copia' : 'copie'}`}
+        </span>
+        <button
+          className="btn piccolo"
+          onClick={() =>
+            setScelti(
+              tuttiScelti
+                ? {}
+                : Object.fromEntries(origine.pezzi.map((p) => [p.id, true]))
+            )
+          }
+        >
+          {tuttiScelti ? 'Nessuno' : 'Tutti'}
+        </button>
+      </div>
+
+      <div className="nest-anteprima">
+        <div className="pv-lista">
+          {origine.pezzi.map((p) => (
+            <div className={scelti[p.id] ? 'pv-voce scelta attiva' : 'pv-voce scelta'} key={p.id}>
+              <label className="tocca">
+                <input
+                  type="checkbox"
+                  checked={!!scelti[p.id]}
+                  onChange={(e) => setScelti((s) => ({ ...s, [p.id]: e.target.checked }))}
+                />
+                <span className="n">{p.nome || 'senza nome'}</span>
+              </label>
+              <span className="d">
+                {formattaNumero(p.larghezza)}×{formattaNumero(p.altezza)} mm
+              </span>
+              <span className="q">
+                <CampoNumero
+                  classe="c"
+                  etichetta={`Copie da portare di ${p.nome || 'pezzo senza nome'}`}
+                  intero
+                  min={0}
+                  valore={copie(p)}
+                  onCambia={(v) =>
+                    setCopieDa((c) => ({ ...c, [p.id]: Math.min(intere(p), v) }))
+                  }
+                />
+                <small>/ {intere(p)}</small>
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <span className="et">Dove portarli</span>
+      <div className="nest-essenze" role="group" aria-label="Essenza di arrivo">
+        {altre.map((m) => (
+          <button
+            key={m.id}
+            className={m.id === verso ? 'attivo' : ''}
+            onClick={() => setVerso(m.id)}
+          >
+            {m.nome || 'senza nome'}
+            <small>{pezziRichiesti(m)}</small>
+          </button>
+        ))}
+        <button className={verso === null ? 'attivo' : ''} onClick={() => setVerso(null)}>
+          ＋ Nuova essenza
+        </button>
+      </div>
+      {verso === null ? (
+        <label className="campo" style={{ marginTop: 8 }}>
+          <span>Nome della nuova essenza</span>
+          <input type="text" value={nome} onChange={(e) => setNome(e.target.value)} />
+          <small>
+            Nasce gemella di «{origine.nome || 'questa'}»: stesso supporto, stessa venatura,
+            stesse abbondanze. Poi cambi la misura della bobina e basta.
+          </small>
+        </label>
+      ) : (
+        arrivo && (
+          <p className="nest-sub" style={{ marginTop: 8 }}>
+            {arrivo.nome || 'senza nome'}: {etichettaSupporto(arrivo)}
+            {arrivo.venatura === 'nessuna' ? '' : `, venatura ${arrivo.venatura}`}.
+          </p>
+        )
+      )}
+
+      <div className="segmenti" role="group" aria-label="Sposta o copia" style={{ marginTop: 10 }}>
+        <button className={copia ? '' : 'attivo'} onClick={() => setCopia(false)}>
+          Sposta
+        </button>
+        <button className={copia ? 'attivo' : ''} onClick={() => setCopia(true)}>
+          Copia
+        </button>
+      </div>
+      <p className="nest-sub" style={{ marginTop: 8 }}>
+        {copia
+          ? 'I pezzi restano anche qui: usalo per tagliare la stessa lista su due supporti.'
+          : 'I pezzi lasciano questa essenza. Portandone solo una parte delle copie, qui resta il resto.'}
+      </p>
+
+      <div className="riga-pulsanti" style={{ marginTop: 12 }}>
+        <button className="btn" onClick={onChiudi}>
+          Annulla
+        </button>
+        <button
+          className="btn primario"
+          style={{ flex: 1 }}
+          disabled={pezzi.length === 0}
+          onClick={() =>
+            onPorta({
+              a: verso,
+              pezzi: pezzi.map((p) => p.id),
+              quantita: Object.fromEntries(pezzi.map((p) => [p.id, copie(p)])),
+              copia,
+              nome
+            })
+          }
+        >
+          {totaleCopie === 0
+            ? copia
+              ? 'Copia'
+              : 'Sposta'
+            : `${copia ? 'Copia' : 'Sposta'} ${totaleCopie} ${
+                totaleCopie === 1 ? 'copia' : 'copie'
+              }`}
+        </button>
+      </div>
+    </Modale>
+  );
+}
+
 function ModaleIncolla({
   onChiudi,
   onCompila
