@@ -53,6 +53,15 @@ export const LASTRA_PREDEFINITA = { larghezza: 2500, altezza: 1250 };
 /** la bobina più comune in laboratorio: 1220 mm di fascia */
 export const BOBINA_PREDEFINITA = { larghezza: 1220, metri: 50 };
 
+/**
+ * Le fasce di rotolo che si trovano davvero (mm).
+ *
+ * Pellicole e controllo solare arrivano in queste misure: tenerle a portata
+ * di tocco serve a scalare da una fascia all'altra — quello che non entra
+ * nella 915 si prova sulla 1220, poi sulla 1520 — senza ribattere il numero.
+ */
+export const FASCE_BOBINA = [915, 1220, 1520];
+
 export function materialeNuovo(id: string, nome: string): MaterialeNesting {
   return {
     id,
@@ -127,6 +136,12 @@ export interface Trasferimento {
   copia?: boolean;
   /** nome della nuova essenza, quando se ne crea una */
   nome?: string;
+  /**
+   * Il supporto della nuova essenza, quando se ne crea una. È il gesto vero
+   * del lavoro: i pezzi rimasti fuori si portano su un rotolo di un'altra
+   * fascia, e la fascia si sceglie mentre li si sposta.
+   */
+  supporto?: { modo: ModoSupporto; lastra: MaterialeNesting['lastra']; bobina: MaterialeNesting['bobina'] };
 }
 
 /**
@@ -156,6 +171,14 @@ export function trasferisciPezzi(doc: DocumentoNesting, t: Trasferimento): Docum
   if (t.a !== null && !destinazione) return doc;
   if (!destinazione) {
     destinazione = essenzaGemella(origine, nomeEssenzaLibero(materiali, t.nome ?? origine.nome));
+    if (t.supporto) {
+      destinazione = {
+        ...destinazione,
+        modo: t.supporto.modo,
+        lastra: { ...t.supporto.lastra },
+        bobina: { ...t.supporto.bobina }
+      };
+    }
     materiali = [...materiali, destinazione];
   }
   const arrivo = destinazione;

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BOBINA_PREDEFINITA,
+  LASTRA_PREDEFINITA,
   cambioVenatura,
   duplicaEssenza,
   nomeEssenzaLibero,
@@ -422,5 +424,49 @@ describe('nomeEssenzaLibero', () => {
     expect(nomeEssenzaLibero(m, 'Bianco')).toBe('Bianco (3)');
     expect(nomeEssenzaLibero(m, 'Nero')).toBe('Nero');
     expect(nomeEssenzaLibero(m, '  ')).toBe('Materiale');
+  });
+});
+
+describe('la nuova essenza nasce già sul supporto giusto', () => {
+  it('la fascia si sceglie mentre si spostano i pezzi rimasti fuori', () => {
+    const stretta = {
+      ...essenza('m1', 'Controllo solare', [pezzo('a', 2), pezzo('b', 1)]),
+      modo: 'bobina' as const,
+      bobina: { larghezza: 915, metri: 30 },
+      margine: 8
+    };
+    const dopo = trasferisciPezzi(documento([stretta]), {
+      da: 'm1',
+      a: null,
+      pezzi: ['b'],
+      supporto: {
+        modo: 'bobina',
+        lastra: LASTRA_PREDEFINITA,
+        bobina: { larghezza: 1220, metri: 30 }
+      }
+    });
+
+    const nata = dopo.materiali[1];
+    expect(nata.modo).toBe('bobina');
+    expect(nata.bobina).toEqual({ larghezza: 1220, metri: 30 });
+    // il resto resta quello dell'essenza di partenza
+    expect(nata.margine).toBe(8);
+    expect(nata.pezzi.map((p) => p.nome)).toEqual(['Pezzo b']);
+    expect(dopo.materiali[0].pezzi.map((p) => p.nome)).toEqual(['Pezzo a']);
+  });
+
+  it('il supporto non tocca un’essenza di arrivo che esiste già', () => {
+    const d = documento([
+      essenza('m1', 'Larga', [pezzo('a')]),
+      { ...essenza('m2', 'Stretta', []), modo: 'bobina' as const, bobina: { larghezza: 915, metri: 10 } }
+    ]);
+    const dopo = trasferisciPezzi(d, {
+      da: 'm1',
+      a: 'm2',
+      pezzi: ['a'],
+      supporto: { modo: 'lastre', lastra: { larghezza: 9999, altezza: 9999 }, bobina: BOBINA_PREDEFINITA }
+    });
+    expect(dopo.materiali[1].modo).toBe('bobina');
+    expect(dopo.materiali[1].bobina).toEqual({ larghezza: 915, metri: 10 });
   });
 });

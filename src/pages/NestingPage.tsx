@@ -26,6 +26,7 @@ import {
   duplicaEssenza,
   essenzaGemella,
   etichettaSupporto,
+  FASCE_BOBINA,
   materialeNuovo,
   migraDocumento,
   opzioniRicerca,
@@ -128,6 +129,30 @@ function CampoNumero({
         setTesto(String(v));
       }}
     />
+  );
+}
+
+/**
+ * LE FASCE DI ROTOLO A PORTATA DI TOCCO.
+ *
+ * Si lavora scalando di fascia — quello che non entra nella 915 va sulla
+ * 1220, poi sulla 1520 — e ogni volta la misura è sempre una di queste tre:
+ * ribatterla a mano è tempo perso e un'occasione di sbagliare cifra.
+ */
+function FasceBobina({ valore, onSceglie }: { valore: number; onSceglie: (v: number) => void }) {
+  return (
+    <div className="nest-fasce" role="group" aria-label="Fasce di rotolo più comuni">
+      <span>Fasce comuni</span>
+      {FASCE_BOBINA.map((f) => (
+        <button
+          key={f}
+          className={Math.round(valore) === f ? 'attivo' : ''}
+          onClick={() => onSceglie(f)}
+        >
+          {formattaNumero(f / 10)} cm
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -264,6 +289,17 @@ export function NestingPage({
   const [caricamento, setCaricamento] = useState(!!id);
   const [incolla, setIncolla] = useState(false);
   const [trasferimento, setTrasferimento] = useState(false);
+  /**
+   * PEZZI SPUNTATI NELLA LISTA.
+   *
+   * Si sceglie guardando la lista, senza cambiare schermata: quello che non
+   * entra nel supporto si spunta lì dov'è scritto e si manda su un rotolo di
+   * un'altra fascia.
+   */
+  const [selezione, setSelezione] = useState<Record<string, boolean>>({});
+  /** copie proposte al trasferimento, quando la scelta nasce dagli scarti */
+  const [copieScelte, setCopieScelte] = useState<Record<string, number>>({});
+  const rifTabella = useRef<HTMLDivElement>(null);
   const [apri, setApri] = useState(false);
   const [chiediNome, setChiediNome] = useState(false);
   const [esporta, setEsporta] = useState(false);
@@ -323,6 +359,19 @@ export function NestingPage({
 
   const mat = doc.materiali.find((m) => m.id === doc.attivo) ?? doc.materiali[0];
 
+  // la scelta vale per la lista che si sta guardando: cambiando essenza si
+  // riparte puliti, altrimenti resterebbero spuntati pezzi di un'altra
+  useEffect(() => {
+    setSelezione({});
+    setCopieScelte({});
+  }, [doc.attivo]);
+
+  const selezionati = mat.pezzi.filter((p) => selezione[p.id]);
+  const copieSelezionate = selezionati.reduce(
+    (n, p) => n + Math.min(Math.max(0, Math.round(p.quantita) || 0), copieScelte[p.id] ?? Infinity),
+    0
+  );
+
   const aggiornaMat = (modifiche: Partial<MaterialeNesting>) =>
     setDoc((d) => ({
       ...d,
@@ -373,6 +422,8 @@ export function NestingPage({
   const portaPezzi = (t: Omit<Trasferimento, 'da'>) => {
     const dopo = trasferisciPezzi(doc, { ...t, da: doc.attivo });
     setTrasferimento(false);
+    setSelezione({});
+    setCopieScelte({});
     if (dopo === doc) return;
     setDoc(dopo);
     const arrivo = dopo.materiali.find((m) => m.id === dopo.attivo);
@@ -480,6 +531,25 @@ export function NestingPage({
     for (const s of esito.scartati) m.set(s.id, (m.get(s.id) ?? 0) + 1);
     return m;
   }, [esito]);
+
+  /**
+   * Spunta i pezzi rimasti fuori, con le copie che non sono entrate.
+   *
+   * È il gesto della cascata di fasce: quello che non sta sulla 915 si porta
+   * sulla 1220, quello che non sta neanche lì sulla 1520. Di un pezzo da sei
+   * copie, se ne sono entrate quattro, si propongono le due rimaste.
+   */
+  const selezionaFuori = () => {
+    const scelti: Record<string, boolean> = {};
+    const copie: Record<string, number> = {};
+    for (const [id, n] of fuoriPerPezzo) {
+      scelti[id] = true;
+      copie[id] = n;
+    }
+    setSelezione(scelti);
+    setCopieScelte(copie);
+    rifTabella.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
 
   const scartatiRaggruppati = useMemo(() => {
     const mappa = new Map<string, { nome: string; l: number; a: number; n: number }>();
@@ -974,6 +1044,10 @@ export function NestingPage({
                 <small>Lunghezza totale sul rotolo</small>
               </label>
             </div>
+            <FasceBobina
+              valore={mat.bobina.larghezza}
+              onSceglie={(v) => aggiornaMat({ bobina: { ...mat.bobina, larghezza: v } })}
+            />
             <p className="nest-sub">
               Il rotolo si impagina come una striscia unica. Dove spezzarlo in blocchi
               maneggevoli lo decide l’esportazione del PDF, seguendo i pezzi impaginati.
@@ -1035,9 +1109,31 @@ export function NestingPage({
 
         {/* --- Rettangoli ----------------------------------------------- */}
         <h2 className="nest-titolo">Rettangoli — {mat.nome || 'essenza senza nome'}</h2>
+        {selezionati.length > 0 && (
+          <div className="nest-barra-scelta">
+            <span>
+              <strong>{selezionati.length}</strong>{' '}
+              {selezionati.length === 1 ? 'pezzo scelto' : 'pezzi scelti'} ·{' '}
+              {copieSelezionate} {copieSelezionate === 1 ? 'copia' : 'copie'}
+            </span>
+            <button
+              className="btn piccolo"
+              onClick={() => {
+                setSelezione({});
+                setCopieScelte({});
+              }}
+            >
+              Annulla
+            </button>
+            <button className="btn piccolo primario" onClick={() => setTrasferimento(true)}>
+              Altro supporto…
+            </button>
+          </div>
+        )}
         {mat.pezzi.length > 0 && (
-          <div className="nest-tabella">
+          <div className="nest-tabella" ref={rifTabella}>
             <div className="nest-intestazione">
+              <span />
               <span />
               <span>Nome</span>
               <span className="nest-misure">
@@ -1052,7 +1148,21 @@ export function NestingPage({
               const fuori = fuoriPerPezzo.get(p.id) ?? 0;
               const totale = Math.max(0, Math.round(p.quantita) || 0);
               return (
-              <div className={fuori > 0 ? 'nest-riga fuori' : 'nest-riga'} key={p.id}>
+              <div
+                className={`nest-riga${fuori > 0 ? ' fuori' : ''}${
+                  selezione[p.id] ? ' scelto' : ''
+                }`}
+                key={p.id}
+              >
+                <input
+                  type="checkbox"
+                  className="nest-spunta"
+                  aria-label={`Scegli ${p.nome || 'il pezzo'} per portarlo su un altro supporto`}
+                  checked={!!selezione[p.id]}
+                  onChange={(e) =>
+                    setSelezione((sel) => ({ ...sel, [p.id]: e.target.checked }))
+                  }
+                />
                 <span
                   className="nest-tinta"
                   style={{ background: tintaSfondo(p.tinta), borderColor: tintaBordo(p.tinta) }}
@@ -1136,11 +1246,12 @@ export function NestingPage({
           </button>
           {mat.pezzi.length > 0 && (
             <button
-              className="btn"
-              title="Porta i pezzi scelti in un’altra essenza, senza ribattere le misure"
+              className={selezionati.length > 0 ? 'btn primario' : 'btn'}
+              title="Porta i pezzi scelti su un altro supporto, senza ribattere le misure"
               onClick={() => setTrasferimento(true)}
             >
-              <Icona nome="sposta" dimensione={18} /> Porta in un’essenza
+              <Icona nome="sposta" dimensione={18} />{' '}
+              {selezionati.length > 0 ? `Sposta ${selezionati.length} pezzi` : 'Sposta pezzi'}
             </button>
           )}
           {mat.pezzi.length > 0 && (
@@ -1238,6 +1349,9 @@ export function NestingPage({
                     </li>
                   ))}
                 </ul>
+                <button className="btn piccolo" onClick={selezionaFuori}>
+                  <Icona nome="sposta" dimensione={16} /> Spunta quelli rimasti fuori
+                </button>
               </div>
             )}
 
@@ -1314,6 +1428,8 @@ export function NestingPage({
         <ModaleTrasferisci
           origine={mat}
           altre={doc.materiali.filter((m) => m.id !== mat.id)}
+          iniziali={selezione}
+          copieIniziali={copieScelte}
           onChiudi={() => setTrasferimento(false)}
           onPorta={portaPezzi}
         />
@@ -1953,21 +2069,37 @@ function ModaleArchivio({
 function ModaleTrasferisci({
   origine,
   altre,
+  iniziali,
+  copieIniziali,
   onChiudi,
   onPorta
 }: {
   origine: MaterialeNesting;
   altre: MaterialeNesting[];
+  /** pezzi già spuntati nella lista: la modale continua quella scelta */
+  iniziali: Record<string, boolean>;
+  /** copie proposte, quando la scelta viene dai pezzi rimasti fuori */
+  copieIniziali: Record<string, number>;
   onChiudi: () => void;
   onPorta: (t: Omit<Trasferimento, 'da'>) => void;
 }) {
-  const [scelti, setScelti] = useState<Record<string, boolean>>({});
+  const [scelti, setScelti] = useState<Record<string, boolean>>(() => ({ ...iniziali }));
   /** copie da portare, solo dove si è cambiato il numero proposto */
-  const [copieDa, setCopieDa] = useState<Record<string, number>>({});
-  /** essenza di arrivo; null = una nuova, gemella di questa */
-  const [verso, setVerso] = useState<string | null>(altre[0]?.id ?? null);
+  const [copieDa, setCopieDa] = useState<Record<string, number>>(() => ({ ...copieIniziali }));
+  /**
+   * Essenza di arrivo; null = una nuova. Venendo da una scelta fatta nella
+   * lista si parte da lì: quei pezzi non entrano nel supporto di adesso, e
+   * quasi sempre vanno su una fascia che ancora non c'è.
+   */
+  const [verso, setVerso] = useState<string | null>(
+    Object.values(iniziali).some(Boolean) ? null : (altre[0]?.id ?? null)
+  );
   const [copia, setCopia] = useState(false);
   const [nome, setNome] = useState(origine.nome);
+  /** il supporto della nuova essenza: si sceglie qui, non dopo */
+  const [modo, setModo] = useState(origine.modo);
+  const [lastra, setLastra] = useState({ ...origine.lastra });
+  const [bobina, setBobina] = useState({ ...origine.bobina });
 
   const intere = (p: PezzoNesting) => Math.max(0, Math.round(p.quantita) || 0);
   const copie = (p: PezzoNesting) => Math.min(intere(p), copieDa[p.id] ?? intere(p));
@@ -2054,14 +2186,70 @@ function ModaleTrasferisci({
         </button>
       </div>
       {verso === null ? (
-        <label className="campo" style={{ marginTop: 8 }}>
-          <span>Nome della nuova essenza</span>
-          <input type="text" value={nome} onChange={(e) => setNome(e.target.value)} />
-          <small>
-            Nasce gemella di «{origine.nome || 'questa'}»: stesso supporto, stessa venatura,
-            stesse abbondanze. Poi cambi la misura della bobina e basta.
-          </small>
-        </label>
+        <>
+          <label className="campo" style={{ marginTop: 8 }}>
+            <span>Nome della nuova essenza</span>
+            <input type="text" value={nome} onChange={(e) => setNome(e.target.value)} />
+          </label>
+          <span className="et">Il suo supporto</span>
+          <div className="segmenti" role="group" aria-label="Supporto della nuova essenza">
+            <button className={modo === 'lastre' ? 'attivo' : ''} onClick={() => setModo('lastre')}>
+              Lastre
+            </button>
+            <button className={modo === 'bobina' ? 'attivo' : ''} onClick={() => setModo('bobina')}>
+              Bobina
+            </button>
+          </div>
+          {modo === 'bobina' ? (
+            <>
+              <div className="nest-campi" style={{ marginTop: 8 }}>
+                <label className="campo">
+                  <span>Larghezza bobina (mm)</span>
+                  <CampoNumero
+                    valore={bobina.larghezza}
+                    min={1}
+                    onCambia={(v) => setBobina((b) => ({ ...b, larghezza: v }))}
+                  />
+                </label>
+                <label className="campo">
+                  <span>Metri disponibili</span>
+                  <CampoNumero
+                    valore={bobina.metri}
+                    min={0.1}
+                    onCambia={(v) => setBobina((b) => ({ ...b, metri: v }))}
+                  />
+                </label>
+              </div>
+              <FasceBobina
+                valore={bobina.larghezza}
+                onSceglie={(v) => setBobina((b) => ({ ...b, larghezza: v }))}
+              />
+            </>
+          ) : (
+            <div className="nest-campi" style={{ marginTop: 8 }}>
+              <label className="campo">
+                <span>Larghezza (mm)</span>
+                <CampoNumero
+                  valore={lastra.larghezza}
+                  min={1}
+                  onCambia={(v) => setLastra((l) => ({ ...l, larghezza: v }))}
+                />
+              </label>
+              <label className="campo">
+                <span>Altezza (mm)</span>
+                <CampoNumero
+                  valore={lastra.altezza}
+                  min={1}
+                  onCambia={(v) => setLastra((l) => ({ ...l, altezza: v }))}
+                />
+              </label>
+            </div>
+          )}
+          <p className="nest-sub" style={{ marginTop: 8 }}>
+            Per il resto nasce gemella di «{origine.nome || 'questa'}»: stessa venatura, stessa
+            lama, stesse abbondanze e margini.
+          </p>
+        </>
       ) : (
         arrivo && (
           <p className="nest-sub" style={{ marginTop: 8 }}>
@@ -2099,7 +2287,8 @@ function ModaleTrasferisci({
               pezzi: pezzi.map((p) => p.id),
               quantita: Object.fromEntries(pezzi.map((p) => [p.id, copie(p)])),
               copia,
-              nome
+              nome,
+              supporto: { modo, lastra, bobina }
             })
           }
         >
