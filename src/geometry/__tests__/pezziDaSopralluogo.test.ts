@@ -335,3 +335,61 @@ describe('diagnosiPezzi', () => {
     expect(diagnosiPezzi([testo], FOTO)).toMatchObject({ altre: 1, formeChiuse: 0 });
   });
 });
+
+/* --- forme pannellizzate --------------------------------------------- */
+
+describe('forme divise in teli', () => {
+  /** parete 500×230 con 5 cm di abbondanza per lato: si taglia 510×240 */
+  const parete = (giunti: number[]) =>
+    ({
+      ...base,
+      tipo: 'quotaPoligono',
+      punti: [
+        { x: 0, y: 0 },
+        { x: 500, y: 0 },
+        { x: 500, y: 230 },
+        { x: 0, y: 230 }
+      ],
+      segmenti: [
+        { da: 0, a: 1, valore: 500, abbInizio: 5, abbFine: 5 },
+        { da: 1, a: 2, valore: 230, abbInizio: 5, abbFine: 5 },
+        { da: 2, a: 3, valore: 500, abbInizio: 5, abbFine: 5 },
+        { da: 3, a: 0, valore: 230, abbInizio: 5, abbFine: 5 }
+      ],
+      etichetta: 'A1',
+      unita: 'cm',
+      stato: 'reale',
+      pannelli: { asse: 'verticale', sormonto: 2, verso: 'centro', giunti }
+    }) as unknown as Annotazione;
+
+  it('nella distinta arrivano i teli, non la parete intera', () => {
+    const pezzi = pezziDaAnnotazioni([parete([136, 271, 406])], FOTO);
+    expect(pezzi).toHaveLength(4);
+    // millimetri di taglio: 137, 137, 137, 105 cm
+    expect(pezzi.map((p) => p.larghezza)).toEqual([1370, 1370, 1370, 1050]);
+    // l'altezza è quella di taglio, uguale per tutti
+    expect(pezzi.every((p) => p.altezza === 2400)).toBe(true);
+  });
+
+  it('ogni telo porta il suo codice: …a, …b, …c', () => {
+    const pezzi = pezziDaAnnotazioni([parete([136, 271, 406])], FOTO);
+    expect(pezzi.map((p) => p.nome)).toEqual([
+      'Poligono 4 lati A1.a',
+      'Poligono 4 lati A1.b',
+      'Poligono 4 lati A1.c',
+      'Poligono 4 lati A1.d'
+    ]);
+  });
+
+  it('somma dei teli = parete + un sormonto per giunzione', () => {
+    const pezzi = pezziDaAnnotazioni([parete([136, 271, 406])], FOTO);
+    const somma = pezzi.reduce((s, p) => s + p.larghezza, 0);
+    expect(somma).toBe(5100 + 3 * 20);
+  });
+
+  it('senza giunzioni valide resta un pezzo solo', () => {
+    const pezzi = pezziDaAnnotazioni([parete([])], FOTO);
+    expect(pezzi).toHaveLength(1);
+    expect(pezzi[0].larghezza).toBe(5100);
+  });
+});

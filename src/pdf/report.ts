@@ -1,6 +1,8 @@
 import {
   ingombroTaglio,
+  pannelliTaglio,
   raggruppaPezzi,
+  type PannelloTaglio,
   type PezzoDaMisura
 } from '../geometry/pezziDaSopralluogo';
 import { nestingDiProgetto } from '../db/repository';
@@ -16,6 +18,7 @@ import { nomeFormaPoligono, simboliPoligono, versiSegmento } from '../geometry/p
 import {
   codiceCompletoForma,
   codiceLocaleForma,
+  codicePannello,
   confrontaEtichetta,
   eCopiaEtichetta,
   eFormaEtichettabile,
@@ -40,6 +43,7 @@ import {
   type AreaReale
 } from '../geometry/calibrazione';
 import {
+  daMillimetri,
   formattaData,
   formattaDataOra,
   formattaNumero,
@@ -739,7 +743,38 @@ interface RigaMisura {
    * non si stampa, perché lì contano le misure vere della forma.
    */
   taglioMm?: { larghezza: number; altezza: number };
+  /**
+   * TELI di una forma pannellizzata, in millimetri di taglio. Quando ci sono,
+   * nella distinta vanno loro e non la forma intera: è quello che si taglia.
+   */
+  pannelli?: PannelloTaglio[];
+  /** i teli scritti per esteso: «4 teli · A1.a 137 · A1.b 137 … (sormonto 2)» */
+  teli?: string;
   stato: StatoMisura;
+}
+
+/**
+ * I teli di una forma pannellizzata, scritti per il report.
+ *
+ * Nel PDF la riga resta una — la parete è una — ma sotto la misura di taglio
+ * compare l'elenco dei teli con il loro codice: è quello che si porta in
+ * laboratorio e si scrive sul rotolo prima di tagliarlo.
+ */
+function testoTeli(
+  pannelli: PannelloTaglio[] | undefined,
+  codice: string | undefined,
+  sormonto: number,
+  unita: Quota['unita']
+): string | undefined {
+  if (!pannelli || pannelli.length < 2) return undefined;
+  const misura = (v: number) => formattaNumero(Math.round(daMillimetri(v, unita) * 100) / 100);
+  const elenco = pannelli
+    .map(
+      (t) =>
+        `${codice ? codicePannello(codice, t.indice - 1) : `${t.indice}`} ${misura(t.larghezza)}×${misura(t.altezza)}`
+    )
+    .join(' · ');
+  return `${pannelli.length} teli · ${elenco} ${unita} · sormonto ${formattaNumero(sormonto)} ${unita}`;
 }
 
 /** Converte un'area da (unità lineari)² a m² */
@@ -796,6 +831,10 @@ function dettaglioPoligono(formaMis: QuotaPoligono, fotoMis: Foto): Partial<Riga
   }
   // l'ingombro di taglio segue la stessa fonte della misura: l'originale
   out.taglioMm = ingombroTaglio(formaMis, fotoMis) ?? undefined;
+  out.pannelli = pannelliTaglio(formaMis) ?? undefined;
+  // il codice arriva dopo, dal chiamante: qui si scrive l'elenco senza codici
+  // e chi ha il codice lo riscrive (vedi righeMisureFoto)
+  out.teli = testoTeli(out.pannelli, undefined, formaMis.pannelli?.sormonto ?? 0, formaMis.unita);
   const perimetro = perimetroReale(formaMis);
   if (perimetro !== null) out.perimetro = `perim. ${formattaNumero(perimetro)} ${formaMis.unita}`;
   const angoli = angoliTriangolo(formaMis);
@@ -880,6 +919,8 @@ function righeMisureFoto(
       else reale = `${n(m.baseSup)} · ${n(m.latoDx)} · ${n(m.baseInf)} · ${n(m.latoSx)} ${a.unita}`;
       const rigaR: RigaMisura = { codice: codiceForma(a), forma: nome, reale, stato: a.stato, pezzo: true };
       rigaR.taglioMm = ingombroTaglio(a, foto) ?? undefined;
+      rigaR.pannelli = pannelliTaglio(a) ?? undefined;
+      rigaR.teli = testoTeli(rigaR.pannelli, rigaR.codice, a.pannelli?.sormonto ?? 0, a.unita);
       const areaR = areaElemento(a, foto);
       if (areaR) {
         rigaR.area = formattaArea(areaR);
@@ -907,6 +948,7 @@ function righeMisureFoto(
           stato: formaMis.stato,
           pezzo: true
         };
+        riga.teli = testoTeli(riga.pannelli, riga.codice, formaMis.pannelli?.sormonto ?? 0, formaMis.unita);
         if (eCopiaEtichetta(a) && infoFam) riga.derivaDa = codiceCompletoForma(percorso, base);
         righe.push(riga);
       } else {
@@ -926,6 +968,7 @@ function righeMisureFoto(
           riga.codice = codiceCompletoForma(percorso, base); // "A1" senza sotto-indice
           riga.collegati = codiciCopie(ctx, famKey, percorso);
         }
+        riga.teli = testoTeli(riga.pannelli, riga.codice, formaMis.pannelli?.sormonto ?? 0, formaMis.unita);
         righe.push(riga);
       }
     } else if (a.tipo === 'quotaTecnica') {
@@ -1012,10 +1055,11 @@ function cellaReale(m: RigaMisura): Content {
 
 /** Colonna "Taglio": misura di taglio + dettaglio abbondanze */
 function cellaTaglio(m: RigaMisura): Content {
-  if (!m.taglio && !m.abbondanze) return { text: '—', color: GRIGIO_CHIARO, fontSize: 9 };
+  if (!m.taglio && !m.abbondanze && !m.teli) return { text: '—', color: GRIGIO_CHIARO, fontSize: 9 };
   const linee: Content[] = [];
   if (m.taglio) linee.push({ text: m.taglio, color: VERDE_TAGLIO, bold: true, fontSize: 9.5 });
   if (m.abbondanze) linee.push({ text: m.abbondanze, color: GRIGIO, fontSize: 8, margin: [0, 1, 0, 0] });
+  if (m.teli) linee.push({ text: m.teli, color: VERDE_TAGLIO, fontSize: 8, margin: [0, 1, 0, 0] });
   return { stack: linee };
 }
 
@@ -1433,7 +1477,8 @@ function distintaTaglio(
     );
     misure.forEach((m) => {
       const qta = m.quantita && m.quantita > 1 ? m.quantita : 1;
-      nPezzi += qta;
+      // una parete divisa in quattro teli sono quattro pezzi da tagliare
+      nPezzi += qta * Math.max(1, m.pannelli?.length ?? 1);
       if (m.areaM2 !== undefined) areaTot += m.areaM2 * qta;
       else areaCompleta = false;
       righe.push([
@@ -1448,11 +1493,19 @@ function distintaTaglio(
         },
         { text: m.reale, fontSize: 9.5, color: '#1a1a1a' },
         {
-          // misura di taglio: con abbondanze se presenti, altrimenti = reale
-          text: m.taglio ?? m.reale,
-          bold: true,
-          fontSize: 10,
-          color: m.taglio ? VERDE_TAGLIO : '#1a1a1a'
+          stack: [
+            {
+              // misura di taglio: con abbondanze se presenti, altrimenti = reale
+              text: m.taglio ?? m.reale,
+              bold: true,
+              fontSize: 10,
+              color: m.taglio ? VERDE_TAGLIO : '#1a1a1a'
+            },
+            // i teli si tagliano uno per uno: qui ci sono le loro misure
+            ...(m.teli
+              ? [{ text: m.teli, fontSize: 8, color: VERDE_TAGLIO, margin: [0, 1, 0, 0] } as Content]
+              : [])
+          ]
         },
         { text: m.abbondanze ?? '—', fontSize: 8.5, color: GRIGIO },
         {
@@ -1573,13 +1626,31 @@ export async function pezziDaProgetto(progettoId: string): Promise<PezzoDaMisura
     const percorso = ctx.percorsoFoto.get(f.id) ?? percorsoBase;
     for (const r of righeMisureFoto(annotazioni, f, ctx, percorso)) {
       if (!r.pezzo || !r.taglioMm) continue;
+      const quantita = Math.max(1, Math.round(r.quantita ?? 1));
+      // stesso identificativo del report: prima il codice, poi la forma,
+      // come nelle due colonne della distinta di taglio
+      const nome = [r.codice, r.forma].filter(Boolean).join(' ');
+      // una forma divisa in teli entra nel piano di taglio come i suoi teli:
+      // la parete intera non starebbe in nessuna bobina
+      if (r.pannelli && r.pannelli.length > 1) {
+        for (const t of r.pannelli) {
+          pezzi.push({
+            nome: r.codice
+              ? [codicePannello(r.codice, t.indice - 1), r.forma].filter(Boolean).join(' ')
+              : codicePannello(nome, t.indice - 1),
+            larghezza: t.larghezza,
+            altezza: t.altezza,
+            quantita,
+            conAbbondanze: !!r.abbondanze
+          });
+        }
+        continue;
+      }
       pezzi.push({
-        // stesso identificativo del report: prima il codice, poi la forma,
-        // come nelle due colonne della distinta di taglio
-        nome: [r.codice, r.forma].filter(Boolean).join(' '),
+        nome,
         larghezza: r.taglioMm.larghezza,
         altezza: r.taglioMm.altezza,
-        quantita: Math.max(1, Math.round(r.quantita ?? 1)),
+        quantita,
         conAbbondanze: !!r.abbondanze
       });
     }

@@ -19,12 +19,17 @@ import type {
   Unita
 } from '../db/types';
 import {
+  COLORE_PANNELLO,
   COLORE_QUOTA,
   COLORE_QUOTA_TECNICA,
   quadrilateroQuotaRett,
   segmentiPoligono,
   segmentoELato
 } from '../db/types';
+import { pannelliDellaForma } from './formaQuadrilatera';
+import { sbordo } from './pannelli';
+import { applicaOmografia, calcolaOmografia } from './omografia';
+import { codicePannello } from './nomenclatura';
 import { misureElemento, nomePoligono } from './calibrazione';
 import { calcolaCatene, sommaCatenaInUnita } from './catene';
 import { geomQuotaDistanza, libertaDistanza } from './parametrico';
@@ -414,6 +419,104 @@ export function latiQuotaRett(
 }
 
 /**
+ * LE GIUNZIONI DI UNA FORMA PANNELLIZZATA, DISEGNATE SULLA FOTO.
+ *
+ * Ad editor chiuso il telo diviso deve leggersi come si leggerà sul muro: la
+ * linea di giunzione dove cadrà davvero, e attorno il lembo di sormonto. Le
+ * posizioni passano per l'OMOGRAFIA dei quattro angoli, quindi anche su un
+ * quadrilatero deformato dalla prospettiva le giunzioni seguono il piano
+ * invece di tagliare l'immagine a caso.
+ *
+ * Verde e tratto sottile: le giunzioni non sono misure, e non devono rubare
+ * l'occhio alle quote. Per il resto stesso disegno — stesso alone, stesso
+ * modo di scrivere i codici.
+ */
+export function primitivePannelli(
+  q: QuotaPoligono | QuotaRettangolo,
+  codice?: string
+): Primitiva[] {
+  const dati = pannelliDellaForma(q);
+  if (!dati) return [];
+  const { forma, pann, pannelli, totale, scostamento } = dati;
+  const L = forma.netta.larghezza;
+  const A = forma.netta.altezza;
+  if (!(L > 0) || !(A > 0)) return [];
+
+  let H;
+  try {
+    H = calcolaOmografia(
+      [
+        { x: 0, y: 0 },
+        { x: L, y: 0 },
+        { x: L, y: A },
+        { x: 0, y: A }
+      ],
+      forma.quad
+    );
+  } catch {
+    // quattro angoli degeneri: meglio non disegnare che disegnare storto
+    return [];
+  }
+
+  const verticale = pann.asse === 'verticale';
+  const trasversaleNetto = verticale ? A : L;
+  /** da posizione DI TAGLIO lungo l'asse + posizione di traverso a pixel foto */
+  const punto = (u: number, v: number): Punto => {
+    const lungo = u - scostamento;
+    return applicaOmografia(H, verticale ? { x: lungo, y: v } : { x: v, y: lungo });
+  };
+
+  const spessore = Math.max(1, q.stile.spessore * 0.45);
+  const linea = (u: number, tratteggio?: number[]): Primitiva => {
+    const a = punto(u, 0);
+    const b = punto(u, trasversaleNetto);
+    return {
+      kind: 'linea',
+      punti: [a.x, a.y, b.x, b.y],
+      colore: COLORE_PANNELLO,
+      spessore,
+      tratteggio,
+      alone: ALONE
+    };
+  };
+
+  const prim: Primitiva[] = [];
+  const sb = sbordo(pann);
+  for (const g of pann.giunti) {
+    // i due bordi del lembo: tratteggiati, come le linee di costruzione
+    if (pann.sormonto > 0) {
+      const dentro = Math.max(0, g - sb.inizio);
+      const fuori = Math.min(totale, g + sb.fine);
+      if (sb.inizio > 0) prim.push(linea(dentro, [5, 4]));
+      if (sb.fine > 0) prim.push(linea(fuori, [5, 4]));
+    }
+    // la giunzione a vista: continua, è quella che si vedrà sul muro
+    prim.push(linea(g));
+  }
+
+  // codice di ogni telo (A1.a, A1.b…), in alto nel suo campo
+  if (codice) {
+    const dim = q.stile.dimensioneTesto * 0.8;
+    for (const telo of pannelli) {
+      // un po' sotto il bordo: sulla linea di quota del lato si leggerebbero
+      // uno sull'altro, e la quota deve restare la cosa più leggibile
+      const centro = punto((telo.vistaInizio + telo.vistaFine) / 2, trasversaleNetto * 0.17);
+      prim.push({
+        kind: 'testo',
+        testo: codicePannello(codice, telo.indice - 1),
+        posizione: centro,
+        rotazioneDeg: 0,
+        dimensione: dim,
+        colore: COLORE_PANNELLO,
+        sfondo: null,
+        alone: ALONE
+      });
+    }
+  }
+  return prim;
+}
+
+/**
  * Quota elemento (quadrilatero): contorno che segue i bordi reali della
  * figura + quota di ciascun lato. Di default le quote giacciono SUI bordi
  * (offset 0, frecce sui punti, nessuna linea di proiezione); trascinando la
@@ -455,6 +558,9 @@ export function primitiveQuotaRettangolo(q: QuotaRettangolo, etichetta?: string)
   }
 
   // nomenclatura dell'elemento: badge al centro della figura, per
+  // giunzioni e sormonti del telo diviso: sotto le quote, sopra il contorno
+  prim.push(...primitivePannelli(q, badge));
+
   // distinguere le forme quotate l'una dall'altra (foto e report)
   if (badge) {
     const dim = q.stile.dimensioneTesto;
@@ -788,6 +894,9 @@ export function primitiveQuotaPoligono(q: QuotaPoligono, etichetta?: string): Pr
   if (q.origine != null && q.origine >= 0 && q.origine < n && punti[q.origine]) {
     prim.push(...glifoOrigine(punti[q.origine], colore, q.stile.dimensioneTesto));
   }
+
+  // giunzioni e sormonti del telo diviso: sotto le quote, sopra il contorno
+  prim.push(...primitivePannelli(q, badge));
 
   // nomenclatura: badge spostabile, che esce dalla figura se è troppo piccola
   if (badge) prim.push(...badgePoligono(q, badge, colore, posizioneEtichettaPoligono(q)));

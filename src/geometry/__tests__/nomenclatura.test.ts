@@ -3,6 +3,7 @@ import type { Annotazione, Cartella, Foto, Progetto, QuotaPoligono } from '../..
 import {
   codiceCompletoForma,
   codiceLocaleForma,
+  codicePannello,
   etichettaFoto,
   letteraDaIndice,
   numeriProgetto,
@@ -234,5 +235,16 @@ describe('percorso e codice completo', () => {
     expect(percorsoEtichette(prog, cartelle)).toEqual(['E1', 'P1']);
     expect(codiceCompletoForma(['E1', 'P1'], 'A1')).toBe('E1.P1.A1');
     expect(codiceCompletoForma([], 'A1')).toBe('A1');
+  });
+});
+
+describe('codicePannello', () => {
+  it('il telo si scrive con una lettera minuscola: A1.a, A1.b', () => {
+    expect(codicePannello('A1', 0)).toBe('A1.a');
+    expect(codicePannello('A1', 1)).toBe('A1.b');
+    // su una copia della famiglia si accoda al sotto-indice: A1.2.a
+    expect(codicePannello('A1.2', 0)).toBe('A1.2.a');
+    // oltre la Z si continua come le etichette: aa, ab…
+    expect(codicePannello('A1', 26)).toBe('A1.aa');
   });
 });

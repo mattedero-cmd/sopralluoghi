@@ -16,6 +16,8 @@ import { abbondanzaTotale, segmentiPoligono, segmentoELato } from '../db/types';
 import { misuraSegmento } from './calibrazione';
 import { misureElemento } from './calibrazione';
 import { nomeFormaPoligono, simboliPoligono } from './primitive';
+import { pannelliDellaForma } from './formaQuadrilatera';
+import { codicePannello } from './nomenclatura';
 import { inMillimetri } from '../utils/format';
 
 export interface PezzoDaMisura {
@@ -243,6 +245,36 @@ export function ingombroTaglio(
   return null;
 }
 
+/** un telo di una forma pannellizzata, in millimetri di taglio */
+export interface PannelloTaglio {
+  /** progressivo dal lato di riferimento, da 1 */
+  indice: number;
+  larghezza: number;
+  altezza: number;
+}
+
+/**
+ * I TELI DI UNA FORMA PANNELLIZZATA, PRONTI PER IL TAGLIO.
+ *
+ * Nel piano di taglio deve arrivare quello che si taglia davvero: se la
+ * parete è divisa in quattro teli, quattro righe con le loro misure — non una
+ * parete intera che nessuna bobina potrebbe contenere. Le misure comprendono
+ * i sormonti, perché quelli si tagliano insieme al telo.
+ */
+export function pannelliTaglio(a: Annotazione): PannelloTaglio[] | null {
+  const dati = pannelliDellaForma(a);
+  if (!dati) return null;
+  const u = dati.forma.unita;
+  const verticale = dati.pann.asse === 'verticale';
+  return dati.pannelli.map((p) => ({
+    indice: p.indice,
+    // `larghezza` del pannello è sempre lungo l'asse di divisione: sull'asse
+    // orizzontale è l'altezza del pezzo, non la sua base
+    larghezza: mm(verticale ? p.larghezza : p.altezza, u),
+    altezza: mm(verticale ? p.altezza : p.larghezza, u)
+  }));
+}
+
 /**
  * I pezzi ricavati dalle annotazioni di una foto, per via diretta.
  *
@@ -265,6 +297,20 @@ export function pezziDaAnnotazioni(
     else if (a.tipo === 'quotaRett')
       nome = nomeDi(a.etichetta, undefined, nomeForma(misureElemento(a).forma));
     else continue;
+    // una forma divisa in teli entra nella distinta come i suoi teli
+    const teli = pannelliTaglio(a);
+    if (teli) {
+      for (const t of teli) {
+        pezzi.push({
+          nome: codicePannello(nome, t.indice - 1),
+          larghezza: t.larghezza,
+          altezza: t.altezza,
+          quantita: 1,
+          conAbbondanze: ing.conAbbondanze
+        });
+      }
+      continue;
+    }
     pezzi.push({
       nome,
       larghezza: ing.larghezza,

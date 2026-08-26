@@ -1,5 +1,6 @@
 import type { Punto } from '../db/types';
 import { RicercaBordi, campiRicerca, regioneRiempita, rilevaFigura, type RegioneRiempita } from './bordi';
+import { ordinaQuad as ordina4 } from './punti';
 
 /**
  * Motore IBRIDO di rilevamento per oggetti a 4 lati (rettangoli e
@@ -34,18 +35,7 @@ const cross = (a: Punto, b: Punto): number => a.x * b.y - a.y * b.x;
 const len = (a: Punto): number => Math.hypot(a.x, a.y);
 
 /** Ordina 4 punti come alto-sx, alto-dx, basso-dx, basso-sx (orario a schermo) */
-export function ordinaQuad(pts: Punto[]): Quad {
-  const cx = (pts[0].x + pts[1].x + pts[2].x + pts[3].x) / 4;
-  const cy = (pts[0].y + pts[1].y + pts[2].y + pts[3].y) / 4;
-  const s = pts
-    .slice(0, 4)
-    .sort((a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx));
-  // l'ordine angolare in coordinate y-verso-il-basso è già orario; si
-  // ruota per partire dall'angolo in alto a sinistra (min x+y)
-  let k = 0;
-  for (let i = 1; i < 4; i++) if (s[i].x + s[i].y < s[k].x + s[k].y) k = i;
-  return [s[k % 4], s[(k + 1) % 4], s[(k + 2) % 4], s[(k + 3) % 4]];
-}
+export { ordinaQuad } from './punti';
 
 function convesso(q: Quad): boolean {
   let segno = 0;
@@ -309,7 +299,7 @@ function quattroEstremi(contorno: Array<[number, number]>): Quad | null {
     if (p[0] - p[1] < bl[0] - bl[1]) bl = p;
   }
   const q: Punto[] = [tl, tr, br, bl].map(([x, y]) => ({ x, y }));
-  return ordinaQuad(q);
+  return ordina4(q);
 }
 
 // ---------------------------------------------------------------------------
@@ -392,7 +382,7 @@ function generaHough(c: Campi, roi: Roi, seme: Punto, magSoglia: number, escludi
       angoli.push(p);
     }
   }
-  return ordinaQuad(angoli);
+  return ordina4(angoli);
 }
 
 // ---------------------------------------------------------------------------
@@ -474,7 +464,7 @@ function raffina(c: Campi, quad: Quad, magSoglia: number): Quad {
     if (!p) return quad; // raffinamento fallito: si torna all'originale
     angoli.push(p);
   }
-  return ordinaQuad(angoli);
+  return ordina4(angoli);
 }
 
 function rettaDaSegmento(a: Punto, b: Punto): { a: number; b: number; c: number } {
@@ -576,12 +566,12 @@ export function rilevaQuad4(
   const candidati: Quad[] = [];
 
   const lt = rilevaFigura(ricerca, semeImg, sogliaScala, escludi);
-  if (lt) candidati.push(ordinaQuad(lt.punti.map((p) => ({ x: p.x * fattore, y: p.y * fattore }))));
+  if (lt) candidati.push(ordina4(lt.punti.map((p) => ({ x: p.x * fattore, y: p.y * fattore }))));
 
   // il flood serve solo in inclusione (in esclusione prenderebbe un dettaglio)
   if (!escludi && reg && reg.contorno.length >= 4) {
     const rar = rettangoloAreaMinima(reg.contorno);
-    if (rar) candidati.push(ordinaQuad(rar));
+    if (rar) candidati.push(ordina4(rar));
     const ext = quattroEstremi(reg.contorno);
     if (ext) candidati.push(ext);
   }

@@ -55,6 +55,8 @@ import { MenuCircolareEtichette } from './MenuCircolareEtichette';
 import { AmbienteLegenda } from './AmbienteLegenda';
 import { ModificaEtichetta } from './ModificaEtichetta';
 import { AmbienteQuotaturaTecnica } from './AmbienteQuotaturaTecnica';
+import { AmbientePannelli } from '../components/AmbientePannelli';
+import { ePannellizzabile, formaQuadrilatera } from '../geometry/formaQuadrilatera';
 import { calcolaCatene, sommaCatenaInUnita } from '../geometry/catene';
 import {
   angoloGradi,
@@ -533,6 +535,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     | { tipo: 'segmento'; id: string; indice: number }
     | { tipo: 'callout'; id: string }
     | { tipo: 'tecnica'; id: string }
+    | { tipo: 'pannelli'; id: string }
     | null
   >(null);
   const [testoInModifica, setTestoInModifica] = useState<string | null>(null);
@@ -3665,6 +3668,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             onModificaSegmento={(indice) =>
               setQuotaInModifica({ tipo: 'segmento', id: selezionata.id, indice })
             }
+            onPannellizza={() => setQuotaInModifica({ tipo: 'pannelli', id: selezionata.id })}
             onCalibraDaQuota={(q) => void calibraDaQuota(q)}
           />
         )
@@ -4691,6 +4695,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 )
               }
               onModificaSegmento={(indice) => setQuotaInModifica({ tipo: 'segmento', id: poli.id, indice })}
+              onPannellizza={() => setQuotaInModifica({ tipo: 'pannelli', id: poli.id })}
               onSnapAngoli={(passo) =>
                 // pulsante esplicito: tolleranza = passo/2 → aggancia TUTTI i lati
                 // al multiplo più vicino (non solo quelli già quasi allineati)
@@ -4885,6 +4890,47 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 setQuotaInModifica(null);
               }}
               onChiudi={() => setQuotaInModifica(null)}
+            />
+          );
+        })()}
+      {quotaInModifica &&
+        quotaInModifica.tipo === 'pannelli' &&
+        (() => {
+          const rif = quotaInModifica;
+          const ann = annotazioni.find((a) => a.id === rif.id);
+          if (!ann || (ann.tipo !== 'quotaPoligono' && ann.tipo !== 'quotaRett')) return null;
+          const forma = formaQuadrilatera(ann);
+          // senza le misure scritte non si divide niente: i teli sono centimetri
+          if (!forma) return null;
+          // chiudendo si torna da dove si è arrivati: l'ambiente del poligono
+          // esiste, quello della quota elemento no
+          const indietro = () =>
+            setQuotaInModifica(ann.tipo === 'quotaPoligono' ? { tipo: 'poligono', id: ann.id } : null);
+          return (
+            <AmbientePannelli
+              forma={{
+                nome: codiceForma(ann) || 'Elemento',
+                larghezza: forma.taglio.larghezza,
+                altezza: forma.taglio.altezza,
+                unita: forma.unita,
+                prospettiva: { punti: forma.quad, immagine }
+              }}
+              iniziale={ann.pannelli ?? null}
+              onConferma={(pannelli) => {
+                commit(
+                  annotazioni.map((a) => {
+                    if (a.id !== ann.id) return a;
+                    if (!pannelli) {
+                      // via del tutto: la forma torna un pezzo unico
+                      const { pannelli: _tolto, ...resto } = a as QuotaPoligono;
+                      return resto as Annotazione;
+                    }
+                    return { ...a, pannelli } as Annotazione;
+                  })
+                );
+                indietro();
+              }}
+              onChiudi={indietro}
             />
           );
         })()}
@@ -6398,6 +6444,7 @@ function EditorPoligono({
   onNumero,
   onModifica,
   onModificaSegmento,
+  onPannellizza,
   onSnapAngoli,
   onFondiCollineari,
   onQuotaAngolo,
@@ -6418,6 +6465,8 @@ function EditorPoligono({
   onNumero: (n: number) => void;
   onModifica: (m: Partial<QuotaPoligono>) => void;
   onModificaSegmento: (indice: number) => void;
+  /** apre l'ambiente che divide la forma in teli con sormonto (solo 4 vertici) */
+  onPannellizza?: () => void;
   /** aggancia i lati al passo angolare indicato (90/45/30°) e richiude */
   onSnapAngoli: (passo: number) => void;
   /** fonde i lati consecutivi allineati in uno solo (se ce ne sono) */
@@ -6760,6 +6809,28 @@ function EditorPoligono({
               })()}
           </div>
         </div>
+        {n === 4 && onPannellizza && (
+          <div className="campo">
+            <label>Pannellizzazione</label>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button className={poli.pannelli ? 'btn attivo' : 'btn'} onClick={onPannellizza}>
+                <Icona nome="griglia" dimensione={18} />{' '}
+                {poli.pannelli ? 'Modifica i teli' : 'Dividi in teli'}
+              </button>
+              {poli.pannelli && (
+                <span style={{ color: 'var(--testo-2)', fontSize: 13 }}>
+                  {poli.pannelli.giunti.length + 1} teli ·{' '}
+                  {poli.pannelli.asse === 'verticale' ? 'giunzioni verticali' : 'giunzioni orizzontali'}{' '}
+                  · sormonto {formattaNumero(poli.pannelli.sormonto)} {poli.unita}
+                </span>
+              )}
+            </div>
+            <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
+              Per i teli più larghi del rotolo: le giunzioni restano sulla foto, in verde, e nel
+              piano di taglio arrivano i singoli teli.
+            </span>
+          </div>
+        )}
         <div className="campo">
           <label>Unità e stato</label>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
@@ -7364,6 +7435,7 @@ function PannelloProprieta({
   onModificaEtichetta,
   onModificaQuota,
   onModificaSegmento,
+  onPannellizza,
   onCalibraDaQuota
 }: {
   ann: Annotazione;
@@ -7377,6 +7449,8 @@ function PannelloProprieta({
   onModificaEtichetta: () => void;
   onModificaQuota: () => void;
   onModificaSegmento: (indice: number) => void;
+  /** apre l'ambiente che divide la forma in teli con sormonto */
+  onPannellizza: () => void;
   onCalibraDaQuota: (q: Quota) => void;
 }) {
   // dimensione personalizzabile: scala spessore linee e testo insieme
@@ -7409,7 +7483,13 @@ function PannelloProprieta({
           </>
         )}
         {ann.tipo === 'quotaRett' && (
-          <ProprietaRettangolo rett={ann} foto={foto} inputValore={inputValore} onModifica={onModifica} />
+          <ProprietaRettangolo
+            rett={ann}
+            foto={foto}
+            inputValore={inputValore}
+            onModifica={onModifica}
+            onPannellizza={onPannellizza}
+          />
         )}
         {ann.tipo === 'quotaPoligono' && (
           <ProprietaPoligono poli={ann} foto={foto} onModifica={onModifica} onModificaSegmento={onModificaSegmento} />
@@ -7710,12 +7790,14 @@ function ProprietaRettangolo({
   rett,
   foto,
   inputValore,
-  onModifica
+  onModifica,
+  onPannellizza
 }: {
   rett: QuotaRettangolo;
   foto: Foto;
   inputValore: React.RefObject<HTMLInputElement>;
   onModifica: (m: Partial<QuotaRettangolo>) => void;
+  onPannellizza: () => void;
 }) {
   const calibrata = haCalibrazione(foto);
   return (
@@ -7776,6 +7858,16 @@ function ProprietaRettangolo({
           </button>
         ))}
       </span>
+      {ePannellizzabile(rett) && (
+        <button
+          className={rett.pannelli ? 'btn attivo' : 'btn'}
+          title="Dividi l’elemento in teli con sormonto"
+          onClick={onPannellizza}
+        >
+          <Icona nome="griglia" dimensione={18} />{' '}
+          {rett.pannelli ? `Teli (${rett.pannelli.giunti.length + 1})` : 'Dividi in teli'}
+        </button>
+      )}
     </>
   );
 }

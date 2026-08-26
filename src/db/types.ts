@@ -4,6 +4,8 @@
  * Cartella → Progetto → (Foto → Annotazione).
  */
 
+import type { Pannellizzazione } from '../geometry/pannelli';
+
 export type ID = string;
 
 export type Unita = 'mm' | 'cm' | 'm';
@@ -418,6 +420,12 @@ export interface QuotaRettangolo extends AnnotazioneBase {
   offsetLati?: number[];
   unita: Unita;
   stato: StatoMisura;
+  /**
+   * Divisione in teli con sormonto. Vale solo per i quadrilateri: un telo si
+   * spezza lungo una retta, e su una forma qualunque quella retta non
+   * vorrebbe dire niente.
+   */
+  pannelli?: Pannellizzazione;
 }
 
 /** Angoli del quadrilatero, con conversione dei record legacy (rect) */
@@ -556,6 +564,13 @@ export interface QuotaPoligono extends AnnotazioneBase {
    * riferiscono. Assente = nessuna origine impostata.
    */
   origine?: number;
+  /**
+   * Divisione in teli con sormonto (solo per i poligoni a 4 vertici, vedi
+   * geometry/pannelli.ts). Le posizioni delle giunzioni sono nell'unità della
+   * forma e si misurano sulla MISURA DI TAGLIO, abbondanze comprese: è quella
+   * che deve stare nella fascia del rotolo.
+   */
+  pannelli?: Pannellizzazione;
 }
 
 /** Segmenti quotati del poligono, con conversione dei record legacy (lati[]) */
@@ -1053,6 +1068,15 @@ export const COLORE_QUOTA = '#ffc400';
 
 /** Colore dedicato alla QUOTATURA TECNICA, distinto dal giallo delle quote base. */
 export const COLORE_QUOTA_TECNICA = '#00A896';
+
+/**
+ * PANNELLIZZAZIONE: verde, e linee più sottili di quelle di quota.
+ *
+ * Le giunzioni non sono misure — sono lavorazione — e sulla foto devono
+ * distinguersi a colpo d'occhio dalle quote gialle senza però cambiare
+ * linguaggio: stesso alone, stesso disegno, un tratto più leggero.
+ */
+export const COLORE_PANNELLO = '#34c759';
 
 /**
  * Lavoro di nesting salvato in archivio.

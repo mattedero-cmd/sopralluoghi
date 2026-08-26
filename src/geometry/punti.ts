@@ -65,3 +65,24 @@ export function circumcentro(a: Punto, b: Punto, c: Punto): Punto | null {
   const t = ((mBC.x - mAB.x) * dBC.y - (mBC.y - mAB.y) * dBC.x) / det;
   return { x: mAB.x + t * dAB.x, y: mAB.y + t * dAB.y };
 }
+
+/**
+ * Ordina 4 punti come alto-sx, alto-dx, basso-dx, basso-sx (orario a schermo).
+ *
+ * Sta qui perché serve a chiunque debba dare un VERSO a un quadrilatero
+ * disegnato a mano: il rilevatore automatico, la pannellizzazione, il
+ * disegno in prospettiva. «Sinistra» e «alto» devono voler dire la stessa
+ * cosa dappertutto.
+ */
+export function ordinaQuad(pts: Punto[]): [Punto, Punto, Punto, Punto] {
+  const cx = (pts[0].x + pts[1].x + pts[2].x + pts[3].x) / 4;
+  const cy = (pts[0].y + pts[1].y + pts[2].y + pts[3].y) / 4;
+  const s = pts
+    .slice(0, 4)
+    .sort((a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx));
+  // l'ordine angolare in coordinate y-verso-il-basso è già orario; si
+  // ruota per partire dall'angolo in alto a sinistra (min x+y)
+  let k = 0;
+  for (let i = 1; i < 4; i++) if (s[i].x + s[i].y < s[k].x + s[k].y) k = i;
+  return [s[k % 4], s[(k + 1) % 4], s[(k + 2) % 4], s[(k + 3) % 4]];
+}

@@ -2,6 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { naviga } from '../router';
 import { Modale, StatoApp } from '../components/comuni';
 import { Icona } from '../components/Icona';
+import { CampoNumero } from '../components/CampoNumero';
+import { AmbientePannelli } from '../components/AmbientePannelli';
+import { pannelliDi, type Pannellizzazione } from '../geometry/pannelli';
+import { codicePannello } from '../geometry/nomenclatura';
 import { nuovoId } from '../utils/id';
 import {
   calcolaNestingMigliore,
@@ -72,65 +76,6 @@ const CHIAVE_BOZZA = 'nesting.v2';
 /** salvataggio del formato precedente: si legge, si migra e si dimentica */
 const CHIAVE_VECCHIA = 'nesting.v1';
 
-/**
- * Campo numerico che si lascia MODIFICARE davvero.
- *
- * Un campo controllato che rinormalizza a ogni battuta impedisce di cancellare
- * l'ultima cifra: svuotandolo il valore tornerebbe subito al minimo. Qui il
- * testo digitato vive per conto suo, il valore esce solo quando è valido e la
- * normalizzazione avviene all'uscita dal campo.
- */
-function CampoNumero({
-  valore,
-  onCambia,
-  min = 0,
-  intero,
-  etichetta,
-  classe
-}: {
-  valore: number;
-  onCambia: (v: number) => void;
-  min?: number;
-  intero?: boolean;
-  etichetta?: string;
-  classe?: string;
-}) {
-  const [testo, setTesto] = useState(() => String(valore));
-  const [inModifica, setInModifica] = useState(false);
-
-  // se il valore cambia da fuori (esempio, incolla, svuota) e non si sta
-  // scrivendo, il campo si riallinea
-  useEffect(() => {
-    if (!inModifica) setTesto(String(valore));
-  }, [valore, inModifica]);
-
-  return (
-    <input
-      type="text"
-      inputMode={intero ? 'numeric' : 'decimal'}
-      aria-label={etichetta}
-      className={classe}
-      value={testo}
-      onFocus={(e) => {
-        setInModifica(true);
-        e.currentTarget.select();
-      }}
-      onChange={(e) => {
-        const t = e.target.value;
-        setTesto(t); // si può svuotare: nessuna correzione mentre si scrive
-        const n = parseFloat(t.replace(',', '.'));
-        if (Number.isFinite(n) && n >= min) onCambia(intero ? Math.round(n) : n);
-      }}
-      onBlur={() => {
-        setInModifica(false);
-        const n = parseFloat(testo.replace(',', '.'));
-        const v = Number.isFinite(n) ? Math.max(min, intero ? Math.round(n) : n) : min;
-        onCambia(v);
-        setTesto(String(v));
-      }}
-    />
-  );
-}
 
 /**
  * LE FASCE DI ROTOLO A PORTATA DI TOCCO.
@@ -155,6 +100,9 @@ function FasceBobina({ valore, onSceglie }: { valore: number; onSceglie: (v: num
     </div>
   );
 }
+
+/** misure del piano di taglio: millimetri con un decimale, come le inserisce l'utente */
+const arrotondaMm = (v: number) => Math.round(v * 10) / 10;
 
 /** larghezza in pixel di un elemento, per dimensionare i testi dell'SVG */
 function useLarghezza() {
@@ -289,6 +237,8 @@ export function NestingPage({
   const [caricamento, setCaricamento] = useState(!!id);
   const [incolla, setIncolla] = useState(false);
   const [trasferimento, setTrasferimento] = useState(false);
+  /** pezzo aperto nell'ambiente che lo divide in teli */
+  const [inPannelli, setInPannelli] = useState<string | null>(null);
   /**
    * PEZZI SPUNTATI NELLA LISTA.
    *
@@ -502,6 +452,49 @@ export function NestingPage({
       segmenti: esito.lastre.length
     };
   }, [mat.modo, mat.margine, mat.bobina.larghezza, mat.bobina.metri, esito]);
+
+  /**
+   * DIVIDE UN PEZZO IN TELI.
+   *
+   * Al posto della riga troppo grande arrivano i suoi teli, con il sormonto
+   * già dentro la misura e il codice del telo nel nome (…a, …b, …): nel piano
+   * di taglio deve esserci quello che si taglia davvero.
+   */
+  const applicaPannelli = (id: string, p: Pannellizzazione | null) => {
+    setInPannelli(null);
+    const pezzo = mat.pezzi.find((x) => x.id === id);
+    if (!pezzo || !p || p.giunti.length === 0) return;
+    const verticale = p.asse === 'verticale';
+    const teli = pannelliDi(
+      verticale ? pezzo.larghezza : pezzo.altezza,
+      verticale ? pezzo.altezza : pezzo.larghezza,
+      p
+    );
+    if (teli.length <= 1) return;
+    const nati = teli.map((t, i) => ({
+      ...pezzo,
+      id: nuovoId(),
+      nome: codicePannello(pezzo.nome || 'Pezzo', i),
+      larghezza: arrotondaMm(verticale ? t.larghezza : t.altezza),
+      altezza: arrotondaMm(verticale ? t.altezza : t.larghezza),
+      tinta: prossimaTinta(mat.pezzi.length + i)
+    }));
+    const posizione = mat.pezzi.findIndex((x) => x.id === id);
+    const pezzi = [...mat.pezzi];
+    pezzi.splice(posizione, 1, ...nati);
+    // i versi imposti a mano parlavano del pezzo intero: non valgono più
+    const orientamenti = { ...mat.orientamenti };
+    for (const chiave of Object.keys(orientamenti)) {
+      if (chiave.slice(0, chiave.lastIndexOf('#')) === id) delete orientamenti[chiave];
+    }
+    aggiornaMat({ pezzi, orientamenti });
+    setSelezione({});
+    setCopieScelte({});
+    mostraToast(
+      'successo',
+      `«${pezzo.nome}» diviso in ${nati.length} teli, sormonto compreso nelle misure.`
+    );
+  };
 
   const aggiornaPezzo = (id: string, modifiche: Partial<PezzoNesting>) =>
     aggiornaMat({ pezzi: mat.pezzi.map((p) => (p.id === id ? { ...p, ...modifiche } : p)) });
@@ -1125,6 +1118,11 @@ export function NestingPage({
             >
               Annulla
             </button>
+            {selezionati.length === 1 && (
+              <button className="btn piccolo" onClick={() => setInPannelli(selezionati[0].id)}>
+                Dividi in teli…
+              </button>
+            )}
             <button className="btn piccolo primario" onClick={() => setTrasferimento(true)}>
               Altro supporto…
             </button>
@@ -1230,6 +1228,9 @@ export function NestingPage({
                       : `${fuori} ${fuori === 1 ? 'copia' : 'copie'} su ${totale} non ${
                           fuori === 1 ? 'entra' : 'entrano'
                         }`}
+                    <button className="btn piccolo" onClick={() => setInPannelli(p.id)}>
+                      <Icona nome="griglia" dimensione={15} /> Dividi in teli
+                    </button>
                   </span>
                 )}
               </div>
@@ -1423,6 +1424,35 @@ export function NestingPage({
       </main>
 
       {incolla && <ModaleIncolla onChiudi={() => setIncolla(false)} onCompila={compilaDaTesto} />}
+
+      {inPannelli &&
+        (() => {
+          const pezzo = mat.pezzi.find((x) => x.id === inPannelli);
+          if (!pezzo) return null;
+          // la fascia utile è quella del supporto, tolti i margini dai bordi:
+          // un telo largo quanto il rotolo non ci entrerebbe mai
+          const fascia =
+            mat.modo === 'bobina'
+              ? mat.bobina.larghezza - 2 * mat.margine
+              : mat.lastra.larghezza - 2 * mat.margine;
+          return (
+            <AmbientePannelli
+              forma={{
+                nome: pezzo.nome || 'Pezzo',
+                larghezza: pezzo.larghezza,
+                altezza: pezzo.altezza,
+                unita: 'mm',
+                massimo: Math.max(0, arrotondaMm(fascia)),
+                fonteMassimo:
+                  mat.modo === 'bobina'
+                    ? `Bobina ${formattaNumero(mat.bobina.larghezza)} mm meno i margini`
+                    : `Lastra ${formattaNumero(mat.lastra.larghezza)} mm meno i margini`
+              }}
+              onConferma={(p) => applicaPannelli(pezzo.id, p)}
+              onChiudi={() => setInPannelli(null)}
+            />
+          );
+        })()}
 
       {trasferimento && (
         <ModaleTrasferisci
