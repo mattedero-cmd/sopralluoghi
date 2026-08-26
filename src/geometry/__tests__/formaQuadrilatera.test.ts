@@ -273,3 +273,41 @@ describe('abbondanze non simmetriche', () => {
     expect(d?.totale).toBe(236);
   });
 });
+
+describe('la misura di taglio è la stessa della distinta', () => {
+  /**
+   * Trapezio: base corta 480 abbondata di 5 per parte (490 di materiale),
+   * base lunga 500 senza abbondanze. L'ingombro è 500, non 510: la base corta
+   * abbondata sta dentro quella lunga.
+   */
+  const trapezio = poligono(
+    [
+      [10, 0],
+      [490, 0],
+      [500, 230],
+      [0, 230]
+    ],
+    [
+      { da: 0, a: 1, valore: 480, abbInizio: 5, abbFine: 5 },
+      { da: 1, a: 2, valore: 230 },
+      { da: 2, a: 3, valore: 500 },
+      { da: 3, a: 0, valore: 230 }
+    ],
+    { asse: 'verticale', sormonto: 2, verso: 'centro', giunti: [136, 271, 406] }
+  );
+
+  it('comanda il lato più lungo con le sue abbondanze, non la somma', () => {
+    const f = formaQuadrilatera(trapezio);
+    expect(f?.netta.larghezza).toBe(500);
+    expect(f?.taglio.larghezza).toBe(500);
+    // il lato che decide l'ingombro non ha abbondanze: non si sborda a sinistra
+    expect(f?.scostamento.larghezza).toBe(0);
+  });
+
+  it('i teli si dividono su quella misura, non su una più grande', () => {
+    const d = pannelliDellaForma(trapezio);
+    expect(d?.totale).toBe(500);
+    const somma = d!.pannelli.reduce((s, p) => s + p.larghezza, 0);
+    expect(somma).toBe(500 + 3 * 2);
+  });
+});

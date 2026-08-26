@@ -14,7 +14,7 @@
  */
 
 import type { Annotazione, Punto, Unita } from '../db/types';
-import { quadrilateroQuotaRett, segmentiPoligono } from '../db/types';
+import { abbondanzaTotale, quadrilateroQuotaRett, segmentiPoligono } from '../db/types';
 import { misureElemento } from './calibrazione';
 import { ordinaQuad } from './punti';
 import {
@@ -112,21 +112,52 @@ export function formaQuadrilatera(a: Annotazione): FormaQuadrilatera | null {
   const altezza = massimo(valore(sinistro), valore(destro));
   if (larghezza === null || altezza === null) return null;
 
-  // la larghezza cresce con le abbondanze agli angoli di sinistra e di destra;
-  // l'altezza con quelle agli angoli di sopra e di sotto
-  const sinistraL = Math.max(abbondanzaAl(alto, 0), abbondanzaAl(basso, 3));
-  const destraL = Math.max(abbondanzaAl(alto, 1), abbondanzaAl(basso, 2));
-  const sopraA = Math.max(abbondanzaAl(sinistro, 0), abbondanzaAl(destro, 1));
-  const sottoA = Math.max(abbondanzaAl(sinistro, 3), abbondanzaAl(destro, 2));
+  /**
+   * L'ingombro di taglio lungo un asse, e da che parte sborda.
+   *
+   * Comanda il LATO PIÙ LUNGO con le sue abbondanze, non la somma di tutte:
+   * in un trapezio la base corta abbondata di cinque per parte può restare
+   * dentro l'ingombro della base lunga, e sommarle darebbe un pezzo più
+   * grande di quello che si taglia davvero. È la stessa regola della distinta
+   * (`ingombroTaglio`): le due misure devono coincidere sempre.
+   */
+  const asse = (
+    netto: number,
+    lati: Array<{ s: typeof alto; primo: number }>
+  ): { taglio: number; scostamento: number } => {
+    let taglioMax = netto;
+    for (const l of lati) {
+      const v = valore(l.s);
+      if (v === null) continue;
+      taglioMax = Math.max(taglioMax, v + abbondanzaTotale(l.s!));
+    }
+    // di quanto sborda prima del bordo di riferimento: lo dice il lato che
+    // determina l'ingombro, non uno qualunque
+    let scostamento = 0;
+    for (const l of lati) {
+      const v = valore(l.s);
+      if (v === null || v + abbondanzaTotale(l.s!) < taglioMax) continue;
+      scostamento = Math.max(scostamento, abbondanzaAl(l.s, l.primo));
+    }
+    return { taglio: taglioMax, scostamento };
+  };
+
+  // in larghezza il bordo di riferimento è a sinistra (vertici 0 e 3),
+  // in altezza è in alto (vertici 0 e 1)
+  const orizzontale = asse(larghezza, [
+    { s: alto, primo: 0 },
+    { s: basso, primo: 3 }
+  ]);
+  const verticale = asse(altezza, [
+    { s: sinistro, primo: 0 },
+    { s: destro, primo: 1 }
+  ]);
 
   return {
     quad,
     netta: { larghezza, altezza },
-    taglio: {
-      larghezza: larghezza + sinistraL + destraL,
-      altezza: altezza + sopraA + sottoA
-    },
-    scostamento: { larghezza: sinistraL, altezza: sopraA },
+    taglio: { larghezza: orizzontale.taglio, altezza: verticale.taglio },
+    scostamento: { larghezza: orizzontale.scostamento, altezza: verticale.scostamento },
     unita: a.unita
   };
 }
