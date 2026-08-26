@@ -121,7 +121,7 @@ import {
 } from '../utils/format';
 import { condividiOScarica, nomeFileSicuro } from '../utils/share';
 import { nuovoId } from '../utils/id';
-import { renderFotoAnnotata } from '../render/renderAnnotata';
+import { renderFotoAnnotata, renderFotoPulita } from '../render/renderAnnotata';
 import { avviaDettatura, dettaturaDisponibile } from '../utils/dettatura';
 import { Icona, type NomeIcona } from '../components/Icona';
 
@@ -544,6 +544,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     | null
   >(null);
   const [testoInModifica, setTestoInModifica] = useState<string | null>(null);
+  /** scelta aperta: con o senza le quote sopra */
+  const [scegliExport, setScegliExport] = useState(false);
   const [schedaScala, setSchedaScala] = useState<{ px: number } | null>(null);
   const [schedaPiano, setSchedaPiano] = useState<{ punti: [Punto, Punto, Punto, Punto] } | null>(null);
   /** rettangolo di riferimento rilevato, in correzione (4 angoli trascinabili) */
@@ -2995,26 +2997,43 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     }
   };
 
-  const esporta = async () => {
+  /**
+   * Condivide la foto: con le quote sopra, oppure la fotografia e basta.
+   *
+   * La seconda serve a chi del rilievo non sa che farsene — il cliente, il
+   * collega che deve solo riconoscere il posto — e vale anche su una foto già
+   * quotata: le quote restano nell'archivio.
+   */
+  const esporta = async (conQuote: boolean) => {
     if (!foto || !annotazioni) return;
+    setScegliExport(false);
     salvaOra();
     try {
-      const blob = await renderFotoAnnotata(
-        foto,
-        annotazioni,
-        'image/jpeg',
-        0.92,
-        (a) => codiceLocaleForma(a, numeriForme),
-        { legenda: true }
-      );
+      const blob = conQuote
+        ? await renderFotoAnnotata(
+            foto,
+            annotazioni,
+            'image/jpeg',
+            0.92,
+            (a) => codiceLocaleForma(a, numeriForme),
+            { legenda: true }
+          )
+        : await renderFotoPulita(foto);
+      const titolo = foto.didascalia || (conQuote ? 'Foto quotata' : 'Foto');
       await condividiOScarica(
         blob,
-        nomeFileSicuro(foto.didascalia || 'foto_quotata', 'jpg'),
-        foto.didascalia || 'Foto quotata'
+        nomeFileSicuro(foto.didascalia || (conQuote ? 'foto_quotata' : 'foto'), 'jpg'),
+        titolo
       );
     } catch (e) {
       mostraToast('errore', e instanceof Error ? e.message : 'Export non riuscito.');
     }
+  };
+
+  /** con la foto ancora pulita non c'è niente da scegliere: si manda e basta */
+  const avviaEsporta = () => {
+    if ((annotazioni?.length ?? 0) === 0) void esporta(false);
+    else setScegliExport(true);
   };
 
   // Numerazione condivisa delle forme del progetto. DEVE stare prima dei return
@@ -3252,7 +3271,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         >
           <Icona nome="impostazioni" />
         </button>
-        <button className="btn icona" aria-label="Esporta immagine" onClick={() => void esporta()}>
+        <button className="btn icona" aria-label="Condividi la foto" onClick={avviaEsporta}>
           <Icona nome="condividi" />
         </button>
       </header>
@@ -3617,6 +3636,26 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             />
           );
         })()}
+
+      {scegliExport && (
+        <Modale titolo="Condividi la foto" onChiudi={() => setScegliExport(false)}>
+          <p className="nest-sub">
+            La stessa fotografia, con o senza il rilievo sopra. I volti oscurati restano
+            oscurati in tutti e due i casi.
+          </p>
+          <div className="riga-pulsanti" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+            <button className="btn primario" onClick={() => void esporta(true)}>
+              <Icona nome="righello" dimensione={18} /> Con le quote
+            </button>
+            <button className="btn" onClick={() => void esporta(false)}>
+              <Icona nome="immagine" dimensione={18} /> Solo la foto
+            </button>
+            <button className="btn" onClick={() => setScegliExport(false)}>
+              Annulla
+            </button>
+          </div>
+        </Modale>
+      )}
 
       <ConfermaDialog richiesta={conferma} onChiudi={() => setConferma(null)} />
 

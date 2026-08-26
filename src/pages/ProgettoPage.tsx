@@ -193,8 +193,8 @@ export function ProgettoPage({ id }: { id: string }) {
       pos: { x: e.clientX, y: e.clientY },
       voci: [
         {
-          testo: 'Condividi / salva immagine quotata',
-          icona: 'condividi',
+          testo: 'Condividi con le quote',
+          icona: 'righello',
           onClick: async () => {
             if (fotoIllegibile(f)) {
               mostraToast(
@@ -230,6 +230,29 @@ export function ProgettoPage({ id }: { id: string }) {
               );
             } catch (e) {
               mostraToast('errore', e instanceof Error ? e.message : 'Export non riuscito.');
+            }
+          }
+        },
+        {
+          // la fotografia e basta: per chi del rilievo non sa che farsene.
+          // Vale anche su una foto già quotata — le quote restano in archivio
+          testo: 'Condividi solo la foto',
+          icona: 'immagine',
+          onClick: async () => {
+            if (fotoIllegibile(f)) {
+              mostraToast('errore', 'Questa foto non è leggibile: impossibile condividerla.');
+              return;
+            }
+            try {
+              const { renderFotoPulita } = await import('../render/renderAnnotata');
+              const blob = await renderFotoPulita(f);
+              await condividiOScarica(
+                blob,
+                nomeFileSicuro(f.didascalia || progetto.nome, 'jpg'),
+                f.didascalia || progetto.nome
+              );
+            } catch (e) {
+              mostraToast('errore', e instanceof Error ? e.message : 'Condivisione non riuscita.');
             }
           }
         },

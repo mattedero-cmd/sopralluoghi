@@ -6,6 +6,35 @@ import { immagineCensurata } from '../utils/censura';
 import { caricaDettaglio } from './../utils/immaginiCallout';
 
 /**
+ * LA FOTO E BASTA, senza una riga sopra.
+ *
+ * Serve per mandarla a chi non c'entra col rilievo — il cliente che vuole
+ * vedere com'è messa la finestra, il collega che deve riconoscere il posto —
+ * e vale anche quando la foto è già stata quotata: le quote restano
+ * nell'archivio, quello che esce è la fotografia.
+ *
+ * I VOLTI OSCURATI RESTANO OSCURATI. La censura non è un'annotazione: è una
+ * cosa che si è chiesto di togliere dall'immagine, e togliere le quote non
+ * può rimetterla dentro.
+ */
+export async function renderFotoPulita(
+  foto: Foto,
+  formato: 'image/jpeg' | 'image/png' = 'image/jpeg',
+  qualita = 0.92
+): Promise<Blob> {
+  const originale = await caricaImmagine(blobOrigine(foto));
+  const img = immagineCensurata(originale, foto.larghezzaPx, foto.altezzaPx, foto.censure);
+  const canvas = document.createElement('canvas');
+  canvas.width = foto.larghezzaPx;
+  canvas.height = foto.altezzaPx;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas non disponibile su questo dispositivo.');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvasInBlob(canvas, formato, qualita);
+}
+
+/**
  * Renderer di export: disegna l'originale + le primitive delle annotazioni
  * su un canvas e produce una COPIA appiattita ad alta risoluzione.
  * L'originale in archivio non viene mai toccato.
