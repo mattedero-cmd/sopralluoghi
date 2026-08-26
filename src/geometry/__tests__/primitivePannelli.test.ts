@@ -195,3 +195,30 @@ describe('abbondanze sulla foto', () => {
     expect(prim.some((x) => x.kind === 'polilinea')).toBe(false);
   });
 });
+
+describe('forme che non si possono mappare', () => {
+  it('un quadrilatero rientrante non disegna niente invece di sparare linee fuori', () => {
+    // angolo basso-destro trascinato DENTRO la forma
+    const concavo = elemento({ ...meta, giunti: [50, 100, 150] }, [
+      { x: 0, y: 0 },
+      { x: 400, y: 0 },
+      { x: 120, y: 60 },
+      { x: 0, y: 200 }
+    ]);
+    expect(primitivePannelli(concavo)).toEqual([]);
+  });
+
+  it('una prospettiva forte ma convessa si disegna, e resta dentro la forma', () => {
+    const prospettico = elemento(meta, [
+      { x: 0, y: 0 },
+      { x: 400, y: 0 },
+      { x: 300, y: 150 },
+      { x: 50, y: 200 }
+    ]);
+    const x = linee(primitivePannelli(prospettico)).flatMap((l) =>
+      l.punti.filter((_, i) => i % 2 === 0)
+    );
+    expect(Math.min(...x)).toBeGreaterThan(-1);
+    expect(Math.max(...x)).toBeLessThan(401);
+  });
+});

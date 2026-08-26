@@ -3,6 +3,7 @@ import type { Punto } from '../db/types';
 import { Icona } from './Icona';
 import { CampoNumero } from './CampoNumero';
 import { applicaOmografia, calcolaOmografia } from '../geometry/omografia';
+import { quadConvesso } from '../geometry/punti';
 import {
   giuntiAutomatici,
   numeroMinimo,
@@ -215,7 +216,9 @@ export function AmbientePannelli({
   /** i 4 angoli nello spazio del disegno: la foto, o il rettangolo puro */
   const quad = useMemo<Punto[]>(() => {
     const p = forma.prospettiva?.punti;
-    if (p && p.length === 4) return p;
+    // una forma rientrante manderebbe l'omografia a ribaltare l'interno con
+    // l'esterno: si rinuncia alla prospettiva e si disegna il rettangolo
+    if (p && p.length === 4 && quadConvesso(p)) return p;
     return [
       { x: 0, y: 0 },
       { x: L, y: 0 },
@@ -712,7 +715,13 @@ export function AmbientePannelli({
               <button
                 key={v.id}
                 className={pann.verso === v.id ? 'attivo' : ''}
-                onClick={() => setPann((p) => ({ ...p, verso: v.id }))}
+                onClick={() => {
+                  if (v.id === pann.verso) return;
+                  // il verso sposta il lembo, e quindi la misura dei teli: a
+                  // «fascia» il primo è largo esattamente la bobina e sforerebbe
+                  if (modo === 'fascia' && massimo > 0) ridistribuisci({ verso: v.id });
+                  else setPann((p) => ({ ...p, verso: v.id }));
+                }}
               >
                 {v.nome}
               </button>

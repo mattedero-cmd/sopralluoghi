@@ -208,15 +208,17 @@ export function pannelliDellaForma(a: Annotazione): PannelliForma | null {
   if (!salvata) return null;
   const forma = formaQuadrilatera(a);
   if (!forma) return null;
-  const verticale = salvata.asse === 'verticale';
+  // un salvataggio vecchio o arrivato da un altro dispositivo può contenere di
+  // tutto: si risana PRIMA di leggere l'asse, o si sceglierebbe la misura da
+  // dividere con una regola e l'asse con un'altra
+  const asse = salvata.asse === 'orizzontale' ? 'orizzontale' : 'verticale';
+  const verticale = asse === 'verticale';
   // SI DIVIDE IL VETRO: le giunzioni sono posizioni sull'elemento finito
   const totale = verticale ? forma.netta.larghezza : forma.netta.altezza;
-  // un salvataggio vecchio o arrivato da un altro dispositivo può contenere di
-  // tutto: si risana qui, una volta, e da qui in poi tutti vedono la stessa cosa
   const pann = normalizzaPannellizzazione(salvata, totale);
   if (!pann) return null;
   const trasversale = verticale ? forma.netta.altezza : forma.netta.larghezza;
-  const abbondanze = abbondanzeSullAsse(forma, salvata.asse);
+  const abbondanze = abbondanzeSullAsse(forma, asse);
   const pannelli = pannelliDi(totale, trasversale, pann, abbondanze);
   if (pannelli.length <= 1) return null;
   return {

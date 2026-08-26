@@ -31,7 +31,7 @@ import { sbordo } from './pannelli';
 import { applicaOmografia, calcolaOmografia } from './omografia';
 import { codicePannello } from './nomenclatura';
 import { misureElemento, nomePoligono } from './calibrazione';
-import { ordinaQuad } from './punti';
+import { ordinaQuad, quadConvesso } from './punti';
 import { calcolaCatene, sommaCatenaInUnita } from './catene';
 import { geomQuotaDistanza, libertaDistanza } from './parametrico';
 import { formattaMisura, formattaNumero } from '../utils/format';
@@ -442,6 +442,10 @@ export function primitivePannelli(
   const L = forma.netta.larghezza;
   const A = forma.netta.altezza;
   if (!(L > 0) || !(A > 0)) return [];
+  // su una forma rientrante l'omografia esiste ma ribalta l'interno
+  // all'esterno: le giunzioni finirebbero a sparare linee verdi attraverso
+  // tutta la foto. Meglio non disegnarle
+  if (!quadConvesso(forma.quad)) return [];
 
   let H;
   try {

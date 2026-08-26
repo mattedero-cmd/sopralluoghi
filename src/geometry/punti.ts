@@ -86,3 +86,27 @@ export function ordinaQuad(pts: Punto[]): [Punto, Punto, Punto, Punto] {
   for (let i = 1; i < 4; i++) if (s[i].x + s[i].y < s[k].x + s[k].y) k = i;
   return [s[k % 4], s[(k + 1) % 4], s[(k + 2) % 4], s[(k + 3) % 4]];
 }
+
+/**
+ * Vero se i quattro angoli formano un quadrilatero CONVESSO.
+ *
+ * Serve prima di costruire un'omografia sui quattro angoli: su una forma
+ * rientrante la mappa proiettiva esiste ancora, ma ribalta l'interno
+ * all'esterno e le linee derivate — giunzioni, sormonti, griglie — schizzano
+ * fuori dall'immagine. Meglio accorgersene e non disegnare.
+ */
+export function quadConvesso(punti: Punto[]): boolean {
+  if (punti.length !== 4) return false;
+  let segno = 0;
+  for (let i = 0; i < 4; i++) {
+    const a = punti[i];
+    const b = punti[(i + 1) % 4];
+    const c = punti[(i + 2) % 4];
+    const croce = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
+    if (Math.abs(croce) < 1e-9) continue; // tre punti allineati: non decide
+    const s = croce > 0 ? 1 : -1;
+    if (segno === 0) segno = s;
+    else if (s !== segno) return false;
+  }
+  return segno !== 0;
+}

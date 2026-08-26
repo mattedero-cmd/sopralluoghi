@@ -313,3 +313,27 @@ describe('abbondanze attorno al vetro', () => {
     expect(p[0]).toMatchObject({ larghezza: 164, altezza: 110, inizio: -2, fine: 162 });
   });
 });
+
+describe('il verso cambia le misure dei teli', () => {
+  it('a fascia, cambiare verso senza ridistribuire farebbe sforare la bobina', () => {
+    // è la ragione per cui l'ambiente ridistribuisce quando si cambia il verso
+    const giunti = [131, 266, 401];
+    const abb = { inizio: 5, fine: 5, trasversaleInizio: 5, trasversaleFine: 5 };
+    const misure = (verso: 'avanti' | 'indietro' | 'centro') =>
+      larghezze(pannelliDi(500, 230, { asse: 'verticale', sormonto: 2, verso, giunti }, abb));
+    expect(misure('centro')).toEqual([137, 137, 137, 105]);
+    expect(misure('indietro')).toEqual([138, 137, 137, 104]); // il primo sfora
+    expect(misure('avanti')).toEqual([136, 137, 137, 106]);
+    // ridistribuendo col verso nuovo si torna dentro la fascia
+    const rifatti = giuntiAutomatici(500, {
+      massimo: 137,
+      modo: 'fascia',
+      sormonto: 2,
+      verso: 'indietro',
+      abbondanze: abb
+    });
+    expect(
+      larghezze(pannelliDi(500, 230, { asse: 'verticale', sormonto: 2, verso: 'indietro', giunti: rifatti }, abb))
+    ).toEqual([137, 137, 137, 105]);
+  });
+});
