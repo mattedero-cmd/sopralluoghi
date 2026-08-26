@@ -4,3 +4,8 @@ dev-dist/
 *.local
 .DS_Store
 *.tsbuildinfo
+
+# file di sondaggio usati durante le verifiche: non appartengono al progetto
+verifica_tmp*.test.ts
+**/zz_*.test.ts
+**/tmp_*.test.ts
