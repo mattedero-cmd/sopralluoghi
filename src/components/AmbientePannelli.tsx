@@ -671,6 +671,9 @@ export function AmbientePannelli({
                 valore={massimo}
                 min={0}
                 onCambia={(v) => {
+                  // riscrivere lo stesso numero non è una modifica: le
+                  // giunzioni spostate a mano restano dove sono
+                  if (v === massimo) return;
                   setMassimo(v);
                   // scrivere una fascia vuol dire «falli stare qui dentro»:
                   // altrimenti il campo non produrrebbe niente di visibile
@@ -692,6 +695,7 @@ export function AmbientePannelli({
                 valore={pann.sormonto}
                 min={0}
                 onCambia={(v) => {
+                  if (v === pann.sormonto) return;
                   // a «fascia» il sormonto entra nel conto della larghezza:
                   // cambiarlo senza ridistribuire farebbe sforare i teli
                   if (modo === 'fascia' && massimo > 0) ridistribuisci({ sormonto: v });

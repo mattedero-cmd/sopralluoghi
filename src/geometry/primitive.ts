@@ -31,6 +31,7 @@ import { sbordo } from './pannelli';
 import { applicaOmografia, calcolaOmografia } from './omografia';
 import { codicePannello } from './nomenclatura';
 import { misureElemento, nomePoligono } from './calibrazione';
+import { ordinaQuad } from './punti';
 import { calcolaCatene, sommaCatenaInUnita } from './catene';
 import { geomQuotaDistanza, libertaDistanza } from './parametrico';
 import { formattaMisura, formattaNumero } from '../utils/format';
@@ -658,6 +659,38 @@ export function versiSegmento(p1: Punto, p2: Punto): [string, string] {
   return p1.x <= p2.x ? ['sinistra', 'destra'] : ['destra', 'sinistra'];
 }
 
+/**
+ * CHI FA DA BASE E CHI DA ALTEZZA, in un quadrilatero.
+ *
+ * Si mettono in verso i quattro angoli — alto-sx, alto-dx, basso-dx, basso-sx —
+ * e da lì i ruoli sono decisi: il lato di sopra e quello di sotto sono BASI,
+ * quelli di fianco sono ALTEZZE. Non conta come è stata tracciata la forma né
+ * quali lati sembrano più paralleli fra loro: una finestra fotografata dritta
+ * ha la base in basso, e questo deve valere sempre.
+ */
+function ruoliQuadrilatero(q: QuotaPoligono): Map<number, 'base' | 'altezza'> {
+  const ruoli = new Map<number, 'base' | 'altezza'>();
+  if (q.punti.length !== 4) return ruoli;
+  const quad = ordinaQuad(q.punti);
+  const indice = quad.map((p) => q.punti.indexOf(p));
+  if (indice.some((i) => i < 0)) return ruoli;
+  const coppie: Array<[number, number, 'base' | 'altezza']> = [
+    [indice[0], indice[1], 'base'], // sopra
+    [indice[3], indice[2], 'base'], // sotto
+    [indice[0], indice[3], 'altezza'], // sinistra
+    [indice[1], indice[2], 'altezza'] // destra
+  ];
+  segmentiPoligono(q).forEach((s, i) => {
+    for (const [a, b, ruolo] of coppie) {
+      if ((s.da === a && s.a === b) || (s.da === b && s.a === a)) {
+        ruoli.set(i, ruolo);
+        return;
+      }
+    }
+  });
+  return ruoli;
+}
+
 export function simboliPoligono(q: QuotaPoligono): string[] {
   const segs = segmentiPoligono(q);
   const n = q.punti.length;
@@ -678,46 +711,47 @@ export function simboliPoligono(q: QuotaPoligono): string[] {
   const taglia = (i: number) => segs[i].valore ?? info[i].px;
   const out: string[] = segs.map(() => '');
 
-  if (forma === 'Rettangolo') {
-    info.forEach((x) => (out[x.i] = x.orizz ? 'b' : 'h'));
+  // QUADRILATERI: i ruoli si leggono dalla POSIZIONE dei lati, non dal loro
+  // angolo né da quali sembrano più paralleli. La base è quella in basso,
+  // l'altezza è quella di fianco — sempre, comunque sia stata disegnata la
+  // forma. Le foto di un sopralluogo si scattano dritte.
+  const ruoli = n === 4 ? ruoliQuadrilatero(q) : null;
+  if (ruoli && (forma === 'Rettangolo' || forma === 'Trapezio' || forma === 'Quadrilatero' || forma === 'Rombo')) {
+    const basi = info.filter((x) => x.lato && ruoli.get(x.i) === 'base');
+    const altezze = info.filter((x) => x.lato && ruoli.get(x.i) === 'altezza');
+    const nomina = (gruppo: typeof basi, minuscolo: string, maiuscolo: string) => {
+      if (gruppo.length === 0) return;
+      if (gruppo.length === 1) {
+        out[gruppo[0].i] = minuscolo;
+        return;
+      }
+      const [primo, secondo] = [...gruppo].sort((p, r) => taglia(r.i) - taglia(p.i));
+      // due lati uguali sono due volte la stessa misura: nessuno è «maggiore»
+      if (taglia(primo.i) === taglia(secondo.i)) {
+        out[primo.i] = minuscolo;
+        out[secondo.i] = minuscolo;
+      } else {
+        out[primo.i] = maiuscolo;
+        out[secondo.i] = minuscolo;
+      }
+    };
+    const scambiati = q.simboliScambiati === true;
+    nomina(basi, scambiati ? 'h' : 'b', scambiati ? 'H' : 'B');
+    nomina(altezze, scambiati ? 'b' : 'h', scambiati ? 'B' : 'H');
+    // i lati non riconosciuti (forme degeneri) e le diagonali
+    let l = 0;
+    for (const x of info) {
+      if (out[x.i]) continue;
+      out[x.i] = x.lato ? `l${++l}` : (taglia(x.i) >= 0 ? '' : '');
+    }
+    const diagonali = info.filter((x) => !x.lato && !out[x.i]);
+    [...diagonali]
+      .sort((p, r) => taglia(r.i) - taglia(p.i))
+      .forEach((x, k) => (out[x.i] = k === 0 ? 'D' : 'd'));
   } else if (forma === 'Triangolo') {
     [...info]
       .sort((p, r) => taglia(r.i) - taglia(p.i))
       .forEach((x, k) => (out[x.i] = k === 0 ? 'ip' : k === 1 ? 'C' : 'c'));
-  } else if (forma === 'Rombo') {
-    // i lati prendono la nomenclatura del rettangolo (b orizzontale, h
-    // verticale) quando sono al massimo due; le diagonali restano D/d
-    const lati = info.filter((x) => x.lato);
-    if (lati.length <= 2) lati.forEach((x) => (out[x.i] = x.orizz ? 'b' : 'h'));
-    else lati.forEach((x) => (out[x.i] = 'l'));
-    [...info.filter((x) => !x.lato)]
-      .sort((p, r) => taglia(r.i) - taglia(p.i))
-      .forEach((x, k) => (out[x.i] = k === 0 ? 'D' : 'd'));
-  } else if (forma === 'Trapezio' || forma === 'Quadrilatero') {
-    const lati = info.filter((x) => x.lato);
-    // coppia di lati più paralleli = le basi
-    let coppia: [number, number] | null = null;
-    let diff = Infinity;
-    for (let i = 0; i < lati.length; i++) {
-      for (let j = i + 1; j < lati.length; j++) {
-        let d = Math.abs(lati[i].ang - lati[j].ang);
-        d = Math.min(d, Math.PI - d);
-        if (d < diff) {
-          diff = d;
-          coppia = [lati[i].i, lati[j].i];
-        }
-      }
-    }
-    if (coppia && diff < 0.3) {
-      const [g, p] = taglia(coppia[0]) >= taglia(coppia[1]) ? coppia : [coppia[1], coppia[0]];
-      out[g] = 'B';
-      out[p] = 'b';
-    }
-    const altre = ['H', 'h', 'H₂', 'h₂'];
-    let k = 0;
-    for (const x of lati) if (!out[x.i]) out[x.i] = altre[k++] ?? `l${k}`;
-    let d = 0;
-    for (const x of info) if (!x.lato && !out[x.i]) out[x.i] = d++ === 0 ? 'D' : 'd';
   } else {
     info.forEach((x, k) => (out[x.i] = `L${k + 1}`));
   }

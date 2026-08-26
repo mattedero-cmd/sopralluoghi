@@ -16,7 +16,7 @@ import { abbondanzaTotale, segmentiPoligono, segmentoELato } from '../db/types';
 import { misuraSegmento } from './calibrazione';
 import { misureElemento } from './calibrazione';
 import { nomeFormaPoligono, simboliPoligono } from './primitive';
-import { pannelliDellaForma } from './formaQuadrilatera';
+import { formaQuadrilatera, pannelliDellaForma } from './formaQuadrilatera';
 import { codicePannello } from './nomenclatura';
 import { inMillimetri } from '../utils/format';
 
@@ -119,6 +119,14 @@ function ingombroDaQuote(q: QuotaPoligono): { larghezza: number; altezza: number
   const n = q.punti.length;
   const forma = nomeFormaPoligono(q);
   const lati = segs.filter((s) => segmentoELato(s, n));
+
+  // QUADRILATERO: larghezza e altezza si leggono dalla posizione dei lati —
+  // sopra/sotto e fianchi — non dal simbolo scritto. Così scambiare a mano i
+  // nomi di base e altezza cambia la nomenclatura e non il pezzo da tagliare.
+  if (n === 4 && forma !== 'Rombo') {
+    const f = formaQuadrilatera(q);
+    if (f) return { larghezza: f.taglio.larghezza, altezza: f.taglio.altezza };
+  }
 
   // TRIANGOLO: i tre lati bastano a costruirlo. Si taglia appoggiato sul lato
   // più lungo, quindi l'ingombro è quel lato per l'altezza relativa.

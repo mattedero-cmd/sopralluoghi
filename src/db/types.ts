@@ -565,6 +565,16 @@ export interface QuotaPoligono extends AnnotazioneBase {
    */
   origine?: number;
   /**
+   * Scambia i ruoli di base e altezza nella nomenclatura.
+   *
+   * Di regola la base è il lato in basso e l'altezza è quello di fianco: le
+   * foto di un sopralluogo si scattano dritte, e il programma non deve
+   * indovinare. Questo è il comando per i casi in cui serve il contrario —
+   * una lastra da posare girata, un disegno ruotato — ed è una scelta esplicita
+   * di chi rileva, non un'interpretazione.
+   */
+  simboliScambiati?: boolean;
+  /**
    * Divisione in teli con sormonto (solo per i poligoni a 4 vertici, vedi
    * geometry/pannelli.ts). Le posizioni delle giunzioni sono nell'unità della
    * forma e si misurano sulla MISURA DI TAGLIO, abbondanze comprese: è quella

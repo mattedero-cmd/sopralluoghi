@@ -6834,6 +6834,24 @@ function EditorPoligono({
               })()}
           </div>
         </div>
+        {n === 4 && (
+          <div className="campo">
+            <label>Base e altezza</label>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                className={poli.simboliScambiati ? 'btn attivo' : 'btn'}
+                onClick={() => onModifica({ simboliScambiati: !poli.simboliScambiati })}
+              >
+                <Icona nome="sposta" dimensione={18} /> Scambia base e altezza
+              </button>
+            </div>
+            <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
+              {poli.simboliScambiati
+                ? 'Scambiate a mano: la base è il lato di fianco, l’altezza quello in basso.'
+                : 'La base è il lato in basso, l’altezza quello di fianco. Le misure del taglio non cambiano.'}
+            </span>
+          </div>
+        )}
         {n === 4 && onPannellizza && (
           <div className="campo">
             <label>Pannellizzazione</label>

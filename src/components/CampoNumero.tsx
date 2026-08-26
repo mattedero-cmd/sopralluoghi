@@ -53,7 +53,10 @@ export function CampoNumero({
         setInModifica(false);
         const n = parseFloat(testo.replace(',', '.'));
         const v = Number.isFinite(n) ? Math.max(min, intero ? Math.round(n) : n) : min;
-        onCambia(v);
+        // entrare e uscire da un campo senza toccarlo non è una modifica: chi
+        // ascolta può fare cose serie — ridistribuire dei teli, per dire — e
+        // non deve farle per un dito appoggiato di passaggio
+        if (v !== valore) onCambia(v);
         setTesto(String(v));
       }}
     />
