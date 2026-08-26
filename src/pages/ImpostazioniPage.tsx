@@ -16,6 +16,7 @@ import { StatoApp } from '../components/comuni';
 import { mostraToast } from '../state/toast';
 import { formattaByte } from '../utils/format';
 import { scaricaBlob } from '../utils/share';
+import { aggiornaApp } from '../utils/aggiornaApp';
 
 export function ImpostazioniPage() {
   const [imp, setImp] = useState<Impostazioni | null>(null);
@@ -279,12 +280,33 @@ export function ImpostazioniPage() {
           <p style={{ color: 'var(--testo-2)' }}>Informazioni sullo spazio non disponibili.</p>
         )}
 
+        <h2>Versione dell’app</h2>
+        <p style={{ color: 'var(--testo-2)' }}>
+          Build <strong>{__BUILD__}</strong> (UTC). È la data della versione che sta girando su
+          questo dispositivo: se non corrisponde all’ultima pubblicata, l’app installata sta
+          ancora servendo la copia che ha in cache.
+        </p>
+        <div className="riga-pulsanti">
+          <button
+            className="btn primario"
+            disabled={operazione !== null}
+            onClick={() => {
+              setOperazione('Aggiornamento in corso…');
+              void aggiornaApp();
+            }}
+          >
+            🔄 Aggiorna all’ultima versione
+          </button>
+        </div>
+        <p style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 8 }}>
+          Butta la copia in cache e ricarica dalla rete. <strong>I lavori non si toccano</strong>:
+          progetti, foto e piani di taglio stanno nel database del dispositivo, non nella cache.
+          Serve la rete attiva.
+        </p>
+
         <p style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 30 }}>
           Sopralluoghi — applicazione offline-first. I dati restano sul dispositivo; il backup su
           file e il backup cloud sono le copie di sicurezza esterne.
-          <br />
-          Versione 0.21.2 — build {__BUILD__} (UTC). Se hai appena aggiornato e la data non
-          corrisponde, chiudi e riapri l'app con la rete attiva.
         </p>
       </main>
     </div>
