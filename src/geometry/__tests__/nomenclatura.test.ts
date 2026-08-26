@@ -248,3 +248,42 @@ describe('codicePannello', () => {
     expect(codicePannello('A1', 26)).toBe('A1.aa');
   });
 });
+
+describe('etichette manuali che somigliano a un codice', () => {
+  const forma = (etichetta: string) =>
+    ({
+      id: 'q1',
+      fotoId: 'f1',
+      zIndex: 0,
+      stile: { colore: '#fff', spessore: 4, dimensioneTesto: 20 },
+      tipo: 'quotaPoligono',
+      punti: [
+        { x: 0, y: 0 },
+        { x: 5, y: 0 },
+        { x: 5, y: 2 },
+        { x: 0, y: 2 }
+      ],
+      segmenti: [],
+      unita: 'cm',
+      stato: 'reale',
+      etichetta
+    }) as unknown as Annotazione;
+
+  const numeri = new Map([
+    ['q1', { etichettaFoto: 'A', numero: 7, quantita: 1, quantitaGlobale: 1 }]
+  ]) as never;
+
+  it('un codice automatico scritto a mano non congela la numerazione', () => {
+    for (const e of ['A7', 'A1.2', 'AA12', '3', 'B']) {
+      expect(codiceLocaleForma(forma(e), numeri)).toBe('A7');
+    }
+  });
+
+  it('«F1.dx» è un nome, non un codice: resta com’è scritto', () => {
+    // il suffisso del telo lo mette il programma, non l'utente: se qualcuno
+    // scrive destra/sinistra nell'etichetta, quella deve comandare
+    for (const e of ['F1.dx', 'S1.sx', 'P2.int', 'C3.bis', 'Porta']) {
+      expect(codiceLocaleForma(forma(e), numeri)).toBe(e);
+    }
+  });
+});
