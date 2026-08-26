@@ -10,6 +10,7 @@ import {
   sbordo,
   sormontoTotale,
   spostaGiunto,
+  type AbbondanzeTelo,
   type AssePannelli,
   type Pannellizzazione,
   type VersoSormonto
@@ -34,21 +35,15 @@ import { formattaNumero } from '../utils/format';
 /** che cosa si sta dividendo */
 export interface FormaDaPannellizzare {
   nome: string;
-  /** misure DI TAGLIO dell'elemento, abbondanze comprese */
+  /** misure DEL VETRO, senza abbondanze: è quello che si divide */
   larghezza: number;
   altezza: number;
   /**
-   * Misure a vista, senza abbondanze. Servono al disegno: il quadrilatero
-   * sulla foto è la forma netta, mentre le giunzioni si contano sul taglio.
-   * Senza indicazione le due cose coincidono, come su un pezzo del piano di
-   * taglio.
+   * Le abbondanze attorno al vetro. Stanno fuori dalla divisione — la
+   * giunzione al centro cade al centro del vetro — ma entrano nella misura dei
+   * teli di bordo, e quando sono asimmetriche i teli risultano diversi.
    */
-  netta?: { larghezza: number; altezza: number };
-  /**
-   * Quanto sborda l'abbondanza prima del bordo sinistro e di quello alto.
-   * Senza indicazione si assume che stia metà per parte.
-   */
-  scostamento?: { larghezza: number; altezza: number };
+  abbondanze?: { sinistra: number; destra: number; sopra: number; sotto: number };
   /** etichetta dell'unità, per i testi (mm, cm, m) */
   unita: string;
   /**
@@ -73,6 +68,9 @@ const MODI = [
 /** quanto vicino al giunto bisogna toccare per prenderlo, in pixel di schermo */
 const PRESA = 26;
 
+/** lo stesso verde delle giunzioni sulla foto, per il contorno dei teli */
+const VERDE_ABBONDANZA = '#34c759';
+
 export function AmbientePannelli({
   forma,
   iniziale,
@@ -86,8 +84,8 @@ export function AmbientePannelli({
   onChiudi: () => void;
 }) {
   const { larghezza: L, altezza: A } = forma;
-  /** la forma a vista: è lei che si disegna, il taglio le sta attorno */
-  const netta = forma.netta ?? { larghezza: L, altezza: A };
+  const abb = forma.abbondanze ?? { sinistra: 0, destra: 0, sopra: 0, sotto: 0 };
+  const conAbbondanze = abb.sinistra > 0 || abb.destra > 0 || abb.sopra > 0 || abb.sotto > 0;
 
   /** modo di distribuzione: con una fascia nota si parte da lei */
   const [modo, setModo] = useState<'fascia' | 'uguali'>(forma.massimo ? 'fascia' : 'uguali');
@@ -98,12 +96,18 @@ export function AmbientePannelli({
         asse: 'verticale',
         sormonto: sormontoIniziale(forma.unita),
         verso: 'centro',
-        giunti: giuntiAutomatici(forma.massimo ? sceltaTotale('verticale', L, A) : L, {
+        giunti: giuntiAutomatici(L, {
           massimo: forma.massimo ?? null,
           modo: forma.massimo ? 'fascia' : 'uguali',
           numero: forma.massimo ? null : 2,
           sormonto: sormontoIniziale(forma.unita),
-          verso: 'centro'
+          verso: 'centro',
+          abbondanze: {
+            inizio: forma.abbondanze?.sinistra ?? 0,
+            fine: forma.abbondanze?.destra ?? 0,
+            trasversaleInizio: forma.abbondanze?.sopra ?? 0,
+            trasversaleFine: forma.abbondanze?.sotto ?? 0
+          }
         })
       }
   );
@@ -116,19 +120,15 @@ export function AmbientePannelli({
 
   const totale = sceltaTotale(pann.asse, L, A);
   const trasversale = pann.asse === 'verticale' ? A : L;
-  // le abbondanze stanno attorno alla forma: sul disegno le posizioni di
-  // taglio vanno riportate sul netto, o le giunzioni cadrebbero spostate
-  const scostoDi = (misuraTaglio: number, misuraNetta: number, dichiarato?: number) =>
-    Math.max(0, dichiarato ?? (misuraTaglio - misuraNetta) / 2);
-  const scostoL = scostoDi(L, netta.larghezza, forma.scostamento?.larghezza);
-  const scostoA = scostoDi(A, netta.altezza, forma.scostamento?.altezza);
-  const scostoLungo = pann.asse === 'verticale' ? scostoL : scostoA;
-  const scostoTraverso = pann.asse === 'verticale' ? scostoA : scostoL;
-  /** la misura a vista di traverso: le linee si fermano lì, non sull'abbondanza */
-  const trasversaleNetto = pann.asse === 'verticale' ? netta.altezza : netta.larghezza;
+  /** le abbondanze girate nel verso dell'asse di divisione */
+  const abbondanze: AbbondanzeTelo =
+    pann.asse === 'verticale'
+      ? { inizio: abb.sinistra, fine: abb.destra, trasversaleInizio: abb.sopra, trasversaleFine: abb.sotto }
+      : { inizio: abb.sopra, fine: abb.sotto, trasversaleInizio: abb.sinistra, trasversaleFine: abb.destra };
   const pannelli = useMemo(
-    () => pannelliDi(totale, trasversale, pann),
-    [totale, trasversale, pann]
+    () => pannelliDi(totale, trasversale, pann, abbondanze),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [totale, trasversale, pann, abb.sinistra, abb.destra, abb.sopra, abb.sotto]
   );
   const numero = pannelli.length;
   const troppoLarghi = massimo > 0 ? pannelli.filter((p) => p.larghezza > massimo + 1e-6) : [];
@@ -165,10 +165,18 @@ export function AmbientePannelli({
         modo: m,
         numero: quanti,
         sormonto,
-        verso
+        verso,
+        abbondanze: abbondanzeDi(asse)
       })
     });
   };
+
+  /** le abbondanze viste da un asse qualunque, anche diverso da quello attivo */
+  function abbondanzeDi(asse: AssePannelli): AbbondanzeTelo {
+    return asse === 'verticale'
+      ? { inizio: abb.sinistra, fine: abb.destra, trasversaleInizio: abb.sopra, trasversaleFine: abb.sotto }
+      : { inizio: abb.sopra, fine: abb.sotto, trasversaleInizio: abb.sinistra, trasversaleFine: abb.destra };
+  }
 
   /**
    * Cambia il numero di teli.
@@ -179,7 +187,10 @@ export function AmbientePannelli({
    */
   const cambiaNumero = (n: number) => {
     if (n < 1) return;
-    const m = n === numeroMinimo(totale, massimo > 0 ? massimo : null, pann.sormonto) ? modo : 'uguali';
+    const m =
+      n === numeroMinimo(totale, massimo > 0 ? massimo : null, pann.sormonto, abbondanze)
+        ? modo
+        : 'uguali';
     setModo(m);
     ridistribuisci({ numero: n, modo: m });
   };
@@ -207,19 +218,19 @@ export function AmbientePannelli({
     if (p && p.length === 4) return p;
     return [
       { x: 0, y: 0 },
-      { x: netta.larghezza, y: 0 },
-      { x: netta.larghezza, y: netta.altezza },
-      { x: 0, y: netta.altezza }
+      { x: L, y: 0 },
+      { x: L, y: A },
+      { x: 0, y: A }
     ];
-  }, [forma.prospettiva, netta.larghezza, netta.altezza]);
+  }, [forma.prospettiva, L, A]);
 
   /** reale → disegno e ritorno: le due strade devono restare coerenti */
   const omografie = useMemo(() => {
     const reali = [
       { x: 0, y: 0 },
-      { x: netta.larghezza, y: 0 },
-      { x: netta.larghezza, y: netta.altezza },
-      { x: 0, y: netta.altezza }
+      { x: L, y: 0 },
+      { x: L, y: A },
+      { x: 0, y: A }
     ];
     try {
       return {
@@ -229,23 +240,40 @@ export function AmbientePannelli({
     } catch {
       return null;
     }
-  }, [quad, netta.larghezza, netta.altezza]);
+  }, [quad, L, A]);
+
+  /**
+   * Il contorno da inquadrare: il vetro più le abbondanze. Se si inquadrasse
+   * solo il vetro, il filetto verde dei teli finirebbe fuori dallo schermo
+   * proprio dal lato dove c'è più abbondanza — cioè dove serve guardarlo.
+   */
+  const contorno = useMemo<Punto[]>(() => {
+    if (!omografie) return quad;
+    const angoli = [
+      { x: -abb.sinistra, y: -abb.sopra },
+      { x: L + abb.destra, y: -abb.sopra },
+      { x: L + abb.destra, y: A + abb.sotto },
+      { x: -abb.sinistra, y: A + abb.sotto }
+    ];
+    return angoli.map((p) => applicaOmografia(omografie.versoDisegno, p));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [omografie, quad, L, A, abb.sinistra, abb.destra, abb.sopra, abb.sotto]);
 
   /** inquadratura di base: il quadrilatero riempie l'area disponibile */
   const vista = useMemo(() => {
     const { w, h } = dimensioni;
     if (w === 0 || h === 0) return null;
-    const xs = quad.map((p) => p.x);
-    const ys = quad.map((p) => p.y);
+    const xs = contorno.map((p) => p.x);
+    const ys = contorno.map((p) => p.y);
     const minX = Math.min(...xs);
     const maxX = Math.max(...xs);
     const minY = Math.min(...ys);
     const maxY = Math.max(...ys);
     const bw = maxX - minX || 1;
     const bh = maxY - minY || 1;
-    const base = Math.min((w * 0.84) / bw, (h * 0.84) / bh);
+    const base = Math.min((w * 0.84) / bw, (h * 0.8) / bh);
     return { w, h, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, base };
-  }, [dimensioni, quad]);
+  }, [dimensioni, contorno]);
 
   const aSchermo = (p: Punto): Punto => {
     if (!vista) return { x: 0, y: 0 };
@@ -265,20 +293,18 @@ export function AmbientePannelli({
     };
   };
 
-  /** punto DI TAGLIO (u lungo l'asse di divisione, v di traverso) → schermo */
+  /** punto SUL VETRO (u lungo l'asse di divisione, v di traverso) → schermo */
   const puntoSchermo = (u: number, v: number): Punto => {
     if (!omografie) return { x: 0, y: 0 };
-    const lungo = u - scostoLungo;
-    const traverso = v - scostoTraverso;
-    const reale = pann.asse === 'verticale' ? { x: lungo, y: traverso } : { x: traverso, y: lungo };
+    const reale = pann.asse === 'verticale' ? { x: u, y: v } : { x: v, y: u };
     return aSchermo(applicaOmografia(omografie.versoDisegno, reale));
   };
 
-  /** schermo → posizione di taglio lungo l'asse di divisione */
+  /** schermo → posizione sul vetro lungo l'asse di divisione */
   const posizioneDa = (p: Punto): number | null => {
     if (!omografie) return null;
     const reale = applicaOmografia(omografie.versoReale, aDisegno(p));
-    return (pann.asse === 'verticale' ? reale.x : reale.y) + scostoLungo;
+    return pann.asse === 'verticale' ? reale.x : reale.y;
   };
 
   useEffect(() => {
@@ -325,10 +351,10 @@ export function AmbientePannelli({
       const b = Math.min(totale, g + sb.fine);
       if (b - a <= 0) continue;
       percorso([
-        puntoSchermo(a, scostoTraverso),
-        puntoSchermo(b, scostoTraverso),
-        puntoSchermo(b, scostoTraverso + trasversaleNetto),
-        puntoSchermo(a, scostoTraverso + trasversaleNetto)
+        puntoSchermo(a, 0),
+        puntoSchermo(b, 0),
+        puntoSchermo(b, trasversale),
+        puntoSchermo(a, trasversale)
       ]);
       ctx.fillStyle = 'rgba(255,196,0,0.28)';
       ctx.fill();
@@ -344,10 +370,32 @@ export function AmbientePannelli({
     ctx.lineWidth = 3;
     ctx.stroke();
 
+    // IL CONTORNO DI OGNI TELO, abbondanze comprese: filetto verde sottile.
+    // È il pezzo che esce dalla macchina: messo sopra il vetro fa vedere a
+    // colpo d'occhio se la divisione tiene, e come si distribuiscono le
+    // abbondanze quando non sono uguali su tutti i lati.
+    if (conAbbondanze) {
+      const v0 = -abbondanze.trasversaleInizio;
+      const v1 = trasversale + abbondanze.trasversaleFine;
+      ctx.setLineDash([5, 4]);
+      ctx.strokeStyle = VERDE_ABBONDANZA;
+      ctx.lineWidth = 1.25;
+      for (const telo of pannelli) {
+        percorso([
+          puntoSchermo(telo.inizio, v0),
+          puntoSchermo(telo.fine, v0),
+          puntoSchermo(telo.fine, v1),
+          puntoSchermo(telo.inizio, v1)
+        ]);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+    }
+
     // linee di giunzione: quelle che si vedranno sul muro
     pann.giunti.forEach((g, i) => {
-      const a = puntoSchermo(g, scostoTraverso);
-      const b = puntoSchermo(g, scostoTraverso + trasversaleNetto);
+      const a = puntoSchermo(g, 0);
+      const b = puntoSchermo(g, trasversale);
       for (const [col, lw] of [
         ['rgba(0,0,0,0.7)', 8],
         [preso === i ? '#ffffff' : '#ffc400', 3.5]
@@ -379,10 +427,7 @@ export function AmbientePannelli({
       // i teli stretti finirebbero uno sopra l'altro: le scritte si alternano
       // in alto e in basso, così restano leggibili anche su una striscia
       const altezzaTesto = p.indice % 2 === 0 ? 0.62 : 0.38;
-      const c = puntoSchermo(
-        (p.vistaInizio + p.vistaFine) / 2,
-        scostoTraverso + trasversaleNetto * altezzaTesto
-      );
+      const c = puntoSchermo((p.vistaInizio + p.vistaFine) / 2, trasversale * altezzaTesto);
       const testo = `${p.indice}  ·  ${formattaNumero(arrotonda(p.larghezza))} ${forma.unita}`;
       ctx.lineWidth = Math.max(2, dim * 0.24);
       ctx.strokeStyle = 'rgba(0,0,0,0.75)';
@@ -393,7 +438,7 @@ export function AmbientePannelli({
 
     ctx.restore();
     // il disegno dipende da tutto quello che si vede: se cambia, si rifà
-  }, [vista, omografie, pann, pannelli, zoom, pan, preso, forma.prospettiva, totale, trasversale]);
+  }, [vista, omografie, pann, pannelli, zoom, pan, preso, forma.prospettiva, totale, trasversale, conAbbondanze]);
 
   /* --- dito e mouse -------------------------------------------------- */
 
@@ -410,8 +455,8 @@ export function AmbientePannelli({
     let scelto: number | null = null;
     let minima = PRESA;
     pann.giunti.forEach((g, i) => {
-      const a = puntoSchermo(g, scostoTraverso);
-      const b = puntoSchermo(g, scostoTraverso + trasversaleNetto);
+      const a = puntoSchermo(g, 0);
+      const b = puntoSchermo(g, trasversale);
       const d = distanzaDaSegmento(p, a, b);
       if (d < minima) {
         minima = d;
@@ -529,7 +574,9 @@ export function AmbientePannelli({
         <div className="ap-legenda">
           {numero === 1
             ? 'Un pezzo solo: aggiungi un pannello per creare una giunzione.'
-            : 'Trascina una pallina gialla per spostare la giunzione. Due dita per zoomare.'}
+            : conAbbondanze
+              ? 'Trascina la pallina gialla per spostare la giunzione. Il tratteggio verde è il pezzo da tagliare, abbondanze comprese.'
+              : 'Trascina una pallina gialla per spostare la giunzione. Due dita per zoomare.'}
         </div>
       </div>
 
@@ -540,8 +587,15 @@ export function AmbientePannelli({
               <strong>{numero}</strong> {numero === 1 ? 'pannello' : 'pannelli'}
             </span>
             <span>
-              {formattaNumero(arrotonda(L))} × {formattaNumero(arrotonda(A))} {unita}
+              vetro {formattaNumero(arrotonda(L))} × {formattaNumero(arrotonda(A))} {unita}
             </span>
+            {conAbbondanze && (
+              <span>
+                abbondanze {formattaNumero(arrotonda(abb.sinistra))} sx ·{' '}
+                {formattaNumero(arrotonda(abb.destra))} dx · {formattaNumero(arrotonda(abb.sopra))}{' '}
+                sopra · {formattaNumero(arrotonda(abb.sotto))} sotto
+              </span>
+            )}
             {materialeInPiu > 0 && (
               <span>
                 +{formattaNumero(arrotonda(materialeInPiu))} {unita} di sormonto
@@ -699,9 +753,13 @@ export function AmbientePannelli({
             ))}
           </div>
           <p className="nest-sub">
-            Le misure comprendono il sormonto: {formattaNumero(arrotonda(sb.inizio))} +{' '}
-            {formattaNumero(arrotonda(sb.fine))} {unita} attorno a ogni giunzione. Il primo e
-            l’ultimo pannello arrivano al bordo dell’elemento, senza aggiunte.
+            Si divide il <strong>vetro</strong>: la giunzione cade dove la vedi cadere. Le misure
+            dei pezzi comprendono il sormonto — {formattaNumero(arrotonda(sb.inizio))} +{' '}
+            {formattaNumero(arrotonda(sb.fine))} {unita} attorno a ogni giunzione — e, sui teli di
+            bordo, l’abbondanza di quel lato.{' '}
+            {conAbbondanze
+              ? 'Il filetto verde tratteggiato è il contorno di ogni pezzo, abbondanze comprese.'
+              : ''}
           </p>
         </div>
       )}

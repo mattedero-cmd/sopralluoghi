@@ -58,15 +58,18 @@ describe('giuntiAutomatici a fascia', () => {
 });
 
 describe('giuntiAutomatici in parti uguali', () => {
-  it('quattro teli identici, sormonti compresi', () => {
+  it('«uguali» divide IL VETRO in parti uguali, non il materiale', () => {
     const giunti = giuntiAutomatici(510, {
       massimo: 137,
       modo: 'uguali',
       sormonto: 2,
       verso: 'centro'
     });
+    // le giunzioni cadono a un quarto, a metà e a tre quarti del vetro
+    expect(giunti).toEqual([127.5, 255, 382.5]);
+    // i teli di bordo sormontano da una parte sola: sono più stretti, ed è giusto
     expect(larghezze(pannelliDi(510, 230, { asse: 'verticale', sormonto: 2, verso: 'centro', giunti })))
-      .toEqual([129, 129, 129, 129]);
+      .toEqual([128.5, 129.5, 129.5, 128.5]);
   });
 
   it('una finestra 200×200 in due: la giunzione cade al centro', () => {
@@ -259,5 +262,54 @@ describe('pannellizzazioneAutomatica', () => {
     });
     expect(p.asse).toBe('verticale');
     expect(p.giunti).toHaveLength(3);
+  });
+});
+
+describe('abbondanze attorno al vetro', () => {
+  /** la finestra della foto: 2 cm ai lati, 10 cm solo sotto */
+  const ABB = { inizio: 2, fine: 2, trasversaleInizio: 0, trasversaleFine: 10 };
+
+  it('la giunzione al centro cade al centro DEL VETRO, non del foglio', () => {
+    const giunti = giuntiAutomatici(160, { modo: 'uguali', numero: 2, sormonto: 1, verso: 'centro', abbondanze: ABB });
+    expect(giunti).toEqual([80]);
+  });
+
+  it('i teli di bordo si portano la loro abbondanza: misure diverse, vetro diviso a metà', () => {
+    const p = pannelliDi(160, 100, { asse: 'verticale', sormonto: 1, verso: 'centro', giunti: [80] }, ABB);
+    // 80 di vetro + mezzo sormonto + 2 di abbondanza per ciascuno
+    expect(larghezze(p)).toEqual([82.5, 82.5]);
+    // e ogni telo porta le abbondanze di traverso: 100 + 0 + 10
+    expect(p.map((x) => x.altezza)).toEqual([110, 110]);
+    // il materiale del primo telo comincia FUORI dal vetro
+    expect(p[0].inizio).toBe(-2);
+    expect(p[1].fine).toBe(162);
+  });
+
+  it('con abbondanza da un lato solo i teli escono diversi, e il vetro resta diviso a metà', () => {
+    const soloSotto = { inizio: 0, fine: 10, trasversaleInizio: 2, trasversaleFine: 2 };
+    const giunti = giuntiAutomatici(164, { modo: 'uguali', numero: 2, sormonto: 1, verso: 'centro', abbondanze: soloSotto });
+    expect(giunti).toEqual([82]);
+    const p = pannelliDi(164, 120, { asse: 'orizzontale', sormonto: 1, verso: 'centro', giunti }, soloSotto);
+    // 82 + 0,5 in alto; 82 + 0,5 + 10 in basso
+    expect(larghezze(p)).toEqual([82.5, 92.5]);
+    expect(p.map((x) => x.altezza)).toEqual([124, 124]);
+  });
+
+  it('a «fascia» il conto comprende le abbondanze dei due capi', () => {
+    // vetro 500 + 5 + 5 = 510 di materiale su fascia 137
+    const abb = { inizio: 5, fine: 5, trasversaleInizio: 5, trasversaleFine: 5 };
+    expect(numeroMinimo(500, 137, 2, abb)).toBe(4);
+    const giunti = giuntiAutomatici(500, { massimo: 137, modo: 'fascia', sormonto: 2, verso: 'centro', abbondanze: abb });
+    const p = pannelliDi(500, 230, { asse: 'verticale', sormonto: 2, verso: 'centro', giunti }, abb);
+    expect(larghezze(p)).toEqual([137, 137, 137, 105]);
+    // il materiale è vetro + abbondanze + un sormonto per giunzione
+    expect(p.reduce((s, x) => s + x.larghezza, 0)).toBeCloseTo(500 + 10 + 3 * 2, 6);
+    expect(p.every((x) => x.altezza === 240)).toBe(true);
+  });
+
+  it('senza giunzioni il telo unico è il vetro con tutte le sue abbondanze', () => {
+    const p = pannelliDi(160, 100, { asse: 'verticale', sormonto: 1, verso: 'centro', giunti: [] }, ABB);
+    expect(p).toHaveLength(1);
+    expect(p[0]).toMatchObject({ larghezza: 164, altezza: 110, inizio: -2, fine: 162 });
   });
 });

@@ -189,11 +189,18 @@ describe('pannelliDellaForma', () => {
       pann
     );
     const d = pannelliDellaForma(parete);
-    expect(d?.totale).toBe(510);
-    expect(d?.trasversale).toBe(240);
-    expect(d?.pannelli.map((p) => Math.round(p.larghezza))).toEqual([137, 137, 137, 105]);
-    // le giunzioni si contano sul taglio; sulla foto si disegna il netto
-    expect(d?.scostamento).toBe(5);
+    // si divide IL VETRO: 500, non i 510 del foglio
+    expect(d?.totale).toBe(500);
+    expect(d?.trasversale).toBe(230);
+    expect(d?.abbondanze).toEqual({
+      inizio: 5,
+      fine: 5,
+      trasversaleInizio: 5,
+      trasversaleFine: 5
+    });
+    // i teli però si tagliano con le abbondanze: il primo e l'ultimo se le portano
+    expect(d?.pannelli.map((p) => Math.round(p.larghezza))).toEqual([142, 137, 137, 100]);
+    expect(d?.pannelli.every((p) => p.altezza === 240)).toBe(true);
   });
 
   it('senza pannellizzazione, o con una sola giunzione fuori posto, non c’è niente', () => {
@@ -242,17 +249,23 @@ describe('abbondanze non simmetriche', () => {
     expect(f?.taglio).toEqual({ larghezza: 510, altezza: 234 });
   });
 
-  it('lo scostamento è quello vero, non la metà dell’extra', () => {
+  it('le abbondanze si leggono lato per lato', () => {
     const f = formaQuadrilatera(storta);
-    // tutti e 10 i cm stanno a sinistra: la giunzione a 200 di taglio cade a
-    // 190 sul muro, non a 195
-    expect(f?.scostamento).toEqual({ larghezza: 10, altezza: 0 });
+    // tutti e 10 i cm stanno a sinistra, i 4 stanno sotto
+    expect(f?.abbondanze).toEqual({ sinistra: 10, destra: 0, sopra: 0, sotto: 4 });
     const d = pannelliDellaForma(storta);
-    expect(d?.scostamento).toBe(10);
-    expect(d?.scostamentoTrasversale).toBe(0);
+    expect(d?.abbondanze).toEqual({
+      inizio: 10,
+      fine: 0,
+      trasversaleInizio: 0,
+      trasversaleFine: 4
+    });
+    // la giunzione a 200 divide il VETRO; il primo telo si porta i 10 cm
+    expect(d?.pannelli.map((p) => p.larghezza)).toEqual([211, 301]);
+    expect(d?.pannelli.every((p) => p.altezza === 234)).toBe(true);
   });
 
-  it('sull’asse orizzontale lo scostamento è quello dell’altezza', () => {
+  it('sull’asse orizzontale comandano le abbondanze di sopra e di sotto', () => {
     const oriz = poligono(
       [
         [0, 0],
@@ -269,8 +282,8 @@ describe('abbondanze non simmetriche', () => {
     );
     // abbInizio del lato destro sta al vertice alto-destra: sborda in ALTO
     const d = pannelliDellaForma(oriz);
-    expect(d?.scostamento).toBe(6);
-    expect(d?.totale).toBe(236);
+    expect(d?.abbondanze.inizio).toBe(6);
+    expect(d?.totale).toBe(230);
   });
 });
 
@@ -300,11 +313,12 @@ describe('la misura di taglio è la stessa della distinta', () => {
     const f = formaQuadrilatera(trapezio);
     expect(f?.netta.larghezza).toBe(500);
     expect(f?.taglio.larghezza).toBe(500);
-    // il lato che decide l'ingombro non ha abbondanze: non si sborda a sinistra
-    expect(f?.scostamento.larghezza).toBe(0);
+    // il lato che decide l'ingombro non ha abbondanze: non si sborda ai lati
+    expect(f?.abbondanze.sinistra).toBe(0);
+    expect(f?.abbondanze.destra).toBe(0);
   });
 
-  it('i teli si dividono su quella misura, non su una più grande', () => {
+  it('i teli si dividono sul vetro, e il materiale resta quello', () => {
     const d = pannelliDellaForma(trapezio);
     expect(d?.totale).toBe(500);
     const somma = d!.pannelli.reduce((s, p) => s + p.larghezza, 0);

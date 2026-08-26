@@ -4918,10 +4918,11 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             <AmbientePannelli
               forma={{
                 nome: codiceForma(ann) || 'Elemento',
-                larghezza: forma.taglio.larghezza,
-                altezza: forma.taglio.altezza,
-                netta: forma.netta,
-                scostamento: forma.scostamento,
+                // si divide il VETRO: le abbondanze stanno attorno e finiscono
+                // nei teli di bordo
+                larghezza: forma.netta.larghezza,
+                altezza: forma.netta.altezza,
+                abbondanze: forma.abbondanze,
                 unita: forma.unita,
                 prospettiva: { punti: forma.quad, immagine }
               }}

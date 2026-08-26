@@ -75,7 +75,11 @@ const parete = (id: string, fotoId: string, extra: object = {}): Annotazione =>
     ...extra
   }) as unknown as Annotazione;
 
-const TELI = { asse: 'verticale', sormonto: 2, verso: 'centro', giunti: [136, 271, 406] };
+/**
+ * Le giunzioni sono posizioni SUL VETRO (500 cm): con la fascia da 137 e 5 cm
+ * di abbondanza per lato, il primo telo ne copre 131 e si porta l'abbondanza.
+ */
+const TELI = { asse: 'verticale', sormonto: 2, verso: 'centro', giunti: [131, 266, 401] };
 
 beforeEach(async () => {
   await Promise.all([
@@ -111,11 +115,11 @@ describe('pezziDaProgetto con una parete pannellizzata', () => {
     expect(pezzi[0]).toMatchObject({ larghezza: 5100, altezza: 2400 });
   });
 
-  it('il materiale è la parete più un sormonto per giunzione', async () => {
+  it('il materiale è il vetro, più le abbondanze e un sormonto per giunzione', async () => {
     await db.annotazioni.put(parete('a1', 'f1', { pannelli: TELI }));
     const pezzi = await pezziDaProgetto('p1');
     const somma = pezzi.reduce((s, p) => s + p.larghezza, 0);
-    expect(somma).toBe(5100 + 3 * 20);
+    expect(somma).toBe(5000 + 100 + 3 * 20);
   });
 
   it('una divisione rimasta fuori misura non produce teli fantasma', async () => {

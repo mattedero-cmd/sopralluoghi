@@ -437,7 +437,7 @@ export function primitivePannelli(
 ): Primitiva[] {
   const dati = pannelliDellaForma(q);
   if (!dati) return [];
-  const { forma, pann, giunti, pannelli, totale, scostamento } = dati;
+  const { forma, pann, giunti, pannelli, totale, abbondanze } = dati;
   const L = forma.netta.larghezza;
   const A = forma.netta.altezza;
   if (!(L > 0) || !(A > 0)) return [];
@@ -460,11 +460,13 @@ export function primitivePannelli(
 
   const verticale = pann.asse === 'verticale';
   const trasversaleNetto = verticale ? A : L;
-  /** da posizione DI TAGLIO lungo l'asse + posizione di traverso a pixel foto */
-  const punto = (u: number, v: number): Punto => {
-    const lungo = u - scostamento;
-    return applicaOmografia(H, verticale ? { x: lungo, y: v } : { x: v, y: lungo });
-  };
+  /**
+   * Da posizione SUL VETRO (u lungo l'asse, v di traverso) a pixel della foto.
+   * Le due coordinate sono già quelle dell'elemento finito: la divisione si fa
+   * sul vetro, non sul foglio, e qui non c'è niente da riportare.
+   */
+  const punto = (u: number, v: number): Punto =>
+    applicaOmografia(H, verticale ? { x: u, y: v } : { x: v, y: u });
 
   const spessore = Math.max(1, q.stile.spessore * 0.45);
   const linea = (u: number, tratteggio?: number[]): Primitiva => {
@@ -481,6 +483,34 @@ export function primitivePannelli(
   };
 
   const prim: Primitiva[] = [];
+
+  // IL CONTORNO DI OGNI TELO, abbondanze comprese: un filetto verde ancora più
+  // sottile della giunzione. È quello che si taglia davvero, e messo sopra il
+  // vetro dice a colpo d'occhio se la divisione sta in piedi.
+  if (abbondanze.inizio || abbondanze.fine || abbondanze.trasversaleInizio || abbondanze.trasversaleFine) {
+    const v0 = -abbondanze.trasversaleInizio;
+    const v1 = trasversaleNetto + abbondanze.trasversaleFine;
+    for (const telo of pannelli) {
+      const angoli = [
+        punto(telo.inizio, v0),
+        punto(telo.fine, v0),
+        punto(telo.fine, v1),
+        punto(telo.inizio, v1)
+      ];
+      const contornoTelo: number[] = [];
+      for (const q of angoli) contornoTelo.push(q.x, q.y);
+      contornoTelo.push(angoli[0].x, angoli[0].y);
+      prim.push({
+        kind: 'polilinea',
+        punti: contornoTelo,
+        colore: COLORE_PANNELLO,
+        spessore: Math.max(0.75, q.stile.spessore * 0.22),
+        tratteggio: [3, 3],
+        alone: ALONE
+      });
+    }
+  }
+
   const sb = sbordo(pann);
   // le giunzioni buone, non quelle grezze: una riga verde deve sempre avere
   // due teli ai suoi lati

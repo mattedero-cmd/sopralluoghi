@@ -14,6 +14,13 @@
  * - l'asse dice DOVE cade il taglio: «verticale» = giunzioni verticali, si
  *   divide la larghezza; «orizzontale» = giunzioni orizzontali, si divide
  *   l'altezza;
+ * - SI DIVIDE IL VETRO, non il foglio. Le misure e le giunzioni sono quelle
+ *   dell'elemento finito: una giunzione «al centro» deve cadere al centro di
+ *   quello che si vede, non al centro del materiale;
+ * - le abbondanze stanno ATTORNO al vetro e finiscono nei teli di bordo. Se
+ *   sono asimmetriche — due centimetri ai lati e dieci sotto — i teli
+ *   risultano di misure diverse, ed è giusto così: il vetro resta diviso
+ *   dove serve;
  * - i giunti sono le linee di giunzione a vista, misurate dal LATO DI
  *   RIFERIMENTO (sinistra per l'asse verticale, alto per quello orizzontale);
  * - il sormonto si aggiunge attorno al giunto secondo il verso.
@@ -56,15 +63,40 @@ export function pannelloMinimo(totale: number): number {
   return Math.max(1e-9, Math.abs(totale) / 1000);
 }
 
+/**
+ * Le abbondanze attorno al vetro, viste dall'asse di divisione.
+ *
+ * `inizio` e `fine` stanno ai due capi dell'asse e finiscono ciascuna nel suo
+ * telo di bordo; quelle di traverso entrano invece nella misura di TUTTI i
+ * teli, perché ogni telo arriva da un bordo all'altro.
+ */
+export interface AbbondanzeTelo {
+  inizio: number;
+  fine: number;
+  trasversaleInizio: number;
+  trasversaleFine: number;
+}
+
+export const SENZA_ABBONDANZE: AbbondanzeTelo = {
+  inizio: 0,
+  fine: 0,
+  trasversaleInizio: 0,
+  trasversaleFine: 0
+};
+
 export interface Pannello {
   /** progressivo dal lato di riferimento, da 1 */
   indice: number;
-  /** bordi DI TAGLIO lungo l'asse di divisione, sormonto compreso */
+  /**
+   * Bordi del MATERIALE lungo l'asse, nelle coordinate del vetro: sormonto e
+   * abbondanze compresi. Il primo telo comincia in negativo quando c'è
+   * un'abbondanza a sinistra (o in alto), perché il materiale sborda dal vetro.
+   */
   inizio: number;
   fine: number;
   /** misura di taglio lungo l'asse di divisione */
   larghezza: number;
-  /** misura nell'altro verso: non cambia mai */
+  /** misura di taglio nell'altro verso: uguale per tutti i teli */
   altezza: number;
   /** parte a vista, quella che resta scoperta una volta posato il vicino */
   vistaInizio: number;
@@ -105,23 +137,30 @@ export function giuntiValidi(giunti: number[], totale: number): number[] {
 /**
  * I pannelli che escono da una pannellizzazione.
  *
- * `totale` è la misura lungo l'asse di divisione, `trasversale` l'altra.
- * Senza giunti validi torna un pannello solo: la forma intera.
+ * `totale` e `trasversale` sono le misure DEL VETRO lungo e di traverso
+ * all'asse; le abbondanze stanno attorno e si aggiungono ai teli di bordo.
+ * Senza giunti validi torna un pannello solo: la forma intera, abbondanze
+ * comprese.
  */
 export function pannelliDi(
   totale: number,
   trasversale: number,
-  p: Pannellizzazione
+  p: Pannellizzazione,
+  abbondanze: AbbondanzeTelo = SENZA_ABBONDANZE
 ): Pannello[] {
+  const ab = abbondanze;
+  // ogni telo va da un bordo all'altro: le abbondanze di traverso ci sono su
+  // tutti, non solo sul primo e sull'ultimo
+  const altezza = trasversale + ab.trasversaleInizio + ab.trasversaleFine;
   const tagli = giuntiValidi(p.giunti, totale);
   if (tagli.length === 0) {
     return [
       {
         indice: 1,
-        inizio: 0,
-        fine: totale,
-        larghezza: totale,
-        altezza: trasversale,
+        inizio: ab.inizio === 0 ? 0 : -ab.inizio,
+        fine: totale + ab.fine,
+        larghezza: totale + ab.inizio + ab.fine,
+        altezza,
         vistaInizio: 0,
         vistaFine: totale
       }
@@ -131,15 +170,17 @@ export function pannelliDi(
   const bordi = [0, ...tagli, totale];
   const pannelli: Pannello[] = [];
   for (let i = 0; i < bordi.length - 1; i++) {
-    // ai due estremi del pezzo non c'è niente da sormontare: il bordo è il bordo
-    const inizio = i === 0 ? 0 : bordi[i] - sb.inizio;
-    const fine = i === bordi.length - 2 ? totale : bordi[i + 1] + sb.fine;
+    const primo = i === 0;
+    const ultimo = i === bordi.length - 2;
+    // ai capi del vetro non c'è niente da sormontare: c'è l'abbondanza
+    const inizio = primo ? (ab.inizio === 0 ? 0 : -ab.inizio) : bordi[i] - sb.inizio;
+    const fine = ultimo ? totale + ab.fine : bordi[i + 1] + sb.fine;
     pannelli.push({
       indice: i + 1,
       inizio,
       fine,
       larghezza: fine - inizio,
-      altezza: trasversale,
+      altezza,
       vistaInizio: bordi[i],
       vistaFine: bordi[i + 1]
     });
@@ -168,6 +209,8 @@ export interface OpzioniGiunti {
   modo: 'fascia' | 'uguali';
   sormonto: number;
   verso: VersoSormonto;
+  /** le abbondanze attorno al vetro: entrano nei teli di bordo */
+  abbondanze?: AbbondanzeTelo;
 }
 
 /**
@@ -176,13 +219,20 @@ export interface OpzioniGiunti {
  * Ogni giunzione costa un sormonto in più di materiale, quindi il conto non è
  * `totale / massimo`: n pannelli coprono `n·massimo − (n−1)·sormonto`.
  */
-export function numeroMinimo(totale: number, massimo: number | null | undefined, sormonto: number): number {
+export function numeroMinimo(
+  totale: number,
+  massimo: number | null | undefined,
+  sormonto: number,
+  abbondanze: AbbondanzeTelo = SENZA_ABBONDANZE
+): number {
   if (!massimo || !(massimo > 0)) return 1;
-  if (totale <= massimo) return 1;
+  // il materiale da coprire è il vetro più le abbondanze dei due capi
+  const materiale = totale + abbondanze.inizio + abbondanze.fine;
+  if (materiale <= massimo) return 1;
   const s = Math.max(0, sormonto);
   // un sormonto largo quanto la fascia non coprirebbe mai niente di nuovo
   if (massimo - s <= 0) return 1;
-  return Math.max(1, Math.ceil((totale - s) / (massimo - s)));
+  return Math.max(1, Math.ceil((materiale - s) / (massimo - s)));
 }
 
 /**
@@ -194,25 +244,24 @@ export function numeroMinimo(totale: number, massimo: number | null | undefined,
  */
 export function giuntiAutomatici(totale: number, o: OpzioniGiunti): number[] {
   const s = Math.max(0, o.sormonto);
+  const ab = o.abbondanze ?? SENZA_ABBONDANZE;
   const sb = sbordo({ sormonto: s, verso: o.verso });
-  const n = Math.max(1, Math.round(o.numero ?? numeroMinimo(totale, o.massimo, s)));
+  const n = Math.max(1, Math.round(o.numero ?? numeroMinimo(totale, o.massimo, s, ab)));
   if (n <= 1 || totale <= 0) return [];
 
   const giunti: number[] = [];
   if (o.modo === 'fascia' && o.massimo && o.massimo > s) {
-    // i primi n−1 pannelli larghi quanto la fascia; l'ultimo prende il resto
-    let g = o.massimo - sb.fine;
+    // i primi n−1 teli larghi quanto la fascia, l'ultimo prende il resto.
+    // Il primo però porta anche l'abbondanza di bordo: sul vetro copre di meno
+    let g = o.massimo - ab.inizio - sb.fine;
     for (let i = 0; i < n - 1; i++) {
       giunti.push(g);
       g += o.massimo - s;
     }
   } else {
-    const larghezza = (totale + (n - 1) * s) / n;
-    let g = larghezza - sb.fine;
-    for (let i = 0; i < n - 1; i++) {
-      giunti.push(g);
-      g += larghezza - s;
-    }
+    // PARTI UGUALI SUL VETRO: è quello che si guarda. Le abbondanze rendono
+    // poi diversi i teli di bordo, ed è giusto — la giunzione resta dov'era
+    for (let i = 1; i < n; i++) giunti.push((totale * i) / n);
   }
   return giuntiValidi(giunti, totale);
 }

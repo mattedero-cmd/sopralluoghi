@@ -339,6 +339,12 @@ describe('diagnosiPezzi', () => {
 /* --- forme pannellizzate --------------------------------------------- */
 
 describe('forme divise in teli', () => {
+  /**
+   * Le giunzioni sono posizioni SUL VETRO: con la fascia da 137 e 5 cm di
+   * abbondanza per lato, il primo telo copre 131 di vetro e si porta i 5 cm.
+   */
+  const GIUNTI = [131, 266, 401];
+
   /** parete 500×230 con 5 cm di abbondanza per lato: si taglia 510×240 */
   const parete = (giunti: number[]) =>
     ({
@@ -363,7 +369,7 @@ describe('forme divise in teli', () => {
     }) as unknown as Annotazione;
 
   it('nella distinta arrivano i teli, non la parete intera', () => {
-    const pezzi = pezziDaAnnotazioni([parete([136, 271, 406])], FOTO);
+    const pezzi = pezziDaAnnotazioni([parete(GIUNTI)], FOTO);
     expect(pezzi).toHaveLength(4);
     // millimetri di taglio: 137, 137, 137, 105 cm
     expect(pezzi.map((p) => p.larghezza)).toEqual([1370, 1370, 1370, 1050]);
@@ -372,7 +378,7 @@ describe('forme divise in teli', () => {
   });
 
   it('ogni telo porta il suo codice: …a, …b, …c', () => {
-    const pezzi = pezziDaAnnotazioni([parete([136, 271, 406])], FOTO);
+    const pezzi = pezziDaAnnotazioni([parete(GIUNTI)], FOTO);
     expect(pezzi.map((p) => p.nome)).toEqual([
       'Poligono 4 lati A1.a',
       'Poligono 4 lati A1.b',
@@ -381,10 +387,11 @@ describe('forme divise in teli', () => {
     ]);
   });
 
-  it('somma dei teli = parete + un sormonto per giunzione', () => {
-    const pezzi = pezziDaAnnotazioni([parete([136, 271, 406])], FOTO);
+  it('somma dei teli = parete abbondata + un sormonto per giunzione', () => {
+    const pezzi = pezziDaAnnotazioni([parete(GIUNTI)], FOTO);
     const somma = pezzi.reduce((s, p) => s + p.larghezza, 0);
-    expect(somma).toBe(5100 + 3 * 20);
+    // vetro 5000 + 100 di abbondanze + 3 sormonti da 20
+    expect(somma).toBe(5000 + 100 + 3 * 20);
   });
 
   it('senza giunzioni valide resta un pezzo solo', () => {

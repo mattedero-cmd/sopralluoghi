@@ -1093,9 +1093,16 @@ h2 {
 
 .ap-legenda {
   position: absolute;
-  left: 10px;
-  right: 62px;
-  bottom: 10px;
+  left: 8px;
+  right: 60px;
+  /* in alto e non in basso: il disegno è centrato e le abbondanze sbordano
+     quasi sempre verso il basso, proprio dove una scritta darebbe fastidio */
+  top: 8px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  /* il disegno arriva fin qui: senza un fondo la scritta si confonde con le
+     linee dei teli proprio dove servirebbe leggerle */
+  background: rgba(5, 7, 10, 0.72);
   color: var(--testo-2);
   font-size: 12px;
   line-height: 1.4;

@@ -124,3 +124,74 @@ describe('primitivePannelli', () => {
     expect(primitivePannelli(piatto)).toEqual([]);
   });
 });
+
+const meta: Pannellizzazione = {
+  asse: 'verticale',
+  sormonto: 4,
+  verso: 'centro',
+  giunti: [100]
+};
+
+describe('abbondanze sulla foto', () => {
+  /**
+   * La finestra della foto: 2 cm ai lati, 10 cm solo sotto, giunzione
+   * orizzontale a metà del vetro.
+   */
+  const finestra = (): QuotaRettangolo =>
+    ({
+      id: 'f1',
+      fotoId: 'f',
+      zIndex: 0,
+      stile,
+      tipo: 'quotaPoligono',
+      unita: 'cm',
+      stato: 'reale',
+      punti: [
+        { x: 0, y: 0 },
+        { x: 400, y: 0 },
+        { x: 400, y: 400 },
+        { x: 0, y: 400 }
+      ],
+      segmenti: [
+        { da: 0, a: 1, valore: 200, abbInizio: 2, abbFine: 2 },
+        { da: 1, a: 2, valore: 200, abbFine: 10 },
+        { da: 2, a: 3, valore: 200, abbInizio: 2, abbFine: 2 },
+        { da: 3, a: 0, valore: 200, abbInizio: 10 }
+      ],
+      pannelli: { asse: 'orizzontale', sormonto: 1, verso: 'centro', giunti: [100] }
+    }) as unknown as QuotaRettangolo;
+
+  it('il contorno di ogni telo si disegna col filetto verde tratteggiato', () => {
+    const prim = primitivePannelli(finestra());
+    const contorni = prim.filter(
+      (x): x is Extract<typeof x, { kind: 'polilinea' }> => x.kind === 'polilinea'
+    );
+    expect(contorni).toHaveLength(2); // un contorno per telo
+    expect(contorni.every((c) => c.colore === COLORE_PANNELLO)).toBe(true);
+    expect(contorni.every((c) => !!c.tratteggio)).toBe(true);
+    // più sottile della giunzione, che è già più sottile della quota
+    const giunzione = linee(prim).find((l) => !l.tratteggio)!;
+    expect(contorni[0].spessore).toBeLessThan(giunzione.spessore);
+  });
+
+  it('il contorno sborda dal vetro dove c’è l’abbondanza, e solo lì', () => {
+    // 200 cm di vetro su 400 px: un centimetro vale due pixel
+    const contorni = primitivePannelli(finestra()).filter(
+      (x): x is Extract<typeof x, { kind: 'polilinea' }> => x.kind === 'polilinea'
+    );
+    const y = (c: (typeof contorni)[0]) => c.punti.filter((_, i) => i % 2 === 1);
+    // il primo telo parte dal bordo alto del vetro: niente abbondanza sopra
+    expect(Math.min(...y(contorni[0]))).toBeCloseTo(0, 6);
+    // l'ultimo arriva 10 cm sotto il vetro = 20 px
+    expect(Math.max(...y(contorni[1]))).toBeCloseTo(420, 6);
+    // e ai lati sborda di 2 cm = 4 px da entrambe le parti
+    const x = (c: (typeof contorni)[0]) => c.punti.filter((_, i) => i % 2 === 0);
+    expect(Math.min(...x(contorni[0]))).toBeCloseTo(-4, 6);
+    expect(Math.max(...x(contorni[0]))).toBeCloseTo(404, 6);
+  });
+
+  it('senza abbondanze non si disegna nessun contorno in più', () => {
+    const prim = primitivePannelli(elemento(meta));
+    expect(prim.some((x) => x.kind === 'polilinea')).toBe(false);
+  });
+});

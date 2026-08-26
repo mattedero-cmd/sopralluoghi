@@ -21,6 +21,7 @@ import {
   giuntiValidi,
   normalizzaPannellizzazione,
   pannelliDi,
+  type AbbondanzeTelo,
   type Pannellizzazione,
   type Pannello
 } from './pannelli';
@@ -33,12 +34,11 @@ export interface FormaQuadrilatera {
   /** misure DI TAGLIO: quelle che devono stare nella fascia del rotolo */
   taglio: { larghezza: number; altezza: number };
   /**
-   * Quanto sborda l'abbondanza PRIMA del bordo di riferimento — a sinistra per
-   * la larghezza, in alto per l'altezza. Non si può assumere simmetrica: chi
-   * lascia dieci centimetri sotto e niente sopra sposterebbe tutte le
-   * giunzioni disegnate sulla foto.
+   * Quanto sborda l'abbondanza su ciascun lato. Non si può assumere
+   * simmetrica: due centimetri ai lati e dieci sotto è il caso normale, non
+   * l'eccezione, e i teli che ne escono sono di misure diverse.
    */
-  scostamento: { larghezza: number; altezza: number };
+  abbondanze: { sinistra: number; destra: number; sopra: number; sotto: number };
   unita: Unita;
 }
 
@@ -66,7 +66,7 @@ export function formaQuadrilatera(a: Annotazione): FormaQuadrilatera | null {
       netta: misure,
       // la quota elemento non porta abbondanze: taglio e netto coincidono
       taglio: { ...misure },
-      scostamento: { larghezza: 0, altezza: 0 },
+      abbondanze: { sinistra: 0, destra: 0, sopra: 0, sotto: 0 },
       unita: a.unita
     };
   }
@@ -123,41 +123,55 @@ export function formaQuadrilatera(a: Annotazione): FormaQuadrilatera | null {
    */
   const asse = (
     netto: number,
-    lati: Array<{ s: typeof alto; primo: number }>
-  ): { taglio: number; scostamento: number } => {
+    lati: Array<{ s: typeof alto; primo: number; secondo: number }>
+  ): { taglio: number; prima: number; dopo: number } => {
     let taglioMax = netto;
     for (const l of lati) {
       const v = valore(l.s);
       if (v === null) continue;
       taglioMax = Math.max(taglioMax, v + abbondanzaTotale(l.s!));
     }
-    // di quanto sborda prima del bordo di riferimento: lo dice il lato che
-    // determina l'ingombro, non uno qualunque
-    let scostamento = 0;
+    // di quanto si sborda ai due capi: lo dice il lato che determina
+    // l'ingombro, non uno qualunque
+    let prima = 0;
+    let dopo = 0;
     for (const l of lati) {
       const v = valore(l.s);
       if (v === null || v + abbondanzaTotale(l.s!) < taglioMax) continue;
-      scostamento = Math.max(scostamento, abbondanzaAl(l.s, l.primo));
+      prima = Math.max(prima, abbondanzaAl(l.s, l.primo));
+      dopo = Math.max(dopo, abbondanzaAl(l.s, l.secondo));
     }
-    return { taglio: taglioMax, scostamento };
+    // l'ingombro comanda: se il lato che lo determina è più corto del netto,
+    // le sue abbondanze non allargano oltre. Si riportano in proporzione, così
+    // netto + prima + dopo fa sempre l'ingombro
+    const extra = taglioMax - netto;
+    const somma = prima + dopo;
+    if (somma <= 0) return { taglio: taglioMax, prima: 0, dopo: 0 };
+    const scala = extra / somma;
+    return { taglio: taglioMax, prima: prima * scala, dopo: dopo * scala };
   };
 
-  // in larghezza il bordo di riferimento è a sinistra (vertici 0 e 3),
-  // in altezza è in alto (vertici 0 e 1)
+  // in larghezza i capi sono sinistra (vertici 0 e 3) e destra (1 e 2);
+  // in altezza sono sopra (0 e 1) e sotto (3 e 2)
   const orizzontale = asse(larghezza, [
-    { s: alto, primo: 0 },
-    { s: basso, primo: 3 }
+    { s: alto, primo: 0, secondo: 1 },
+    { s: basso, primo: 3, secondo: 2 }
   ]);
   const verticale = asse(altezza, [
-    { s: sinistro, primo: 0 },
-    { s: destro, primo: 1 }
+    { s: sinistro, primo: 0, secondo: 3 },
+    { s: destro, primo: 1, secondo: 2 }
   ]);
 
   return {
     quad,
     netta: { larghezza, altezza },
     taglio: { larghezza: orizzontale.taglio, altezza: verticale.taglio },
-    scostamento: { larghezza: orizzontale.scostamento, altezza: verticale.scostamento },
+    abbondanze: {
+      sinistra: orizzontale.prima,
+      destra: orizzontale.dopo,
+      sopra: verticale.prima,
+      sotto: verticale.dopo
+    },
     unita: a.unita
   };
 }
@@ -180,18 +194,12 @@ export interface PannelliForma {
    */
   giunti: number[];
   pannelli: Pannello[];
-  /** misura lungo l'asse di divisione, di taglio */
+  /** misura DEL VETRO lungo l'asse di divisione: è lei che si divide */
   totale: number;
-  /** l'altra misura, di taglio */
+  /** l'altra misura del vetro */
   trasversale: number;
-  /**
-   * Abbondanza che sta PRIMA del bordo di riferimento, lungo l'asse di
-   * divisione. Le giunzioni si contano sulla misura di taglio; per disegnarle
-   * sulla foto — che mostra la forma netta — bisogna toglierla.
-   */
-  scostamento: number;
-  /** la stessa cosa, di traverso: serve a fermare le linee sul bordo a vista */
-  scostamentoTrasversale: number;
+  /** le abbondanze attorno al vetro, viste dall'asse */
+  abbondanze: AbbondanzeTelo;
 }
 
 /** i teli di una forma pannellizzata, misure di taglio comprese */
@@ -201,13 +209,15 @@ export function pannelliDellaForma(a: Annotazione): PannelliForma | null {
   const forma = formaQuadrilatera(a);
   if (!forma) return null;
   const verticale = salvata.asse === 'verticale';
-  const totale = verticale ? forma.taglio.larghezza : forma.taglio.altezza;
+  // SI DIVIDE IL VETRO: le giunzioni sono posizioni sull'elemento finito
+  const totale = verticale ? forma.netta.larghezza : forma.netta.altezza;
   // un salvataggio vecchio o arrivato da un altro dispositivo può contenere di
   // tutto: si risana qui, una volta, e da qui in poi tutti vedono la stessa cosa
   const pann = normalizzaPannellizzazione(salvata, totale);
   if (!pann) return null;
-  const trasversale = verticale ? forma.taglio.altezza : forma.taglio.larghezza;
-  const pannelli = pannelliDi(totale, trasversale, pann);
+  const trasversale = verticale ? forma.netta.altezza : forma.netta.larghezza;
+  const abbondanze = abbondanzeSullAsse(forma, salvata.asse);
+  const pannelli = pannelliDi(totale, trasversale, pann, abbondanze);
   if (pannelli.length <= 1) return null;
   return {
     forma,
@@ -216,9 +226,19 @@ export function pannelliDellaForma(a: Annotazione): PannelliForma | null {
     pannelli,
     totale,
     trasversale,
-    scostamento: verticale ? forma.scostamento.larghezza : forma.scostamento.altezza,
-    scostamentoTrasversale: verticale ? forma.scostamento.altezza : forma.scostamento.larghezza
+    abbondanze
   };
+}
+
+/** le abbondanze della forma, girate nel verso dell'asse di divisione */
+export function abbondanzeSullAsse(
+  forma: FormaQuadrilatera,
+  asse: Pannellizzazione['asse']
+): AbbondanzeTelo {
+  const a = forma.abbondanze;
+  return asse === 'verticale'
+    ? { inizio: a.sinistra, fine: a.destra, trasversaleInizio: a.sopra, trasversaleFine: a.sotto }
+    : { inizio: a.sopra, fine: a.sotto, trasversaleInizio: a.sinistra, trasversaleFine: a.destra };
 }
 
 function massimo(a: number | null, b: number | null): number | null {
