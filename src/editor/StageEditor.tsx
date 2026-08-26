@@ -2396,8 +2396,11 @@ function ManiglieAnnotazione({
           )}
           {maniglia('offset', somma(g.centro, scalaVett(g.d, ann.scorrTesto ?? 0)), (n) => {
             const offset = dot(sottrai(n, ann.p1), normale(g.d));
-            const meta = g.lunghezzaPx / 2;
-            const scorr = Math.max(-meta, Math.min(meta, dot(sottrai(n, g.centro), g.d)));
+            // il numero può uscire OLTRE gli estremi: su una quota corta è
+            // l'unico modo di leggerlo. Il limite resta, largo, perché una
+            // trascinata storta non lo spedisca dall'altra parte della foto
+            const limite = g.lunghezzaPx / 2 + ann.stile.dimensioneTesto * 10;
+            const scorr = Math.max(-limite, Math.min(limite, dot(sottrai(n, g.centro), g.d)));
             return { ...ann, offset, scorrTesto: scorr };
           })}
         </>
@@ -2520,8 +2523,9 @@ function ManiglieAnnotazione({
               ancora,
               (n) => {
                 const offset = dot(sottrai(n, a), normale(g.d));
-                const meta = g.lunghezzaPx / 2;
-                const scorr = Math.max(-meta, Math.min(meta, dot(sottrai(n, g.centro), g.d)));
+                // come per la quota lineare: il numero può uscire dagli estremi
+                const limite = g.lunghezzaPx / 2 + ann.stile.dimensioneTesto * 10;
+                const scorr = Math.max(-limite, Math.min(limite, dot(sottrai(n, g.centro), g.d)));
                 const nuovi = segs.map((s, j) => (j === i ? { ...s, offset, scorrTesto: scorr } : s));
                 return { ...ann, lati: undefined, offsetLati: undefined, segmenti: nuovi };
               },

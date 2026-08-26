@@ -261,6 +261,27 @@ export function primitiveQuota(q: Quota, testoOverride?: string): Primitiva[] {
     prim.push({ kind: 'linea', punti: [g.q1.x, g.q1.y, g.q2.x, g.q2.y], colore, spessore: sp, alone: ALONE });
   }
 
+  // TESTO PORTATO FUORI: su una quota corta il numero non ci sta in mezzo e lo
+  // si manda oltre l'estremo. La linea di quota lo segue, com'è d'uso nel
+  // disegno tecnico: senza il prolungamento il numero resterebbe a mezz'aria,
+  // e non si capirebbe più a quale misura appartiene.
+  const meta = g.lunghezzaPx / 2;
+  if (Math.abs(scorr) > meta + 0.5) {
+    const verso = scorr > 0 ? 1 : -1;
+    const estremo = dot(sottrai(g.q2, g.centro), g.d) * verso > 0 ? g.q2 : g.q1;
+    // col numero SULLA linea il prolungamento si ferma prima, o gli passa dentro
+    const arretra = q.posizioneTesto === 'centro' ? larghezzaTesto / 2 + dimTesto * 0.3 : 0;
+    const versoEstremo = normalizza(sottrai(estremo, ancora));
+    const fine = arretra > 0 ? somma(ancora, scala(versoEstremo, arretra)) : ancora;
+    prim.push({
+      kind: 'linea',
+      punti: [estremo.x, estremo.y, fine.x, fine.y],
+      colore,
+      spessore: sp,
+      alone: ALONE
+    });
+  }
+
   // Frecce alle estremità: all'interno se c'è spazio, all'esterno se la quota è corta
   if (g.lunghezzaPx > 1e-6) {
     const versoQ2 = normalizza(sottrai(g.q2, g.q1));
@@ -292,6 +313,24 @@ export function primitiveQuota(q: Quota, testoOverride?: string): Primitiva[] {
 }
 
 /** Stima della larghezza del testo (px) senza contesto canvas: media ~0.58 em */
+/**
+ * Di quanto far scorrere il numero per portarlo APPENA FUORI dall'estremo.
+ *
+ * Su una quota corta — una porta stretta, uno spessore — il numero non ci sta
+ * in mezzo e si mette di fianco. Il conto è sempre lo stesso: mezza quota,
+ * mezza scritta e un'unghia di respiro; sta qui perché i pulsanti e il disegno
+ * non possano finire per intendere «fuori» in due modi diversi.
+ */
+export function scorrimentoFuori(
+  lunghezzaPx: number,
+  testo: string,
+  dimensioneTesto: number,
+  verso: -1 | 1
+): number {
+  const larghezza = misuraLarghezzaTesto(testo, dimensioneTesto);
+  return verso * (lunghezzaPx / 2 + larghezza / 2 + dimensioneTesto * 0.5);
+}
+
 export function misuraLarghezzaTesto(testo: string, dimensione: number): number {
   return testo.length * dimensione * 0.58;
 }

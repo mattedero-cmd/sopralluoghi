@@ -73,7 +73,14 @@ import {
   misureRettangolo,
   valoreAutomatico
 } from '../geometry/calibrazione';
-import { etichettaPoligono, nomeFormaPoligono, simboliPoligono, versiSegmento } from '../geometry/primitive';
+import {
+  etichettaPoligono,
+  etichettaQuota,
+  nomeFormaPoligono,
+  scorrimentoFuori,
+  simboliPoligono,
+  versiSegmento
+} from '../geometry/primitive';
 import { ricalcolaTecniche } from '../geometry/quotaTecnica';
 import { raddrizzaStanza, ricostruisciOrtogonale } from '../geometry/schizzo';
 import {
@@ -5187,6 +5194,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                   valore: nuova.valore,
                   offset: nuova.offset,
                   posizioneTesto: nuova.posizioneTesto,
+                  scorrTesto: nuova.scorrTesto,
                   nota: nuova.nota,
                   abbInizio: nuova.abbInizio,
                   abbFine: nuova.abbFine,
@@ -5687,6 +5695,8 @@ function EditorQuota({
   );
   const [unita, setUnita] = useState<Unita>(quota.unita);
   const [posizioneTesto, setPosizioneTesto] = useState<PosizioneTesto>(quota.posizioneTesto);
+  /** quanto il numero è scappato fuori dagli estremi (0 = in mezzo) */
+  const [scorr, setScorr] = useState(quota.scorrTesto ?? 0);
   const [nota, setNota] = useState(quota.nota ?? '');
   const [colore, setColore] = useState(quota.stile.colore);
   const [stato, setStato] = useState<StatoMisura>(quota.stato);
@@ -5784,7 +5794,11 @@ function EditorQuota({
     // tre rettangolini (sopra / centro / sotto) con dentro la quota scritta
     const boxW = Math.min(lungPreview * 0.72, w * 0.62);
     const boxH = h * 0.2;
-    const cx = w / 2;
+    // col numero portato fuori l'anteprima lo mostra di fianco: altrimenti
+    // direbbe una cosa e la foto ne farebbe un'altra
+    const meta = lunghezzaPxQuota(quota) / 2;
+    const versoFuori = scorr < -meta ? -1 : scorr > meta ? 1 : 0;
+    const cx = w / 2 + versoFuori * (lungPreview / 2 + boxW / 2) * 0.9;
     const centri: Array<[PosizioneTesto, number]> = [
       ['sopra', yc - boxH * 1.05],
       ['centro', yc],
@@ -5824,7 +5838,7 @@ function EditorQuota({
       });
     }
     ctx.restore();
-  }, [immagine, posizioneTesto, nota, colore, testoMisura, quota]);
+  }, [immagine, posizioneTesto, scorr, nota, colore, testoMisura, quota]);
 
   const salva = () => {
     const stile =
@@ -5845,6 +5859,7 @@ function EditorQuota({
         valore,
         unita,
         posizioneTesto,
+        scorrTesto: scorr || undefined,
         nota: nota.trim() || undefined,
         abbInizio: abbA || undefined,
         abbFine: abbB || undefined,
@@ -5920,6 +5935,20 @@ function EditorQuota({
             </span>
           </div>
         )}
+        <div className="campo">
+          <label>Numero lungo la linea</label>
+          <SpostaTestoQuota
+            lunghezzaPx={lunghezzaPxQuota(quota)}
+            testo={testoMisura}
+            dimensioneTesto={quota.stile.dimensioneTesto}
+            scorr={scorr}
+            onScorr={setScorr}
+          />
+          <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
+            Su una quota corta il numero fra le frecce non ci sta: portalo fuori da un estremo,
+            la linea di quota lo segue.
+          </span>
+        </div>
         <div className="campo">
           <label>Testo aggiuntivo (facoltativo)</label>
           <input value={nota} onChange={(e) => setNota(e.target.value)} placeholder="es. luce netta" maxLength={40} />
@@ -7860,6 +7889,13 @@ function ProprietaQuota({
           </button>
         ))}
       </span>
+      <SpostaTestoQuota
+        lunghezzaPx={lunghezzaPxQuota(quota)}
+        testo={etichettaQuota(quota)}
+        dimensioneTesto={quota.stile.dimensioneTesto}
+        scorr={quota.scorrTesto ?? 0}
+        onScorr={(v) => onModifica({ scorrTesto: v })}
+      />
       {quota.valore !== null && !quota.valoreAuto && !calibrata && (
         <button className="btn" onClick={() => onCalibraDaQuota(quota)} title="Usa questa quota come riferimento di scala per calcolare le altre">
           <Icona nome="righello" dimensione={18} /> Usa come scala
@@ -7872,6 +7908,56 @@ function ProprietaQuota({
         </span>
       )}
     </>
+  );
+}
+
+/**
+ * DOVE STA IL NUMERO LUNGO LA LINEA: in mezzo, o fuori da un estremo.
+ *
+ * Serve alle quote corte — una porta stretta, uno spessore — dove il numero
+ * fra le due frecce non ci sta e va portato di fianco. È lo stesso gesto che
+ * si fa trascinando la maniglia, ma con un tocco e senza mira.
+ */
+function SpostaTestoQuota({
+  lunghezzaPx,
+  testo,
+  dimensioneTesto,
+  scorr,
+  onScorr
+}: {
+  lunghezzaPx: number;
+  testo: string;
+  dimensioneTesto: number;
+  scorr: number;
+  onScorr: (v: number) => void;
+}) {
+  const meta = lunghezzaPx / 2;
+  const fuori = (verso: -1 | 1) => scorrimentoFuori(lunghezzaPx, testo, dimensioneTesto, verso);
+  const attuale = scorr < -meta ? 'prima' : scorr > meta ? 'dopo' : 'centro';
+  return (
+    <span className="segmenti" role="group" aria-label="Testo lungo la linea di quota">
+      <button
+        className={attuale === 'prima' ? 'attivo' : ''}
+        title="Numero fuori, dalla parte del primo estremo"
+        onClick={() => onScorr(fuori(-1))}
+      >
+        ◀ Fuori
+      </button>
+      <button
+        className={attuale === 'centro' ? 'attivo' : ''}
+        title="Numero in mezzo alla quota"
+        onClick={() => onScorr(0)}
+      >
+        In mezzo
+      </button>
+      <button
+        className={attuale === 'dopo' ? 'attivo' : ''}
+        title="Numero fuori, dalla parte del secondo estremo"
+        onClick={() => onScorr(fuori(1))}
+      >
+        Fuori ▶
+      </button>
+    </span>
   );
 }
 
