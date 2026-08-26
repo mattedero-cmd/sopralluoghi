@@ -488,8 +488,10 @@ export function NestingPage({
       if (chiave.slice(0, chiave.lastIndexOf('#')) === id) delete orientamenti[chiave];
     }
     aggiornaMat({ pezzi, orientamenti });
-    setSelezione({});
-    setCopieScelte({});
+    // il pezzo diviso non esiste più: si toglie solo lui dalla scelta, senza
+    // buttare via le spunte fatte sulle altre righe
+    setSelezione(({ [id]: _tolto, ...resto }) => resto);
+    setCopieScelte(({ [id]: _copie, ...resto }) => resto);
     mostraToast(
       'successo',
       `«${pezzo.nome}» diviso in ${nati.length} teli, sormonto compreso nelle misure.`
@@ -1429,12 +1431,13 @@ export function NestingPage({
         (() => {
           const pezzo = mat.pezzi.find((x) => x.id === inPannelli);
           if (!pezzo) return null;
-          // la fascia utile è quella del supporto, tolti i margini dai bordi:
-          // un telo largo quanto il rotolo non ci entrerebbe mai
+          // la fascia utile è quella del supporto meno i margini dai bordi E
+          // l'abbondanza, che il motore somma alla misura di ogni pezzo: un
+          // telo largo esattamente la fascia resterebbe comunque fuori
           const fascia =
-            mat.modo === 'bobina'
-              ? mat.bobina.larghezza - 2 * mat.margine
-              : mat.lastra.larghezza - 2 * mat.margine;
+            (mat.modo === 'bobina' ? mat.bobina.larghezza : mat.lastra.larghezza) -
+            2 * mat.margine -
+            mat.abbondanza;
           return (
             <AmbientePannelli
               forma={{
@@ -1445,8 +1448,8 @@ export function NestingPage({
                 massimo: Math.max(0, arrotondaMm(fascia)),
                 fonteMassimo:
                   mat.modo === 'bobina'
-                    ? `Bobina ${formattaNumero(mat.bobina.larghezza)} mm meno i margini`
-                    : `Lastra ${formattaNumero(mat.lastra.larghezza)} mm meno i margini`
+                    ? `Bobina ${formattaNumero(mat.bobina.larghezza)} mm, meno margini e abbondanza`
+                    : `Lastra ${formattaNumero(mat.lastra.larghezza)} mm, meno margini e abbondanza`
               }}
               onConferma={(p) => applicaPannelli(pezzo.id, p)}
               onChiudi={() => setInPannelli(null)}

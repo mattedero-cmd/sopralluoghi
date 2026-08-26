@@ -425,7 +425,9 @@ export function AmbientePannelli({
     e.currentTarget.setPointerCapture(e.pointerId);
     const p = localePuntatore(e);
     puntatori.current.set(e.pointerId, p);
-    if (puntatori.current.size === 2) {
+    if (puntatori.current.size >= 2) {
+      // più di un dito vuol dire inquadratura, mai trascinamento: qualunque
+      // giunzione in mano si lascia andare, o al terzo dito salterebbe
       const [a, b] = [...puntatori.current.values()];
       pinch.current = { distanza: Math.hypot(a.x - b.x, a.y - b.y) || 1, zoom };
       setPreso(null);
@@ -616,7 +618,12 @@ export function AmbientePannelli({
                 min={0}
                 onCambia={(v) => {
                   setMassimo(v);
-                  if (modo === 'fascia') ridistribuisci({ massimo: v });
+                  // scrivere una fascia vuol dire «falli stare qui dentro»:
+                  // altrimenti il campo non produrrebbe niente di visibile
+                  if (v > 0) {
+                    setModo('fascia');
+                    ridistribuisci({ massimo: v, modo: 'fascia' });
+                  }
                 }}
               />
               <small>
@@ -710,9 +717,9 @@ export function AmbientePannelli({
         </button>
         <button
           className="btn primario"
-          onClick={() => onConferma(pann.giunti.length === 0 ? null : pann)}
+          onClick={() => onConferma(numero <= 1 ? null : pann)}
         >
-          {pann.giunti.length === 0 ? 'Lascia intero' : `Applica ${numero} pannelli`}
+          {numero <= 1 ? 'Lascia intero' : `Applica ${numero} pannelli`}
         </button>
       </div>
     </div>

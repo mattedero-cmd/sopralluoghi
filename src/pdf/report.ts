@@ -15,6 +15,7 @@ import { db } from '../db/db';
 import type { Annotazione, Cartella, Foto, Progetto, Punto, Quota, QuotaPoligono, StatoMisura } from '../db/types';
 import { abbondanzaTotale, segmentiPoligono, segmentoELato } from '../db/types';
 import { nomeFormaPoligono, simboliPoligono, versiSegmento } from '../geometry/primitive';
+import { pannelliDellaForma } from '../geometry/formaQuadrilatera';
 import {
   codiceCompletoForma,
   codiceLocaleForma,
@@ -753,6 +754,11 @@ interface RigaMisura {
   stato: StatoMisura;
 }
 
+/** il sormonto con cui sono state calcolate le misure dei teli, non quello scritto */
+function sormontoDi(a: Annotazione): number {
+  return pannelliDellaForma(a)?.pann.sormonto ?? 0;
+}
+
 /**
  * I teli di una forma pannellizzata, scritti per il report.
  *
@@ -832,9 +838,8 @@ function dettaglioPoligono(formaMis: QuotaPoligono, fotoMis: Foto): Partial<Riga
   // l'ingombro di taglio segue la stessa fonte della misura: l'originale
   out.taglioMm = ingombroTaglio(formaMis, fotoMis) ?? undefined;
   out.pannelli = pannelliTaglio(formaMis) ?? undefined;
-  // il codice arriva dopo, dal chiamante: qui si scrive l'elenco senza codici
-  // e chi ha il codice lo riscrive (vedi righeMisureFoto)
-  out.teli = testoTeli(out.pannelli, undefined, formaMis.pannelli?.sormonto ?? 0, formaMis.unita);
+  // l'elenco dei teli lo scrive chi conosce il codice della riga: vedi
+  // righeMisureFoto, che chiama testoTeli sui due rami
   const perimetro = perimetroReale(formaMis);
   if (perimetro !== null) out.perimetro = `perim. ${formattaNumero(perimetro)} ${formaMis.unita}`;
   const angoli = angoliTriangolo(formaMis);
@@ -920,7 +925,7 @@ function righeMisureFoto(
       const rigaR: RigaMisura = { codice: codiceForma(a), forma: nome, reale, stato: a.stato, pezzo: true };
       rigaR.taglioMm = ingombroTaglio(a, foto) ?? undefined;
       rigaR.pannelli = pannelliTaglio(a) ?? undefined;
-      rigaR.teli = testoTeli(rigaR.pannelli, rigaR.codice, a.pannelli?.sormonto ?? 0, a.unita);
+      rigaR.teli = testoTeli(rigaR.pannelli, rigaR.codice, sormontoDi(a), a.unita);
       const areaR = areaElemento(a, foto);
       if (areaR) {
         rigaR.area = formattaArea(areaR);
@@ -948,7 +953,7 @@ function righeMisureFoto(
           stato: formaMis.stato,
           pezzo: true
         };
-        riga.teli = testoTeli(riga.pannelli, riga.codice, formaMis.pannelli?.sormonto ?? 0, formaMis.unita);
+        riga.teli = testoTeli(riga.pannelli, riga.codice, sormontoDi(formaMis), formaMis.unita);
         if (eCopiaEtichetta(a) && infoFam) riga.derivaDa = codiceCompletoForma(percorso, base);
         righe.push(riga);
       } else {
@@ -968,7 +973,7 @@ function righeMisureFoto(
           riga.codice = codiceCompletoForma(percorso, base); // "A1" senza sotto-indice
           riga.collegati = codiciCopie(ctx, famKey, percorso);
         }
-        riga.teli = testoTeli(riga.pannelli, riga.codice, formaMis.pannelli?.sormonto ?? 0, formaMis.unita);
+        riga.teli = testoTeli(riga.pannelli, riga.codice, sormontoDi(formaMis), formaMis.unita);
         righe.push(riga);
       }
     } else if (a.tipo === 'quotaTecnica') {

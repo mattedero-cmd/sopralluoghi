@@ -56,7 +56,12 @@ import { AmbienteLegenda } from './AmbienteLegenda';
 import { ModificaEtichetta } from './ModificaEtichetta';
 import { AmbienteQuotaturaTecnica } from './AmbienteQuotaturaTecnica';
 import { AmbientePannelli } from '../components/AmbientePannelli';
-import { ePannellizzabile, formaQuadrilatera } from '../geometry/formaQuadrilatera';
+import {
+  ePannellizzabile,
+  formaQuadrilatera,
+  pannelliDellaForma
+} from '../geometry/formaQuadrilatera';
+import { normalizzaPannellizzazione } from '../geometry/pannelli';
 import { calcolaCatene, sommaCatenaInUnita } from '../geometry/catene';
 import {
   angoloGradi,
@@ -2631,6 +2636,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       valoreAuto: false,
       etichetta: '',
       etichettaOffset: undefined,
+      // come le misure, anche la divisione in teli è dell'originale: qui
+      // resterebbe scritta su una forma che non ha più le quote da cui nasce
+      pannelli: undefined,
       // copia "solo etichetta": sulla foto compare unicamente il codice nel
       // punto toccato; la misura resta quella dell'originale della famiglia
       soloEtichetta: true,
@@ -4917,7 +4925,16 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 unita: forma.unita,
                 prospettiva: { punti: forma.quad, immagine }
               }}
-              iniziale={ann.pannelli ?? null}
+              iniziale={
+                // le giunzioni fuori misura non devono comparire come maniglie:
+                // si risana con lo stesso metro del disegno e della distinta
+                normalizzaPannellizzazione(
+                  ann.pannelli,
+                  ann.pannelli?.asse === 'orizzontale'
+                    ? forma.taglio.altezza
+                    : forma.taglio.larghezza
+                )
+              }
               onConferma={(pannelli) => {
                 commit(
                   annotazioni.map((a) => {
@@ -6503,6 +6520,9 @@ function EditorPoligono({
   // origine (datum) e conversione px↔reale per gli oggetti (Fase 4)
   // una forma si divide in teli solo se si sa quanto misura
   const misurata = formaQuadrilatera(poli) !== null;
+  // i teli VERI: le giunzioni salvate possono essere finite fuori misura dopo
+  // una correzione delle quote, e allora i teli non ci sono più
+  const teli = pannelliDellaForma(poli);
   const pxUnita = pxPerUnita(foto, poli.unita); // px per unità reale, o null
   const idxOrigine = poli.origine != null ? poli.origine : origineDefault(poli.punti);
   const puntoOrigine = poli.punti[idxOrigine] ?? poli.punti[0];
@@ -6818,20 +6838,20 @@ function EditorPoligono({
             <label>Pannellizzazione</label>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               <button
-                className={poli.pannelli ? 'btn attivo' : 'btn'}
+                className={teli ? 'btn attivo' : 'btn'}
                 // senza le misure scritte non c'è niente da dividere: meglio un
                 // pulsante spento con la ragione, che uno che non fa niente
                 disabled={!misurata}
                 onClick={onPannellizza}
               >
                 <Icona nome="griglia" dimensione={18} />{' '}
-                {poli.pannelli ? 'Modifica i teli' : 'Dividi in teli'}
+                {teli ? 'Modifica i teli' : 'Dividi in teli'}
               </button>
-              {poli.pannelli && (
+              {teli && (
                 <span style={{ color: 'var(--testo-2)', fontSize: 13 }}>
-                  {poli.pannelli.giunti.length + 1} teli ·{' '}
-                  {poli.pannelli.asse === 'verticale' ? 'giunzioni verticali' : 'giunzioni orizzontali'}{' '}
-                  · sormonto {formattaNumero(poli.pannelli.sormonto)} {poli.unita}
+                  {teli.pannelli.length} teli ·{' '}
+                  {teli.pann.asse === 'verticale' ? 'giunzioni verticali' : 'giunzioni orizzontali'} ·
+                  sormonto {formattaNumero(teli.pann.sormonto)} {poli.unita}
                 </span>
               )}
             </div>
@@ -7871,7 +7891,7 @@ function ProprietaRettangolo({
       </span>
       {ePannellizzabile(rett) && (
         <button
-          className={rett.pannelli ? 'btn attivo' : 'btn'}
+          className={pannelliDellaForma(rett) ? 'btn attivo' : 'btn'}
           title={
             formaQuadrilatera(rett)
               ? 'Dividi l’elemento in teli con sormonto'
@@ -7881,7 +7901,9 @@ function ProprietaRettangolo({
           onClick={onPannellizza}
         >
           <Icona nome="griglia" dimensione={18} />{' '}
-          {rett.pannelli ? `Teli (${rett.pannelli.giunti.length + 1})` : 'Dividi in teli'}
+          {pannelliDellaForma(rett)
+            ? `Teli (${pannelliDellaForma(rett)!.pannelli.length})`
+            : 'Dividi in teli'}
         </button>
       )}
     </>
