@@ -437,7 +437,7 @@ export function primitivePannelli(
 ): Primitiva[] {
   const dati = pannelliDellaForma(q);
   if (!dati) return [];
-  const { forma, pann, pannelli, totale, scostamento } = dati;
+  const { forma, pann, giunti, pannelli, totale, scostamento } = dati;
   const L = forma.netta.larghezza;
   const A = forma.netta.altezza;
   if (!(L > 0) || !(A > 0)) return [];
@@ -482,7 +482,9 @@ export function primitivePannelli(
 
   const prim: Primitiva[] = [];
   const sb = sbordo(pann);
-  for (const g of pann.giunti) {
+  // le giunzioni buone, non quelle grezze: una riga verde deve sempre avere
+  // due teli ai suoi lati
+  for (const g of giunti) {
     // i due bordi del lembo: tratteggiati, come le linee di costruzione
     if (pann.sormonto > 0) {
       const dentro = Math.max(0, g - sb.inizio);
@@ -540,6 +542,9 @@ export function primitiveQuotaRettangolo(q: QuotaRettangolo, etichetta?: string)
       alone: ALONE
     }
   ];
+  // giunzioni e sormonti del telo diviso: subito sopra il contorno e SOTTO le
+  // quote, che restano la cosa più leggibile della foto
+  prim.push(...primitivePannelli(q, badge));
   const comune = {
     id: q.id,
     fotoId: q.fotoId,
@@ -558,9 +563,6 @@ export function primitiveQuotaRettangolo(q: QuotaRettangolo, etichetta?: string)
   }
 
   // nomenclatura dell'elemento: badge al centro della figura, per
-  // giunzioni e sormonti del telo diviso: sotto le quote, sopra il contorno
-  prim.push(...primitivePannelli(q, badge));
-
   // distinguere le forme quotate l'una dall'altra (foto e report)
   if (badge) {
     const dim = q.stile.dimensioneTesto;
@@ -785,6 +787,9 @@ export function primitiveQuotaPoligono(q: QuotaPoligono, etichetta?: string): Pr
   const prim: Primitiva[] = [
     { kind: 'polilinea', punti: contorno, colore, spessore: q.stile.spessore * 0.75, alone: ALONE }
   ];
+  // giunzioni e sormonti del telo diviso: subito sopra il contorno e SOTTO le
+  // quote, che restano la cosa più leggibile della foto
+  prim.push(...primitivePannelli(q, badge));
 
   const comune = {
     id: q.id,
@@ -894,9 +899,6 @@ export function primitiveQuotaPoligono(q: QuotaPoligono, etichetta?: string): Pr
   if (q.origine != null && q.origine >= 0 && q.origine < n && punti[q.origine]) {
     prim.push(...glifoOrigine(punti[q.origine], colore, q.stile.dimensioneTesto));
   }
-
-  // giunzioni e sormonti del telo diviso: sotto le quote, sopra il contorno
-  prim.push(...primitivePannelli(q, badge));
 
   // nomenclatura: badge spostabile, che esce dalla figura se è troppo piccola
   if (badge) prim.push(...badgePoligono(q, badge, colore, posizioneEtichettaPoligono(q)));

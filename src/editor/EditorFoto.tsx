@@ -4912,6 +4912,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 nome: codiceForma(ann) || 'Elemento',
                 larghezza: forma.taglio.larghezza,
                 altezza: forma.taglio.altezza,
+                netta: forma.netta,
+                scostamento: forma.scostamento,
                 unita: forma.unita,
                 prospettiva: { punti: forma.quad, immagine }
               }}
@@ -6499,6 +6501,8 @@ function EditorPoligono({
   const [latoVincA, setLatoVincA] = useState(0);
   const [latoVincB, setLatoVincB] = useState(1);
   // origine (datum) e conversione px↔reale per gli oggetti (Fase 4)
+  // una forma si divide in teli solo se si sa quanto misura
+  const misurata = formaQuadrilatera(poli) !== null;
   const pxUnita = pxPerUnita(foto, poli.unita); // px per unità reale, o null
   const idxOrigine = poli.origine != null ? poli.origine : origineDefault(poli.punti);
   const puntoOrigine = poli.punti[idxOrigine] ?? poli.punti[0];
@@ -6813,7 +6817,13 @@ function EditorPoligono({
           <div className="campo">
             <label>Pannellizzazione</label>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              <button className={poli.pannelli ? 'btn attivo' : 'btn'} onClick={onPannellizza}>
+              <button
+                className={poli.pannelli ? 'btn attivo' : 'btn'}
+                // senza le misure scritte non c'è niente da dividere: meglio un
+                // pulsante spento con la ragione, che uno che non fa niente
+                disabled={!misurata}
+                onClick={onPannellizza}
+              >
                 <Icona nome="griglia" dimensione={18} />{' '}
                 {poli.pannelli ? 'Modifica i teli' : 'Dividi in teli'}
               </button>
@@ -6826,8 +6836,9 @@ function EditorPoligono({
               )}
             </div>
             <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
-              Per i teli più larghi del rotolo: le giunzioni restano sulla foto, in verde, e nel
-              piano di taglio arrivano i singoli teli.
+              {misurata
+                ? 'Per i teli più larghi del rotolo: le giunzioni restano sulla foto, in verde, e nel piano di taglio arrivano i singoli teli.'
+                : 'Prima quota base e altezza: i teli si dividono a centimetri, e i centimetri stanno nelle quote.'}
             </span>
           </div>
         )}
@@ -7861,7 +7872,12 @@ function ProprietaRettangolo({
       {ePannellizzabile(rett) && (
         <button
           className={rett.pannelli ? 'btn attivo' : 'btn'}
-          title="Dividi l’elemento in teli con sormonto"
+          title={
+            formaQuadrilatera(rett)
+              ? 'Dividi l’elemento in teli con sormonto'
+              : 'Prima scrivi base e altezza'
+          }
+          disabled={!formaQuadrilatera(rett)}
           onClick={onPannellizza}
         >
           <Icona nome="griglia" dimensione={18} />{' '}

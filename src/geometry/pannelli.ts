@@ -44,8 +44,17 @@ export interface Pannellizzazione {
 /** il sormonto che si usa quasi sempre: 1 cm, qui in millimetri */
 export const SORMONTO_PREDEFINITO_MM = 10;
 
-/** quanto deve restare largo un pannello perché abbia senso tagliarlo */
-export const PANNELLO_MINIMO = 1;
+/**
+ * Quanto deve restare largo un pannello perché abbia senso tagliarlo.
+ *
+ * Non può essere un numero fisso: «1» è un millimetro su un pezzo in mm e un
+ * METRO su una parete misurata in metri, e in metri butterebbe via quasi tutte
+ * le giunzioni. Si prende un millesimo del pezzo — mezzo centimetro su una
+ * parete di cinque metri, comunque la si misuri.
+ */
+export function pannelloMinimo(totale: number): number {
+  return Math.max(1e-9, Math.abs(totale) / 1000);
+}
 
 export interface Pannello {
   /** progressivo dal lato di riferimento, da 1 */
@@ -81,13 +90,14 @@ export function sbordo(p: Pick<Pannellizzazione, 'sormonto' | 'verso'>): {
 
 /** i giunti buoni: dentro il pezzo, in ordine, senza pannelli inconsistenti */
 export function giuntiValidi(giunti: number[], totale: number): number[] {
+  const minimo = pannelloMinimo(totale);
   const puliti = giunti
-    .filter((g) => Number.isFinite(g) && g > PANNELLO_MINIMO && g < totale - PANNELLO_MINIMO)
+    .filter((g) => Number.isFinite(g) && g >= minimo && g <= totale - minimo)
     .sort((a, b) => a - b);
   const tenuti: number[] = [];
   for (const g of puliti) {
     const precedente = tenuti[tenuti.length - 1];
-    if (precedente === undefined || g - precedente >= PANNELLO_MINIMO) tenuti.push(g);
+    if (precedente === undefined || g - precedente >= minimo) tenuti.push(g);
   }
   return tenuti;
 }
@@ -235,8 +245,9 @@ export function spostaGiunto(
 ): Pannellizzazione {
   const giunti = [...p.giunti];
   if (indice < 0 || indice >= giunti.length) return p;
-  const minimo = (giunti[indice - 1] ?? 0) + PANNELLO_MINIMO;
-  const massimo = (giunti[indice + 1] ?? totale) - PANNELLO_MINIMO;
+  const passo = pannelloMinimo(totale);
+  const minimo = (giunti[indice - 1] ?? 0) + passo;
+  const massimo = (giunti[indice + 1] ?? totale) - passo;
   if (massimo < minimo) return p;
   giunti[indice] = Math.min(massimo, Math.max(minimo, posizione));
   return { ...p, giunti };

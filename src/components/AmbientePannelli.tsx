@@ -34,9 +34,21 @@ import { formattaNumero } from '../utils/format';
 /** che cosa si sta dividendo */
 export interface FormaDaPannellizzare {
   nome: string;
-  /** misure reali dell'elemento, abbondanze comprese */
+  /** misure DI TAGLIO dell'elemento, abbondanze comprese */
   larghezza: number;
   altezza: number;
+  /**
+   * Misure a vista, senza abbondanze. Servono al disegno: il quadrilatero
+   * sulla foto è la forma netta, mentre le giunzioni si contano sul taglio.
+   * Senza indicazione le due cose coincidono, come su un pezzo del piano di
+   * taglio.
+   */
+  netta?: { larghezza: number; altezza: number };
+  /**
+   * Quanto sborda l'abbondanza prima del bordo sinistro e di quello alto.
+   * Senza indicazione si assume che stia metà per parte.
+   */
+  scostamento?: { larghezza: number; altezza: number };
   /** etichetta dell'unità, per i testi (mm, cm, m) */
   unita: string;
   /**
@@ -74,6 +86,8 @@ export function AmbientePannelli({
   onChiudi: () => void;
 }) {
   const { larghezza: L, altezza: A } = forma;
+  /** la forma a vista: è lei che si disegna, il taglio le sta attorno */
+  const netta = forma.netta ?? { larghezza: L, altezza: A };
 
   /** modo di distribuzione: con una fascia nota si parte da lei */
   const [modo, setModo] = useState<'fascia' | 'uguali'>(forma.massimo ? 'fascia' : 'uguali');
@@ -102,6 +116,16 @@ export function AmbientePannelli({
 
   const totale = sceltaTotale(pann.asse, L, A);
   const trasversale = pann.asse === 'verticale' ? A : L;
+  // le abbondanze stanno attorno alla forma: sul disegno le posizioni di
+  // taglio vanno riportate sul netto, o le giunzioni cadrebbero spostate
+  const scostoDi = (misuraTaglio: number, misuraNetta: number, dichiarato?: number) =>
+    Math.max(0, dichiarato ?? (misuraTaglio - misuraNetta) / 2);
+  const scostoL = scostoDi(L, netta.larghezza, forma.scostamento?.larghezza);
+  const scostoA = scostoDi(A, netta.altezza, forma.scostamento?.altezza);
+  const scostoLungo = pann.asse === 'verticale' ? scostoL : scostoA;
+  const scostoTraverso = pann.asse === 'verticale' ? scostoA : scostoL;
+  /** la misura a vista di traverso: le linee si fermano lì, non sull'abbondanza */
+  const trasversaleNetto = pann.asse === 'verticale' ? netta.altezza : netta.larghezza;
   const pannelli = useMemo(
     () => pannelliDi(totale, trasversale, pann),
     [totale, trasversale, pann]
@@ -126,7 +150,11 @@ export function AmbientePannelli({
     const verso = modifiche.verso ?? pann.verso;
     const m = modifiche.modo ?? modo;
     const max = modifiche.massimo ?? massimo;
-    const quanti = modifiche.numero ?? null;
+    // quanti teli: se non lo dice chi chiama, lo decide la fascia — ma solo
+    // quando una fascia c'è. Senza, si tengono quelli che ci sono già:
+    // cambiare l'asse o il sormonto non deve far sparire la divisione.
+    const quanti =
+      modifiche.numero ?? (m === 'fascia' && max > 0 ? null : Math.max(1, numero));
     const t = sceltaTotale(asse, L, A);
     setPann({
       asse,
@@ -142,13 +170,19 @@ export function AmbientePannelli({
     });
   };
 
-  /** cambia il numero di pannelli tenendo il resto com'è */
+  /**
+   * Cambia il numero di teli.
+   *
+   * Deciderlo a mano vuol dire dividere in parti uguali: «sfrutta la fascia»
+   * il numero se lo calcola da sé, e lasciarlo acceso direbbe una cosa e ne
+   * farebbe un'altra.
+   */
   const cambiaNumero = (n: number) => {
     if (n < 1) return;
-    ridistribuisci({ numero: n, modo: n === numeroSuggerito() ? modo : 'uguali' });
+    const m = n === numeroMinimo(totale, massimo > 0 ? massimo : null, pann.sormonto) ? modo : 'uguali';
+    setModo(m);
+    ridistribuisci({ numero: n, modo: m });
   };
-
-  const numeroSuggerito = () => numeroMinimo(totale, massimo > 0 ? massimo : null, pann.sormonto);
 
   /* --- disegno ------------------------------------------------------ */
 
@@ -173,19 +207,19 @@ export function AmbientePannelli({
     if (p && p.length === 4) return p;
     return [
       { x: 0, y: 0 },
-      { x: L, y: 0 },
-      { x: L, y: A },
-      { x: 0, y: A }
+      { x: netta.larghezza, y: 0 },
+      { x: netta.larghezza, y: netta.altezza },
+      { x: 0, y: netta.altezza }
     ];
-  }, [forma.prospettiva, L, A]);
+  }, [forma.prospettiva, netta.larghezza, netta.altezza]);
 
   /** reale → disegno e ritorno: le due strade devono restare coerenti */
   const omografie = useMemo(() => {
     const reali = [
       { x: 0, y: 0 },
-      { x: L, y: 0 },
-      { x: L, y: A },
-      { x: 0, y: A }
+      { x: netta.larghezza, y: 0 },
+      { x: netta.larghezza, y: netta.altezza },
+      { x: 0, y: netta.altezza }
     ];
     try {
       return {
@@ -195,7 +229,7 @@ export function AmbientePannelli({
     } catch {
       return null;
     }
-  }, [quad, L, A]);
+  }, [quad, netta.larghezza, netta.altezza]);
 
   /** inquadratura di base: il quadrilatero riempie l'area disponibile */
   const vista = useMemo(() => {
@@ -231,18 +265,20 @@ export function AmbientePannelli({
     };
   };
 
-  /** punto reale (u lungo l'asse di divisione, v di traverso) → schermo */
+  /** punto DI TAGLIO (u lungo l'asse di divisione, v di traverso) → schermo */
   const puntoSchermo = (u: number, v: number): Punto => {
     if (!omografie) return { x: 0, y: 0 };
-    const reale = pann.asse === 'verticale' ? { x: u, y: v } : { x: v, y: u };
+    const lungo = u - scostoLungo;
+    const traverso = v - scostoTraverso;
+    const reale = pann.asse === 'verticale' ? { x: lungo, y: traverso } : { x: traverso, y: lungo };
     return aSchermo(applicaOmografia(omografie.versoDisegno, reale));
   };
 
-  /** schermo → posizione lungo l'asse di divisione, in unità reali */
+  /** schermo → posizione di taglio lungo l'asse di divisione */
   const posizioneDa = (p: Punto): number | null => {
     if (!omografie) return null;
     const reale = applicaOmografia(omografie.versoReale, aDisegno(p));
-    return pann.asse === 'verticale' ? reale.x : reale.y;
+    return (pann.asse === 'verticale' ? reale.x : reale.y) + scostoLungo;
   };
 
   useEffect(() => {
@@ -289,10 +325,10 @@ export function AmbientePannelli({
       const b = Math.min(totale, g + sb.fine);
       if (b - a <= 0) continue;
       percorso([
-        puntoSchermo(a, 0),
-        puntoSchermo(b, 0),
-        puntoSchermo(b, trasversale),
-        puntoSchermo(a, trasversale)
+        puntoSchermo(a, scostoTraverso),
+        puntoSchermo(b, scostoTraverso),
+        puntoSchermo(b, scostoTraverso + trasversaleNetto),
+        puntoSchermo(a, scostoTraverso + trasversaleNetto)
       ]);
       ctx.fillStyle = 'rgba(255,196,0,0.28)';
       ctx.fill();
@@ -310,8 +346,8 @@ export function AmbientePannelli({
 
     // linee di giunzione: quelle che si vedranno sul muro
     pann.giunti.forEach((g, i) => {
-      const a = puntoSchermo(g, 0);
-      const b = puntoSchermo(g, trasversale);
+      const a = puntoSchermo(g, scostoTraverso);
+      const b = puntoSchermo(g, scostoTraverso + trasversaleNetto);
       for (const [col, lw] of [
         ['rgba(0,0,0,0.7)', 8],
         [preso === i ? '#ffffff' : '#ffc400', 3.5]
@@ -343,7 +379,10 @@ export function AmbientePannelli({
       // i teli stretti finirebbero uno sopra l'altro: le scritte si alternano
       // in alto e in basso, così restano leggibili anche su una striscia
       const altezzaTesto = p.indice % 2 === 0 ? 0.62 : 0.38;
-      const c = puntoSchermo((p.vistaInizio + p.vistaFine) / 2, trasversale * altezzaTesto);
+      const c = puntoSchermo(
+        (p.vistaInizio + p.vistaFine) / 2,
+        scostoTraverso + trasversaleNetto * altezzaTesto
+      );
       const testo = `${p.indice}  ·  ${formattaNumero(arrotonda(p.larghezza))} ${forma.unita}`;
       ctx.lineWidth = Math.max(2, dim * 0.24);
       ctx.strokeStyle = 'rgba(0,0,0,0.75)';
@@ -371,8 +410,8 @@ export function AmbientePannelli({
     let scelto: number | null = null;
     let minima = PRESA;
     pann.giunti.forEach((g, i) => {
-      const a = puntoSchermo(g, 0);
-      const b = puntoSchermo(g, trasversale);
+      const a = puntoSchermo(g, scostoTraverso);
+      const b = puntoSchermo(g, scostoTraverso + trasversaleNetto);
       const d = distanzaDaSegmento(p, a, b);
       if (d < minima) {
         minima = d;
@@ -580,14 +619,23 @@ export function AmbientePannelli({
                   if (modo === 'fascia') ridistribuisci({ massimo: v });
                 }}
               />
-              <small>{forma.fonteMassimo ?? 'Il pannello non può superarla'}</small>
+              <small>
+                {massimo > 0
+                  ? (forma.fonteMassimo ?? 'Nessun telo può superarla')
+                  : '0 = nessun limite: comanda il numero di teli'}
+              </small>
             </label>
             <label className="campo">
               <span>Sormonto ({unita})</span>
               <CampoNumero
                 valore={pann.sormonto}
                 min={0}
-                onCambia={(v) => setPann((p) => ({ ...p, sormonto: v }))}
+                onCambia={(v) => {
+                  // a «fascia» il sormonto entra nel conto della larghezza:
+                  // cambiarlo senza ridistribuire farebbe sforare i teli
+                  if (modo === 'fascia' && massimo > 0) ridistribuisci({ sormonto: v });
+                  else setPann((p) => ({ ...p, sormonto: v }));
+                }}
               />
               <small>Sovrapposizione fra due teli</small>
             </label>

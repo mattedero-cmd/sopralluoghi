@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   giuntiAutomatici,
   giuntiValidi,
+  pannelloMinimo,
   normalizzaPannellizzazione,
   numeroMinimo,
   pannelliDi,
@@ -164,6 +165,27 @@ describe('pannelliDi', () => {
   });
 });
 
+describe('pannelloMinimo', () => {
+  it('è relativo al pezzo: un millimetro non può valere come un metro', () => {
+    // la stessa parete misurata in tre unità dà lo stesso limite reale
+    expect(pannelloMinimo(5100)).toBeCloseTo(5.1, 9); // mm
+    expect(pannelloMinimo(510)).toBeCloseTo(0.51, 9); // cm
+    expect(pannelloMinimo(5.1)).toBeCloseTo(0.0051, 9); // m
+  });
+
+  it('in metri le giunzioni restano tutte: prima ne sarebbe sopravvissuta una', () => {
+    // parete di 5,1 m divisa in quattro: i giunti cadono a 1,36 · 2,71 · 4,06
+    const giunti = giuntiAutomatici(5.1, {
+      massimo: 1.37,
+      modo: 'fascia',
+      sormonto: 0.02,
+      verso: 'centro'
+    });
+    expect(giunti).toHaveLength(3);
+    expect(giuntiValidi(giunti, 5.1)).toHaveLength(3);
+  });
+});
+
 describe('giuntiValidi', () => {
   it('mette in ordine, butta i doppioni e quello che cade fuori dal pezzo', () => {
     expect(giuntiValidi([300, 50, -10, 700, 50.2, NaN], 500)).toEqual([50, 300]);
@@ -183,8 +205,18 @@ describe('spostaGiunto', () => {
   });
 
   it('non lascia scavalcare le giunzioni vicine', () => {
-    expect(spostaGiunto(p, 1, 900, 500).giunti[1]).toBeCloseTo(399, 6);
-    expect(spostaGiunto(p, 1, -50, 500).giunti[1]).toBeCloseTo(101, 6);
+    const passo = pannelloMinimo(500);
+    expect(spostaGiunto(p, 1, 900, 500).giunti[1]).toBeCloseTo(400 - passo, 9);
+    expect(spostaGiunto(p, 1, -50, 500).giunti[1]).toBeCloseTo(100 + passo, 9);
+  });
+
+  it('trascinato a fondo corsa il giunto resta: il limite è lo stesso', () => {
+    // spostare fino al bordo e poi rileggere non deve far sparire la giunzione
+    const unico: Pannellizzazione = { ...p, giunti: [250] };
+    const alBordo = spostaGiunto(unico, 0, -1000, 500);
+    expect(giuntiValidi(alBordo.giunti, 500)).toEqual(alBordo.giunti);
+    const allAltroBordo = spostaGiunto(unico, 0, 1000, 500);
+    expect(giuntiValidi(allAltroBordo.giunti, 500)).toEqual(allAltroBordo.giunti);
   });
 
   it('un indice che non esiste non cambia niente', () => {

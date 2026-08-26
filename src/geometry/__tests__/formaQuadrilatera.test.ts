@@ -217,3 +217,59 @@ describe('pannelliDellaForma', () => {
     expect(d?.pannelli.map((p) => p.larghezza)).toEqual([201, 201]);
   });
 });
+
+describe('abbondanze non simmetriche', () => {
+  /** 500×230 con 10 cm di abbondanza solo a sinistra e 4 solo sotto */
+  const storta = poligono(
+    [
+      [0, 0],
+      [500, 0],
+      [500, 230],
+      [0, 230]
+    ],
+    [
+      { da: 0, a: 1, valore: 500, abbInizio: 10 },
+      { da: 1, a: 2, valore: 230, abbFine: 4 },
+      { da: 2, a: 3, valore: 500 },
+      { da: 3, a: 0, valore: 230 }
+    ],
+    { asse: 'verticale', sormonto: 2, verso: 'centro', giunti: [200] }
+  );
+
+  it('il taglio cresce solo dove c’è l’abbondanza', () => {
+    const f = formaQuadrilatera(storta);
+    expect(f?.netta).toEqual({ larghezza: 500, altezza: 230 });
+    expect(f?.taglio).toEqual({ larghezza: 510, altezza: 234 });
+  });
+
+  it('lo scostamento è quello vero, non la metà dell’extra', () => {
+    const f = formaQuadrilatera(storta);
+    // tutti e 10 i cm stanno a sinistra: la giunzione a 200 di taglio cade a
+    // 190 sul muro, non a 195
+    expect(f?.scostamento).toEqual({ larghezza: 10, altezza: 0 });
+    const d = pannelliDellaForma(storta);
+    expect(d?.scostamento).toBe(10);
+    expect(d?.scostamentoTrasversale).toBe(0);
+  });
+
+  it('sull’asse orizzontale lo scostamento è quello dell’altezza', () => {
+    const oriz = poligono(
+      [
+        [0, 0],
+        [500, 0],
+        [500, 230],
+        [0, 230]
+      ],
+      [
+        { da: 0, a: 1, valore: 500 },
+        { da: 1, a: 2, valore: 230, abbInizio: 6 },
+        { da: 3, a: 0, valore: 230 }
+      ],
+      { asse: 'orizzontale', sormonto: 2, verso: 'centro', giunti: [100] }
+    );
+    // abbInizio del lato destro sta al vertice alto-destra: sborda in ALTO
+    const d = pannelliDellaForma(oriz);
+    expect(d?.scostamento).toBe(6);
+    expect(d?.totale).toBe(236);
+  });
+});
