@@ -44,6 +44,7 @@ import {
   mascheraSagoma,
   misureComplete,
   poligonoSagoma,
+  orientazioniPer,
   rotazioniPer,
   ruotaPunti,
   sagomaDiTaglio,
@@ -281,16 +282,34 @@ export function calcolaNestingSagome(
    * rettangoli non cambierebbe niente e costerebbe il doppio.
    */
   const conGiro = daProvare.some((it) => rotazioniPer(it.pezzo).length === 4);
+  /**
+   * GLI ANGOLI OBLIQUI.
+   *
+   * I quarti di giro sono un'ipotesi da rettangoli: un rombo o un triangolo
+   * storto, girati a mano, si mettono con UN LATO per terra, ed è così che
+   * due pezzi combaciano lungo il fianco. Quegli angoli però non si possono
+   * dare in pasto alla scansione insieme agli altri: provati tutti insieme
+   * peggiorano il pacco di tre punti, perché il primo pezzo si affeziona a
+   * un verso storto e il resto si arrangia. Si fa quindi un pacco INTERO a
+   * quarti e uno INTERO ad angoli obliqui, e si tiene il migliore.
+   */
+  const conAngoli = daProvare.some((it) => {
+    const f = formaDi(it.pezzo);
+    return rotazioniPer(it.pezzo).length > 1 && f !== 'rett' && f !== 'cerchio';
+  });
 
   // Si tiene il tentativo MIGLIORE, non l'ultimo. Allargare la finestra
   // ingrossa la cella, e basta un pezzo impossibile — più largo del rotolo, o
   // col verso bloccato — per far ritentare fino in fondo: alla cella grossa
   // finirebbero fuori anche pezzi che al primo giro entravano.
+  const strategie: Array<{ seme: number; angoli: boolean }> = [{ seme: 0, angoli: false }];
+  if (conGiro) strategie.push({ seme: 1, angoli: false });
+  if (conAngoli) strategie.push({ seme: 0, angoli: true });
   let migliore: Giro | null = null;
-  for (const seme of conGiro ? [0, 2] : [0]) {
+  for (const { seme, angoli } of strategie) {
     let finestra = bH;
     for (let tentativo = 0; ; tentativo++) {
-      const e = unGiro(par, daProvare, pad, bW, finestra, bobina, seme);
+      const e = unGiro(par, daProvare, pad, bW, finestra, bobina, seme, angoli);
       if (!migliore || meglioDi(e, migliore)) migliore = e;
       // sul rotolo, se la finestra stimata non è bastata, si allarga e si
       // rifà: quello che non entra dev'essere un fatto del materiale, non
@@ -348,7 +367,9 @@ function unGiro(
   bW: number,
   bH: number,
   bobina: boolean,
-  seme: number
+  seme: number,
+  /** vero = si provano anche gli angoli che appoggiano un lato per terra */
+  angoli: boolean
 ): Giro {
   const { lama, abbondanza, margine } = par;
   const cs = latoCella(bW, bH, bobina);
@@ -389,11 +410,27 @@ function unGiro(
   /** le maschere di un pezzo, con fin dove può arrivare la cella d'appoggio */
   const maschereDi = (it: Istanza): Maschere => {
     const p = it.pezzo;
-    const chiaveP = `${formaDi(p)}|${p.larghezza}|${p.altezza}|${p.misura3 ?? 0}|${p.ruotabile}`;
+    const aMano = p.ruotabile ? par.orientamenti?.[it.chiave] : undefined;
+    const forzato =
+      typeof aMano === 'number' ? aMano : aMano === true ? 90 : aMano === false ? 0 : null;
+    const chiaveP = `${formaDi(p)}|${p.larghezza}|${p.altezza}|${p.misura3 ?? 0}|${p.ruotabile}|${angoli}|${forzato ?? ''}`;
     const gia = cacheMaschere.get(chiaveP);
     if (gia) return gia;
     const fuori: Maschere = [];
-    for (const r of rotazioniPer(p)) {
+    // i quarti di giro rispettano già venatura e cerchi: se il pezzo è
+    // bloccato su un verso solo, non lo si sblocca allargando gli angoli
+    const quarti = rotazioniPer(p);
+    const forma = formaDi(p);
+    // il verso messo a mano vince sul calcolo: si prova SOLO quello (con la
+    // venatura non si lascia forzare, la fibra comanda — come nell'altro
+    // motore)
+    const versi =
+      forzato !== null
+        ? [forzato]
+        : angoli && quarti.length > 1 && forma !== 'rett' && forma !== 'cerchio'
+          ? orientazioniPer(p)
+          : quarti;
+    for (const r of versi) {
       const mk = maschera(p, r);
       // Fin dove può arrivare la cella d'appoggio. Il vincolo che conta è in
       // millimetri — il pezzo gonfiato deve stare dentro bW×bH — quello a
@@ -415,10 +452,9 @@ function unGiro(
     // il giro di partenza: con quattro rotazioni si può cominciare da mezzo
     // giro, e a parità di posizione cambia quale verso viene appoggiato per
     // primo — è lì che nasce (o non nasce) l'incastro testa-coda
+    const mezzo = seme > 0 ? Math.floor(tutte.length / 2) : 0;
     const maschere =
-      seme > 0 && tutte.length === 4
-        ? [...tutte.slice(seme), ...tutte.slice(0, seme)]
-        : tutte;
+      mezzo > 0 ? [...tutte.slice(mezzo), ...tutte.slice(0, mezzo)] : tutte;
     const entraDaSolo = maschere.some(([, , limX, limY]) => limX >= 0 && limY >= 0);
     if (!entraDaSolo) {
       scartati.push(scarto(it));

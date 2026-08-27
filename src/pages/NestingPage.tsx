@@ -16,11 +16,13 @@ import {
 } from '../geometry/nesting';
 import { calcolaNestingAuto, type EsitoSagome } from '../geometry/nestingSagome';
 import {
+  ancoraEtichetta,
   etichetteMisure,
   formaDi,
   haSagome,
   servemisura3,
   misureForma,
+  versiAMano,
   FORME,
   type FormaPezzo
 } from '../geometry/sagome';
@@ -400,17 +402,35 @@ export function NestingPage({
     );
   };
 
-  /** gira di 90° una singola copia già impaginata e ricalcola */
-  const giraPezzo = (chiave: string, eraRuotato: boolean) =>
+  /**
+   * UN TOCCO SUL PEZZO LO GIRA.
+   *
+   * Un rettangolo ha due versi e basta il mezzo giro. Una sagoma no: un rombo
+   * o un triangolo storto, girati a mano, si appoggiano su un LORO LATO, e i
+   * versi sensati sono quelli — gli stessi che prova il motore. Il tocco li
+   * fa scorrere uno alla volta; finito il giro il vincolo si toglie e il
+   * pezzo torna a farsi mettere dal calcolo.
+   */
+  const giraPezzo = (chiave: string, applicato: number) =>
     setDoc((d) => ({
       ...d,
       materiali: d.materiali.map((m) => {
         if (m.id !== d.attivo) return m;
         const nuovi = { ...m.orientamenti };
-        const richiesto = !eraRuotato;
-        // tornare al verso che il calcolo sceglierebbe da solo = togliere il vincolo
-        if (nuovi[chiave] === richiesto) delete nuovi[chiave];
-        else nuovi[chiave] = richiesto;
+        const pezzo = m.pezzi.find((p) => p.id === chiave.slice(0, chiave.lastIndexOf('#')));
+        const versi = pezzo ? versiAMano(pezzo) : [0, 90];
+        const indice = (v: number) =>
+          versi.findIndex((x) => Math.abs(x - (((v % 360) + 360) % 360)) < 0.01);
+        const imposto = nuovi[chiave];
+        if (imposto == null) {
+          // primo tocco: dal verso che ha adesso al successivo
+          nuovi[chiave] = versi[(indice(applicato) + 1 + versi.length) % versi.length];
+        } else {
+          const i = indice(typeof imposto === 'number' ? imposto : imposto ? 90 : 0);
+          // fine giro: si torna in automatico invece di ricominciare
+          if (i < 0 || i >= versi.length - 1) delete nuovi[chiave];
+          else nuovi[chiave] = versi[i + 1];
+        }
         return { ...m, orientamenti: nuovi };
       })
     }));
@@ -1696,8 +1716,8 @@ function Lastra({
   striscia?: Ritaglio[];
   pezzi: PezzoNesting[];
   venatura: Venatura;
-  imposti: Record<string, boolean>;
-  onGira: (chiave: string, eraRuotato: boolean) => void;
+  imposti: Record<string, boolean | number>;
+  onGira: (chiave: string, applicato: number) => void;
   legenda: boolean;
 }) {
   const L = misure.larghezza;
@@ -1793,8 +1813,12 @@ function Lastra({
             />
           )}
           {lastra.piazzamenti.map((pc, i) => {
-            const cx = pc.x + pc.larghezza / 2;
-            const cy = pc.y + pc.altezza / 2;
+            // il testo va nel baricentro della SAGOMA: al centro del riquadro
+            // finirebbe nella metà vuota di un triangolo, sopra il pezzo accanto
+            const ancora = pc.punti ? ancoraEtichetta(pc.punti) : null;
+            const cx = pc.x + (ancora ? ancora.x : pc.larghezza / 2);
+            const cy = pc.y + (ancora ? ancora.y : pc.altezza / 2);
+            const largaUtile = ancora ? ancora.larghezza : pc.larghezza;
             // la sagoma vera del pezzo, in coordinate della lastra; null = rettangolo
             const sagoma = pc.punti
               ? pc.punti.map((q) => `${pc.x + q[0]},${pc.y + q[1]}`).join(' ')
@@ -1811,30 +1835,32 @@ function Lastra({
             const dim = inUnita(12);
             const piano =
               mmPerPx > 0
-                ? pianoEtichetta(pc.larghezza, pc.altezza, pc.nome || '', misura, {
+                ? pianoEtichetta(largaUtile, pc.altezza, pc.nome || '', misura, {
                     massimo: dim,
                     comodo: inUnita(9),
                     dueRighe: inUnita(8),
                     minimo: inUnita(5)
                   })
                 : null;
-            const girabile = siGira(pc.chiave) && !pc.forma;
+            // anche le sagome si girano a mano, e non solo di un quarto
+            const girabile = siGira(pc.chiave);
+            const versi = (pc.rotazione ?? 0) % 90 !== 0 ? 'lato' : 'quarto';
             return (
               <g
                 key={i}
                 role={girabile ? 'button' : undefined}
                 tabIndex={girabile ? 0 : undefined}
                 aria-label={
-                  girabile ? `${pc.nome || 'pezzo'} ${misura}: gira di 90°` : undefined
+                  girabile ? `${pc.nome || 'pezzo'} ${misura}: gira al verso successivo` : undefined
                 }
                 style={girabile ? { cursor: 'pointer' } : undefined}
-                onClick={girabile ? () => onGira(pc.chiave, pc.ruotato) : undefined}
+                onClick={girabile ? () => onGira(pc.chiave, pc.rotazione ?? 0) : undefined}
                 onKeyDown={
                   girabile
                     ? (e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
                           e.preventDefault();
-                          onGira(pc.chiave, pc.ruotato);
+                          onGira(pc.chiave, pc.rotazione ?? 0);
                         }
                       }
                     : undefined
@@ -1842,7 +1868,11 @@ function Lastra({
               >
                 <title>
                   {girabile
-                    ? `${pc.nome || 'Pezzo'} ${misura} — tocca per girare di 90°`
+                    ? `${pc.nome || 'Pezzo'} ${misura} — tocca per girarlo${
+                        imposti[pc.chiave] != null
+                          ? ` (verso messo a mano${versi === 'lato' ? ', appoggiato su un lato' : ''})`
+                          : ''
+                      }`
                     : `${pc.nome || 'Pezzo'} ${misura} — bloccato dalla venatura`}
                 </title>
                 {cerchio ? (

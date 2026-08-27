@@ -10,6 +10,31 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.26.0 — Girare i pezzi: angoli veri e un tocco
+
+- **Non solo quarti di giro.** I quarti sono un'ipotesi da rettangoli: un
+  rombo o un triangolo storto, girati a mano, si appoggiano su un LORO LATO,
+  ed è così che due pezzi combaciano lungo il fianco. Ora il motore calcola
+  proprio quegli angoli — per ogni lato del pezzo, la rotazione che lo porta
+  in basso — e fa un pacco intero a quarti e uno intero ad angoli obliqui,
+  tenendo il migliore. Quattro rombi 754×597 passano da 1,64 a **1,51 m** di
+  lastra, cinque falde con tre fasce da 4,63 a **4,26 m** di bobina.
+  (Gli angoli non si possono mescolare agli altri dentro lo stesso pacco:
+  provati tutti insieme peggiorano di tre punti, perché il primo pezzo si
+  affeziona a un verso storto e il resto si arrangia.)
+- **Un tocco sul pezzo lo gira.** Niente pulsante: si tocca il pezzo nel
+  disegno e passa al verso successivo fra quelli sensati — per un rettangolo
+  il mezzo giro, per una sagoma i suoi appoggi di lato. Finito il giro il
+  vincolo si toglie da solo e il pezzo torna a farsi mettere dal calcolo. Con
+  la venatura resta bloccato: lì comanda la fibra.
+- Due angoli che danno lo stesso pezzo appoggiato non contano due volte: un
+  rombo ha sei versi veri, non dodici, e un quadrato uno solo. Meno tocchi a
+  vuoto e meno lavoro per il motore.
+- **Le etichette stanno nel pezzo.** Erano piazzate al centro del riquadro
+  d'ingombro: sul triangolo finivano nella metà vuota, sopra il pezzo accanto.
+  Ora vanno sul baricentro della sagoma, larghe quanto il pezzo è largo a
+  quell'altezza — in pagina, nel PDF e nel file per la macchina.
+
 ## 1.25.0 — La resa, misurata
 
 - **I pezzi lunghi entrano per primi.** Con la scansione dal basso chi arriva

@@ -46,6 +46,17 @@ export interface PezzoNesting {
   tinta: number;
 }
 
+/**
+ * Il verso imposto come lo intende il motore rettangolare: un angolo di
+ * sagoma vale «ruotato» se è un quarto di giro dispari, altrimenti «diritto».
+ */
+export function versoImposto(v: boolean | number | undefined): boolean | undefined {
+  if (v == null) return undefined;
+  if (typeof v === 'boolean') return v;
+  const g = ((v % 360) + 360) % 360;
+  return (g >= 45 && g < 135) || (g >= 225 && g < 315);
+}
+
 export interface ParametriNesting {
   lastra: { larghezza: number; altezza: number };
   /** spessore della lama consumato tra due pezzi */
@@ -61,11 +72,16 @@ export interface ParametriNesting {
    */
   massimoLastre?: number;
   /**
-   * Orientamento IMPOSTO a mano per singola copia (`chiave` → ruotato sì/no).
-   * Vince sul calcolo: si prova solo quel verso, anche se il pezzo sarebbe
-   * libero di girare. È così che si corregge un pezzo impaginato controvena.
+   * Orientamento IMPOSTO a mano per singola copia. Vince sul calcolo: si
+   * prova solo quel verso, anche se il pezzo sarebbe libero di girare. È così
+   * che si corregge un pezzo impaginato controvena.
+   *
+   * Un booleano dice «ruotato sì/no» e basta al motore rettangolare; una
+   * sagoma può essere messa a QUALUNQUE angolo (appoggiata su un suo lato),
+   * e allora il valore è l'angolo in gradi. Qui un angolo vale come mezzo
+   * giro sì/no — un rettangolo non ha altri versi.
    */
-  orientamenti?: Record<string, boolean>;
+  orientamenti?: Record<string, boolean | number>;
   /**
    * Ordine con cui i pezzi vengono provati. Cambia il risultato: nessun
    * ordine è il migliore su tutte le liste, per questo `calcolaNestingMigliore`
@@ -321,7 +337,7 @@ export function calcolaNesting(par: ParametriNesting, pezzi: PezzoNesting[]): Es
       // un pezzo che NON può girare non si lascia forzare: con la venatura la
       // fibra comanda, e un verso imposto a mano quando la venatura non c'era
       // non deve sopravviverle
-      const imposto = p.ruotabile ? par.orientamenti?.[chiave] : undefined;
+      const imposto = p.ruotabile ? versoImposto(par.orientamenti?.[chiave]) : undefined;
       istanze.push({
         chiave,
         id: p.id,
@@ -490,7 +506,7 @@ function ingombriPerCopia(par: ParametriNesting, pezzi: PezzoNesting[]): Map<str
     const q = Math.max(0, Math.round(p.quantita) || 0);
     for (let i = 0; i < q; i++) {
       const chiave = `${p.id}#${i}`;
-      const imposto = p.ruotabile ? par.orientamenti?.[chiave] : undefined;
+      const imposto = p.ruotabile ? versoImposto(par.orientamenti?.[chiave]) : undefined;
       mappa.set(chiave, {
         packL: p.larghezza + par.abbondanza + par.lama,
         packA: p.altezza + par.abbondanza + par.lama,
@@ -999,7 +1015,7 @@ function affina(
   }
   if (candidate.length === 0) return { esito, punteggio };
 
-  let forzati: Record<string, boolean> = { ...(par.orientamenti ?? {}) };
+  let forzati: Record<string, boolean | number> = { ...(par.orientamenti ?? {}) };
   let corrente = esito;
   let q = punteggio;
   // tetto al lavoro: su liste lunghissime la raffinatura si ferma prima invece

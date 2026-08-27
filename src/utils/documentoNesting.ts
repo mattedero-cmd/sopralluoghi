@@ -32,7 +32,7 @@ export interface MaterialeNesting {
   abbondanza: number;
   margine: number;
   /** versi imposti a mano, per singola copia (chiave `idPezzo#indice`) */
-  orientamenti: Record<string, boolean>;
+  orientamenti: Record<string, boolean | number>;
   pezzi: PezzoNesting[];
 }
 
@@ -247,10 +247,10 @@ export function duplicaEssenza(doc: DocumentoNesting, id: string): DocumentoNest
 
 /** i versi imposti che restano, tolti i pezzi andati via (chiave `id#indice`) */
 function senzaOrientamenti(
-  orientamenti: Record<string, boolean>,
+  orientamenti: Record<string, boolean | number>,
   andati: Set<string>
-): Record<string, boolean> {
-  const rimasti: Record<string, boolean> = {};
+): Record<string, boolean | number> {
+  const rimasti: Record<string, boolean | number> = {};
   for (const [chiave, valore] of Object.entries(orientamenti)) {
     if (!andati.has(chiave.slice(0, chiave.lastIndexOf('#')))) rimasti[chiave] = valore;
   }
@@ -391,7 +391,7 @@ function normalizzaMateriale(
     margine: numero(g.margine, base.margine),
     orientamenti:
       g.orientamenti && typeof g.orientamenti === 'object'
-        ? { ...(g.orientamenti as Record<string, boolean>) }
+        ? { ...(g.orientamenti as Record<string, boolean | number>) }
         : {},
     pezzi: pezzi
       .map((p, i) => normalizzaPezzo((p ?? {}) as Record<string, unknown>, i))

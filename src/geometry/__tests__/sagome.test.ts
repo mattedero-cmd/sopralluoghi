@@ -7,8 +7,10 @@ import {
   misureComplete,
   misureForma,
   poligonoSagoma,
+  orientazioniPer,
   rotazioniPer,
   ruotaPunti,
+  versiAMano,
   sagomaDiTaglio,
   type MisureForma,
   type PuntoSagoma
@@ -527,5 +529,116 @@ describe('il triangolo dei tre lati (SSS)', () => {
     expect(esito.scartati).toHaveLength(0);
     expect(esito.lastre).toHaveLength(1);
     expect(distanzaMinimaFraPezzi(esito)).toBeGreaterThanOrEqual(3 - 1e-6);
+  });
+});
+
+describe('i versi obliqui: appoggiare un lato per terra', () => {
+  it('per OGNI lato c’è un verso che lo appoggia per terra', () => {
+    // è la proprietà che serve: girando a mano si cerca il lato da mettere
+    // in basso. (I quattro quarti canonici restano in elenco comunque: a
+    // 90° un triangolo storto non appoggia niente, ed è giusto così)
+    const p: MisureForma = { forma: 'triangoloL', larghezza: 800, altezza: 700, misura3: 500 };
+    const poly = poligonoSagoma(p)!;
+    const versi = orientazioniPer(p);
+    for (let i = 0; i < poly.length; i++) {
+      const lungo = Math.hypot(poly[i][0] - poly[(i + 1) % 3][0], poly[i][1] - poly[(i + 1) % 3][1]);
+      // gli angoli sono tenuti al centesimo di grado, che su un lato da 700
+      // basta a chiudere le chiavi di cache e sbaglia di quattro centesimi di
+      // millimetro: molto sotto la lama, si misura in decimi
+      const appoggiato = versi.some((g) => {
+        const r = ruotaPunti(poly, g);
+        return r.some((q, k) => {
+          const b = r[(k + 1) % r.length];
+          return (
+            Math.abs(q[1] - b[1]) < 0.2 && Math.abs(Math.hypot(q[0] - b[0], q[1] - b[1]) - lungo) < 0.2
+          );
+        });
+      });
+      expect(appoggiato).toBe(true);
+    }
+  });
+
+  it('niente doppioni: due angoli che danno lo stesso pezzo valgono per uno', () => {
+    // il rombo è simmetrico rispetto al centro: metà dei suoi angoli sono
+    // lo stesso appoggio, e farli provare al motore (o toccare a mano) è
+    // tempo perso
+    const rombo = orientazioniPer({ forma: 'rombo', larghezza: 754, altezza: 597 });
+    expect(rombo).toHaveLength(6);
+    const impronte = new Set(
+      rombo.map((g) =>
+        ruotaPunti(poligonoSagoma({ forma: 'rombo', larghezza: 754, altezza: 597 })!, g)
+          .map((q) => `${Math.round(q[0] * 100) / 100},${Math.round(q[1] * 100) / 100}`)
+          .sort()
+          .join(' ')
+      )
+    );
+    expect(impronte.size).toBe(rombo.length);
+  });
+
+  it('i quarti di sempre ci sono, e vengono per primi', () => {
+    const t = orientazioniPer({ forma: 'trapezioR', larghezza: 600, altezza: 400, misura3: 800 });
+    expect(t.slice(0, 4)).toEqual([0, 90, 180, 270]);
+  });
+
+  it('i versi da girare a mano: il quadrato uno, il cerchio uno, il rettangolo due', () => {
+    expect(versiAMano({ forma: 'rett', larghezza: 600, altezza: 400 })).toEqual([0, 90]);
+    expect(versiAMano({ forma: 'rett', larghezza: 500, altezza: 500 })).toEqual([0]);
+    expect(versiAMano({ forma: 'cerchio', larghezza: 300, altezza: 300 })).toEqual([0]);
+    expect(versiAMano({ forma: 'rombo', larghezza: 754, altezza: 597 }).length).toBe(6);
+  });
+
+  it('i rombi obliqui accorciano davvero la lastra', () => {
+    // quattro rombi 754×597: a soli quarti di giro restano nel loro riquadro,
+    // appoggiati su un lato si affiancano
+    const pezzi = [pezzo('ro', 'rombo', 754, 597, undefined, { quantita: 4 })];
+    const esito = calcolaNestingSagome(par(1300, 2500, { margine: 10 }), pezzi as PezzoNesting[]);
+    expect(esito.scartati).toHaveLength(0);
+    let piuGiu = 0;
+    for (const pc of esito.lastre[0].piazzamenti) piuGiu = Math.max(piuGiu, pc.y + pc.altezza);
+    expect(piuGiu).toBeLessThanOrEqual(1250);
+    expect(distanzaMinimaFraPezzi(esito)).toBeGreaterThanOrEqual(3 - 1e-6);
+  });
+});
+
+describe('il verso messo a mano', () => {
+  it('vince sul calcolo: si prova solo quello', () => {
+    const p = pezzo('t', 'trapezioR', 600, 400, 800);
+    const esito = calcolaNestingSagome(
+      { ...par(1300, 1250), orientamenti: { 't#0': 180 } },
+      [p] as PezzoNesting[]
+    );
+    expect(esito.lastre[0].piazzamenti[0].rotazione).toBe(180);
+  });
+
+  it('vale anche un angolo obliquo, e il pezzo resta dentro la lastra', () => {
+    const p = pezzo('ro', 'rombo', 754, 597);
+    const versi = versiAMano({ forma: 'rombo', larghezza: 754, altezza: 597 });
+    const obliquo = versi.find((g) => g % 90 !== 0)!;
+    const esito = calcolaNestingSagome(
+      { ...par(1300, 1250, { margine: 10 }), orientamenti: { 'ro#0': obliquo } },
+      [p] as PezzoNesting[]
+    );
+    const pc = esito.lastre[0].piazzamenti[0];
+    expect(pc.rotazione).toBe(obliquo);
+    expect(pc.x).toBeGreaterThanOrEqual(-1e-6);
+    expect(pc.x + pc.larghezza).toBeLessThanOrEqual(1300 + 1e-6);
+  });
+
+  it('con la venatura non si lascia forzare: comanda la fibra', () => {
+    const p = pezzo('t', 'trapezioR', 600, 400, 800, { ruotabile: false });
+    const esito = calcolaNestingSagome(
+      { ...par(1300, 1250), orientamenti: { 't#0': 90 } },
+      [p] as PezzoNesting[]
+    );
+    expect(esito.lastre[0].piazzamenti[0].rotazione).toBe(0);
+  });
+
+  it('il vecchio vincolo booleano continua a valere: vero = mezzo quarto', () => {
+    const p = pezzo('r', 'rett', 600, 400);
+    const esito = calcolaNestingSagome(
+      { ...par(1300, 1250), orientamenti: { 'r#0': true } },
+      [p] as PezzoNesting[]
+    );
+    expect(esito.lastre[0].piazzamenti[0].rotazione).toBe(90);
   });
 });

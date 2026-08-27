@@ -152,7 +152,19 @@ const LISTE: Array<{
       pz('fascia', undefined, 1200, 400, undefined, 3),
       pz('f', 'trapezioR', 700, 450, 900, 5)
     ],
-    resaMinima: 65
+    // 67% coi soli quarti di giro, 73% appoggiando le falde su un fianco
+    resaMinima: 71
+  },
+  {
+    // il caso che chiedeva gli angoli obliqui: due rombi affiancati non
+    // stanno nel loro riquadro, appoggiati su un lato sì
+    nome: 'rombi e cerchi su lastra',
+    par: lastra(1300, 2500),
+    pezzi: [
+      pz('ro', 'rombo', 754, 597, undefined, 4),
+      pz('ob', 'cerchio', 350, 350, undefined, 4)
+    ],
+    resaMinima: 64
   }
 ];
 

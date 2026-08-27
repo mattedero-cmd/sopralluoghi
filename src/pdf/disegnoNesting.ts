@@ -9,7 +9,7 @@
 
 import type { LastraNesting } from '../geometry/nesting';
 import { pianoEtichetta } from '../utils/etichettaNesting';
-import { misureForma } from '../geometry/sagome';
+import { ancoraEtichetta, misureForma } from '../geometry/sagome';
 import { tintaBordoEsa, tintaSfondoEsa } from '../utils/tinte';
 import { formattaNumero } from '../utils/format';
 
@@ -177,7 +177,17 @@ export function impaginaLastra(
       altezza: pc.altezzaFinita,
       misura3: pc.misura3Finita
     });
-    const piano = pianoEtichetta(rw, rh, pc.nome || '', misura, CORPI_PDF);
+    // come in pagina: il testo nel baricentro della sagoma, non del riquadro
+    const ancora = pc.punti ? ancoraEtichetta(pc.punti) : null;
+    const tx = rx + (ancora ? ancora.x * scala : rw / 2);
+    const ty = ry + (ancora ? ancora.y * scala : rh / 2);
+    const piano = pianoEtichetta(
+      ancora ? ancora.larghezza * scala : rw,
+      rh,
+      pc.nome || '',
+      misura,
+      CORPI_PDF
+    );
     if (!piano) continue;
 
     // pezzo stretto e alto: il nome ci sta solo scritto per lungo, come si
@@ -213,21 +223,24 @@ export function impaginaLastra(
       continue;
     }
 
-    const cy = ry + rh / 2;
+    // la cassa di testo è centrata sull'ancora, larga quanto il pezzo è largo lì
+    const larga = ancora ? ancora.larghezza * scala : rw;
+    const tsx = tx - larga / 2;
+    const cy = ty;
     if (piano.ampia) {
       testi.push({
-        x: rx,
+        x: tsx,
         y: cy - piano.corpoNome * 1.15,
-        larghezza: rw,
+        larghezza: larga,
         testo: piano.nome ?? '',
         corpo: piano.corpoNome,
         grassetto: true,
         colore: '#1d2229'
       });
       testi.push({
-        x: rx,
+        x: tsx,
         y: cy + piano.corpoMisura * 0.05,
-        larghezza: rw,
+        larghezza: larga,
         testo: piano.misura ?? '',
         corpo: piano.corpoMisura,
         grassetto: false,
@@ -236,9 +249,9 @@ export function impaginaLastra(
     } else {
       const corpo = piano.nome ? piano.corpoNome : piano.corpoMisura;
       testi.push({
-        x: rx,
+        x: tsx,
         y: cy - corpo * 0.62,
-        larghezza: rw,
+        larghezza: larga,
         testo: (piano.nome || piano.misura) ?? '',
         corpo,
         grassetto: !!piano.nome,

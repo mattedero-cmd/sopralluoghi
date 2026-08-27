@@ -20,7 +20,7 @@
  */
 
 import type { LastraNesting, Piazzamento } from './nesting';
-import { misureForma } from './sagome';
+import { ancoraEtichetta, misureForma } from './sagome';
 import { pianoEtichetta } from '../utils/etichettaNesting';
 
 /** magenta 100% in quadricromia, come lo rende lo schermo */
@@ -129,8 +129,11 @@ const INTERLINEA = 1.15;
 
 /** l'etichetta di un pezzo: nome e misura, o quel che ci sta */
 function etichettaPezzo(p: Piazzamento): string {
-  const cx = p.x + p.larghezza / 2;
-  const cy = p.y + p.altezza / 2;
+  // come in pagina: il testo sta nel baricentro della sagoma, non del riquadro
+  const ancora = p.punti ? ancoraEtichetta(p.punti) : null;
+  const cx = p.x + (ancora ? ancora.x : p.larghezza / 2);
+  const cy = p.y + (ancora ? ancora.y : p.altezza / 2);
+  const largaUtile = ancora ? ancora.larghezza : p.larghezza;
   // la misura parla la lingua della forma: Ø300, 500/300×200, 600×400|800
   const misura = misureForma({
     forma: p.forma,
@@ -138,7 +141,7 @@ function etichettaPezzo(p: Piazzamento): string {
     altezza: p.altezzaFinita,
     misura3: p.misura3Finita
   });
-  const piano = pianoEtichetta(p.larghezza, p.altezza, p.nome || '', misura, CORPI_ETICHETTA);
+  const piano = pianoEtichetta(largaUtile, p.altezza, p.nome || '', misura, CORPI_ETICHETTA);
   if (!piano) return '';
 
   const riga = (testo: string, corpo: number, dy: number, forte: boolean) =>

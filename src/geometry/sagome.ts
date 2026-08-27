@@ -358,6 +358,120 @@ export function sagomaDiTaglio(
 }
 
 /**
+ * LE ORIENTAZIONI SENSATE di una sagoma: «appoggia un lato per terra».
+ *
+ * I quarti di giro sono un'ipotesi da rettangoli. Un rombo o un triangolo
+ * storto, girati a mano, si mettono quasi sempre con UN LATO orizzontale —
+ * è così che due pezzi si combaciano lungo il fianco e che un pezzo si
+ * stende contro il bordo del rotolo. Qui si calcolano proprio quegli angoli:
+ * per ogni lato del poligono, la rotazione che lo porta orizzontale, più i
+ * suoi tre quarti di giro (lato in basso, in alto, sui due fianchi).
+ *
+ * I quattro quarti canonici ci sono sempre: quello che si trovava prima non
+ * si perde mai. L'elenco è ordinato e senza doppioni, così le chiavi di cache
+ * restano stabili fra un calcolo e l'altro.
+ */
+export function orientazioniPer(p: MisureForma): number[] {
+  const poly = poligonoSagoma(p);
+  const viste = new Set<number>();
+  const fuori: number[] = [];
+  const aggiungi = (g: number) => {
+    // 0,01° di risoluzione: due lati quasi paralleli non fanno due voci
+    const n = Math.round((((g % 360) + 360) % 360) * 100) / 100;
+    if (viste.has(n)) return;
+    viste.add(n);
+    fuori.push(n);
+  };
+  for (const q of [0, 90, 180, 270]) aggiungi(q);
+  if (!poly) return [0]; // cerchio: non ha versi
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i];
+    const b = poly[(i + 1) % poly.length];
+    // la rotazione che porta questo lato orizzontale, e i suoi quarti
+    const g = -(Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI;
+    for (const q of [0, 90, 180, 270]) aggiungi(g + q);
+  }
+  // Due angoli diversi possono dare lo STESSO pezzo appoggiato: un rombo è
+  // simmetrico rispetto al centro, quindi metà dei suoi angoli sono doppioni,
+  // e un quadrato ha un verso solo. Si confrontano i poligoni davvero
+  // ruotati: chi arriva secondo non serve né a chi gira a mano (tocchi in
+  // più a vuoto) né al motore (maschere in più da provare).
+  const impronte = new Set<string>();
+  return fuori.filter((g) => {
+    const imp = ruotaPunti(poly, g)
+      .map((q) => `${Math.round(q[0] * 100) / 100},${Math.round(q[1] * 100) / 100}`)
+      .sort()
+      .join(' ');
+    if (impronte.has(imp)) return false;
+    impronte.add(imp);
+    return true;
+  });
+}
+
+/**
+ * DOVE SCRIVERE SOPRA UNA SAGOMA.
+ *
+ * Al centro del riquadro d'ingombro il nome di un triangolo finisce nella
+ * metà vuota, sopra il pezzo accanto: due etichette accavallate e nessuna
+ * delle due leggibile. Il baricentro di un poligono convesso invece sta
+ * sempre dentro, e la larghezza utile è quanto è largo il pezzo proprio a
+ * quell'altezza — non quanto è largo il riquadro.
+ */
+export function ancoraEtichetta(punti: PuntoSagoma[]): {
+  x: number;
+  y: number;
+  larghezza: number;
+} {
+  let doppiaArea = 0;
+  let cx = 0;
+  let cy = 0;
+  for (let i = 0; i < punti.length; i++) {
+    const a = punti[i];
+    const b = punti[(i + 1) % punti.length];
+    const f = a[0] * b[1] - b[0] * a[1];
+    doppiaArea += f;
+    cx += (a[0] + b[0]) * f;
+    cy += (a[1] + b[1]) * f;
+  }
+  if (Math.abs(doppiaArea) < 1e-9) {
+    // poligono degenere: si ripiega sul centro del riquadro
+    const xs = punti.map((q) => q[0]);
+    const ys = punti.map((q) => q[1]);
+    const l = Math.max(...xs) - Math.min(...xs);
+    return { x: Math.min(...xs) + l / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2, larghezza: l };
+  }
+  cx /= 3 * doppiaArea;
+  cy /= 3 * doppiaArea;
+  // quanto è largo il pezzo all'altezza del baricentro
+  let sinistra = Infinity;
+  let destra = -Infinity;
+  for (let i = 0; i < punti.length; i++) {
+    const a = punti[i];
+    const b = punti[(i + 1) % punti.length];
+    if ((a[1] <= cy && b[1] >= cy) || (b[1] <= cy && a[1] >= cy)) {
+      const dy = b[1] - a[1];
+      const x = Math.abs(dy) < 1e-9 ? a[0] : a[0] + ((b[0] - a[0]) * (cy - a[1])) / dy;
+      sinistra = Math.min(sinistra, x, Math.abs(dy) < 1e-9 ? b[0] : x);
+      destra = Math.max(destra, x, Math.abs(dy) < 1e-9 ? b[0] : x);
+    }
+  }
+  return { x: cx, y: cy, larghezza: destra > sinistra ? destra - sinistra : 0 };
+}
+
+/**
+ * I versi fra cui far scorrere un pezzo quando lo si gira A MANO, in ordine.
+ *
+ * Sono gli stessi che il motore sa provare: un rettangolo ha il mezzo giro,
+ * una sagoma i suoi appoggi di lato. Il cerchio non si gira.
+ */
+export function versiAMano(p: MisureForma): number[] {
+  const f = formaDi(p);
+  if (f === 'cerchio') return [0];
+  if (f === 'rett') return p.larghezza === p.altezza ? [0] : [0, 90];
+  return orientazioniPer(p);
+}
+
+/**
  * Le rotazioni da provare per un pezzo.
  *
  * Per triangoli e trapezi si provano tutti e quattro i quarti: è il 180° che
