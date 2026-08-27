@@ -3,6 +3,7 @@ import type { Annotazione, Cartella, Foto, Progetto, QuotaPoligono } from '../..
 import {
   codiceCompletoForma,
   codiceLocaleForma,
+  eSpeculare,
   codicePannello,
   etichettaFoto,
   letteraDaIndice,
@@ -63,6 +64,24 @@ describe('lettere e etichette foto', () => {
     expect(voci.find((v) => v.lettera === 'A')?.quantita).toBe(2);
     expect(voci.find((v) => v.lettera === 'B')?.quantita).toBe(1);
   });
+  it('la copia speculare porta il segno %, la dritta no', () => {
+    // due finestre sotto falda affacciate: la misura è una sola, richiamata,
+    // ma la gemella è ribaltata e in distinta è un pezzo diverso
+    const f1 = foto('f1', 1, 'B');
+    const originale = forma('o', 'f1', { creatoIl: 100, gruppoQuota: 'o' });
+    const copia = forma('c', 'f1', {
+      creatoIl: 200,
+      gruppoQuota: 'o',
+      soloEtichetta: true,
+      speculare: true
+    });
+    const numeri = numeriProgetto([f1], () => [originale, copia]);
+    expect(codiceLocaleForma(originale, numeri)).toBe('B1.1');
+    expect(codiceLocaleForma(copia, numeri)).toBe('B1.2%');
+    expect(eSpeculare(copia)).toBe(true);
+    expect(eSpeculare(originale)).toBe(false);
+  });
+
   it('etichetta automatica per ordine, manuale se impostata', () => {
     const lista = [foto('x', 20), foto('y', 10, 'PT'), foto('z', 30)];
     expect(etichettaFoto(foto('x', 20), lista)).toBe('B'); // 2ª per ordine

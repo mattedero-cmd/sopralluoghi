@@ -106,6 +106,7 @@ import type { AncoraSegmento } from '../db/types';
 import {
   codiceCompletoForma,
   codiceLocaleForma,
+  eCopiaEtichetta,
   famigliaDi,
   numeriProgetto,
   ordinePerNumero,
@@ -2674,6 +2675,26 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     );
   };
 
+  /**
+   * SPECULA la copia richiamata: stesse misure, forma ribaltata.
+   *
+   * Due finestre sotto falda affacciate sono identiche e speculari. Rilevarle
+   * due volte sarebbe lavoro doppio; si richiama la misura e si tocca questo.
+   * Sulla foto il codice prende il segno «%» e nel piano di taglio nasce un
+   * pezzo a sé, con la falda dall'altra parte: montarne uno al posto
+   * dell'altro vuol dire buttarlo.
+   */
+  const speculaSelezionata = () => {
+    if (!annotazioni || !selezioneId) return;
+    commit(
+      annotazioni.map((a) =>
+        a.id === selezioneId && a.tipo === 'quotaPoligono'
+          ? ({ ...a, speculare: !a.speculare } as Annotazione)
+          : a
+      )
+    );
+  };
+
   const eliminaSelezionata = () => {
     if (!annotazioni || !selezioneId) return;
     commit(annotazioni.filter((a) => a.id !== selezioneId));
@@ -4177,6 +4198,20 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 onClick={avviaDuplica}
               >
                 <Icona nome="duplica" dimensione={20} />
+              </button>
+            )}
+            {/* SOLO sulle copie richiamate: l'originale è la misura, e
+                ribaltare lui vorrebbe dire ribaltare tutta la famiglia */}
+            {selezionata.tipo === 'quotaPoligono' && eCopiaEtichetta(selezionata) && (
+              <button
+                className={`azione-flottante specula${selezionata.speculare ? ' attiva' : ''}`}
+                aria-label={
+                  selezionata.speculare ? 'Torna alla misura dritta' : 'Specula la misura'
+                }
+                title={selezionata.speculare ? 'Torna dritta' : 'Specula'}
+                onClick={speculaSelezionata}
+              >
+                ⇋
               </button>
             )}
             <button

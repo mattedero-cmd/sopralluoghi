@@ -1391,6 +1391,19 @@ h2 {
   opacity: 0.96;
 }
 
+/* SPECULA: ribalta la copia richiamata. Acceso quando la copia è speculare,
+   così si vede a colpo d'occhio quale delle due finestre è la gemella */
+.azione-flottante.specula {
+  font-size: 20px;
+  line-height: 1;
+  font-weight: 600;
+}
+.azione-flottante.specula.attiva {
+  background: var(--accento);
+  color: #fff;
+  border-color: var(--accento);
+}
+
 .azione-flottante.modifica:active {
   background: var(--accento, #2f81f7);
   opacity: 1;

@@ -541,6 +541,16 @@ export interface QuotaPoligono extends AnnotazioneBase {
    * le quote. La misura resta quella dell'originale della famiglia.
    */
   soloEtichetta?: boolean;
+  /**
+   * Copia SPECULARE: stesse misure dell'originale, forma ribaltata.
+   *
+   * Due finestre sotto falda affacciate sono identiche e speculari — la falda
+   * di una sale a destra, quella dell'altra a sinistra. Rilevarle due volte
+   * sarebbe lavoro doppio e una fonte di errori; si richiama la misura e la si
+   * specula. Nel piano di taglio diventa un pezzo a sé, con la sagoma
+   * ribaltata: montarne uno al posto dell'altro vuol dire buttarlo.
+   */
+  speculare?: boolean;
   /** LEGACY (≤0.16): valore per lato; usato solo se `segmenti` è assente */
   lati?: (number | null)[];
   /** LEGACY (≤0.16): proiezione per lato */

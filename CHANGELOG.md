@@ -10,6 +10,28 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.32.0 — La misura speculare
+
+- **Due finestre affacciate, un rilievo solo.** Sotto il colmo di un tetto le
+  finestre vanno a coppie: stesse misure, falda che sale da una parte e
+  dall'altra. Ora si richiama la misura come sempre, si tocca la copia e
+  compare **⇋ Specula**: il codice prende il segno `%` (B1.1 la dritta, B1.2%
+  la gemella) e nel piano di taglio nasce un **pezzo a sé**, con la falda
+  dall'altra parte.
+- Non è la stessa cosa che girarlo: un trapezio rettangolo ruotato di mezzo
+  giro ha la falda sempre dallo stesso lato. Montare uno al posto dell'altro
+  vuol dire buttarlo, ed è per questo che in distinta sono due voci separate —
+  due dritte e una specchiata fanno «2 +1», non «3».
+- Vale per tutte le forme che ne hanno bisogno: la falda scambia le due
+  altezze, il triangolo storto e il quadrilatero fuori squadro si specchiano
+  sui vertici. Rettangolo, cerchio, rombo e trapezio isoscele sono simmetrici
+  e restano quello che sono.
+- Se la forma è divisa in **teli**, si specchiano anche quelli: il primo
+  diventa l'ultimo e ognuno prende la sua forma ribaltata, così i codici a/b/c
+  seguono il verso in cui si posa.
+- Il pulsante compare solo sulle copie richiamate: l'originale è la misura, e
+  ribaltare lui vorrebbe dire ribaltare tutta la famiglia.
+
 ## 1.31.0 — Pannellizzare la finestra sotto falda
 
 - **I teli seguono la falda.** La pannellizzazione divideva sempre in teli

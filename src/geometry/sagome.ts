@@ -649,6 +649,38 @@ export function versiStretti(p: MisureForma): number[] {
 }
 
 /**
+ * LA SAGOMA RIBALTATA, come la finestra gemella dall'altra parte del colmo.
+ *
+ * Ribaltare non è girare: un trapezio rettangolo girato di mezzo giro ha la
+ * falda che scende dallo stesso lato, ribaltato no. Per le forme simmetriche
+ * — rettangolo, cerchio, rombo, trapezio isoscele — non cambia niente e si
+ * torna la stessa sagoma; per la falda si scambiano le due altezze, e per un
+ * poligono si specchiano i vertici attorno all'asse verticale.
+ */
+export function sagomaSpeculare<T extends MisureForma>(p: T): T {
+  const f = formaDi(p);
+  if (f === 'trapezioR') {
+    return { ...p, altezza: p.misura3 ?? p.altezza, misura3: p.altezza };
+  }
+  if (f === 'triangoloL' || f === 'quad') {
+    const poly = poligonoSagoma(p);
+    if (!poly) return p;
+    const W = Math.max(...poly.map((q) => q[0]));
+    // specchiato attorno all'asse verticale, e il giro dei vertici si inverte
+    // per non rovesciare il verso del poligono
+    const vertici = poly
+      .map((q): PuntoSagoma => [Math.round((W - q[0]) * 1e6) / 1e6, q[1]])
+      .reverse();
+    if (f === 'quad') return { ...p, vertici };
+    // il triangolo dei tre lati è già descritto dai suoi lati: ribaltarlo
+    // scambia quali sono il secondo e il terzo, e il poligono viene di
+    // conseguenza. Si passa comunque per i vertici, che dicono tutto.
+    return { ...p, forma: 'quad' as FormaPezzo, vertici };
+  }
+  return p;
+}
+
+/**
  * I versi fra cui far scorrere un pezzo quando lo si gira A MANO, in ordine.
  *
  * Sono gli stessi che il motore sa provare: un rettangolo ha il mezzo giro,

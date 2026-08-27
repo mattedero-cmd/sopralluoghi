@@ -4,6 +4,7 @@ import {
   raggruppaPezzi,
   type PannelloTaglio,
   type PezzoDaMisura,
+  speculaSagomaTaglio,
   type SagomaTaglio
 } from '../geometry/pezziDaSopralluogo';
 import { nestingDiProgetto } from '../db/repository';
@@ -23,6 +24,8 @@ import {
   codicePannello,
   confrontaEtichetta,
   eCopiaEtichetta,
+  eSpeculare,
+  SEGNO_SPECULARE,
   eFormaEtichettabile,
   famigliaDi,
   numeriProgetto,
@@ -171,6 +174,25 @@ async function caricaContestoGlobale(): Promise<ContestoGlobale> {
 /** codice locale (badge sulla foto, es. A1.2) di una forma nel contesto globale */
 function codiceLocaleCtx(ctx: ContestoGlobale, a: Annotazione): string {
   return codiceLocaleForma(a, ctx.numeri);
+}
+
+/**
+ * I teli di una forma ribaltata: stesso ordine di posa dall'altra parte.
+ *
+ * Specchiando l'elemento il primo telo diventa l'ultimo, e ognuno prende la
+ * forma ribaltata. Gli indici si rinumerano, se no i codici a/b/c non
+ * seguirebbero più il verso in cui si posa.
+ */
+function teliSpeculari(teli: PannelloTaglio[] | undefined): PannelloTaglio[] | undefined {
+  if (!teli) return undefined;
+  return teli
+    .slice()
+    .reverse()
+    .map((t, i) => ({
+      ...t,
+      indice: i + 1,
+      sagoma: t.sagoma ? speculaSagomaTaglio(t.sagoma) : undefined
+    }));
 }
 
 /** elenco dei codici delle copie di una famiglia DENTRO un percorso (cartella) */
@@ -959,9 +981,25 @@ function righeMisureFoto(
         if (eCopiaEtichetta(a) && infoFam) riga.derivaDa = codiceCompletoForma(percorso, base);
         righe.push(riga);
       } else {
-        // aggregato: la famiglia compare UNA sola volta per cartella (rappresentante
-        // sub 1, o forma singola); le copie successive vengono saltate.
-        if (infoFam && infoFam.sub && infoFam.sub > 1) continue;
+        /**
+         * AGGREGATO: la famiglia compare una sola volta per cartella — ma le
+         * copie SPECULARI fanno riga a sé.
+         *
+         * Due finestre sotto falda affacciate hanno le stesse misure e forme
+         * ribaltate: sommarle in una riga sola vorrebbe dire tagliarne due
+         * uguali, e in cantiere una delle due non entra. Si divide quindi la
+         * famiglia in dritte e speculari, e scrive la riga il primo membro di
+         * ciascun gruppo.
+         */
+        const inCartella = (ctx.membriFamiglia.get(famKey) ?? []).filter(
+          (m) => (ctx.percorsoFoto.get(m.fotoId) ?? []).join(' ') === percorso.join(' ')
+        );
+        const subDi = (m: Annotazione) => ctx.numeri.get(m.id)?.sub ?? 1;
+        const gruppo = inCartella
+          .filter((m) => eSpeculare(m) === eSpeculare(a))
+          .sort((x, y) => subDi(x) - subDi(y) || x.id.localeCompare(y.id));
+        if (gruppo.length > 0 && gruppo[0].id !== a.id) continue;
+        const specchiata = eSpeculare(a);
         const riga: RigaMisura = {
           ...det,
           forma: det.forma ?? '',
@@ -970,10 +1008,24 @@ function righeMisureFoto(
           stato: formaMis.stato,
           pezzo: true
         };
-        if (infoFam && infoFam.quantitaGlobale > 1) {
-          riga.quantita = infoFam.quantita; // copie in questa cartella
-          riga.codice = codiceCompletoForma(percorso, base); // "A1" senza sotto-indice
-          riga.collegati = codiciCopie(ctx, famKey, percorso);
+        if (specchiata) {
+          // stesse misure, forma ribaltata: è un pezzo diverso da tagliare
+          riga.taglioMm = det.taglioMm && {
+            ...det.taglioMm,
+            sagoma: det.taglioMm.sagoma
+              ? speculaSagomaTaglio(det.taglioMm.sagoma)
+              : undefined
+          };
+          riga.pannelli = teliSpeculari(det.pannelli);
+        }
+        if (gruppo.length > 1) {
+          riga.quantita = gruppo.length; // copie di questo verso in cartella
+          if (!specchiata) {
+            riga.codice = codiceCompletoForma(percorso, base); // "A1" senza sotto-indice
+            riga.collegati = codiciCopie(ctx, famKey, percorso).filter(
+              (c) => !c.endsWith(SEGNO_SPECULARE)
+            );
+          }
         }
         riga.teli = testoTeli(riga.pannelli, riga.codice, sormontoDi(formaMis), formaMis.unita);
         righe.push(riga);

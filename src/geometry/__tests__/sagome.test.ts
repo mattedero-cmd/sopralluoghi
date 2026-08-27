@@ -15,6 +15,7 @@ import {
   versiParalleli,
   versiStretti,
   sagomaDiTaglio,
+  sagomaSpeculare,
   type MisureForma,
   type PuntoSagoma
 } from '../sagome';
@@ -859,5 +860,79 @@ describe('l’ancora dell’etichetta', () => {
     const a = ancoraEtichetta(poly);
     expect(dentroConvesso([a.x, a.y], poly)).toBe(true);
     expect(dentroTutto(poly, a.larghezza, a.altezza * 0.3, a)).toBe(true);
+  });
+});
+
+describe('la sagoma ribaltata', () => {
+  it('la falda scambia le due altezze: girarla non basta', () => {
+    const falda: MisureForma = { forma: 'trapezioR', larghezza: 600, altezza: 400, misura3: 800 };
+    const sp = sagomaSpeculare(falda);
+    expect(sp).toMatchObject({ forma: 'trapezioR', larghezza: 600, altezza: 800, misura3: 400 });
+    // e NON si ottiene girandola: a mezzo giro la falda pende ancora di là
+    const giro = ruotaPunti(poligonoSagoma(falda)!, 180);
+    const specchio = poligonoSagoma(sp)!;
+    const impronta = (poly: PuntoSagoma[]) =>
+      poly
+        .map((q) => `${Math.round(q[0] * 100) / 100},${Math.round(q[1] * 100) / 100}`)
+        .sort()
+        .join(' ');
+    expect(impronta(giro)).not.toBe(impronta(specchio));
+    // area e ingombro restano quelli: è lo stesso vetro, dall'altra parte
+    expect(areaForma(sp)).toBeCloseTo(areaForma(falda), 6);
+    expect(ingombroForma(sp)).toEqual(ingombroForma(falda));
+  });
+
+  it('le forme simmetriche non cambiano: ribaltarle non serve', () => {
+    for (const p of [
+      { forma: 'rett' as const, larghezza: 600, altezza: 400 },
+      { forma: 'cerchio' as const, larghezza: 300, altezza: 300 },
+      { forma: 'rombo' as const, larghezza: 754, altezza: 597 },
+      { forma: 'trapezio' as const, larghezza: 500, altezza: 200, misura3: 300 }
+    ]) {
+      expect(sagomaSpeculare(p)).toEqual(p);
+    }
+  });
+
+  it('il triangolo storto ribaltato è un pezzo diverso, coi suoi tre lati', () => {
+    const t: MisureForma = { forma: 'triangoloL', larghezza: 800, altezza: 700, misura3: 500 };
+    const sp = sagomaSpeculare(t);
+    expect(areaForma(sp)).toBeCloseTo(areaForma(t), 4);
+    const lati = (p: MisureForma) => {
+      const poly = poligonoSagoma(p)!;
+      return poly
+        .map((a, i) => Math.hypot(a[0] - poly[(i + 1) % poly.length][0], a[1] - poly[(i + 1) % poly.length][1]))
+        .map((l) => Math.round(l))
+        .sort((x, y) => x - y);
+    };
+    // stessi tre lati…
+    expect(lati(sp)).toEqual(lati(t));
+    // …ma la punta cade dall'altra parte
+    const punta = (p: MisureForma) => poligonoSagoma(p)!.find((q) => q[1] === 0)![0];
+    expect(punta(sp)).toBeCloseTo(
+      Math.max(...poligonoSagoma(t)!.map((q) => q[0])) - punta(t),
+      4
+    );
+  });
+
+  it('ribaltare due volte torna al pezzo di partenza', () => {
+    const q: MisureForma = {
+      forma: 'quad',
+      larghezza: 640,
+      altezza: 500,
+      vertici: [
+        [0, 500],
+        [600, 470],
+        [640, 60],
+        [40, 0]
+      ]
+    };
+    const doppio = sagomaSpeculare(sagomaSpeculare(q));
+    expect(areaForma(doppio)).toBeCloseTo(areaForma(q), 4);
+    const ordina = (p: MisureForma) =>
+      poligonoSagoma(p)!
+        .map((v) => `${Math.round(v[0] * 100) / 100},${Math.round(v[1] * 100) / 100}`)
+        .sort()
+        .join(' ');
+    expect(ordina(doppio)).toBe(ordina(q));
   });
 });

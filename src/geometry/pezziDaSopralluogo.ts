@@ -17,7 +17,12 @@ import { misuraSegmento } from './calibrazione';
 import { misureElemento } from './calibrazione';
 import { nomeFormaPoligono, simboliPoligono } from './primitive';
 import { formaQuadrilatera, latiQuadrilatero, pannelliDellaForma } from './formaQuadrilatera';
-import { poligonoConvesso, poligonoSagoma, type FormaPezzo } from './sagome';
+import {
+  poligonoConvesso,
+  poligonoSagoma,
+  sagomaSpeculare,
+  type FormaPezzo
+} from './sagome';
 import { codicePannello } from './nomenclatura';
 import { inMillimetri } from '../utils/format';
 
@@ -657,6 +662,24 @@ export function pannelliTaglio(a: Annotazione): PannelloTaglio[] | null {
       altezza: mm(verticale ? p.altezza : p.larghezza, u)
     };
   });
+}
+
+/**
+ * La sagoma di taglio RIBALTATA: la gemella dall'altra parte del colmo.
+ *
+ * Ribaltare non è girare — un trapezio rettangolo girato ha la falda sempre
+ * dallo stesso lato — quindi il pezzo speculare è un pezzo diverso da
+ * tagliare, non una seconda copia dello stesso.
+ */
+export function speculaSagomaTaglio(s: SagomaTaglio): SagomaTaglio {
+  const m = sagomaSpeculare(sagomaComeMisure(s));
+  return {
+    forma: m.forma ?? s.forma,
+    d1: m.larghezza,
+    d2: m.altezza,
+    d3: m.misura3,
+    vertici: m.vertici?.map((q): [number, number] => [q[0], q[1]])
+  };
 }
 
 /** la sagoma di taglio letta come misure di forma, per farne il poligono */
