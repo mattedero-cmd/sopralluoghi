@@ -494,6 +494,29 @@ export function versiParalleli(p: MisureForma): number[] {
 }
 
 /**
+ * GLI APPOGGI PIÙ STRETTI, quelli che pareggiano col migliore.
+ *
+ * `versiParalleli` ne sceglie uno solo, ma spesso pareggiano: un rombo ha
+ * QUATTRO appoggi con lo stesso identico riquadro, e quale dei quattro
+ * impacchetti meglio non si sa guardando il pezzo — dipende da cosa gli sta
+ * intorno. Su una lista vera fra il primo e il migliore ballava il 3,7% di
+ * bobina, cioè quasi mezzo metro, deciso da un pareggio rotto a caso. Qui si
+ * tornano tutti, e chi impacchetta li prova.
+ */
+export function versiStretti(p: MisureForma): number[] {
+  const poly = poligonoSagoma(p);
+  if (!poly) return [0];
+  const conRiquadro = orientazioniPer(p).map((g) => {
+    const r = ruotaPunti(poly, g);
+    return { g, area: Math.max(...r.map((q) => q[0])) * Math.max(...r.map((q) => q[1])) };
+  });
+  const minimo = Math.min(...conRiquadro.map((x) => x.area));
+  // il 2% di tolleranza: due appoggi che differiscono di un'inezia sono
+  // entrambi candidati, uno che spreca il 10% in più no
+  return conRiquadro.filter((x) => x.area <= minimo * 1.02).map((x) => x.g).slice(0, 4);
+}
+
+/**
  * I versi fra cui far scorrere un pezzo quando lo si gira A MANO, in ordine.
  *
  * Sono gli stessi che il motore sa provare: un rettangolo ha il mezzo giro,

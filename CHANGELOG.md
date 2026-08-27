@@ -10,6 +10,25 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.29.0 — Il verso delle famiglie, scelto a catena
+
+- **Chi pesa di più detta la disposizione.** Sulla lista di prova del cantiere
+  — dieci copie di rettangolo, cerchio, trapezio, triangolo e rombo su bobina
+  da 152 — girare i pezzi a mano batteva il calcolo di quasi il 5%. Il motivo:
+  il pacco buono vuole i trapezi per lungo **e** i rombi appoggiati, decisi
+  INSIEME, e provare una famiglia alla volta non lo trova. Ora il motore fissa
+  il verso della famiglia che occupa più materiale, poi — tenendo quello fermo
+  — il verso della seconda: otto pacchi invece dei sedici che servirebbero a
+  provarle tutte, e la combinazione si trova lo stesso. È lo stesso ragionamento
+  che si fa a mano: prima si sistema il pezzo grosso, poi il successivo.
+- Fra gli appoggi si provano **tutti quelli che pareggiano** col più stretto:
+  un rombo ne ha quattro con lo stesso identico riquadro, e quale impacchetti
+  meglio non si sa guardando il pezzo. Su questa lista fra il primo e il
+  migliore ballava mezzo metro di bobina, deciso da un pareggio rotto a caso.
+- Quanto vale: la lista del cantiere passa da **11,89 a 11,20 m** (resa 79,3 →
+  84,1%), il misto da 7,37 a **7,01 m**. Nessuna lista del banco peggiora, e
+  ora nessuna rotazione a mano batte più il calcolo su quella lista.
+
 ## 1.28.0 — Un tocco gira tutte le copie
 
 - **Il tocco gira la famiglia, non la singola copia.** Due rombi appoggiati sul

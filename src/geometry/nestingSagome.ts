@@ -47,6 +47,7 @@ import {
   orientazioniPer,
   rotazioniPer,
   versiParalleli,
+  versiStretti,
   ruotaPunti,
   sagomaDiTaglio,
   type MascheraSagoma
@@ -303,22 +304,17 @@ export function calcolaNestingSagome(
   // ingrossa la cella, e basta un pezzo impossibile — più largo del rotolo, o
   // col verso bloccato — per far ritentare fino in fondo: alla cella grossa
   // finirebbero fuori anche pezzi che al primo giro entravano.
-  const strategie: Array<{ seme: number; modo: 'quarti' | 'obliqui' | 'parallelo' }> = [
-    { seme: 0, modo: 'quarti' }
-  ];
-  if (conGiro) strategie.push({ seme: 1, modo: 'quarti' });
-  if (conAngoli) {
-    strategie.push(
-      { seme: 0, modo: 'obliqui' },
-      { seme: 0, modo: 'parallelo' }
-    );
-  }
-  let migliore: Giro | null = null;
-  for (const { seme, modo } of strategie) {
+  /** un pacco completo, con la finestra del rotolo allargata se serve */
+  const pacco = (
+    modo: 'quarti' | 'obliqui' | 'parallelo',
+    seme: number,
+    blocchi: Record<string, number> | null
+  ): Giro => {
     let finestra = bH;
+    let meglio: Giro | null = null;
     for (let tentativo = 0; ; tentativo++) {
-      const e = unGiro(par, daProvare, pad, bW, finestra, bobina, seme, modo);
-      if (!migliore || meglioDi(e, migliore)) migliore = e;
+      const e = unGiro(par, daProvare, pad, bW, finestra, bobina, seme, modo, blocchi);
+      if (!meglio || meglioDi(e, meglio)) meglio = e;
       // sul rotolo, se la finestra stimata non è bastata, si allarga e si
       // rifà: quello che non entra dev'essere un fatto del materiale, non
       // della stima
@@ -326,9 +322,60 @@ export function calcolaNestingSagome(
         finestra = Math.min(limiteMassimo, finestra * 2);
         continue;
       }
-      break;
+      return meglio;
+    }
+  };
+
+  let migliore: Giro | null = null;
+  const prova = (g: Giro) => {
+    if (!migliore || meglioDi(g, migliore)) migliore = g;
+  };
+  prova(pacco('quarti', 0, null));
+  if (conGiro) prova(pacco('quarti', 1, null));
+  if (conAngoli) {
+    prova(pacco('obliqui', 0, null));
+    prova(pacco('parallelo', 0, null));
+
+    /**
+     * I VERSI DELLE FAMIGLIE PESANTI, scelti a catena.
+     *
+     * Chi occupa più materiale detta la disposizione: se le sue copie restano
+     * parallele tassellano, e il resto si sistema attorno. Quale appoggio però
+     * non si sa guardando il pezzo — i quattro appoggi di un rombo hanno lo
+     * stesso identico riquadro — e nemmeno una famiglia alla volta basta: su
+     * una lista vera il pacco buono voleva i trapezi a 90 E i rombi a 218
+     * INSIEME, e ognuno dei due da solo rendeva meno.
+     *
+     * Provare tutte le coppie sarebbe sedici pacchi. Si sceglie invece a
+     * catena: si fissa il verso migliore della famiglia più pesante, poi —
+     * tenendo quello fermo — il verso migliore della seconda. Otto pacchi, e
+     * la combinazione si trova lo stesso. È anche il modo in cui si ragiona a
+     * mano: prima si sistema il pezzo grosso, poi il successivo.
+     */
+    const peso = new Map<string, { peso: number; pezzo: PezzoNesting }>();
+    for (const it of daProvare) {
+      const f = formaDi(it.pezzo);
+      if (f === 'rett' || f === 'cerchio' || rotazioniPer(it.pezzo).length <= 1) continue;
+      const gia = peso.get(it.pezzo.id);
+      peso.set(it.pezzo.id, {
+        peso: (gia?.peso ?? 0) + areaForma(it.pezzo),
+        pezzo: it.pezzo
+      });
+    }
+    // oltre la seconda famiglia il guadagno non ripaga il tempo di calcolo
+    const pesanti = [...peso.entries()].sort((a, b) => b[1].peso - a[1].peso).slice(0, 2);
+    const scelti: Record<string, number> = {};
+    for (const [id, { pezzo }] of pesanti) {
+      let vinto: { verso: number; giro: Giro } | null = null;
+      for (const verso of versiStretti(pezzo)) {
+        const g = pacco('quarti', 0, { ...scelti, [id]: verso });
+        prova(g);
+        if (!vinto || meglioDi(g, vinto.giro)) vinto = { verso, giro: g };
+      }
+      if (vinto) scelti[id] = vinto.verso;
     }
   }
+
   esito.lastre = migliore!.lastre;
   esito.scartati = migliore!.scartati;
   esito.cella = migliore!.cella;
@@ -384,7 +431,14 @@ function unGiro(
    *   riquadro, più il suo mezzo giro. Tutte le copie restano parallele fra
    *   loro, ed è così che i rombi tassellano;
    */
-  modo: 'quarti' | 'obliqui' | 'parallelo'
+  modo: 'quarti' | 'obliqui' | 'parallelo',
+  /**
+   * le FAMIGLIE bloccate su un verso solo (id del pezzo → gradi): tutte le
+   * copie di quel pezzo restano parallele, il resto della lista è libero. È
+   * la mossa che si fa a mano quando si vogliono far tassellare i rombi senza
+   * toccare gli altri.
+   */
+  blocchi: Record<string, number> | null
 ): Giro {
   const { lama, abbondanza, margine } = par;
   const cs = latoCella(bW, bH, bobina);
@@ -428,7 +482,7 @@ function unGiro(
     const aMano = p.ruotabile ? par.orientamenti?.[it.chiave] : undefined;
     const forzato =
       typeof aMano === 'number' ? aMano : aMano === true ? 90 : aMano === false ? 0 : null;
-    const chiaveP = `${formaDi(p)}|${p.larghezza}|${p.altezza}|${p.misura3 ?? 0}|${p.ruotabile}|${modo}|${forzato ?? ''}`;
+    const chiaveP = `${formaDi(p)}|${p.larghezza}|${p.altezza}|${p.misura3 ?? 0}|${p.ruotabile}|${modo}|${forzato ?? ''}|${blocchi?.[p.id] ?? ''}`;
     // il cerchio non ha poligono: per lui l'ingombro è il diametro, e basta
     const poli = poligonoSagoma(p);
     const gia = cacheMaschere.get(chiaveP);
@@ -444,11 +498,13 @@ function unGiro(
     const versi =
       forzato !== null
         ? [forzato]
-        : modo === 'quarti' || quarti.length <= 1 || forma === 'rett' || forma === 'cerchio'
-          ? quarti
+        : blocchi && blocchi[p.id] !== undefined && quarti.length > 1
+          ? [blocchi[p.id]]
+          : modo === 'quarti' || quarti.length <= 1 || forma === 'rett' || forma === 'cerchio'
+            ? quarti
           : modo === 'obliqui'
-            ? orientazioniPer(p)
-            : versiParalleli(p);
+              ? orientazioniPer(p)
+              : versiParalleli(p);
     for (const r of versi) {
       const mk = maschera(p, r);
       // Fin dove può arrivare la cella d'appoggio. Il vincolo che conta è in

@@ -12,6 +12,7 @@ import {
   ruotaPunti,
   versiAMano,
   versiParalleli,
+  versiStretti,
   sagomaDiTaglio,
   type MisureForma,
   type PuntoSagoma
@@ -707,6 +708,41 @@ describe('le copie parallele: il rombo che tassella', () => {
     for (const pc of esito.lastre[0].piazzamenti) piuGiu = Math.max(piuGiu, pc.y + pc.altezza);
     // a soli quarti di giro erano 3,24 m; appoggiati e paralleli stanno in 2,4
     expect(piuGiu + 10).toBeLessThanOrEqual(2500);
+    expect(distanzaMinimaFraPezzi(esito)).toBeGreaterThanOrEqual(3 - 1e-6);
+  });
+});
+
+describe('il verso delle famiglie pesanti, scelto a catena', () => {
+  it('gli appoggi che pareggiano col più stretto sono tutti candidati', () => {
+    // il rombo ne ha QUATTRO con lo stesso identico riquadro: quale
+    // impacchetti meglio non si sa dal pezzo, dipende da cosa gli sta intorno
+    const stretti = versiStretti({ forma: 'rombo', larghezza: 753.8, altezza: 597.1 });
+    expect(stretti).toHaveLength(4);
+    expect(stretti).toContain(versiParalleli({ forma: 'rombo', larghezza: 753.8, altezza: 597.1 })[0]);
+    // e sono tutti obliqui: in piedi sulla punta il riquadro è quasi doppio
+    expect(stretti.every((g) => g % 90 !== 0)).toBe(true);
+  });
+
+  it('LA LISTA DEL CANTIERE: cinque forme per dieci copie su bobina da 152', () => {
+    // Il caso che ha fatto vedere il limite: scegliere il verso di UNA sola
+    // famiglia non bastava — il pacco buono vuole i trapezi per lungo E i
+    // rombi appoggiati, decisi insieme. Coi soli quarti di giro erano 11,9 m
+    // di bobina, adesso 11,2.
+    const pezzi = [
+      pezzo('rett', 'rett', 700, 820, undefined, { quantita: 10 }),
+      pezzo('cer', 'cerchio', 290, 0, undefined, { quantita: 10 }),
+      pezzo('tz', 'trapezioR', 450, 950, 750, { quantita: 10 }),
+      pezzo('tri', 'triangoloL', 794.7, 675.2, 558.2, { quantita: 10 }),
+      pezzo('ro', 'rombo', 753.8, 597.1, undefined, { quantita: 10 })
+    ];
+    const esito = calcolaNestingSagome(
+      par(1520, 80000, { margine: 10, massimoLastre: 1 }),
+      pezzi as PezzoNesting[]
+    );
+    expect(esito.scartati).toHaveLength(0);
+    let piuGiu = 0;
+    for (const pc of esito.lastre[0].piazzamenti) piuGiu = Math.max(piuGiu, pc.y + pc.altezza);
+    expect(piuGiu + 10).toBeLessThanOrEqual(11500);
     expect(distanzaMinimaFraPezzi(esito)).toBeGreaterThanOrEqual(3 - 1e-6);
   });
 });

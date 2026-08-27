@@ -112,7 +112,8 @@ const LISTE: Array<{
       pz('ob', 'cerchio', 420, 420, undefined, 2),
       pz('ro', 'rombo', 600, 500, undefined, 2)
     ],
-    resaMinima: 72
+    // 73,8% coi soli quarti, 78,9% scegliendo il verso delle famiglie pesanti
+    resaMinima: 77
   },
   {
     nome: 'soli triangoli storti su bobina da 91,5',
@@ -199,6 +200,21 @@ const LISTE: Array<{
       pz('c', 'cerchio', 290, 290, undefined, 1)
     ],
     resaMinima: 65
+  },
+  {
+    // LA LISTA DEL CANTIERE: dieci copie di ognuna delle cinque forme, su
+    // bobina da 152. È quella su cui si è visto che scegliere il verso di UNA
+    // famiglia non basta: ci vogliono i trapezi e i rombi decisi insieme
+    nome: 'dieci per forma su bobina da 152',
+    par: bobina(1520),
+    pezzi: [
+      pz('rett', undefined, 700, 820, undefined, 10),
+      pz('cer', 'cerchio', 290, 290, undefined, 10),
+      pz('tz', 'trapezioR', 450, 950, 750, 10),
+      pz('tri', 'triangoloL', 794.7, 675.2, 558.2, 10),
+      pz('ro', 'rombo', 753.8, 597.1, undefined, 10)
+    ],
+    resaMinima: 82
   }
 ];
 
