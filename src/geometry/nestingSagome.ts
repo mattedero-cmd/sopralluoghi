@@ -248,17 +248,30 @@ export function calcolaNestingSagome(
   }
 
   const limiteMassimo = utileA + lama;
+  // Si tiene il tentativo MIGLIORE, non l'ultimo. Allargare la finestra
+  // ingrossa la cella, e basta un pezzo impossibile — più largo del rotolo, o
+  // col verso bloccato — per far ritentare fino in fondo: alla cella grossa
+  // finirebbero fuori anche pezzi che al primo giro entravano. Vince chi
+  // scarta meno; a pari scarti la cella più fine, che impacchetta più stretto.
+  let migliore: ReturnType<typeof unGiro> | null = null;
   for (let tentativo = 0; ; tentativo++) {
     const e = unGiro(par, daProvare, pad, bW, bH, bobina);
+    if (
+      !migliore ||
+      e.scartati.length < migliore.scartati.length ||
+      (e.scartati.length === migliore.scartati.length && e.cella < migliore.cella)
+    ) {
+      migliore = e;
+    }
     // sul rotolo, se la finestra stimata non è bastata, si allarga e si rifà:
     // quello che non entra deve essere un fatto del materiale, non della stima
     if (bobina && e.scartati.length > 0 && bH < limiteMassimo - 1e-6 && tentativo < 4) {
       bH = Math.min(limiteMassimo, bH * 2);
       continue;
     }
-    esito.lastre = e.lastre;
-    esito.scartati = e.scartati;
-    esito.cella = e.cella;
+    esito.lastre = migliore.lastre;
+    esito.scartati = migliore.scartati;
+    esito.cella = migliore.cella;
     return esito;
   }
 }
@@ -283,8 +296,13 @@ function unGiro(
 ): { lastre: EsitoNesting['lastre']; scartati: EsitoNesting['scartati']; cella: number } {
   const { lama, abbondanza, margine } = par;
   const cs = latoCella(bW, bH, bobina);
-  const gridW = Math.floor(bW / cs);
-  const gridH = Math.floor(bH / cs);
+  // La griglia copre anche l'ULTIMA cella, quella parziale: con Math.floor la
+  // coda (bW mod cs) spariva, e un pezzo largo esattamente quanto l'utile —
+  // una fascia a tutta bobina — veniva scartato ogni volta che la cella non
+  // divideva la larghezza, cioè quasi sempre. Il vincolo vero non è a celle
+  // ma in millimetri, ed è applicato pezzo per pezzo qui sotto (limX/limY).
+  const gridW = Math.ceil(bW / cs - 1e-9);
+  const gridH = Math.ceil(bH / cs - 1e-9);
   if (gridW < 1 || gridH < 1) {
     return { lastre: [], scartati: istanze.map((it) => scarto(it)), cella: cs };
   }
@@ -313,12 +331,21 @@ function unGiro(
   for (const it of istanze) {
     const p = it.pezzo;
     const rotazioni = rotazioniPer(p);
-    const maschere: Array<[number, { chiave: string; m: MascheraSagoma }]> = [];
+    const maschere: Array<[number, { chiave: string; m: MascheraSagoma }, number, number]> = [];
     let entraDaSolo = false;
     for (const r of rotazioni) {
       const mk = maschera(p, r);
-      maschere.push([r, mk]);
-      if (mk.m.w <= gridW && mk.m.h <= gridH) entraDaSolo = true;
+      // Fin dove può arrivare la cella d'appoggio. Il vincolo che conta è in
+      // millimetri — il pezzo gonfiato deve stare dentro bW×bH — quello a
+      // celle serve solo a non scrivere fuori dalla riga del bitmap: si
+      // prende il più stretto dei due.
+      const girato = r === 90 || r === 270;
+      const rw = (girato ? it.ingA : it.ingL) + 2 * pad;
+      const rh = (girato ? it.ingL : it.ingA) + 2 * pad;
+      const limX = Math.min(gridW - mk.m.w, Math.floor((bW - rw) / cs + 1e-9));
+      const limY = Math.min(gridH - mk.m.h, Math.floor((bH - rh) / cs + 1e-9));
+      maschere.push([r, mk, limX, limY]);
+      if (limX >= 0 && limY >= 0) entraDaSolo = true;
     }
     if (!entraDaSolo) {
       scartati.push(scarto(it));
@@ -343,15 +370,22 @@ function unGiro(
       }
 
       let best: { cx: number; cy: number; rot: number; mask: MascheraSagoma } | null = null;
-      for (const [rot, mk] of maschere) {
-        if (mk.m.w > gridW || mk.m.h > gridH) continue;
+      for (const [rot, mk, limX, limY] of maschere) {
+        if (limX < 0 || limY < 0) continue;
         if (foglio.fallite[mk.chiave]) continue;
         if (mk.m.cells > foglio.celleLibere) {
           foglio.fallite[mk.chiave] = 1;
           continue;
         }
         const limitato = best !== null;
-        const pos = cercaPosto(foglio.occ, wpr, gridW, gridH, mk.m, limitato ? best!.cy : gridH);
+        const pos = cercaPosto(
+          foglio.occ,
+          wpr,
+          limX + mk.m.w,
+          limY + mk.m.h,
+          mk.m,
+          limitato ? best!.cy : gridH
+        );
         if (pos) {
           // A parità di posizione si preferisce l'orientamento che avanza meno
           // sul fronte di scansione: il pacco resta compatto e lo spazio libero

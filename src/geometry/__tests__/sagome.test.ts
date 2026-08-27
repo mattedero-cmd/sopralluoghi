@@ -416,3 +416,49 @@ describe('la sagoma di taglio con l’abbondanza', () => {
     expect(areaPoligono(sagomaAssoluta(pc)!)).toBeCloseTo(pc.areaVera!, 4);
   });
 });
+
+describe('i due difetti trovati dalla revisione', () => {
+  it('un pezzo largo quanto l’utile entra: la coda della griglia non lo mangia', () => {
+    // la fascia 1300 di larghezza sta esattamente nell'utile della lastra.
+    // Con la griglia troncata (floor) la sua maschera chiedeva una cella più
+    // di quante ne esistessero, e il pezzo veniva dichiarato «non entra»
+    // mentre da solo — cioè col motore rettangolare — si piazzava benissimo
+    const pezzi = [
+      pezzo('t', 'trapezioR', 600, 400, 800),
+      pezzo('fascia', 'rett', 1300, 300, undefined, { ruotabile: false })
+    ];
+    const esito = calcolaNestingSagome(
+      par(1300, 1250, { margine: 0 }),
+      pezzi as PezzoNesting[]
+    );
+    expect(esito.scartati).toHaveLength(0);
+    // e sta davvero dentro la lastra, non mezzo fuori
+    for (const l of esito.lastre) {
+      for (const pc of l.piazzamenti) {
+        expect(pc.x).toBeGreaterThanOrEqual(-1e-6);
+        expect(pc.y).toBeGreaterThanOrEqual(-1e-6);
+        expect(pc.x + pc.larghezza).toBeLessThanOrEqual(1300 + 1e-6);
+        expect(pc.y + pc.altezza).toBeLessThanOrEqual(1250 + 1e-6);
+      }
+    }
+    expect(distanzaMinimaFraPezzi(esito)).toBeGreaterThanOrEqual(3 - 1e-6);
+  });
+
+  it('sul rotolo un pezzo impossibile non si porta dietro quelli che entravano', () => {
+    // il 1250×1250 col verso bloccato non entra in un rotolo da 1220: è un
+    // fatto del materiale. Ma il suo scarto faceva ritentare con finestre
+    // sempre più larghe, la cella si ingrossava e alla fine restava fuori
+    // anche la fascia da 1195, su un rotolo praticamente vuoto
+    const pezzi = [
+      pezzo('fascia', 'rett', 1195, 300, undefined, { ruotabile: false }),
+      pezzo('t', 'trapezioR', 600, 400, 800),
+      pezzo('imp', 'rett', 1250, 1250, undefined, { ruotabile: false })
+    ];
+    const esito = calcolaNestingSagome(
+      par(1220, 50000, { massimoLastre: 1, margine: 10 }),
+      pezzi as PezzoNesting[]
+    );
+    expect(esito.scartati.map((s) => s.id)).toEqual(['imp']);
+    expect(distanzaMinimaFraPezzi(esito)).toBeGreaterThanOrEqual(3 - 1e-6);
+  });
+});
