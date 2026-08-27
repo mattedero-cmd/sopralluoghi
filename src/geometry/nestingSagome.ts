@@ -648,6 +648,7 @@ function piazzamentoDi(
     chiave,
     forma: formaDi(p),
     misura3Finita: p.misura3,
+    verticiFiniti: p.vertici,
     rotazione: rot,
     areaVera: areaForma(p)
   };

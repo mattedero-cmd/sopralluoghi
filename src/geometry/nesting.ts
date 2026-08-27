@@ -37,6 +37,12 @@ export interface PezzoNesting {
   altezza: number;
   /** terza misura, solo per i trapezi */
   misura3?: number;
+  /**
+   * I VERTICI del pezzo in millimetri, quando tre misure non bastano a
+   * descriverlo: il quadrilatero storto del rilievo (`forma: 'quad'`).
+   * Arriva già costruito dal sopralluogo, col lato di base in basso.
+   */
+  vertici?: Array<[number, number]>;
   /** forma vera del pezzo; assente = rettangolo (i salvataggi vecchi) */
   forma?: FormaPezzo;
   quantita: number;
@@ -167,6 +173,8 @@ export interface Piazzamento {
   punti?: PuntoSagoma[];
   /** terza misura finita (trapezi), per etichette e testi */
   misura3Finita?: number;
+  /** vertici FINITI della sagoma (senza abbondanza): servono all'etichetta */
+  verticiFiniti?: Array<[number, number]>;
   /** rotazione applicata in gradi (0/90/180/270) */
   rotazione?: number;
   /** area geometrica vera del pezzo finito (πr² per il cerchio, non il quadrato) */

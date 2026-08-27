@@ -31,7 +31,8 @@ export type FormaPezzo =
   | 'triangoloL'
   | 'rombo'
   | 'trapezio'
-  | 'trapezioR';
+  | 'trapezioR'
+  | 'quad';
 
 export const FORME: Array<{ id: FormaPezzo; nome: string }> = [
   { id: 'rett', nome: 'Rettangolo' },
@@ -40,7 +41,8 @@ export const FORME: Array<{ id: FormaPezzo; nome: string }> = [
   { id: 'triangoloL', nome: 'Triangolo (3 lati)' },
   { id: 'rombo', nome: 'Rombo' },
   { id: 'trapezio', nome: 'Trapezio isoscele' },
-  { id: 'trapezioR', nome: 'Trapezio rettangolo' }
+  { id: 'trapezioR', nome: 'Trapezio rettangolo' },
+  { id: 'quad', nome: 'Quadrilatero (dal rilievo)' }
 ];
 
 /** i campi di un pezzo che descrivono la sua forma */
@@ -52,6 +54,41 @@ export interface MisureForma {
   altezza: number;
   /** d3: 3° lato del triangolo, base minore b (isoscele) o altezza destra */
   misura3?: number;
+  /**
+   * I VERTICI del pezzo, in millimetri, per le forme che tre misure non
+   * bastano a descrivere. Un quadrilatero storto — la finestra fuori squadro
+   * di una casa vecchia — ha bisogno di cinque numeri, non di tre: qui arriva
+   * già costruito dal sopralluogo, col lato di base in basso, e il motore lo
+   * tratta come qualunque altra sagoma.
+   */
+  vertici?: PuntoSagoma[];
+}
+
+/** il poligono è convesso? la rasterizzazione conta su questo (span unico) */
+export function poligonoConvesso(punti: PuntoSagoma[]): boolean {
+  if (punti.length < 3) return false;
+  let segno = 0;
+  for (let i = 0; i < punti.length; i++) {
+    const a = punti[i];
+    const b = punti[(i + 1) % punti.length];
+    const c = punti[(i + 2) % punti.length];
+    const cr = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]);
+    if (Math.abs(cr) < 1e-9) continue;
+    const s = cr > 0 ? 1 : -1;
+    if (segno === 0) segno = s;
+    else if (s !== segno) return false;
+  }
+  return segno !== 0;
+}
+
+/** vertici riportati col riquadro in (0,0), come tutti i poligoni canonici */
+function verticiNormalizzati(punti: PuntoSagoma[]): PuntoSagoma[] {
+  const mx = Math.min(...punti.map((q) => q[0]));
+  const my = Math.min(...punti.map((q) => q[1]));
+  return punti.map((q): PuntoSagoma => [
+    Math.round((q[0] - mx) * 1e6) / 1e6,
+    Math.round((q[1] - my) * 1e6) / 1e6
+  ]);
 }
 
 export const formaDi = (p: Pick<MisureForma, 'forma'>): FormaPezzo => p.forma ?? 'rett';
@@ -88,6 +125,11 @@ export function misureComplete(p: MisureForma): boolean {
   if (servemisura3(f) && !((p.misura3 ?? 0) > 0)) return false;
   // tre lati che non chiudono un triangolo non sono una forma
   if (f === 'triangoloL' && !latiChiudono(p.larghezza, p.altezza, p.misura3 ?? 0)) return false;
+  // il poligono deve esserci ed essere convesso: la rasterizzazione conta
+  // sullo span unico per riga, e un pezzo concavo la romperebbe in silenzio
+  if (f === 'quad' && !(p.vertici && p.vertici.length >= 3 && poligonoConvesso(p.vertici))) {
+    return false;
+  }
   return true;
 }
 
@@ -106,6 +148,9 @@ export function etichetteMisure(f: FormaPezzo): { l: string; a: string | null; m
       return { l: 'B magg.', a: 'H', m3: 'b min.' };
     case 'trapezioR':
       return { l: 'Base', a: 'H sx', m3: 'H dx' };
+    case 'quad':
+      // le sue misure sono i quattro lati, non due: la riga mostra l'ingombro
+      return { l: 'Ingombro', a: '×', m3: null };
     default:
       return { l: 'L', a: 'A', m3: null };
   }
@@ -123,6 +168,14 @@ export function ingombroForma(p: MisureForma): { larghezza: number; altezza: num
   if (f === 'cerchio') return { larghezza: p.larghezza, altezza: p.larghezza };
   if (f === 'trapezioR') {
     return { larghezza: p.larghezza, altezza: Math.max(p.altezza, p.misura3 ?? 0) };
+  }
+  if (f === 'quad' && p.vertici && p.vertici.length >= 3) {
+    const xs = p.vertici.map((q) => q[0]);
+    const ys = p.vertici.map((q) => q[1]);
+    return {
+      larghezza: Math.max(...xs) - Math.min(...xs),
+      altezza: Math.max(...ys) - Math.min(...ys)
+    };
   }
   if (f === 'triangoloL') {
     // si taglia appoggiato sul lato più lungo: l'ingombro è quel lato per
@@ -153,6 +206,15 @@ export function areaForma(p: MisureForma): number {
     const sp = (d1 + d2 + d3) / 2;
     return Math.sqrt(Math.max(0, sp * (sp - d1) * (sp - d2) * (sp - d3)));
   }
+  if (f === 'quad' && p.vertici && p.vertici.length >= 3) {
+    let doppia = 0;
+    for (let i = 0; i < p.vertici.length; i++) {
+      const a = p.vertici[i];
+      const b = p.vertici[(i + 1) % p.vertici.length];
+      doppia += a[0] * b[1] - b[0] * a[1];
+    }
+    return Math.abs(doppia) / 2;
+  }
   if (f === 'rombo') return (d1 * d2) / 2;
   if (f === 'trapezio') return ((d1 + Math.min(d3, d1)) / 2) * d2;
   if (f === 'trapezioR') return (d1 * (d2 + d3)) / 2;
@@ -164,6 +226,15 @@ export function misureForma(p: MisureForma): string {
   const f = formaDi(p);
   const n = (v: number) => String(Math.round(v * 10) / 10);
   if (f === 'cerchio') return `Ø${n(p.larghezza)}`;
+  if (f === 'quad' && p.vertici && p.vertici.length >= 3) {
+    // i quattro lati, in giro: sono le misure che si sono prese sul posto
+    return p.vertici
+      .map((a, i) => {
+        const b = p.vertici![(i + 1) % p.vertici!.length];
+        return n(Math.hypot(b[0] - a[0], b[1] - a[1]));
+      })
+      .join('/');
+  }
   if (f === 'triangoloL') {
     return `${n(p.larghezza)}/${n(p.altezza)}/${n(p.misura3 ?? 0)}`;
   }
@@ -197,6 +268,11 @@ export function poligonoSagoma(p: MisureForma): PuntoSagoma[] | null {
       [d1, d2],
       [0, d2]
     ];
+  }
+  if (f === 'quad') {
+    return p.vertici && p.vertici.length >= 3 && poligonoConvesso(p.vertici)
+      ? verticiNormalizzati(p.vertici)
+      : null;
   }
   if (f === 'triangoloL') {
     // TRE LATI, nessuna ipotesi: il lato più lungo va in basso e la punta si
@@ -526,6 +602,7 @@ export function versiAMano(p: MisureForma): number[] {
   const f = formaDi(p);
   if (f === 'cerchio') return [0];
   if (f === 'rett') return p.larghezza === p.altezza ? [0] : [0, 90];
+  if (f === 'quad' && !poligonoSagoma(p)) return [0];
   return orientazioniPer(p);
 }
 
@@ -541,6 +618,7 @@ export function rotazioniPer(p: MisureForma & { ruotabile: boolean }): number[] 
   const f = formaDi(p);
   if (!p.ruotabile || f === 'cerchio') return [0];
   if (f === 'rett' || f === 'rombo') return p.larghezza === p.altezza ? [0] : [0, 90];
+  if (f === 'quad') return poligonoSagoma(p) ? [0, 90, 180, 270] : [0];
   return [0, 90, 180, 270];
 }
 

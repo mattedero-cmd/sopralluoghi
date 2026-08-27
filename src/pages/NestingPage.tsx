@@ -403,19 +403,19 @@ export function NestingPage({
   };
 
   /**
-   * UN TOCCO SUL PEZZO GIRA TUTTE LE SUE COPIE.
+   * UN TOCCO SUL PEZZO LO GIRA.
+   *
+   * Gira LA COPIA TOCCATA, non le altre: chi tocca sta sistemando quel pezzo
+   * lì. Il verso comune a tutta la famiglia — quello che fa tassellare i rombi
+   * — lo cerca già il motore da solo (vedi nestingSagome.ts, la scelta a
+   * catena dei versi delle famiglie pesanti), quindi il tocco non deve
+   * rifarlo: serve a correggere il singolo, non a rifare il pacco.
    *
    * Un rettangolo ha due versi e basta il mezzo giro. Una sagoma no: un rombo
    * o un triangolo storto, girati a mano, si appoggiano su un LORO LATO, e i
-   * versi sensati sono quelli — gli stessi che prova il motore. Il tocco li
-   * fa scorrere uno alla volta; finito il giro il vincolo si toglie e il pezzo
+   * versi sensati sono quelli — gli stessi che prova il motore. Il tocco li fa
+   * scorrere uno alla volta; finito il giro il vincolo si toglie e il pezzo
    * torna a farsi mettere dal calcolo.
-   *
-   * Gira TUTTE le copie insieme perché è così che si guadagna materiale: due
-   * rombi appoggiati sul lato tassellano solo se restano PARALLELI, e girarne
-   * uno alla volta vuol dire passare per dieci disposizioni peggiori prima di
-   * arrivare a quella buona. Con dieci copie sarebbero dieci tocchi per una
-   * cosa sola.
    */
   const giraPezzo = (chiave: string, applicato: number) =>
     setDoc((d) => ({
@@ -438,11 +438,8 @@ export function NestingPage({
           // fine giro: si torna in automatico invece di ricominciare
           prossimo = i < 0 || i >= versi.length - 1 ? null : versi[i + 1];
         }
-        const copie = Math.max(1, Math.round(pezzo?.quantita ?? 1));
-        for (let i = 0; i < copie; i++) {
-          if (prossimo === null) delete nuovi[`${id}#${i}`];
-          else nuovi[`${id}#${i}`] = prossimo;
-        }
+        if (prossimo === null) delete nuovi[chiave];
+        else nuovi[chiave] = prossimo;
         return { ...m, orientamenti: nuovi };
       })
     }));
@@ -1242,6 +1239,8 @@ export function NestingPage({
                       if (f === 'cerchio') mod.altezza = p.larghezza;
                       if (f === 'trapezio') mod.misura3 = p.misura3 ?? Math.round(p.larghezza * 0.6);
                       if (f === 'trapezioR') mod.misura3 = p.misura3 ?? p.altezza;
+                      // cambiando forma i vertici del rilievo non valgono più
+                      if (f !== 'quad') mod.vertici = undefined;
                       if (f === 'triangoloL') {
                         // tre lati: si parte da un isoscele sul lato più
                         // lungo, che chiude di sicuro, poi si correggono
@@ -1253,26 +1252,41 @@ export function NestingPage({
                       aggiornaPezzo(p.id, mod);
                     }}
                   >
-                    {FORME.map((f) => (
+                    {/* il quadrilatero storto arriva dal rilievo coi suoi
+                        vertici: a mano non si può scrivere in tre caselle,
+                        quindi si mostra solo se il pezzo è già così */}
+                    {FORME.filter((f) => f.id !== 'quad' || formaDi(p) === 'quad').map((f) => (
                       <option key={f.id} value={f.id}>
                         {f.nome}
                       </option>
                     ))}
                   </select>
-                  <CampoNumero
-                    etichetta={etichetteMisure(formaDi(p)).l}
-                    classe="c"
-                    min={1}
-                    valore={p.larghezza}
-                    onCambia={(v) =>
-                      aggiornaPezzo(
-                        p.id,
-                        // il diametro è una misura sola: i due campi vanno insieme
-                        formaDi(p) === 'cerchio' ? { larghezza: v, altezza: v } : { larghezza: v }
-                      )
-                    }
-                  />
-                  {etichetteMisure(formaDi(p)).a !== null ? (
+                  {formaDi(p) === 'quad' ? (
+                    /* il quadrilatero del rilievo ha quattro lati: nelle
+                       caselle ci sta il suo ingombro, e si legge soltanto */
+                    <span className="c nest-fissa" title={misureForma(p)}>
+                      {formattaNumero(p.larghezza)}×{formattaNumero(p.altezza)}
+                    </span>
+                  ) : (
+                    <CampoNumero
+                      etichetta={etichetteMisure(formaDi(p)).l}
+                      classe="c"
+                      min={1}
+                      valore={p.larghezza}
+                      onCambia={(v) =>
+                        aggiornaPezzo(
+                          p.id,
+                          // il diametro è una misura sola: i due campi vanno insieme
+                          formaDi(p) === 'cerchio' ? { larghezza: v, altezza: v } : { larghezza: v }
+                        )
+                      }
+                    />
+                  )}
+                  {formaDi(p) === 'quad' ? (
+                    <span className="c nest-vuota" aria-hidden="true">
+                      —
+                    </span>
+                  ) : etichetteMisure(formaDi(p)).a !== null ? (
                     <CampoNumero
                       etichetta={etichetteMisure(formaDi(p)).a!}
                       classe="c"
@@ -1840,7 +1854,8 @@ function Lastra({
               forma: pc.forma,
               larghezza: pc.larghezzaFinita,
               altezza: pc.altezzaFinita,
-              misura3: pc.misura3Finita
+              misura3: pc.misura3Finita,
+      vertici: pc.verticiFiniti
             });
             // dimensioni pensate in px di schermo, poi convertite nelle unità
             // del disegno: così restano leggibili a qualsiasi scala

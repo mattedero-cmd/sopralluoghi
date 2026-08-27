@@ -355,6 +355,16 @@ function normalizzaPezzo(g: Record<string, unknown>, indice: number): PezzoNesti
     // la terza misura e la forma sopravvivono al salvataggio: perderle qui
     // ritrasformerebbe le falde in rettangoli al primo riapri
     misura3: misura3 > 0 ? misura3 : undefined,
+    // e con loro i vertici del quadrilatero storto, che tre misure non dicono
+    vertici: Array.isArray(g.vertici)
+      ? (g.vertici as unknown[])
+          .map((q) =>
+            Array.isArray(q) && q.length >= 2
+              ? ([numero(q[0], 0), numero(q[1], 0)] as [number, number])
+              : null
+          )
+          .filter((q): q is [number, number] => q !== null)
+      : undefined,
     forma: forma === 'rett' ? undefined : forma,
     quantita: Math.max(0, Math.round(numero(g.quantita, 1))),
     ruotabile: g.ruotabile !== false,

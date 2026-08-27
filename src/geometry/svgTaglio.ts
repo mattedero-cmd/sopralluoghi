@@ -139,7 +139,8 @@ function etichettaPezzo(p: Piazzamento): string {
     forma: p.forma,
     larghezza: p.larghezzaFinita,
     altezza: p.altezzaFinita,
-    misura3: p.misura3Finita
+    misura3: p.misura3Finita,
+    vertici: p.verticiFiniti
   });
   const piano = pianoEtichetta(largaUtile, p.altezza, p.nome || '', misura, CORPI_ETICHETTA);
   if (!piano) return '';

@@ -1688,10 +1688,13 @@ export async function documentoTaglioProgetto(
     pezzi: pezzi.map((p, i) => ({
       id: `p${i + 1}`,
       nome: p.nome,
-      // con la sagoma le misure sono le SUE (d1/d2/d3); senza, l'ingombro
-      larghezza: p.sagoma?.d1 ?? p.larghezza,
-      altezza: p.sagoma?.d2 ?? p.altezza,
+      // con la sagoma le misure sono le SUE (d1/d2/d3); senza, l'ingombro.
+      // Il quadrilatero storto porta invece i vertici: per lui larghezza e
+      // altezza restano l'ingombro, che è quello che si legge nella riga
+      larghezza: p.sagoma?.vertici ? p.larghezza : (p.sagoma?.d1 ?? p.larghezza),
+      altezza: p.sagoma?.vertici ? p.altezza : (p.sagoma?.d2 ?? p.altezza),
       misura3: p.sagoma?.d3,
+      vertici: p.sagoma?.vertici,
       forma: p.sagoma?.forma,
       quantita: p.quantita,
       ruotabile: true,

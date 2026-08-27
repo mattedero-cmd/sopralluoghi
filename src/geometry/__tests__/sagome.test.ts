@@ -746,3 +746,69 @@ describe('il verso delle famiglie pesanti, scelto a catena', () => {
     expect(distanzaMinimaFraPezzi(esito)).toBeGreaterThanOrEqual(3 - 1e-6);
   });
 });
+
+describe('il quadrilatero storto', () => {
+  /** un quadrilatero convesso qualunque, coi lati tutti diversi */
+  const VERTICI: PuntoSagoma[] = [
+    [0, 500],
+    [600, 470],
+    [640, 60],
+    [40, 0]
+  ];
+  const quad = (extra: Partial<PezzoNesting> = {}): PezzoNesting =>
+    ({
+      id: 'q',
+      nome: 'q',
+      forma: 'quad',
+      larghezza: 640,
+      altezza: 500,
+      vertici: VERTICI,
+      quantita: 1,
+      ruotabile: true,
+      tinta: 0,
+      ...extra
+    }) as PezzoNesting;
+
+  it('area e ingombro sono quelli del poligono, non del riquadro', () => {
+    const p = quad();
+    expect(areaPoligono(poligonoSagoma(p)!)).toBeCloseTo(areaForma(p), 4);
+    const ing = ingombroForma(p);
+    expect(ing.larghezza).toBeCloseTo(640, 6);
+    expect(ing.altezza).toBeCloseTo(500, 6);
+    // se coincidesse col riquadro staremmo ancora nestando il bounding box
+    expect(areaForma(p)).toBeLessThan(ing.larghezza * ing.altezza);
+  });
+
+  it('un poligono concavo non diventa una sagoma: la griglia lo romperebbe', () => {
+    // la rasterizzazione assume uno span unico per riga (poligoni convessi)
+    const concavo = quad({
+      vertici: [
+        [0, 500],
+        [600, 470],
+        [300, 250],
+        [640, 60]
+      ]
+    } as Partial<PezzoNesting>);
+    expect(misureComplete(concavo)).toBe(false);
+    expect(poligonoSagoma(concavo)).toBeNull();
+  });
+
+  it('si nesta come sagoma, e fra due copie resta la lama', () => {
+    const esito = calcolaNestingSagome(
+      par(1300, 1250, { margine: 10 }),
+      [quad({ quantita: 3 })] as PezzoNesting[]
+    );
+    expect(esito.scartati).toHaveLength(0);
+    for (const pc of esito.lastre[0].piazzamenti) {
+      expect(pc.punti).toBeTruthy();
+      expect(pc.punti).toHaveLength(4);
+      expect(pc.areaVera).toBeCloseTo(areaForma(quad()), 4);
+    }
+    expect(distanzaMinimaFraPezzi(esito)).toBeGreaterThanOrEqual(3 - 1e-6);
+  });
+
+  it('l’etichetta dice i quattro lati, non larghezza per altezza', () => {
+    const misure = misureForma({ forma: 'quad', larghezza: 640, altezza: 500, vertici: VERTICI });
+    expect(misure.split('/')).toHaveLength(4);
+  });
+});

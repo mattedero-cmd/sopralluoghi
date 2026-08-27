@@ -175,7 +175,8 @@ export function impaginaLastra(
       forma: pc.forma,
       larghezza: pc.larghezzaFinita,
       altezza: pc.altezzaFinita,
-      misura3: pc.misura3Finita
+      misura3: pc.misura3Finita,
+      vertici: pc.verticiFiniti
     });
     // come in pagina: il testo nel baricentro della sagoma, non del riquadro
     const ancora = pc.punti ? ancoraEtichetta(pc.punti) : null;

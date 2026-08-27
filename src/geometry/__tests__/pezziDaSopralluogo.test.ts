@@ -481,7 +481,7 @@ describe('sagoma di taglio', () => {
     expect(p.sagoma).toEqual({ forma: 'trapezio', d1: 6000, d2: 3000, d3: 4000 });
   });
 
-  it('basi E lati diversi: quadrilatero qualunque, niente sagoma', () => {
+  it('basi E lati diversi: il quadrilatero qualunque adesso è una sagoma', () => {
     const storto = poligono(
       [
         [100, 0],
@@ -496,8 +496,17 @@ describe('sagoma di taglio', () => {
         { da: 1, a: 2, valore: 500 }
       ]
     );
+    // finché non c'era la forma poligonale finiva per ingombro; adesso i
+    // quattro lati misurati bastano a costruirla (la diagonale, che è il
+    // quinto numero, la dà il quadrilatero disegnato)
     const [p] = pezziDaAnnotazioni([storto], FOTO);
-    expect(p.sagoma).toBeUndefined();
+    expect(p.sagoma?.forma).toBe('quad');
+    const v = p.sagoma!.vertici!;
+    const lati = v
+      .map((a, i) => Math.hypot(a[0] - v[(i + 1) % 4][0], a[1] - v[(i + 1) % 4][1]))
+      .map((l) => Math.round(l))
+      .sort((x, y) => x - y);
+    expect(lati).toEqual([3000, 4000, 5000, 6000]);
   });
 
   it('il cerchio esce come cerchio, margine compreso nel diametro', () => {
@@ -554,6 +563,52 @@ describe('sagoma di taglio', () => {
       ]
     );
     expect(pezziDaAnnotazioni([impossibile], FOTO)[0]?.sagoma).toBeUndefined();
+  });
+
+  it('il quadrilatero storto entra con la sua forma, non col rettangolo', () => {
+    // quattro lati tutti diversi: non è un trapezio, e finora nel piano di
+    // taglio ci finiva il suo rettangolo d'ingombro — di cui NESSUN lato
+    // corrispondeva a una misura presa sul posto
+    const storto = poligono(
+      [
+        [0, 0],
+        [400, 20],
+        [420, 320],
+        [10, 300]
+      ],
+      [
+        { da: 0, a: 1, valore: 400 },
+        { da: 1, a: 2, valore: 300 },
+        { da: 2, a: 3, valore: 410 },
+        { da: 3, a: 0, valore: 290 }
+      ]
+    );
+    const [p] = pezziDaAnnotazioni([storto], FOTO);
+    expect(p.sagoma?.forma).toBe('quad');
+    const v = p.sagoma!.vertici!;
+    expect(v).toHaveLength(4);
+    // i quattro lati del pezzo sono ESATTAMENTE quelli misurati (in mm)
+    const lati = v
+      .map((a, i) => Math.hypot(a[0] - v[(i + 1) % 4][0], a[1] - v[(i + 1) % 4][1]))
+      .sort((x, y) => x - y);
+    expect(lati.map((l) => Math.round(l))).toEqual([2900, 3000, 4000, 4100]);
+  });
+
+  it('senza tutti e quattro i lati quotati il quadrilatero resta ingombro', () => {
+    // due soli lati quotati: la figura non si ricostruisce, e non si inventa
+    const monco = poligono(
+      [
+        [0, 0],
+        [400, 20],
+        [420, 320],
+        [10, 300]
+      ],
+      [
+        { da: 0, a: 1, valore: 400 },
+        { da: 1, a: 2, valore: 300 }
+      ]
+    );
+    expect(pezziDaAnnotazioni([monco], FOTO)[0]?.sagoma).toBeUndefined();
   });
 
   it('raggruppaPezzi non fonde un trapezio col suo rettangolo d’ingombro', () => {

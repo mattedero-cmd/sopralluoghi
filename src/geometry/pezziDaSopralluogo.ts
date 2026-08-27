@@ -17,7 +17,7 @@ import { misuraSegmento } from './calibrazione';
 import { misureElemento } from './calibrazione';
 import { nomeFormaPoligono, simboliPoligono } from './primitive';
 import { formaQuadrilatera, latiQuadrilatero, pannelliDellaForma } from './formaQuadrilatera';
-import type { FormaPezzo } from './sagome';
+import { poligonoConvesso, type FormaPezzo } from './sagome';
 import { codicePannello } from './nomenclatura';
 import { inMillimetri } from '../utils/format';
 
@@ -48,6 +48,68 @@ export interface SagomaTaglio {
   d2: number;
   /** d3: base minore (trapezio isoscele) o altezza destra (trapezio rettangolo) */
   d3?: number;
+  /** i vertici, quando la forma è un quadrilatero storto che tre misure non dicono */
+  vertici?: Array<[number, number]>;
+}
+
+/**
+ * IL QUADRILATERO STORTO, ricostruito dai suoi quattro lati.
+ *
+ * Quattro lati NON bastano a determinare un quadrilatero: tenendoli tutti
+ * uguali la figura si deforma come un telaio snodato. Serve un quinto numero,
+ * ed è la diagonale.
+ *
+ * - se una diagonale è quotata, la forma è esatta: due triangoli per tre lati
+ *   ciascuno, niente di dedotto;
+ * - se non c'è, la si prende dal quadrilatero DISEGNATO sulla foto, riportato
+ *   in scala sui lati misurati. I quattro lati restano quelli presi sul posto
+ *   — il pezzo tagliato ha le misure giuste — e a essere stimata è solo la
+ *   «pendenza» della figura, cioè la stessa cosa che l'app già ricava dal
+ *   disegno quando una quota manca. Meglio comunque del rettangolo
+ *   d'ingombro, che di lati sbagliati ne ha quattro.
+ *
+ * Torna i vertici col lato di base in basso (y verso il basso, come l'SVG),
+ * o null se i lati non chiudono una figura convessa.
+ */
+function quadDaLati(
+  lati: { alto: number; basso: number; sinistro: number; destro: number },
+  diagonale: number
+): Array<[number, number]> | null {
+  const { alto, basso, sinistro, destro } = lati;
+  if (!(alto > 0 && basso > 0 && sinistro > 0 && destro > 0 && diagonale > 0)) return null;
+  // la diagonale deve chiudere tutti e due i triangoli
+  const dentro = (d: number, a: number, b: number) => d > Math.abs(a - b) && d < a + b;
+  if (!dentro(diagonale, basso, destro) || !dentro(diagonale, alto, sinistro)) return null;
+
+  // base in basso: A = basso-sx, B = basso-dx; la diagonale va da A a P1
+  const A: [number, number] = [0, 0];
+  const B: [number, number] = [basso, 0];
+  // P1 (alto-dx): a `destro` da B e a `diagonale` da A
+  const x1 = (diagonale * diagonale - destro * destro + basso * basso) / (2 * basso);
+  const y1q = diagonale * diagonale - x1 * x1;
+  if (y1q <= 0) return null;
+  const P1: [number, number] = [x1, Math.sqrt(y1q)];
+  // P0 (alto-sx): a `sinistro` da A e ad `alto` da P1 — dei due incroci si
+  // prende quello dalla parte opposta alla base, se no la figura si ripiega
+  const dx = P1[0] - A[0];
+  const dy = P1[1] - A[1];
+  const t = (sinistro * sinistro - alto * alto + diagonale * diagonale) / (2 * diagonale);
+  const hq = sinistro * sinistro - t * t;
+  if (hq <= 0) return null;
+  const h = Math.sqrt(hq);
+  const ux = dx / diagonale;
+  const uy = dy / diagonale;
+  const P0: [number, number] = [A[0] + ux * t - uy * h, A[1] + uy * t + ux * h];
+
+  // in coordinate SVG (y verso il basso) e col riquadro appoggiato in (0,0)
+  const su = [A, B, P1, P0];
+  const maxY = Math.max(...su.map((q) => q[1]));
+  const minX = Math.min(...su.map((q) => q[0]));
+  const punti = su.map((q): [number, number] => [
+    Math.round((q[0] - minX) * 1e6) / 1e6,
+    Math.round((maxY - q[1]) * 1e6) / 1e6
+  ]);
+  return poligonoConvesso(punti) ? punti : null;
 }
 
 type CalibFoto = Pick<Foto, 'scala' | 'piano'>;
@@ -216,7 +278,9 @@ const stessaMisura = (a: number, b: number) => Math.abs(a - b) <= Math.max(a, b)
  * - il cerchio è sempre sagoma: il diametro basta.
  * Valori nell'unità della forma; la conversione in mm la fa chi chiama.
  */
-function sagomaDaQuote(a: Annotazione): { forma: FormaPezzo; d1: number; d2: number; d3?: number } | null {
+function sagomaDaQuote(
+  a: Annotazione
+): { forma: FormaPezzo; d1: number; d2: number; d3?: number; vertici?: Array<[number, number]> } | null {
   if (a.tipo === 'quotaRaggio') {
     const diametro = a.modo === 'diametro' ? a.valore : a.valore === null ? null : a.valore * 2;
     if (diametro === null || diametro <= 0) return null;
@@ -259,21 +323,72 @@ function sagomaDaQuote(a: Annotazione): { forma: FormaPezzo; d1: number; d2: num
     // la falda vuole TUTTE E DUE le altezze misurate: non si inventa niente
     if (sinistro !== null && destro !== null && !stessaMisura(sinistro, destro)) {
       const base = alto ?? basso;
-      if (base === null) return null;
       const altraBase = basso ?? alto;
-      if (altraBase !== null && !stessaMisura(base, altraBase)) return null; // storto
-      return { forma: 'trapezioR', d1: Math.max(base, altraBase ?? base), d2: sinistro, d3: destro };
-    }
-    if (alto !== null && basso !== null && !stessaMisura(alto, basso)) {
+      // basi uguali (o una sola quotata): è la finestra sotto falda. Se anche
+      // le basi sono diverse non è un trapezio — si prova il quadrilatero
+      if (base !== null && (altraBase === null || stessaMisura(base, altraBase))) {
+        return {
+          forma: 'trapezioR',
+          d1: Math.max(base, altraBase ?? base),
+          d2: sinistro,
+          d3: destro
+        };
+      }
+    } else if (alto !== null && basso !== null && !stessaMisura(alto, basso)) {
       const h = sinistro ?? destro;
-      if (h === null) return null;
-      if (sinistro !== null && destro !== null && !stessaMisura(sinistro, destro)) return null;
-      return {
-        forma: 'trapezio',
-        d1: Math.max(alto, basso),
-        d2: h,
-        d3: Math.min(alto, basso)
-      };
+      if (h !== null) {
+        return {
+          forma: 'trapezio',
+          d1: Math.max(alto, basso),
+          d2: h,
+          d3: Math.min(alto, basso)
+        };
+      }
+    }
+
+    /**
+     * IL QUADRILATERO STORTO — la finestra fuori squadro.
+     *
+     * Non è né un trapezio né un rettangolo: nessuna coppia di lati uguali,
+     * quattro misure tutte diverse. Finora finiva nel piano di taglio come
+     * rettangolo d'ingombro, e di quel rettangolo NESSUNO dei quattro lati
+     * era giusto. Se i quattro lati sono quotati la forma si ricostruisce:
+     * serve la diagonale, quotata se c'è, altrimenti presa dal disegno.
+     */
+    if (alto !== null && basso !== null && sinistro !== null && destro !== null) {
+      const forma = formaQuadrilatera(a);
+      const ordinati = forma?.quad;
+      if (!ordinati) return null;
+      // la diagonale basso-sx → alto-dx: prima si cerca quotata
+      const perVertice = ordinati.map((p) => a.punti.indexOf(p));
+      const quotata = segs.find(
+        (sg) =>
+          !segmentoELato(sg, n) &&
+          sg.valore !== null &&
+          sg.valore > 0 &&
+          ((sg.da === perVertice[3] && sg.a === perVertice[1]) ||
+            (sg.da === perVertice[1] && sg.a === perVertice[3]))
+      );
+      let diagonale: number;
+      if (quotata) {
+        diagonale = quotata.valore! + abbondanzaTotale(quotata);
+      } else {
+        // dal disegno: la diagonale disegnata, riportata in scala sui lati
+        // misurati (media dei quattro rapporti, così un lato storto pesa poco)
+        const dis = (i: number, j: number) =>
+          Math.hypot(ordinati[i].x - ordinati[j].x, ordinati[i].y - ordinati[j].y);
+        const coppie: Array<[number, number]> = [
+          [dis(0, 1), alto],
+          [dis(1, 2), destro],
+          [dis(2, 3), basso],
+          [dis(3, 0), sinistro]
+        ];
+        const scale = coppie.filter(([d]) => d > 0).map(([d, m]) => m / d);
+        if (scale.length === 0) return null;
+        diagonale = dis(3, 1) * (scale.reduce((x, y) => x + y, 0) / scale.length);
+      }
+      const vertici = quadDaLati({ alto, basso, sinistro, destro }, diagonale);
+      if (vertici) return { forma: 'quad', d1: 0, d2: 0, vertici };
     }
   }
   return null;
@@ -332,7 +447,10 @@ export function ingombroTaglio(
               forma: s.forma,
               d1: mm(s.d1, a.unita),
               d2: mm(s.d2, a.unita),
-              d3: s.d3 === undefined ? undefined : mm(s.d3, a.unita)
+              d3: s.d3 === undefined ? undefined : mm(s.d3, a.unita),
+              vertici: s.vertici?.map(
+                (q): [number, number] => [mm(q[0], a.unita), mm(q[1], a.unita)]
+              )
             }
           : undefined
       };
@@ -482,7 +600,9 @@ export function raggruppaPezzi(pezzi: PezzoDaMisura[]): PezzoDaMisura[] {
     // due pezzi con lo stesso ingombro ma forma diversa NON sono lo stesso
     // pezzo: un trapezio e il suo rettangolo si tagliano in modi diversi
     const sagoma = p.sagoma ? `|${p.sagoma.forma}:${p.sagoma.d1}×${p.sagoma.d2}×${p.sagoma.d3 ?? ''}` : '';
-    const chiave = `${p.nome}|${p.larghezza}×${p.altezza}${sagoma}`;
+    const chiave = `${p.nome}|${p.larghezza}×${p.altezza}${sagoma}${
+      p.sagoma?.vertici ? '|' + p.sagoma.vertici.map((q) => q.join(',')).join(' ') : ''
+    }`;
     const gia = mappa.get(chiave);
     if (gia) {
       gia.quantita += p.quantita;

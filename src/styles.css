@@ -2843,6 +2843,20 @@ a {
   color: var(--bordo);
 }
 
+/* misura non modificabile: il quadrilatero del rilievo porta i suoi vertici,
+   e nelle tre caselle della riga ci sta solo il suo ingombro */
+.nest-misure .nest-fissa {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--testo-2);
+  border: 1px solid var(--bordo);
+  border-radius: 8px;
+  min-height: 38px;
+  white-space: nowrap;
+}
+
 .nest-intestazione {
   background: var(--sfondo-2);
   color: var(--testo-2);

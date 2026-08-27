@@ -419,9 +419,12 @@ export function ProgettoPage({ id }: { id: string }) {
           nome: p.nome,
           // con la sagoma il pezzo porta le SUE misure (base, altezze…);
           // senza, l'ingombro: il nesting incastra le forme vere
-          larghezza: p.sagoma?.d1 ?? p.larghezza,
-          altezza: p.sagoma?.d2 ?? p.altezza,
+          // il quadrilatero storto porta i vertici, non tre misure: per lui
+          // larghezza e altezza restano l'ingombro, che serve alla riga
+          larghezza: p.sagoma?.vertici ? p.larghezza : (p.sagoma?.d1 ?? p.larghezza),
+          altezza: p.sagoma?.vertici ? p.altezza : (p.sagoma?.d2 ?? p.altezza),
           misura3: p.sagoma?.d3,
+          vertici: p.sagoma?.vertici,
           forma: p.sagoma?.forma,
           quantita: p.quantita,
           ruotabile: true,

@@ -10,6 +10,34 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.30.0 — Il quadrilatero storto
+
+- **La finestra fuori squadro non è più un rettangolo.** Un quadrilatero con
+  tutti e quattro i lati quotati — nessuna coppia uguale, quindi né rettangolo
+  né trapezio — entrava nel piano di taglio col suo rettangolo d'ingombro, di
+  cui NESSUN lato corrispondeva a una misura presa sul posto. Ora entra con la
+  sua forma: si nesta, si disegna e si taglia per quello che è, e l'etichetta
+  dice i suoi quattro lati.
+- **Come si ricostruisce, e cosa è misurato.** Quattro lati non bastano a
+  determinare un quadrilatero: tenendoli tutti uguali la figura si deforma
+  come un telaio snodato. Serve un quinto numero, la diagonale. Se una
+  diagonale è quotata la forma è **esatta** (due triangoli per tre lati
+  ciascuno); se non c'è, la diagonale si prende dal quadrilatero **disegnato**
+  sulla foto, riportato in scala sui lati misurati. I quattro lati restano
+  quelli presi sul posto — il pezzo tagliato ha le misure giuste — e a essere
+  stimata è solo la pendenza della figura, la stessa cosa che l'app già ricava
+  dal disegno quando una quota manca. Per averla esatta basta quotare anche
+  una diagonale.
+- Un quadrilatero **concavo** resta un rettangolo d'ingombro: la griglia del
+  motore conta su forme convesse, e forzarla sarebbe un errore silenzioso.
+- Nella lista il quadrilatero mostra il suo ingombro e non si modifica a mano
+  (quattro lati non stanno in tre caselle) e non si può nemmeno sceglierlo dal
+  menù delle forme: arriva dal rilievo, che è l'unico posto dove quei numeri
+  esistono.
+- **Il tocco torna a girare la sola copia toccata.** Il verso comune a tutta
+  la famiglia lo cerca già il motore da solo, quindi il tocco serve a
+  correggere il singolo pezzo, non a rifare il pacco.
+
 ## 1.29.0 — Il verso delle famiglie, scelto a catena
 
 - **Chi pesa di più detta la disposizione.** Sulla lista di prova del cantiere

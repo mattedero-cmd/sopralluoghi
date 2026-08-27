@@ -402,7 +402,8 @@ export function analizzaTestoPezzi(testo: string): EsitoParser {
           triangoloL: 'Triangolo',
           rombo: 'Rombo',
           trapezio: 'Trapezio',
-          trapezioR: 'Quadrilatero'
+          trapezioR: 'Quadrilatero',
+          quad: 'Quadrilatero'
         }[letto.forma] || 'Pezzo';
     }
     nome = nome.charAt(0).toUpperCase() + nome.slice(1);
