@@ -10,6 +10,25 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.25.0 — La resa, misurata
+
+- **I pezzi lunghi entrano per primi.** Con la scansione dal basso chi arriva
+  prima si prende il fondo, e una fascia arrivata tardi non trova più dove
+  stendersi. Ordinando dal lato più lungo invece che per area: misurato su
+  undici liste di cantiere non perde mai, e sulla lista che aveva fatto venire
+  fuori il problema dei triangoli accorcia il rotolo di **16 cm**. Costa uguale.
+- **Rete di sicurezza sulla resa.** Le stesse undici liste sono diventate un
+  test con la resa minima da non scendere: d'ora in poi una modifica al motore
+  che spreca materiale fa fallire la build, anche se non rompe niente altro.
+  Un test di correttezza non se ne sarebbe accorto — mezzo metro di rotolo in
+  più non è un errore, è solo pellicola buttata.
+- Provate e **scartate perché non pagano**, misurate alla mano: più ordini di
+  inserimento (+0,7 punti per il triplo del tempo), griglia quattro volte più
+  fine (+0,4 per otto volte il tempo), rotazioni intermedie a 45° (peggiora di
+  3 punti: il greedy si affeziona a un verso storto e rovina il pacco) e una
+  passata di compattazione (guadagno zero — la scansione aveva già messo tutti
+  nel punto più basso raggiungibile).
+
 ## 1.24.0 — Il triangolo dei tre lati
 
 - **Il triangolo non è più un rettangolo.** Un triangolo quotato sui suoi tre

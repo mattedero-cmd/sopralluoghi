@@ -90,9 +90,18 @@ interface Istanza {
 /** la bitmap di occupazione di una lastra: parole Uint32 per riga */
 interface Foglio {
   occ: Uint32Array;
-  piazzamenti: Piazzamento[];
+  /** dove sta ogni pezzo, in celle; i piazzamenti si costruiscono alla fine */
+  posti: Posto[];
   fallite: Record<string, 1>;
   celleLibere: number;
+}
+
+interface Posto {
+  it: Istanza;
+  cx: number;
+  cy: number;
+  rot: number;
+  mask: MascheraSagoma;
 }
 
 function entraAt(
@@ -235,12 +244,23 @@ export function calcolaNestingSagome(
     bH = Math.min(bH, Math.max(stima, piuAlto * 2));
   }
 
-  // dal più grande al più piccolo, per area d'ingombro gonfiata: i grandi
-  // trovano posto finché c'è spazio, i piccoli riempiono le tasche
-  istanze.sort(
-    (a, b) =>
-      (b.ingL + 2 * pad) * (b.ingA + 2 * pad) - (a.ingL + 2 * pad) * (a.ingA + 2 * pad)
-  );
+  /**
+   * L'ORDINE IN CUI SI APPOGGIANO I PEZZI: prima il LATO PIÙ LUNGO, poi
+   * l'area d'ingombro gonfiata.
+   *
+   * Con una scansione bottom-left chi entra per primo si prende il fondo, e
+   * un pezzo lungo arrivato tardi non trova più una fascia libera dove
+   * stendersi. Misurato contro l'ordine per sola area su undici liste di
+   * cantiere: non perde mai, e sulla lista che ha fatto venire fuori il
+   * problema dei triangoli accorcia il rotolo di sedici centimetri. Costa
+   * uguale — è solo un confronto diverso.
+   *
+   * Le soglie di resa di quelle liste stanno in __tests__/resaNesting.test.ts:
+   * se una modifica qui spreca materiale, lì si vede.
+   */
+  const perArea = (a: Istanza, b: Istanza) =>
+    (b.ingL + 2 * pad) * (b.ingA + 2 * pad) - (a.ingL + 2 * pad) * (a.ingA + 2 * pad);
+  istanze.sort((a, b) => Math.max(b.ingL, b.ingA) - Math.max(a.ingL, a.ingA) || perArea(a, b));
   let daProvare = istanze;
   if (daProvare.length > MASSIME_COPIE) {
     esito.oltreLimite = daProvare.length - MASSIME_COPIE;
@@ -261,6 +281,7 @@ export function calcolaNestingSagome(
    * rettangoli non cambierebbe niente e costerebbe il doppio.
    */
   const conGiro = daProvare.some((it) => rotazioniPer(it.pezzo).length === 4);
+
   // Si tiene il tentativo MIGLIORE, non l'ultimo. Allargare la finestra
   // ingrossa la cella, e basta un pezzo impossibile — più largo del rotolo, o
   // col verso bloccato — per far ritentare fino in fondo: alla cella grossa
@@ -363,19 +384,16 @@ function unGiro(
   const fogli: Foglio[] = [];
   const scartati: EsitoNesting['scartati'] = [];
 
-  for (const it of istanze) {
+  type Maschere = Array<[number, { chiave: string; m: MascheraSagoma }, number, number]>;
+  const cacheMaschere = new Map<string, Maschere>();
+  /** le maschere di un pezzo, con fin dove può arrivare la cella d'appoggio */
+  const maschereDi = (it: Istanza): Maschere => {
     const p = it.pezzo;
-    const rotazioni = rotazioniPer(p);
-    // il giro di partenza: con quattro rotazioni si può cominciare da mezzo
-    // giro, e a parità di posizione cambia quale verso viene appoggiato per
-    // primo — è lì che nasce (o non nasce) l'incastro testa-coda
-    const giro =
-      seme > 0 && rotazioni.length === 4
-        ? [...rotazioni.slice(seme), ...rotazioni.slice(0, seme)]
-        : rotazioni;
-    const maschere: Array<[number, { chiave: string; m: MascheraSagoma }, number, number]> = [];
-    let entraDaSolo = false;
-    for (const r of giro) {
+    const chiaveP = `${formaDi(p)}|${p.larghezza}|${p.altezza}|${p.misura3 ?? 0}|${p.ruotabile}`;
+    const gia = cacheMaschere.get(chiaveP);
+    if (gia) return gia;
+    const fuori: Maschere = [];
+    for (const r of rotazioniPer(p)) {
       const mk = maschera(p, r);
       // Fin dove può arrivare la cella d'appoggio. Il vincolo che conta è in
       // millimetri — il pezzo gonfiato deve stare dentro bW×bH — quello a
@@ -386,9 +404,22 @@ function unGiro(
       const rh = (girato ? it.ingL : it.ingA) + 2 * pad;
       const limX = Math.min(gridW - mk.m.w, Math.floor((bW - rw) / cs + 1e-9));
       const limY = Math.min(gridH - mk.m.h, Math.floor((bH - rh) / cs + 1e-9));
-      maschere.push([r, mk, limX, limY]);
-      if (limX >= 0 && limY >= 0) entraDaSolo = true;
+      fuori.push([r, mk, limX, limY]);
     }
+    cacheMaschere.set(chiaveP, fuori);
+    return fuori;
+  };
+
+  for (const it of istanze) {
+    const tutte = maschereDi(it);
+    // il giro di partenza: con quattro rotazioni si può cominciare da mezzo
+    // giro, e a parità di posizione cambia quale verso viene appoggiato per
+    // primo — è lì che nasce (o non nasce) l'incastro testa-coda
+    const maschere =
+      seme > 0 && tutte.length === 4
+        ? [...tutte.slice(seme), ...tutte.slice(0, seme)]
+        : tutte;
+    const entraDaSolo = maschere.some(([, , limX, limY]) => limX >= 0 && limY >= 0);
     if (!entraDaSolo) {
       scartati.push(scarto(it));
       continue;
@@ -402,7 +433,7 @@ function unGiro(
         if (nAperti >= massimoFogli) break;
         foglio = {
           occ: new Uint32Array(wpr * gridH),
-          piazzamenti: [],
+          posti: [],
           fallite: {},
           celleLibere: gridW * gridH
         };
@@ -449,17 +480,27 @@ function unGiro(
       if (best) {
         segnaAt(foglio.occ, wpr, best.mask, best.cx, best.cy);
         foglio.celleLibere -= best.mask.cells;
-        // posizione della sagoma FINITA sulla lastra (margine compreso)
-        const fx = gx0 + best.cx * cs + pad;
-        const fy = gy0 + best.cy * cs + pad;
-        foglio.piazzamenti.push(piazzamentoDi(p, it.chiave, best.rot, fx, fy, abbondanza));
+        foglio.posti.push({ it, cx: best.cx, cy: best.cy, rot: best.rot, mask: best.mask });
         piazzato = true;
       }
     }
     if (!piazzato) scartati.push(scarto(it));
   }
 
-  return { lastre: fogli.map((f) => ({ piazzamenti: f.piazzamenti })), scartati, cella: cs };
+  const lastre = fogli.map((f) => ({
+    piazzamenti: f.posti.map((posto) =>
+      piazzamentoDi(
+        posto.it.pezzo,
+        posto.it.chiave,
+        posto.rot,
+        // posizione della sagoma FINITA sulla lastra (margine compreso)
+        gx0 + posto.cx * cs + pad,
+        gy0 + posto.cy * cs + pad,
+        abbondanza
+      )
+    )
+  }));
+  return { lastre, scartati, cella: cs };
 }
 
 /**
