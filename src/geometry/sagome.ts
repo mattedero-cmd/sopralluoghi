@@ -11,6 +11,9 @@
  * - `trapezioR` è il caso critico — la finestra sotto falda, quotata con
  *   base + altezza sinistra + altezza destra;
  * - `trapezio` è l'isoscele (B, b, h);
+ * - `triangoloL` è il triangolo dei TRE LATI, quello che si misura davvero
+ *   in cantiere: tre lati misurati bastano a costruirlo (SSS), non serve che
+ *   sia isoscele e non si inventa niente;
  * - cerchio, triangolo isoscele, rombo completano la serie.
  *
  * Tutti i poligoni generati sono CONVESSI: la rasterizzazione sfrutta lo
@@ -21,12 +24,20 @@
 import type { PezzoNesting } from './nesting';
 
 /** le forme che il taglio sa trattare; assente = rettangolo */
-export type FormaPezzo = 'rett' | 'cerchio' | 'triangolo' | 'rombo' | 'trapezio' | 'trapezioR';
+export type FormaPezzo =
+  | 'rett'
+  | 'cerchio'
+  | 'triangolo'
+  | 'triangoloL'
+  | 'rombo'
+  | 'trapezio'
+  | 'trapezioR';
 
 export const FORME: Array<{ id: FormaPezzo; nome: string }> = [
   { id: 'rett', nome: 'Rettangolo' },
   { id: 'cerchio', nome: 'Cerchio' },
-  { id: 'triangolo', nome: 'Triangolo' },
+  { id: 'triangolo', nome: 'Triangolo isoscele' },
+  { id: 'triangoloL', nome: 'Triangolo (3 lati)' },
   { id: 'rombo', nome: 'Rombo' },
   { id: 'trapezio', nome: 'Trapezio isoscele' },
   { id: 'trapezioR', nome: 'Trapezio rettangolo' }
@@ -35,18 +46,35 @@ export const FORME: Array<{ id: FormaPezzo; nome: string }> = [
 /** i campi di un pezzo che descrivono la sua forma */
 export interface MisureForma {
   forma?: FormaPezzo;
-  /** d1: larghezza / Ø / base / diagonale 1 / base maggiore B / base */
+  /** d1: larghezza / Ø / base / lato maggiore / diagonale 1 / base B / base */
   larghezza: number;
-  /** d2: altezza / — / altezza / diagonale 2 / altezza h / altezza sinistra */
+  /** d2: altezza / — / altezza / 2° lato / diagonale 2 / altezza h / altezza sx */
   altezza: number;
-  /** d3: solo trapezi — base minore b (isoscele) o altezza destra (rettangolo) */
+  /** d3: 3° lato del triangolo, base minore b (isoscele) o altezza destra */
   misura3?: number;
 }
 
 export const formaDi = (p: Pick<MisureForma, 'forma'>): FormaPezzo => p.forma ?? 'rett';
 
 /** la forma richiede la terza misura? */
-export const servemisura3 = (f: FormaPezzo): boolean => f === 'trapezio' || f === 'trapezioR';
+export const servemisura3 = (f: FormaPezzo): boolean =>
+  f === 'trapezio' || f === 'trapezioR' || f === 'triangoloL';
+
+/**
+ * I tre lati chiudono un triangolo? Serve la disuguaglianza triangolare: tre
+ * numeri qualunque non fanno una forma, e un pezzo impossibile va contato
+ * fra gli incompleti, non rasterizzato a NaN.
+ */
+function latiChiudono(a: number, b: number, c: number): boolean {
+  return a > 0 && b > 0 && c > 0 && a + b > c && a + c > b && b + c > a;
+}
+
+/** altezza relativa al lato più lungo, per i tre lati (formula di Erone) */
+function altezzaSuLatoMaggiore(a: number, b: number, c: number): number {
+  const sp = (a + b + c) / 2;
+  const area = Math.sqrt(Math.max(0, sp * (sp - a) * (sp - b) * (sp - c)));
+  return (2 * area) / Math.max(a, b, c);
+}
 
 /**
  * Le misure bastano per questa forma? Un pezzo incompleto non si scarta in
@@ -58,6 +86,8 @@ export function misureComplete(p: MisureForma): boolean {
   if (!(p.larghezza > 0)) return false;
   if (f !== 'cerchio' && !(p.altezza > 0)) return false;
   if (servemisura3(f) && !((p.misura3 ?? 0) > 0)) return false;
+  // tre lati che non chiudono un triangolo non sono una forma
+  if (f === 'triangoloL' && !latiChiudono(p.larghezza, p.altezza, p.misura3 ?? 0)) return false;
   return true;
 }
 
@@ -68,6 +98,8 @@ export function etichetteMisure(f: FormaPezzo): { l: string; a: string | null; m
       return { l: 'Ø', a: null, m3: null };
     case 'triangolo':
       return { l: 'Base', a: 'H', m3: null };
+    case 'triangoloL':
+      return { l: 'Lato A', a: 'Lato B', m3: 'Lato C' };
     case 'rombo':
       return { l: 'Diag. 1', a: 'Diag. 2', m3: null };
     case 'trapezio':
@@ -92,6 +124,19 @@ export function ingombroForma(p: MisureForma): { larghezza: number; altezza: num
   if (f === 'trapezioR') {
     return { larghezza: p.larghezza, altezza: Math.max(p.altezza, p.misura3 ?? 0) };
   }
+  if (f === 'triangoloL') {
+    // si taglia appoggiato sul lato più lungo: l'ingombro è quel lato per
+    // l'altezza relativa (col lato maggiore in basso la punta cade DENTRO
+    // la base, quindi la larghezza dell'ingombro è esattamente il lato)
+    const d3 = p.misura3 ?? 0;
+    if (!latiChiudono(p.larghezza, p.altezza, d3)) {
+      return { larghezza: p.larghezza, altezza: p.altezza };
+    }
+    return {
+      larghezza: Math.max(p.larghezza, p.altezza, d3),
+      altezza: altezzaSuLatoMaggiore(p.larghezza, p.altezza, d3)
+    };
+  }
   return { larghezza: p.larghezza, altezza: p.altezza };
 }
 
@@ -103,6 +148,11 @@ export function areaForma(p: MisureForma): number {
   const d3 = p.misura3 ?? 0;
   if (f === 'cerchio') return (Math.PI * d1 * d1) / 4;
   if (f === 'triangolo') return (d1 * d2) / 2;
+  if (f === 'triangoloL') {
+    if (!latiChiudono(d1, d2, d3)) return 0;
+    const sp = (d1 + d2 + d3) / 2;
+    return Math.sqrt(Math.max(0, sp * (sp - d1) * (sp - d2) * (sp - d3)));
+  }
   if (f === 'rombo') return (d1 * d2) / 2;
   if (f === 'trapezio') return ((d1 + Math.min(d3, d1)) / 2) * d2;
   if (f === 'trapezioR') return (d1 * (d2 + d3)) / 2;
@@ -114,6 +164,9 @@ export function misureForma(p: MisureForma): string {
   const f = formaDi(p);
   const n = (v: number) => String(Math.round(v * 10) / 10);
   if (f === 'cerchio') return `Ø${n(p.larghezza)}`;
+  if (f === 'triangoloL') {
+    return `${n(p.larghezza)}/${n(p.altezza)}/${n(p.misura3 ?? 0)}`;
+  }
   if (f === 'trapezio') return `${n(p.larghezza)}/${n(p.misura3 ?? 0)}×${n(p.altezza)}`;
   if (f === 'trapezioR') return `${n(p.larghezza)}×${n(p.altezza)}|${n(p.misura3 ?? 0)}`;
   return `${n(p.larghezza)}×${n(p.altezza)}`;
@@ -143,6 +196,25 @@ export function poligonoSagoma(p: MisureForma): PuntoSagoma[] | null {
       [d1 / 2, 0],
       [d1, d2],
       [0, d2]
+    ];
+  }
+  if (f === 'triangoloL') {
+    // TRE LATI, nessuna ipotesi: il lato più lungo va in basso e la punta si
+    // trova per intersezione dei due cerchi (SSS). Con la base più lunga il
+    // piede dell'altezza cade dentro la base, quindi il poligono riempie
+    // esattamente il suo ingombro e resta convesso.
+    if (!latiChiudono(d1, d2, d3)) return null;
+    const lati = [d1, d2, d3].sort((x, y) => y - x);
+    const base = lati[0];
+    // b è il lato che parte dal vertice sinistro, c quello dal destro
+    const b = lati[1];
+    const c = lati[2];
+    const px = (base * base + b * b - c * c) / (2 * base);
+    const h = Math.sqrt(Math.max(0, b * b - px * px));
+    return [
+      [Math.round(px * 1e6) / 1e6, 0],
+      [base, h],
+      [0, h]
     ];
   }
   if (f === 'rombo') {

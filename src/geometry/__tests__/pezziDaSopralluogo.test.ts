@@ -506,7 +506,7 @@ describe('sagoma di taglio', () => {
     expect(p.larghezza).toBe(340);
   });
 
-  it('il triangolo isoscele diventa sagoma, quello storto resta ingombro', () => {
+  it('il triangolo diventa sagoma coi suoi tre lati, isoscele o storto che sia', () => {
     const iso = poligono(
       [
         [200, 0],
@@ -520,8 +520,8 @@ describe('sagoma di taglio', () => {
       ]
     );
     const [pi] = pezziDaAnnotazioni([iso], FOTO);
-    expect(pi.sagoma?.forma).toBe('triangolo');
-    expect(pi.sagoma?.d1).toBe(4000);
+    // i tre lati, dal più lungo: sono la forma, non serve dedurne l'altezza
+    expect(pi.sagoma).toEqual({ forma: 'triangoloL', d1: 4000, d2: 3605, d3: 3605 });
 
     const storto = poligono(
       [
@@ -535,8 +535,25 @@ describe('sagoma di taglio', () => {
         { da: 2, a: 0, valore: 450 }
       ]
     );
+    // lo storto NON è più un rettangolo d'ingombro: tre lati misurati bastano
+    // a costruirlo, e nestarlo per ingombro buttava via mezzo pezzo
     const [ps] = pezziDaAnnotazioni([storto], FOTO);
-    expect(ps.sagoma).toBeUndefined();
+    expect(ps.sagoma).toEqual({ forma: 'triangoloL', d1: 4500, d2: 4000, d3: 3000 });
+
+    // tre lati che non chiudono un triangolo restano fuori: niente sagoma
+    const impossibile = poligono(
+      [
+        [200, 0],
+        [400, 300],
+        [0, 300]
+      ],
+      [
+        { da: 1, a: 2, valore: 1000 },
+        { da: 0, a: 1, valore: 200 },
+        { da: 2, a: 0, valore: 300 }
+      ]
+    );
+    expect(pezziDaAnnotazioni([impossibile], FOTO)[0]?.sagoma).toBeUndefined();
   });
 
   it('raggruppaPezzi non fonde un trapezio col suo rettangolo d’ingombro', () => {

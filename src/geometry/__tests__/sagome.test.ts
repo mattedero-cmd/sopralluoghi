@@ -462,3 +462,70 @@ describe('i due difetti trovati dalla revisione', () => {
     expect(distanzaMinimaFraPezzi(esito)).toBeGreaterThanOrEqual(3 - 1e-6);
   });
 });
+
+describe('il triangolo dei tre lati (SSS)', () => {
+  it('tre lati misurati sono già la forma: poligono esatto, area di Erone', () => {
+    // 450/400/300: storto, quello che il sopralluogo trova davvero
+    const p: MisureForma = { forma: 'triangoloL', larghezza: 450, altezza: 400, misura3: 300 };
+    const poly = poligonoSagoma(p)!;
+    expect(poly).toHaveLength(3);
+    const sp = (450 + 400 + 300) / 2;
+    const erone = Math.sqrt(sp * (sp - 450) * (sp - 400) * (sp - 300));
+    expect(areaForma(p)).toBeCloseTo(erone, 6);
+    expect(areaPoligono(poly)).toBeCloseTo(erone, 4);
+    // i lati del poligono sono davvero quelli misurati
+    const lati = poly
+      .map((q, i) => Math.hypot(q[0] - poly[(i + 1) % 3][0], q[1] - poly[(i + 1) % 3][1]))
+      .sort((a, b) => b - a);
+    expect(lati[0]).toBeCloseTo(450, 4);
+    expect(lati[1]).toBeCloseTo(400, 4);
+    expect(lati[2]).toBeCloseTo(300, 4);
+  });
+
+  it('sta appoggiato sul lato più lungo e riempie il suo ingombro', () => {
+    const p: MisureForma = { forma: 'triangoloL', larghezza: 450, altezza: 400, misura3: 300 };
+    const ing = ingombroForma(p);
+    const poly = poligonoSagoma(p)!;
+    expect(Math.max(...poly.map((q) => q[0]))).toBeCloseTo(ing.larghezza, 4);
+    expect(Math.max(...poly.map((q) => q[1]))).toBeCloseTo(ing.altezza, 4);
+    expect(ing.larghezza).toBeCloseTo(450, 6);
+    // e l'area vera è ben meno dell'ingombro: è lì che stava lo spreco
+    expect(areaForma(p)).toBeLessThan(ing.larghezza * ing.altezza * 0.6);
+  });
+
+  it('l’ordine in cui si scrivono i lati non cambia il pezzo', () => {
+    const a = poligonoSagoma({ forma: 'triangoloL', larghezza: 300, altezza: 450, misura3: 400 })!;
+    const b = poligonoSagoma({ forma: 'triangoloL', larghezza: 450, altezza: 400, misura3: 300 })!;
+    expect(areaPoligono(a)).toBeCloseTo(areaPoligono(b), 6);
+    expect(Math.max(...a.map((q) => q[0]))).toBeCloseTo(Math.max(...b.map((q) => q[0])), 6);
+  });
+
+  it('tre numeri che non chiudono un triangolo sono misure incomplete, non NaN', () => {
+    const impossibile: MisureForma = {
+      forma: 'triangoloL',
+      larghezza: 1000,
+      altezza: 200,
+      misura3: 300
+    };
+    expect(misureComplete(impossibile)).toBe(false);
+    expect(poligonoSagoma(impossibile)).toBeNull();
+    const esito = calcolaNestingSagome(par(1300, 1250), [
+      { ...pezzo('x', 'triangoloL', 1000, 200, 300), quantita: 2 }
+    ] as PezzoNesting[]);
+    expect(esito.incompleti).toBe(2);
+    expect(Number.isFinite(esito.cella)).toBe(true);
+  });
+
+  it('due triangoli storti si incastrano testa-coda nel loro parallelogramma', () => {
+    // 800/700/500 sta in un ingombro 800×433. Due, per ingombro, vogliono
+    // 1600 di larghezza o 866 di altezza: su una lastra 1100×450 non entrano
+    // in nessuno dei due modi. Girandone uno di 180° e appoggiandolo al
+    // fianco obliquo dell'altro il parallelogramma è largo ~1050 e alto 433:
+    // se entrambi entrano, il motore li ha davvero incastrati
+    const pezzi = [pezzo('tri', 'triangoloL', 800, 700, 500, { quantita: 2 })];
+    const esito = calcolaNestingSagome(par(1100, 450), pezzi as PezzoNesting[]);
+    expect(esito.scartati).toHaveLength(0);
+    expect(esito.lastre).toHaveLength(1);
+    expect(distanzaMinimaFraPezzi(esito)).toBeGreaterThanOrEqual(3 - 1e-6);
+  });
+});

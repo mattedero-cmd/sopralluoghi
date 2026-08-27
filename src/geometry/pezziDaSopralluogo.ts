@@ -211,8 +211,8 @@ const stessaMisura = (a: number, b: number) => Math.abs(a - b) <= Math.max(a, b)
  * - basi diverse e lati uguali → trapezio isoscele (B, b, h);
  * - diverse tutte e due le coppie → nessuna sagoma: resta l'ingombro, perché
  *   un quadrilatero qualunque non è fra le forme che il taglio sa trattare;
- * - il triangolo diventa sagoma solo se è isoscele (i due lati obliqui
- *   uguali): quello storto per ingombro si tagliava anche prima;
+ * - il triangolo diventa sagoma con i TRE lati misurati, isoscele o storto
+ *   che sia: tre lati sono già la forma, non c'è niente da dedurre;
  * - il cerchio è sempre sagoma: il diametro basta.
  * Valori nell'unità della forma; la conversione in mm la fa chi chiama.
  */
@@ -243,13 +243,13 @@ function sagomaDaQuote(a: Annotazione): { forma: FormaPezzo; d1: number; d2: num
       .filter((s) => segmentoELato(s, n))
       .map((s) => (s.valore !== null && s.valore > 0 ? s.valore + abbondanzaTotale(s) : null));
     if (v.length !== 3 || v.some((x) => x === null)) return null;
-    const lati = (v as number[]).slice().sort((x, y) => y - x);
-    const [base, o1, o2] = lati;
-    if (!stessaMisura(o1, o2)) return null; // storto: resta l'ingombro, com'era
-    const sp = (base + o1 + o2) / 2;
-    const q2 = sp * (sp - base) * (sp - o1) * (sp - o2);
-    if (q2 <= 0) return null;
-    return { forma: 'triangolo', d1: base, d2: (2 * Math.sqrt(q2)) / base };
+    const [a, b, c] = (v as number[]).slice().sort((x, y) => y - x);
+    // tre lati misurati BASTANO a costruire il triangolo, storto o no: non
+    // c'è niente da inventare. Prima si chiedeva l'isoscele e un triangolo
+    // qualunque finiva nel piano di taglio come rettangolo d'ingombro,
+    // buttando via metà del materiale sotto la sua ipotenusa.
+    if (!(a + b > c && a + c > b && b + c > a)) return null;
+    return { forma: 'triangoloL', d1: a, d2: b, d3: c };
   }
 
   if (n === 4) {

@@ -19,6 +19,7 @@ import {
   etichetteMisure,
   formaDi,
   haSagome,
+  servemisura3,
   misureForma,
   FORME,
   type FormaPezzo
@@ -1209,7 +1210,14 @@ export function NestingPage({
                       if (f === 'cerchio') mod.altezza = p.larghezza;
                       if (f === 'trapezio') mod.misura3 = p.misura3 ?? Math.round(p.larghezza * 0.6);
                       if (f === 'trapezioR') mod.misura3 = p.misura3 ?? p.altezza;
-                      if (f !== 'trapezio' && f !== 'trapezioR') mod.misura3 = undefined;
+                      if (f === 'triangoloL') {
+                        // tre lati: si parte da un isoscele sul lato più
+                        // lungo, che chiude di sicuro, poi si correggono
+                        const lato = Math.round(Math.max(p.larghezza, p.altezza) * 0.7);
+                        mod.altezza = lato;
+                        mod.misura3 = lato;
+                      }
+                      if (!servemisura3(f)) mod.misura3 = undefined;
                       aggiornaPezzo(p.id, mod);
                     }}
                   >

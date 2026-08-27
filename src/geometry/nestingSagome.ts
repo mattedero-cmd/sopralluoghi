@@ -248,32 +248,43 @@ export function calcolaNestingSagome(
   }
 
   const limiteMassimo = utileA + lama;
+  /**
+   * IL GIRO DI PARTENZA.
+   *
+   * La scansione bottom-left appoggia il primo pezzo con la prima rotazione
+   * che entra, e da lì in poi il pacco è deciso. Due triangoli storti uguali
+   * si incastrano lungo il fianco obliquo SOLO se il primo è già girato di
+   * mezzo giro — e il primo non può saperlo. Si rifà quindi il pacco partendo
+   * da 180° e si tiene il migliore: è una ricerca ATTORNO al motore, non un
+   * cambio del criterio di scelta interno, che è tarato (vedi in testa).
+   * Si prova solo se c'è almeno un pezzo con quattro rotazioni: sui
+   * rettangoli non cambierebbe niente e costerebbe il doppio.
+   */
+  const conGiro = daProvare.some((it) => rotazioniPer(it.pezzo).length === 4);
   // Si tiene il tentativo MIGLIORE, non l'ultimo. Allargare la finestra
   // ingrossa la cella, e basta un pezzo impossibile — più largo del rotolo, o
   // col verso bloccato — per far ritentare fino in fondo: alla cella grossa
-  // finirebbero fuori anche pezzi che al primo giro entravano. Vince chi
-  // scarta meno; a pari scarti la cella più fine, che impacchetta più stretto.
-  let migliore: ReturnType<typeof unGiro> | null = null;
-  for (let tentativo = 0; ; tentativo++) {
-    const e = unGiro(par, daProvare, pad, bW, bH, bobina);
-    if (
-      !migliore ||
-      e.scartati.length < migliore.scartati.length ||
-      (e.scartati.length === migliore.scartati.length && e.cella < migliore.cella)
-    ) {
-      migliore = e;
+  // finirebbero fuori anche pezzi che al primo giro entravano.
+  let migliore: Giro | null = null;
+  for (const seme of conGiro ? [0, 2] : [0]) {
+    let finestra = bH;
+    for (let tentativo = 0; ; tentativo++) {
+      const e = unGiro(par, daProvare, pad, bW, finestra, bobina, seme);
+      if (!migliore || meglioDi(e, migliore)) migliore = e;
+      // sul rotolo, se la finestra stimata non è bastata, si allarga e si
+      // rifà: quello che non entra dev'essere un fatto del materiale, non
+      // della stima
+      if (bobina && e.scartati.length > 0 && finestra < limiteMassimo - 1e-6 && tentativo < 4) {
+        finestra = Math.min(limiteMassimo, finestra * 2);
+        continue;
+      }
+      break;
     }
-    // sul rotolo, se la finestra stimata non è bastata, si allarga e si rifà:
-    // quello che non entra deve essere un fatto del materiale, non della stima
-    if (bobina && e.scartati.length > 0 && bH < limiteMassimo - 1e-6 && tentativo < 4) {
-      bH = Math.min(limiteMassimo, bH * 2);
-      continue;
-    }
-    esito.lastre = migliore.lastre;
-    esito.scartati = migliore.scartati;
-    esito.cella = migliore.cella;
-    return esito;
   }
+  esito.lastre = migliore!.lastre;
+  esito.scartati = migliore!.scartati;
+  esito.cella = migliore!.cella;
+  return esito;
 }
 
 function scarto(it: Istanza) {
@@ -286,14 +297,38 @@ function scarto(it: Istanza) {
   };
 }
 
+type Giro = { lastre: EsitoNesting['lastre']; scartati: EsitoNesting['scartati']; cella: number };
+
+/** quanto materiale occupa in lungo il risultato, sommando le lastre */
+function estensione(e: Giro): number {
+  let totale = 0;
+  for (const l of e.lastre) {
+    let piuGiu = 0;
+    for (const pc of l.piazzamenti) piuGiu = Math.max(piuGiu, pc.y + pc.altezza);
+    totale += piuGiu;
+  }
+  return totale;
+}
+
+/** a è meglio di b? meno scarti, poi meno lastre, poi più corto, poi più fine */
+function meglioDi(a: Giro, b: Giro): boolean {
+  if (a.scartati.length !== b.scartati.length) return a.scartati.length < b.scartati.length;
+  if (a.lastre.length !== b.lastre.length) return a.lastre.length < b.lastre.length;
+  const ea = estensione(a);
+  const eb = estensione(b);
+  if (Math.abs(ea - eb) > 1e-6) return ea < eb;
+  return a.cella < b.cella;
+}
+
 function unGiro(
   par: ParametriNesting,
   istanze: Istanza[],
   pad: number,
   bW: number,
   bH: number,
-  bobina: boolean
-): { lastre: EsitoNesting['lastre']; scartati: EsitoNesting['scartati']; cella: number } {
+  bobina: boolean,
+  seme: number
+): Giro {
   const { lama, abbondanza, margine } = par;
   const cs = latoCella(bW, bH, bobina);
   // La griglia copre anche l'ULTIMA cella, quella parziale: con Math.floor la
@@ -331,9 +366,16 @@ function unGiro(
   for (const it of istanze) {
     const p = it.pezzo;
     const rotazioni = rotazioniPer(p);
+    // il giro di partenza: con quattro rotazioni si può cominciare da mezzo
+    // giro, e a parità di posizione cambia quale verso viene appoggiato per
+    // primo — è lì che nasce (o non nasce) l'incastro testa-coda
+    const giro =
+      seme > 0 && rotazioni.length === 4
+        ? [...rotazioni.slice(seme), ...rotazioni.slice(0, seme)]
+        : rotazioni;
     const maschere: Array<[number, { chiave: string; m: MascheraSagoma }, number, number]> = [];
     let entraDaSolo = false;
-    for (const r of rotazioni) {
+    for (const r of giro) {
       const mk = maschera(p, r);
       // Fin dove può arrivare la cella d'appoggio. Il vincolo che conta è in
       // millimetri — il pezzo gonfiato deve stare dentro bW×bH — quello a

@@ -284,6 +284,29 @@ describe('analizzaTestoPezzi — forme', () => {
     expect(uno('rombo 600 × 350')).toMatchObject({ forma: 'rombo', larghezza: 600, altezza: 350 });
   });
 
+  it('il triangolo scritto coi suoi tre lati', () => {
+    expect(uno('triangolo 800/700/500 x2')).toMatchObject({
+      forma: 'triangoloL',
+      larghezza: 800,
+      altezza: 700,
+      misura3: 500,
+      quantita: 2,
+      nome: 'Triangolo'
+    });
+    // l'ordine non conta: si mette in fila dal lato più lungo
+    expect(uno('vetrata triangolare 500/800/700')).toMatchObject({
+      forma: 'triangoloL',
+      larghezza: 800,
+      altezza: 700,
+      misura3: 500
+    });
+    // tre numeri che non chiudono un triangolo non diventano un pezzo:
+    // la riga finisce fra le ignorate, in bella vista nell'anteprima
+    const storta = analizzaTestoPezzi('triangolo 1000/200/300');
+    expect(storta.pezzi).toHaveLength(0);
+    expect(storta.ignorate).toEqual(['triangolo 1000/200/300']);
+  });
+
   it('le righe rettangolari di sempre non prendono nessuna forma', () => {
     const p = uno('anta 597x720');
     expect(p.forma).toBeUndefined();

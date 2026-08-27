@@ -10,6 +10,28 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.24.0 — Il triangolo dei tre lati
+
+- **Il triangolo non è più un rettangolo.** Un triangolo quotato sui suoi tre
+  lati diventa una sagoma vera anche quando è storto: prima serviva che fosse
+  isoscele, e uno qualunque finiva nel piano di taglio come rettangolo
+  d'ingombro, buttando via metà del materiale sotto l'ipotenusa. Tre lati
+  misurati sono già la forma — non c'è niente da inventare. Su una lista di
+  prova (2 rettangoli, 2 rombi, 6 triangoli su bobina da 122) il rotolo
+  consumato passa da **5,24 m a 3,37 m**, la resa dal 56% al 66%.
+- Nella lista c'è la forma **«Triangolo (3 lati)»** con i tre campi Lato A / B
+  / C; l'incolla da testo capisce `triangolo 800/700/500`. Tre numeri che non
+  chiudono un triangolo non diventano un pezzo: la riga resta in vista fra
+  quelle ignorate, o il pezzo fra quelli con misure incomplete.
+- **Il giro di partenza.** Due triangoli storti uguali si incastrano lungo il
+  fianco obliquo solo se il primo è già girato di mezzo giro, e il primo non
+  poteva saperlo. Ora il pacco si rifà anche partendo da 180° e si tiene il
+  migliore (solo quando in lista c'è una forma che gira davvero).
+- Un pezzo largo **esattamente quanto l'utile** — una fascia a tutta bobina —
+  non viene più dichiarato «non entra» per un arrotondamento della griglia.
+- Sul rotolo un pezzo **impossibile** (più largo del rotolo, o col verso
+  bloccato) non si porta più dietro pezzi che entravano benissimo.
+
 ## 1.23.0 — Nesting a forma reale
 
 - I pezzi del piano di taglio possono avere una **forma vera**: rettangolo,

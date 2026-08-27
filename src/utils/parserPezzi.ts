@@ -11,7 +11,8 @@
  * - misure: `597x720`, `560 × 300`, virgola decimale, `cm` convertiti in mm;
  * - quantità: `x4`, `4 pezzi`, `q.tà 6`, `n. 8`, `quantità 3`, numero iniziale;
  * - rotazione: `ruotabile` / `verso fisso` (di default è consentita);
- * - FORME: `cerchio Ø300`, `triangolo`, `rombo`, `trapezio 500/300×200`
+ * - FORME: `cerchio Ø300`, `triangolo 800/700/500` (i tre lati), `rombo`,
+ *   `trapezio 500/300×200`
  *   (isoscele B/b×h), `base 1200, h sx 900, h dx 1400` (trapezio rettangolo,
  *   la finestra sotto falda). Una riga con la sola parola della forma
  *   («Trapezi:») vale come sezione per le righe successive;
@@ -56,6 +57,9 @@ const RE_BASI =
 /** «base 1200, h sx 900, h dx 1400»: il trapezio rettangolo detto a voce */
 const RE_ALTEZZE =
   /(?:base|larghezza|\bb\b)\s*[:=]?\s*(\d+(?:[.,]\d+)?)[^0-9\n]*?(?:h|alt\w*)\s*(?:sx|sinistra?|1)?\s*[:=]?\s*(\d+(?:[.,]\d+)?)[^0-9\n]*?(?:h|alt\w*)\s*(?:dx|destra?|2)?\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i;
+/** «800/700/500»: i tre lati di un triangolo, come si misurano in cantiere */
+const RE_TRE_LATI =
+  /(\d+(?:[.,]\d+)?)\s*\/\s*(\d+(?:[.,]\d+)?)\s*\/\s*(\d+(?:[.,]\d+)?)/;
 /** diametro del cerchio: Ø 300, diam. 300 */
 const RE_DIAMETRO = /(?:[Øø⌀]|\bdiam\w*\.?)\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i;
 
@@ -243,6 +247,18 @@ function misureRiga(
     return { forma: 'trapezioR', d1, d2, d3, qtyHint, resto };
   }
 
+  if (forma === 'triangolo' || forma === 'triangoloL') {
+    // tre lati scritti di fila: è il triangolo vero, non serve che sia isoscele
+    if ((m = RE_TRE_LATI.exec(s))) {
+      const l = [P(m[1]), P(m[2]), P(m[3])]
+        .map((v) => v * cmScale)
+        .sort((x, y) => y - x);
+      if (l[2] > 0 && l[1] + l[2] > l[0]) {
+        return { forma: 'triangoloL', d1: l[0], d2: l[1], d3: l[2], qtyHint: null, resto: segna(m) };
+      }
+    }
+  }
+
   // rettangolo, triangolo, rombo: coppia di misure, terzo numero = quantità
   if ((m = RE_MISURA3.exec(s))) {
     const d1 = P(m[1]) * cmScale;
@@ -383,6 +399,7 @@ export function analizzaTestoPezzi(testo: string): EsitoParser {
           rett: 'Pezzo',
           cerchio: 'Cerchio',
           triangolo: 'Triangolo',
+          triangoloL: 'Triangolo',
           rombo: 'Rombo',
           trapezio: 'Trapezio',
           trapezioR: 'Quadrilatero'
