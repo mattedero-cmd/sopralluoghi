@@ -184,7 +184,7 @@ export function impaginaLastra(
     const ty = ry + (ancora ? ancora.y * scala : rh / 2);
     const piano = pianoEtichetta(
       ancora ? ancora.larghezza * scala : rw,
-      rh,
+      ancora ? ancora.altezza * scala : rh,
       pc.nome || '',
       misura,
       CORPI_PDF

@@ -497,6 +497,7 @@ export function ancoraEtichetta(punti: PuntoSagoma[]): {
   x: number;
   y: number;
   larghezza: number;
+  altezza: number;
 } {
   let doppiaArea = 0;
   let cx = 0;
@@ -509,29 +510,84 @@ export function ancoraEtichetta(punti: PuntoSagoma[]): {
     cx += (a[0] + b[0]) * f;
     cy += (a[1] + b[1]) * f;
   }
+  const xs = punti.map((q) => q[0]);
+  const ys = punti.map((q) => q[1]);
   if (Math.abs(doppiaArea) < 1e-9) {
     // poligono degenere: si ripiega sul centro del riquadro
-    const xs = punti.map((q) => q[0]);
-    const ys = punti.map((q) => q[1]);
     const l = Math.max(...xs) - Math.min(...xs);
-    return { x: Math.min(...xs) + l / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2, larghezza: l };
+    const h = Math.max(...ys) - Math.min(...ys);
+    return {
+      x: Math.min(...xs) + l / 2,
+      y: Math.min(...ys) + h / 2,
+      larghezza: l,
+      altezza: h
+    };
   }
   cx /= 3 * doppiaArea;
   cy /= 3 * doppiaArea;
-  // quanto è largo il pezzo all'altezza del baricentro
-  let sinistra = Infinity;
-  let destra = -Infinity;
+
+  /**
+   * IL RIQUADRO PIÙ GRANDE CHE STA DENTRO, centrato sul baricentro.
+   *
+   * Non basta misurare quanto è largo il pezzo all'altezza del baricentro: la
+   * scritta occupa una fascia, e su un pezzo sbieco i suoi angoli escono anche
+   * se il centro è comodo. È il motivo per cui il nome del quadrilatero
+   * usciva dal pezzo mentre quello del rettangolo no.
+   *
+   * Per un poligono convesso ogni lato è un semipiano `n·x ≤ c`, e un
+   * rettangolo largo w e alto h centrato in C ci sta tutto se il suo angolo
+   * peggiore ci sta: |nx|·w/2 + |ny|·h/2 ≤ c − n·C. Fissata un'altezza, la
+   * larghezza massima è quindi il minimo su tutti i lati; si prova una scala
+   * di altezze e si tiene il riquadro di area maggiore. Chi impagina riceve
+   * così una misura di cui può fidarsi nei due versi: il testo dritto e
+   * quello girato stanno entrambi dentro lo stesso riquadro.
+   */
+  const semipiani: Array<{ a: number; b: number; k: number }> = [];
   for (let i = 0; i < punti.length; i++) {
-    const a = punti[i];
-    const b = punti[(i + 1) % punti.length];
-    if ((a[1] <= cy && b[1] >= cy) || (b[1] <= cy && a[1] >= cy)) {
-      const dy = b[1] - a[1];
-      const x = Math.abs(dy) < 1e-9 ? a[0] : a[0] + ((b[0] - a[0]) * (cy - a[1])) / dy;
-      sinistra = Math.min(sinistra, x, Math.abs(dy) < 1e-9 ? b[0] : x);
-      destra = Math.max(destra, x, Math.abs(dy) < 1e-9 ? b[0] : x);
+    const p1 = punti[i];
+    const p2 = punti[(i + 1) % punti.length];
+    const dx = p2[0] - p1[0];
+    const dy = p2[1] - p1[1];
+    const lun = Math.hypot(dx, dy);
+    if (lun < 1e-9) continue;
+    let nx = dy / lun;
+    let ny = -dx / lun;
+    // normale verso l'esterno: il baricentro deve restare dalla parte dentro
+    if (nx * (cx - p1[0]) + ny * (cy - p1[1]) > 0) {
+      nx = -nx;
+      ny = -ny;
+    }
+    const k = nx * (p1[0] - cx) + ny * (p1[1] - cy);
+    if (k <= 0) continue; // baricentro sul bordo: niente spazio da quel lato
+    semipiani.push({ a: Math.abs(nx) / 2, b: Math.abs(ny) / 2, k });
+  }
+  const altezzaMax = Math.max(...ys) - Math.min(...ys);
+  const larghezzaMax = Math.max(...xs) - Math.min(...xs);
+  const larghezzaCon = (h: number): number => {
+    let w = larghezzaMax;
+    for (const { a, b, k } of semipiani) {
+      // il riquadro può TOCCARE il bordo: `resto` a zero è ancora buono, ed è
+      // il caso del rettangolo, dove il riquadro è il pezzo intero
+      const resto = k - b * h;
+      if (resto < -1e-9) return 0;
+      if (a > 1e-9) w = Math.min(w, Math.max(0, resto) / a);
+    }
+    return Math.max(0, w);
+  };
+  let larghezza = 0;
+  let altezza = 0;
+  let miglioreArea = -1;
+  const passi = 240;
+  for (let i = 1; i <= passi; i++) {
+    const h = (altezzaMax * i) / passi;
+    const w = larghezzaCon(h);
+    if (w * h > miglioreArea) {
+      miglioreArea = w * h;
+      larghezza = w;
+      altezza = h;
     }
   }
-  return { x: cx, y: cy, larghezza: destra > sinistra ? destra - sinistra : 0 };
+  return { x: cx, y: cy, larghezza, altezza };
 }
 
 /**

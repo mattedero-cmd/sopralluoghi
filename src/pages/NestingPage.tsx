@@ -1845,6 +1845,7 @@ function Lastra({
             const cx = pc.x + (ancora ? ancora.x : pc.larghezza / 2);
             const cy = pc.y + (ancora ? ancora.y : pc.altezza / 2);
             const largaUtile = ancora ? ancora.larghezza : pc.larghezza;
+            const altaUtile = ancora ? ancora.altezza : pc.altezza;
             // la sagoma vera del pezzo, in coordinate della lastra; null = rettangolo
             const sagoma = pc.punti
               ? pc.punti.map((q) => `${pc.x + q[0]},${pc.y + q[1]}`).join(' ')
@@ -1862,7 +1863,7 @@ function Lastra({
             const dim = inUnita(12);
             const piano =
               mmPerPx > 0
-                ? pianoEtichetta(largaUtile, pc.altezza, pc.nome || '', misura, {
+                ? pianoEtichetta(largaUtile, altaUtile, pc.nome || '', misura, {
                     massimo: dim,
                     comodo: inUnita(9),
                     dueRighe: inUnita(8),

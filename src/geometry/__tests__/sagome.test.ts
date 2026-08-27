@@ -6,6 +6,7 @@ import {
   mascheraSagoma,
   misureComplete,
   misureForma,
+  ancoraEtichetta,
   poligonoSagoma,
   orientazioniPer,
   rotazioniPer,
@@ -810,5 +811,53 @@ describe('il quadrilatero storto', () => {
   it('l’etichetta dice i quattro lati, non larghezza per altezza', () => {
     const misure = misureForma({ forma: 'quad', larghezza: 640, altezza: 500, vertici: VERTICI });
     expect(misure.split('/')).toHaveLength(4);
+  });
+});
+
+describe('l’ancora dell’etichetta', () => {
+  /** il testo, centrato sull'ancora, sta tutto dentro il poligono? */
+  const dentroTutto = (poly: PuntoSagoma[], larghezza: number, altezza: number, a: { x: number; y: number }) => {
+    const angoli: PuntoSagoma[] = [
+      [a.x - larghezza / 2, a.y - altezza / 2],
+      [a.x + larghezza / 2, a.y - altezza / 2],
+      [a.x + larghezza / 2, a.y + altezza / 2],
+      [a.x - larghezza / 2, a.y + altezza / 2]
+    ];
+    return angoli.every((q) => dentroConvesso(q, poly));
+  };
+
+  it('sul rettangolo resta il centro, con tutto lo spazio', () => {
+    const poly = poligonoSagoma({ forma: 'rett', larghezza: 600, altezza: 400 })!;
+    const a = ancoraEtichetta(poly);
+    expect(a.x).toBeCloseTo(300, 6);
+    expect(a.y).toBeCloseTo(200, 6);
+    expect(a.larghezza).toBeCloseTo(600, 6);
+    expect(a.altezza).toBeCloseTo(400, 6);
+  });
+
+  it('IL DIFETTO: sul pezzo storto lo spazio non è quello del riquadro', () => {
+    // Il quadrilatero della segnalazione: lungo e sbieco. Prendendo l'altezza
+    // del RIQUADRO, la scritta girata usciva dal pezzo — era lunga quanto il
+    // riquadro, non quanto il pezzo lì in mezzo.
+    const poly: PuntoSagoma[] = [
+      [0, 1200],
+      [480, 1150],
+      [520, 60],
+      [40, 0]
+    ];
+    const a = ancoraEtichetta(poly);
+    const ing = { larghezza: 520, altezza: 1200 };
+    expect(a.larghezza).toBeLessThan(ing.larghezza);
+    expect(a.altezza).toBeLessThan(ing.altezza);
+    // e con quelle misure la scritta ci sta davvero dentro, nei due versi
+    expect(dentroTutto(poly, a.larghezza, a.altezza * 0.25, a)).toBe(true);
+    expect(dentroTutto(poly, a.larghezza * 0.25, a.altezza, a)).toBe(true);
+  });
+
+  it('anche sul triangolo la scritta resta dentro', () => {
+    const poly = poligonoSagoma({ forma: 'triangoloL', larghezza: 800, altezza: 700, misura3: 500 })!;
+    const a = ancoraEtichetta(poly);
+    expect(dentroConvesso([a.x, a.y], poly)).toBe(true);
+    expect(dentroTutto(poly, a.larghezza, a.altezza * 0.3, a)).toBe(true);
   });
 });

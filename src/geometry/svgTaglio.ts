@@ -134,6 +134,7 @@ function etichettaPezzo(p: Piazzamento): string {
   const cx = p.x + (ancora ? ancora.x : p.larghezza / 2);
   const cy = p.y + (ancora ? ancora.y : p.altezza / 2);
   const largaUtile = ancora ? ancora.larghezza : p.larghezza;
+  const altaUtile = ancora ? ancora.altezza : p.altezza;
   // la misura parla la lingua della forma: Ø300, 500/300×200, 600×400|800
   const misura = misureForma({
     forma: p.forma,
@@ -142,7 +143,7 @@ function etichettaPezzo(p: Piazzamento): string {
     misura3: p.misura3Finita,
     vertici: p.verticiFiniti
   });
-  const piano = pianoEtichetta(largaUtile, p.altezza, p.nome || '', misura, CORPI_ETICHETTA);
+  const piano = pianoEtichetta(largaUtile, altaUtile, p.nome || '', misura, CORPI_ETICHETTA);
   if (!piano) return '';
 
   const riga = (testo: string, corpo: number, dy: number, forte: boolean) =>

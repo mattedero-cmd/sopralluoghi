@@ -10,6 +10,20 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.30.1 — Le etichette non escono più dal pezzo
+
+- Sul quadrilatero storto il nome usciva dalla sagoma. Spostare la scritta sul
+  baricentro non bastava: lo SPAZIO dichiarato era ancora quello del riquadro
+  d'ingombro, e su un pezzo sbieco il riquadro è molto più grande del pezzo —
+  la scritta girata veniva lunga quanto il riquadro e sbordava.
+- Ora si calcola il **riquadro più grande che sta davvero dentro** la sagoma,
+  centrato sul baricentro: per un poligono convesso ogni lato è un semipiano,
+  e un rettangolo ci sta tutto se ci sta il suo angolo peggiore. Chi impagina
+  riceve una misura di cui può fidarsi nei due versi, dritto e girato, in
+  pagina come nel PDF e nel file per la macchina.
+- Verificato sul disegno vero, non a occhio: ventitré etichette, nessuna fuori
+  dal proprio pezzo.
+
 ## 1.30.0 — Il quadrilatero storto
 
 - **La finestra fuori squadro non è più un rettangolo.** Un quadrilatero con
