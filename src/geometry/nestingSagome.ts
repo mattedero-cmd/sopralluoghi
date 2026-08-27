@@ -307,7 +307,12 @@ export function calcolaNestingSagome(
     { seme: 0, modo: 'quarti' }
   ];
   if (conGiro) strategie.push({ seme: 1, modo: 'quarti' });
-  if (conAngoli) strategie.push({ seme: 0, modo: 'obliqui' }, { seme: 0, modo: 'parallelo' });
+  if (conAngoli) {
+    strategie.push(
+      { seme: 0, modo: 'obliqui' },
+      { seme: 0, modo: 'parallelo' }
+    );
+  }
   let migliore: Giro | null = null;
   for (const { seme, modo } of strategie) {
     let finestra = bH;
@@ -377,7 +382,7 @@ function unGiro(
    * - 'obliqui': anche gli appoggi di lato, scelti dalla scansione;
    * - 'parallelo': UN SOLO appoggio per pezzo, quello che stringe di più il
    *   riquadro, più il suo mezzo giro. Tutte le copie restano parallele fra
-   *   loro, ed è così che i rombi tassellano.
+   *   loro, ed è così che i rombi tassellano;
    */
   modo: 'quarti' | 'obliqui' | 'parallelo'
 ): Giro {

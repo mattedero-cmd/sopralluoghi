@@ -186,6 +186,19 @@ const LISTE: Array<{
     par: bobina(1220),
     pezzi: [pz('ro', 'rombo', 753.8, 597.1, undefined, 10)],
     resaMinima: 75
+  },
+  {
+    // la terza schermata del cantiere: rombi e triangoli storti insieme,
+    // con una colonna di rettangoli di fianco
+    nome: 'rombi, triangoli storti e rettangoli',
+    par: bobina(1220),
+    pezzi: [
+      pz('r', undefined, 700, 820, undefined, 6),
+      pz('ro', 'rombo', 753.8, 597.1, undefined, 10),
+      pz('tri', 'triangoloL', 794.7, 675.2, 558.2, 4),
+      pz('c', 'cerchio', 290, 290, undefined, 1)
+    ],
+    resaMinima: 65
   }
 ];
 

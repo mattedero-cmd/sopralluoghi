@@ -684,6 +684,19 @@ describe('le copie parallele: il rombo che tassella', () => {
     expect(distanzaMinimaFraPezzi(esito)).toBeGreaterThanOrEqual(3 - 1e-6);
   });
 
+  it('appoggiati e paralleli i rombi si affiancano davvero, non a zig-zag', () => {
+    // due copie sulla stessa riga: se sono parallele e appoggiate, la seconda
+    // sta accanto alla prima (stessa altezza), non scalata più in basso
+    const pezzi = [pezzo('ro', 'rombo', 753.8, 597.1, undefined, { quantita: 2 })];
+    const esito = calcolaNestingSagome(
+      par(1220, 40000, { margine: 10, massimoLastre: 1 }),
+      pezzi as PezzoNesting[]
+    );
+    const [a, b] = esito.lastre[0].piazzamenti;
+    expect(a.rotazione).toBe(b.rotazione);
+    expect(Math.abs(a.y - b.y)).toBeLessThan(20);
+  });
+
   it('dieci rombi parallelo contro dieci rombi in piedi: quasi un metro di bobina', () => {
     const pezzi = [pezzo('ro', 'rombo', 753.8, 597.1, undefined, { quantita: 10 })];
     const esito = calcolaNestingSagome(

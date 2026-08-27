@@ -10,6 +10,21 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.28.0 — Un tocco gira tutte le copie
+
+- **Il tocco gira la famiglia, non la singola copia.** Due rombi appoggiati sul
+  lato tassellano solo se restano PARALLELI: girarne uno alla volta vuol dire
+  passare per dieci disposizioni peggiori prima di arrivare a quella buona, e
+  con dieci copie sono dieci tocchi per una cosa sola. Ora un tocco su un pezzo
+  porta tutte le sue copie al verso successivo, e il giro completo le rimette
+  tutte in automatico.
+- Provata e **scartata perché non paga**: una passata «mista», con l'appoggio
+  unico dato solo ai pezzi a cui conviene (i rombi sì, i triangoli no) e gli
+  altri liberi. Sulle tredici liste del banco guadagna **zero** e costa il 20%
+  di tempo in più. Il criterio per riconoscere quei pezzi (quanto riempiono il
+  proprio riquadro appoggiati contro in piedi) funzionava; è la passata in più
+  che non serviva, perché quella parallela già li copre.
+
 ## 1.27.0 — I rombi tassellano
 
 - **Il difetto che teneva fermi gli incastri.** Il controllo «il pezzo deve

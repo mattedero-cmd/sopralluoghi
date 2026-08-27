@@ -403,13 +403,19 @@ export function NestingPage({
   };
 
   /**
-   * UN TOCCO SUL PEZZO LO GIRA.
+   * UN TOCCO SUL PEZZO GIRA TUTTE LE SUE COPIE.
    *
    * Un rettangolo ha due versi e basta il mezzo giro. Una sagoma no: un rombo
    * o un triangolo storto, girati a mano, si appoggiano su un LORO LATO, e i
    * versi sensati sono quelli — gli stessi che prova il motore. Il tocco li
-   * fa scorrere uno alla volta; finito il giro il vincolo si toglie e il
-   * pezzo torna a farsi mettere dal calcolo.
+   * fa scorrere uno alla volta; finito il giro il vincolo si toglie e il pezzo
+   * torna a farsi mettere dal calcolo.
+   *
+   * Gira TUTTE le copie insieme perché è così che si guadagna materiale: due
+   * rombi appoggiati sul lato tassellano solo se restano PARALLELI, e girarne
+   * uno alla volta vuol dire passare per dieci disposizioni peggiori prima di
+   * arrivare a quella buona. Con dieci copie sarebbero dieci tocchi per una
+   * cosa sola.
    */
   const giraPezzo = (chiave: string, applicato: number) =>
     setDoc((d) => ({
@@ -417,19 +423,25 @@ export function NestingPage({
       materiali: d.materiali.map((m) => {
         if (m.id !== d.attivo) return m;
         const nuovi = { ...m.orientamenti };
-        const pezzo = m.pezzi.find((p) => p.id === chiave.slice(0, chiave.lastIndexOf('#')));
+        const id = chiave.slice(0, chiave.lastIndexOf('#'));
+        const pezzo = m.pezzi.find((p) => p.id === id);
         const versi = pezzo ? versiAMano(pezzo) : [0, 90];
         const indice = (v: number) =>
           versi.findIndex((x) => Math.abs(x - (((v % 360) + 360) % 360)) < 0.01);
         const imposto = nuovi[chiave];
+        let prossimo: number | null;
         if (imposto == null) {
           // primo tocco: dal verso che ha adesso al successivo
-          nuovi[chiave] = versi[(indice(applicato) + 1 + versi.length) % versi.length];
+          prossimo = versi[(indice(applicato) + 1 + versi.length) % versi.length];
         } else {
           const i = indice(typeof imposto === 'number' ? imposto : imposto ? 90 : 0);
           // fine giro: si torna in automatico invece di ricominciare
-          if (i < 0 || i >= versi.length - 1) delete nuovi[chiave];
-          else nuovi[chiave] = versi[i + 1];
+          prossimo = i < 0 || i >= versi.length - 1 ? null : versi[i + 1];
+        }
+        const copie = Math.max(1, Math.round(pezzo?.quantita ?? 1));
+        for (let i = 0; i < copie; i++) {
+          if (prossimo === null) delete nuovi[`${id}#${i}`];
+          else nuovi[`${id}#${i}`] = prossimo;
         }
         return { ...m, orientamenti: nuovi };
       })
