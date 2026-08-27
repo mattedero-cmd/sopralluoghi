@@ -459,6 +459,41 @@ export function ancoraEtichetta(punti: PuntoSagoma[]): {
 }
 
 /**
+ * IL VERSO CHE STRINGE DI PIÙ, più il suo mezzo giro.
+ *
+ * Un rombo appoggiato su un lato è un parallelogramma: affiancato a sé stesso
+ * tassella senza buchi, mentre in piedi sulla punta lascia vuota metà del suo
+ * riquadro (50% contro 81%). Ma tassella solo se le copie restano PARALLELE:
+ * basta che la scansione ne giri una di novanta gradi e l'incastro salta. Qui
+ * si sceglie quindi un appoggio solo — quello col riquadro più stretto — e si
+ * lascia il mezzo giro, che serve ai trapezi per accoppiarsi testa-coda.
+ */
+export function versiParalleli(p: MisureForma): number[] {
+  const poly = poligonoSagoma(p);
+  if (!poly) return [0];
+  let migliore = 0;
+  let piuStretto = Infinity;
+  for (const g of orientazioniPer(p)) {
+    const r = ruotaPunti(poly, g);
+    const l = Math.max(...r.map((q) => q[0]));
+    const a = Math.max(...r.map((q) => q[1]));
+    // a parità di riquadro vince il più basso: sul rotolo è quello che
+    // fa avanzare meno il fronte di scansione
+    if (l * a < piuStretto - 1e-6 || (Math.abs(l * a - piuStretto) < 1e-6 && a < Math.max(...ruotaPunti(poly, migliore).map((q) => q[1])))) {
+      piuStretto = l * a;
+      migliore = g;
+    }
+  }
+  const impronta = (g: number) =>
+    ruotaPunti(poly, g)
+      .map((q) => `${Math.round(q[0] * 100) / 100},${Math.round(q[1] * 100) / 100}`)
+      .sort()
+      .join(' ');
+  const mezzo = Math.round((((migliore + 180) % 360) + 360) % 360 * 100) / 100;
+  return impronta(mezzo) === impronta(migliore) ? [migliore] : [migliore, mezzo];
+}
+
+/**
  * I versi fra cui far scorrere un pezzo quando lo si gira A MANO, in ordine.
  *
  * Sono gli stessi che il motore sa provare: un rettangolo ha il mezzo giro,

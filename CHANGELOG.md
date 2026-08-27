@@ -10,6 +10,26 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.27.0 — I rombi tassellano
+
+- **Il difetto che teneva fermi gli incastri.** Il controllo «il pezzo deve
+  starci dentro» era calcolato sull'ingombro NON ruotato: per un rombo
+  appoggiato su un lato usava la larghezza del diamante (754) invece di quella
+  vera (591). Risultato: il pezzo dopo non poteva mai arrivare accanto al
+  primo, e l'incastro che si vede a occhio non nasceva. Adesso l'ingombro si
+  prende sul pezzo davvero ruotato.
+- **Copie parallele.** Un rombo appoggiato su un lato è un parallelogramma:
+  affiancato a sé stesso tassella senza buchi, ma solo se le copie restano
+  parallele — basta che la scansione ne giri una di novanta gradi e l'incastro
+  salta. C'è quindi una passata in cui ogni pezzo ha UN solo appoggio, quello
+  col riquadro più stretto, più il suo mezzo giro (che serve ai trapezi per
+  accoppiarsi testa-coda). Come sempre si tiene il pacco migliore.
+- Quanto vale, misurato: dieci rombi su bobina da 122 passano da **3,24 a
+  2,38 m** (resa 57 → 78%); dodici falde piccole da **3,71 a 3,18 m** (69 →
+  80,5%); la lista di cantiere con rombi, trapezi e rettangoli da **6,37 a
+  5,63 m**. Sulle dodici liste del banco la perdita media scende dal 28,8 al
+  **26,7%**, e nessuna lista peggiora.
+
 ## 1.26.0 — Girare i pezzi: angoli veri e un tocco
 
 - **Non solo quarti di giro.** I quarti sono un'ipotesi da rettangoli: un

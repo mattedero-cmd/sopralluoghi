@@ -127,7 +127,8 @@ const LISTE: Array<{
       pz('f', 'trapezioR', 450, 300, 520, 12),
       pz('r', undefined, 380, 300, undefined, 8)
     ],
-    resaMinima: 67
+    // 69% coi soli quarti, 80,5% con le falde tutte parallele fra loro
+    resaMinima: 78
   },
   {
     nome: 'tanti pezzetti su bobina stretta',
@@ -165,6 +166,26 @@ const LISTE: Array<{
       pz('ob', 'cerchio', 350, 350, undefined, 4)
     ],
     resaMinima: 64
+  },
+  {
+    // la seconda schermata del cantiere: dieci rombi, quattro trapezi, due
+    // rettangoli e un oblò. È qui che si vede se i rombi tassellano
+    nome: 'rombi, trapezi e rettangoli su bobina da 122',
+    par: bobina(1220),
+    pezzi: [
+      pz('r', undefined, 700, 820, undefined, 2),
+      pz('ro', 'rombo', 753.8, 597.1, undefined, 10),
+      pz('tz', 'trapezioR', 450, 950, 750, 4),
+      pz('c', 'cerchio', 290, 290, undefined, 1)
+    ],
+    resaMinima: 71
+  },
+  {
+    // dieci rombi da soli: in piedi sulla punta 3,24 m, appoggiati 2,38
+    nome: 'soli rombi su bobina da 122',
+    par: bobina(1220),
+    pezzi: [pz('ro', 'rombo', 753.8, 597.1, undefined, 10)],
+    resaMinima: 75
   }
 ];
 

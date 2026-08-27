@@ -46,6 +46,7 @@ import {
   poligonoSagoma,
   orientazioniPer,
   rotazioniPer,
+  versiParalleli,
   ruotaPunti,
   sagomaDiTaglio,
   type MascheraSagoma
@@ -302,14 +303,16 @@ export function calcolaNestingSagome(
   // ingrossa la cella, e basta un pezzo impossibile — più largo del rotolo, o
   // col verso bloccato — per far ritentare fino in fondo: alla cella grossa
   // finirebbero fuori anche pezzi che al primo giro entravano.
-  const strategie: Array<{ seme: number; angoli: boolean }> = [{ seme: 0, angoli: false }];
-  if (conGiro) strategie.push({ seme: 1, angoli: false });
-  if (conAngoli) strategie.push({ seme: 0, angoli: true });
+  const strategie: Array<{ seme: number; modo: 'quarti' | 'obliqui' | 'parallelo' }> = [
+    { seme: 0, modo: 'quarti' }
+  ];
+  if (conGiro) strategie.push({ seme: 1, modo: 'quarti' });
+  if (conAngoli) strategie.push({ seme: 0, modo: 'obliqui' }, { seme: 0, modo: 'parallelo' });
   let migliore: Giro | null = null;
-  for (const { seme, angoli } of strategie) {
+  for (const { seme, modo } of strategie) {
     let finestra = bH;
     for (let tentativo = 0; ; tentativo++) {
-      const e = unGiro(par, daProvare, pad, bW, finestra, bobina, seme, angoli);
+      const e = unGiro(par, daProvare, pad, bW, finestra, bobina, seme, modo);
       if (!migliore || meglioDi(e, migliore)) migliore = e;
       // sul rotolo, se la finestra stimata non è bastata, si allarga e si
       // rifà: quello che non entra dev'essere un fatto del materiale, non
@@ -368,8 +371,15 @@ function unGiro(
   bH: number,
   bobina: boolean,
   seme: number,
-  /** vero = si provano anche gli angoli che appoggiano un lato per terra */
-  angoli: boolean
+  /**
+   * quali versi provare per ogni pezzo:
+   * - 'quarti': i quattro quarti di giro, come da sempre;
+   * - 'obliqui': anche gli appoggi di lato, scelti dalla scansione;
+   * - 'parallelo': UN SOLO appoggio per pezzo, quello che stringe di più il
+   *   riquadro, più il suo mezzo giro. Tutte le copie restano parallele fra
+   *   loro, ed è così che i rombi tassellano.
+   */
+  modo: 'quarti' | 'obliqui' | 'parallelo'
 ): Giro {
   const { lama, abbondanza, margine } = par;
   const cs = latoCella(bW, bH, bobina);
@@ -413,7 +423,9 @@ function unGiro(
     const aMano = p.ruotabile ? par.orientamenti?.[it.chiave] : undefined;
     const forzato =
       typeof aMano === 'number' ? aMano : aMano === true ? 90 : aMano === false ? 0 : null;
-    const chiaveP = `${formaDi(p)}|${p.larghezza}|${p.altezza}|${p.misura3 ?? 0}|${p.ruotabile}|${angoli}|${forzato ?? ''}`;
+    const chiaveP = `${formaDi(p)}|${p.larghezza}|${p.altezza}|${p.misura3 ?? 0}|${p.ruotabile}|${modo}|${forzato ?? ''}`;
+    // il cerchio non ha poligono: per lui l'ingombro è il diametro, e basta
+    const poli = poligonoSagoma(p);
     const gia = cacheMaschere.get(chiaveP);
     if (gia) return gia;
     const fuori: Maschere = [];
@@ -427,18 +439,26 @@ function unGiro(
     const versi =
       forzato !== null
         ? [forzato]
-        : angoli && quarti.length > 1 && forma !== 'rett' && forma !== 'cerchio'
-          ? orientazioniPer(p)
-          : quarti;
+        : modo === 'quarti' || quarti.length <= 1 || forma === 'rett' || forma === 'cerchio'
+          ? quarti
+          : modo === 'obliqui'
+            ? orientazioniPer(p)
+            : versiParalleli(p);
     for (const r of versi) {
       const mk = maschera(p, r);
       // Fin dove può arrivare la cella d'appoggio. Il vincolo che conta è in
       // millimetri — il pezzo gonfiato deve stare dentro bW×bH — quello a
       // celle serve solo a non scrivere fuori dalla riga del bitmap: si
       // prende il più stretto dei due.
-      const girato = r === 90 || r === 270;
-      const rw = (girato ? it.ingA : it.ingL) + 2 * pad;
-      const rh = (girato ? it.ingL : it.ingA) + 2 * pad;
+      //
+      // L'ingombro va preso sul pezzo DAVVERO RUOTATO. Scambiare larghezza e
+      // altezza vale per i quarti di giro e basta: un rombo appoggiato su un
+      // lato è largo 591, non 754 come il suo diamante, e prendendo il numero
+      // sbagliato il pezzo dopo non poteva arrivargli accanto — l'incastro
+      // che si vede a occhio non nasceva mai.
+      const ruotato = poli ? ruotaPunti(poli, r) : null;
+      const rw = (ruotato ? Math.max(...ruotato.map((q) => q[0])) : it.ingL) + 2 * pad;
+      const rh = (ruotato ? Math.max(...ruotato.map((q) => q[1])) : it.ingA) + 2 * pad;
       const limX = Math.min(gridW - mk.m.w, Math.floor((bW - rw) / cs + 1e-9));
       const limY = Math.min(gridH - mk.m.h, Math.floor((bH - rh) / cs + 1e-9));
       fuori.push([r, mk, limX, limY]);

@@ -11,6 +11,7 @@ import {
   rotazioniPer,
   ruotaPunti,
   versiAMano,
+  versiParalleli,
   sagomaDiTaglio,
   type MisureForma,
   type PuntoSagoma
@@ -640,5 +641,59 @@ describe('il verso messo a mano', () => {
       [p] as PezzoNesting[]
     );
     expect(esito.lastre[0].piazzamenti[0].rotazione).toBe(90);
+  });
+});
+
+describe('le copie parallele: il rombo che tassella', () => {
+  it('appoggiato su un lato riempie l’81% del suo riquadro, in piedi il 50%', () => {
+    const rombo: MisureForma = { forma: 'rombo', larghezza: 753.8, altezza: 597.1 };
+    const poly = poligonoSagoma(rombo)!;
+    const area = areaForma(rombo);
+    const pieno = (g: number) => {
+      const r = ruotaPunti(poly, g);
+      return area / (Math.max(...r.map((q) => q[0])) * Math.max(...r.map((q) => q[1])));
+    };
+    expect(pieno(0)).toBeCloseTo(0.5, 3);
+    expect(pieno(versiParalleli(rombo)[0])).toBeGreaterThan(0.8);
+  });
+
+  it('il verso parallelo è uno solo per il rombo, due per il trapezio (testa-coda)', () => {
+    // il rombo è simmetrico rispetto al centro: mezzo giro è lo stesso pezzo.
+    // Il trapezio no, e il suo mezzo giro serve ad accoppiarlo testa-coda
+    expect(versiParalleli({ forma: 'rombo', larghezza: 754, altezza: 597 })).toHaveLength(1);
+    expect(
+      versiParalleli({ forma: 'trapezioR', larghezza: 600, altezza: 400, misura3: 800 })
+    ).toHaveLength(2);
+  });
+
+  it('IL DIFETTO: il limite di ingombro va preso sul pezzo RUOTATO', () => {
+    // Due rombi 754×597 su una lastra larga 1100: in piedi sulla punta non ci
+    // stanno affiancati in nessun verso (2×597 = 1194 > 1080 utili), appoggiati
+    // su un lato sì (481 + 591 = 1072). Il limite «devi starci dentro» era
+    // calcolato sull'ingombro NON ruotato — la larghezza del diamante — e il
+    // secondo pezzo non poteva mai arrivare accanto al primo: l'incastro che
+    // si vede a occhio non nasceva. La lastra è bassa apposta, così l'unico
+    // modo di farceli stare è affiancarli.
+    const pezzi = [pezzo('ro', 'rombo', 754, 597, undefined, { quantita: 2 })];
+    const esito = calcolaNestingSagome(
+      par(1100, 700, { margine: 10 }),
+      pezzi as PezzoNesting[]
+    );
+    expect(esito.scartati).toHaveLength(0);
+    expect(esito.lastre).toHaveLength(1);
+    expect(distanzaMinimaFraPezzi(esito)).toBeGreaterThanOrEqual(3 - 1e-6);
+  });
+
+  it('dieci rombi parallelo contro dieci rombi in piedi: quasi un metro di bobina', () => {
+    const pezzi = [pezzo('ro', 'rombo', 753.8, 597.1, undefined, { quantita: 10 })];
+    const esito = calcolaNestingSagome(
+      par(1220, 40000, { margine: 10, massimoLastre: 1 }),
+      pezzi as PezzoNesting[]
+    );
+    let piuGiu = 0;
+    for (const pc of esito.lastre[0].piazzamenti) piuGiu = Math.max(piuGiu, pc.y + pc.altezza);
+    // a soli quarti di giro erano 3,24 m; appoggiati e paralleli stanno in 2,4
+    expect(piuGiu + 10).toBeLessThanOrEqual(2500);
+    expect(distanzaMinimaFraPezzi(esito)).toBeGreaterThanOrEqual(3 - 1e-6);
   });
 });
