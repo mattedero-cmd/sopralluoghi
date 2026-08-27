@@ -9,6 +9,7 @@
  */
 
 import type { OpzioniRicerca, ParametriNesting, PezzoNesting } from '../geometry/nesting';
+import { FORME, type FormaPezzo } from '../geometry/sagome';
 import { BLOCCO_MANEGGEVOLE } from '../geometry/segmenti';
 import { nuovoId } from './id';
 import { prossimaTinta } from './tinte';
@@ -341,13 +342,20 @@ const numero = (v: unknown, difetto: number, minimo = 0): number =>
 
 function normalizzaPezzo(g: Record<string, unknown>, indice: number): PezzoNesting | null {
   const larghezza = numero(g.larghezza, 0, 0.001);
-  const altezza = numero(g.altezza, 0, 0.001);
+  // il cerchio ha una misura sola: l'altezza si riallinea al diametro
+  const forma = FORME.some((f) => f.id === g.forma) ? (g.forma as FormaPezzo) : undefined;
+  const altezza = forma === 'cerchio' ? larghezza : numero(g.altezza, 0, 0.001);
   if (!(larghezza > 0) || !(altezza > 0)) return null;
+  const misura3 = numero(g.misura3, 0, 0.001);
   return {
     id: typeof g.id === 'string' && g.id ? g.id : `p${indice + 1}`,
     nome: typeof g.nome === 'string' ? g.nome : '',
     larghezza,
     altezza,
+    // la terza misura e la forma sopravvivono al salvataggio: perderle qui
+    // ritrasformerebbe le falde in rettangoli al primo riapri
+    misura3: misura3 > 0 ? misura3 : undefined,
+    forma: forma === 'rett' ? undefined : forma,
     quantita: Math.max(0, Math.round(numero(g.quantita, 1))),
     ruotabile: g.ruotabile !== false,
     tinta: numero(g.tinta, 0)

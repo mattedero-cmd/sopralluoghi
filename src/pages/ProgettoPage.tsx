@@ -417,8 +417,12 @@ export function ProgettoPage({ id }: { id: string }) {
         pezzi: pezzi.map((p, i) => ({
           id: nuovoId(),
           nome: p.nome,
-          larghezza: p.larghezza,
-          altezza: p.altezza,
+          // con la sagoma il pezzo porta le SUE misure (base, altezze…);
+          // senza, l'ingombro: il nesting incastra le forme vere
+          larghezza: p.sagoma?.d1 ?? p.larghezza,
+          altezza: p.sagoma?.d2 ?? p.altezza,
+          misura3: p.sagoma?.d3,
+          forma: p.sagoma?.forma,
           quantita: p.quantita,
           ruotabile: true,
           tinta: prossimaTinta(i)

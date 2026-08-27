@@ -9,7 +9,8 @@
  * segmenti del PDF.
  */
 
-import { calcolaNestingMigliore, lunghezzaUsata } from '../geometry/nesting';
+import { lunghezzaUsata } from '../geometry/nesting';
+import { calcolaNestingAuto } from '../geometry/nestingSagome';
 import { segmentaBobina } from '../geometry/segmenti';
 import { nomeFoglioSvg, svgTaglio } from '../geometry/svgTaglio';
 import {
@@ -45,7 +46,7 @@ export function fileSvgTaglio(
 
   for (const m of doc.materiali) {
     const par = parametriDi(m);
-    const esito = calcolaNestingMigliore(par, pezziDi(m), opzioniRicerca(m));
+    const esito = calcolaNestingAuto(par, pezziDi(m), opzioniRicerca(m));
 
     const aggiungi = (
       lastra: Parameters<typeof svgTaglio>[0],

@@ -197,3 +197,96 @@ Materiale chiaro (pelle chiara)
     expect(e.materiali).toEqual(['Legno scuro']);
   });
 });
+
+describe('analizzaTestoPezzi — forme', () => {
+  it('il cerchio: parola e diametro, o solo il Ø', () => {
+    expect(uno('cerchio Ø300 x2')).toMatchObject({
+      forma: 'cerchio',
+      larghezza: 300,
+      altezza: 300,
+      quantita: 2,
+      nome: 'Cerchio'
+    });
+    // il simbolo basta da solo, anche coi centimetri
+    expect(uno('Oblò Ø 30 cm')).toMatchObject({
+      forma: 'cerchio',
+      larghezza: 300,
+      altezza: 300,
+      nome: 'Oblò'
+    });
+    expect(uno('tondo diam. 450')).toMatchObject({ forma: 'cerchio', larghezza: 450 });
+  });
+
+  it('il trapezio isoscele scritto B/b×h', () => {
+    expect(uno('trapezio 500/300x200 x3')).toMatchObject({
+      forma: 'trapezio',
+      larghezza: 500, // base maggiore
+      altezza: 200, // altezza
+      misura3: 300, // base minore
+      quantita: 3,
+      nome: 'Trapezio'
+    });
+    // «basi 500 e 300, altezza 200» dice la stessa cosa a parole
+    expect(uno('frontone basi 500 e 300, altezza 200')).toMatchObject({
+      forma: 'trapezio',
+      larghezza: 500,
+      altezza: 200,
+      misura3: 300
+    });
+  });
+
+  it('la finestra sotto falda: base più due altezze, senza bisogno della parola', () => {
+    expect(uno('Finestra sottotetto base 1200, h sx 900, h dx 1400')).toMatchObject({
+      forma: 'trapezioR',
+      larghezza: 1200,
+      altezza: 900, // altezza sinistra
+      misura3: 1400, // altezza destra
+      nome: 'Finestra sottotetto'
+    });
+    // coi centimetri
+    expect(uno('velux base 120, h sx 90, h dx 140 cm')).toMatchObject({
+      forma: 'trapezioR',
+      larghezza: 1200,
+      altezza: 900,
+      misura3: 1400
+    });
+  });
+
+  it('altezze uguali: è un rettangolo detto male, la terza misura non resta', () => {
+    const p = uno('lucernario base 600, h sx 400, h dx 400');
+    expect(p.forma).toBeUndefined();
+    expect(p.misura3).toBeUndefined();
+    expect(p).toMatchObject({ larghezza: 600, altezza: 400 });
+  });
+
+  it('«Trapezi:» da solo apre una sezione: le righe sotto sono trapezi rettangoli', () => {
+    const e = analizzaTestoPezzi('Trapezi:\n- Finestra falda 600 x 400 x 800\n- 500 x 300 x 700');
+    expect(e.pezzi).toHaveLength(2);
+    expect(e.pezzi[0]).toMatchObject({
+      forma: 'trapezioR',
+      larghezza: 600,
+      altezza: 400,
+      misura3: 800,
+      nome: 'Finestra falda'
+    });
+    expect(e.pezzi[1]).toMatchObject({ forma: 'trapezioR', misura3: 700 });
+    // la sezione di forma non è un'essenza
+    expect(e.materiali).toEqual([]);
+  });
+
+  it('triangoli e rombi: coppia di misure, il terzo numero è la quantità', () => {
+    expect(uno('triangolo 400x300 x2')).toMatchObject({
+      forma: 'triangolo',
+      larghezza: 400,
+      altezza: 300,
+      quantita: 2
+    });
+    expect(uno('rombo 600 × 350')).toMatchObject({ forma: 'rombo', larghezza: 600, altezza: 350 });
+  });
+
+  it('le righe rettangolari di sempre non prendono nessuna forma', () => {
+    const p = uno('anta 597x720');
+    expect(p.forma).toBeUndefined();
+    expect(p.misura3).toBeUndefined();
+  });
+});

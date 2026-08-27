@@ -20,6 +20,7 @@
  */
 
 import type { LastraNesting, Piazzamento } from './nesting';
+import { misureForma } from './sagome';
 import { pianoEtichetta } from '../utils/etichettaNesting';
 
 /** magenta 100% in quadricromia, come lo rende lo schermo */
@@ -61,13 +62,25 @@ export function svgTaglio(
   const A = Math.max(0, misure.altezza);
   const sp = opzioni?.spessore ?? 0.25;
 
+  // il contorno da tagliare è la SAGOMA vera del pezzo: la macchina segue
+  // questa linea, e un trapezio tagliato per ingombro è un pezzo sbagliato
   const contorni = lastra.piazzamenti
-    .map(
-      (p) =>
-        `    <rect x="${num(p.x)}" y="${num(p.y)}" width="${num(p.larghezza)}" height="${num(
-          p.altezza
-        )}"/>`
-    )
+    .map((p) => {
+      if (p.forma === 'cerchio') {
+        // il taglio comprende l'abbondanza: il Ø dell'ingombro, non il finito
+        const r = p.larghezza / 2;
+        return `    <circle cx="${num(p.x + p.larghezza / 2)}" cy="${num(
+          p.y + p.altezza / 2
+        )}" r="${num(r)}"/>`;
+      }
+      if (p.punti) {
+        const punti = p.punti.map((q) => `${num(p.x + q[0])},${num(p.y + q[1])}`).join(' ');
+        return `    <polygon points="${punti}"/>`;
+      }
+      return `    <rect x="${num(p.x)}" y="${num(p.y)}" width="${num(p.larghezza)}" height="${num(
+        p.altezza
+      )}"/>`;
+    })
     .join('\n');
 
   const etichette = opzioni?.etichette
@@ -118,7 +131,13 @@ const INTERLINEA = 1.15;
 function etichettaPezzo(p: Piazzamento): string {
   const cx = p.x + p.larghezza / 2;
   const cy = p.y + p.altezza / 2;
-  const misura = `${num(p.larghezzaFinita)}×${num(p.altezzaFinita)}`;
+  // la misura parla la lingua della forma: Ø300, 500/300×200, 600×400|800
+  const misura = misureForma({
+    forma: p.forma,
+    larghezza: p.larghezzaFinita,
+    altezza: p.altezzaFinita,
+    misura3: p.misura3Finita
+  });
   const piano = pianoEtichetta(p.larghezza, p.altezza, p.nome || '', misura, CORPI_ETICHETTA);
   if (!piano) return '';
 

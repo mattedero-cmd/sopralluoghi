@@ -3,12 +3,12 @@ import { pdfMake, COLORI_PDF } from './engine';
 import { leggiImpostazioni } from '../db/repository';
 import { impaginaLastra, riassuntoLastra, type AreaPagina } from './disegnoNesting';
 import {
-  calcolaNestingMigliore,
   lunghezzaUsata,
   riepilogaNesting,
   type EsitoNesting,
   type LastraNesting
 } from '../geometry/nesting';
+import { calcolaNestingAuto } from '../geometry/nestingSagome';
 import { frasiRitagli, ritagliUtili, segmentaBobina } from '../geometry/segmenti';
 import { OPZIONI_PDF_PREDEFINITE, type OpzioniPdfNesting } from './opzioni';
 import {
@@ -175,16 +175,39 @@ function paginaFoglio(m: MaterialeNesting, foglio: Foglio): Content[] {
             }
           ]
         : []),
-      ...d.pezzi.map((p) => ({
-        type: 'rect' as const,
-        x: p.x,
-        y: p.y,
-        w: p.larghezza,
-        h: p.altezza,
-        color: p.riempimento,
-        lineColor: p.bordo,
-        lineWidth: p.spessore
-      })),
+      // la sagoma vera quando c'è: il PDF mostra il taglio, non l'ingombro
+      ...d.pezzi.map((p) =>
+        p.raggio
+          ? {
+              type: 'ellipse' as const,
+              x: p.x + p.larghezza / 2,
+              y: p.y + p.altezza / 2,
+              r1: p.raggio,
+              r2: p.raggio,
+              color: p.riempimento,
+              lineColor: p.bordo,
+              lineWidth: p.spessore
+            }
+          : p.poligono
+            ? {
+                type: 'polyline' as const,
+                closePath: true,
+                points: p.poligono,
+                color: p.riempimento,
+                lineColor: p.bordo,
+                lineWidth: p.spessore
+              }
+            : {
+                type: 'rect' as const,
+                x: p.x,
+                y: p.y,
+                w: p.larghezza,
+                h: p.altezza,
+                color: p.riempimento,
+                lineColor: p.bordo,
+                lineWidth: p.spessore
+              }
+      ),
       ...d.venatura.map((l) => ({
         type: 'line' as const,
         x1: l.x1,
@@ -391,7 +414,7 @@ export function contenutoNesting(
     // stessi pezzi e stesso motore dell'anteprima: il PDF non può mostrare
     // una disposizione diversa da quella che si vede a schermo
     const pezzi = pezziDi(m);
-    const esito = calcolaNestingMigliore(par, pezzi, opzioniRicerca(m));
+    const esito = calcolaNestingAuto(par, pezzi, opzioniRicerca(m));
     const riep = riepilogaNesting(par, pezzi, esito);
     const fogli = fogliDi(m, esito, opzioni);
     const usataTotale = esito.lastre.reduce((s, l) => s + lunghezzaUsata(l, m.margine), 0);

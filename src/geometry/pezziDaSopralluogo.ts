@@ -16,19 +16,38 @@ import { abbondanzaTotale, segmentiPoligono, segmentoELato } from '../db/types';
 import { misuraSegmento } from './calibrazione';
 import { misureElemento } from './calibrazione';
 import { nomeFormaPoligono, simboliPoligono } from './primitive';
-import { formaQuadrilatera, pannelliDellaForma } from './formaQuadrilatera';
+import { formaQuadrilatera, latiQuadrilatero, pannelliDellaForma } from './formaQuadrilatera';
+import type { FormaPezzo } from './sagome';
 import { codicePannello } from './nomenclatura';
 import { inMillimetri } from '../utils/format';
 
 export interface PezzoDaMisura {
   /** nome leggibile: etichetta o nota della forma, altrimenti il tipo */
   nome: string;
-  /** misure DI TAGLIO in millimetri (reale + abbondanze) */
+  /** misure DI TAGLIO in millimetri (reale + abbondanze): l'INGOMBRO */
   larghezza: number;
   altezza: number;
   quantita: number;
   /** vero se la forma aveva abbondanze inserite */
   conAbbondanze: boolean;
+  /**
+   * SAGOMA VERA del pezzo, quando le quote la descrivono per intero (mm di
+   * taglio). Il nesting la usa per incastrare i pezzi invece di affiancarne
+   * gli ingombri; assente = il pezzo è davvero un rettangolo, o le misure
+   * non bastano a dire di più (e allora non si inventa niente).
+   */
+  sagoma?: SagomaTaglio;
+}
+
+/** la forma con le sue misure, come la vuole il piano di taglio (mm) */
+export interface SagomaTaglio {
+  forma: FormaPezzo;
+  /** d1: larghezza / Ø / base / diagonale maggiore / base maggiore */
+  d1: number;
+  /** d2: altezza / diagonale minore / h / altezza sinistra */
+  d2: number;
+  /** d3: base minore (trapezio isoscele) o altezza destra (trapezio rettangolo) */
+  d3?: number;
 }
 
 type CalibFoto = Pick<Foto, 'scala' | 'piano'>;
@@ -178,6 +197,88 @@ function ingombroDaQuote(q: QuotaPoligono): { larghezza: number; altezza: number
   return null;
 }
 
+/** due misure prese sul campo sono «uguali» se differiscono meno di così */
+const stessaMisura = (a: number, b: number) => Math.abs(a - b) <= Math.max(a, b) * 0.002 + 0.05;
+
+/**
+ * LA SAGOMA VERA di una forma quotata, se le misure la descrivono.
+ *
+ * Il quadrilatero del sopralluogo ha un segmento quotato PER OGNI lato: le
+ * due altezze della finestra sotto falda esistono già nei dati, vanno solo
+ * lette prima del collasso a ingombro. Le regole, senza mai inventare:
+ * - lati verticali diversi e basi uguali → trapezio rettangolo (base, h sx,
+ *   h dx: la falda pende dal suo lato, e il verso si conserva);
+ * - basi diverse e lati uguali → trapezio isoscele (B, b, h);
+ * - diverse tutte e due le coppie → nessuna sagoma: resta l'ingombro, perché
+ *   un quadrilatero qualunque non è fra le forme che il taglio sa trattare;
+ * - il triangolo diventa sagoma solo se è isoscele (i due lati obliqui
+ *   uguali): quello storto per ingombro si tagliava anche prima;
+ * - il cerchio è sempre sagoma: il diametro basta.
+ * Valori nell'unità della forma; la conversione in mm la fa chi chiama.
+ */
+function sagomaDaQuote(a: Annotazione): { forma: FormaPezzo; d1: number; d2: number; d3?: number } | null {
+  if (a.tipo === 'quotaRaggio') {
+    const diametro = a.modo === 'diametro' ? a.valore : a.valore === null ? null : a.valore * 2;
+    if (diametro === null || diametro <= 0) return null;
+    const lato = diametro + 2 * (a.margine ?? 0);
+    return { forma: 'cerchio', d1: lato, d2: lato };
+  }
+  if (a.tipo !== 'quotaPoligono') return null;
+  const segs = segmentiPoligono(a);
+  const n = a.punti.length;
+  const forma = nomeFormaPoligono(a);
+
+  if (forma === 'Rombo') {
+    const diagonali = segs
+      .filter((s) => !segmentoELato(s, n))
+      .map((s) => (s.valore !== null && s.valore > 0 ? s.valore + abbondanzaTotale(s) : null));
+    if (diagonali.length === 2 && diagonali.every((d): d is number => d !== null)) {
+      return { forma: 'rombo', d1: Math.max(...diagonali), d2: Math.min(...diagonali) };
+    }
+    return null;
+  }
+
+  if (forma === 'Triangolo') {
+    const v = segs
+      .filter((s) => segmentoELato(s, n))
+      .map((s) => (s.valore !== null && s.valore > 0 ? s.valore + abbondanzaTotale(s) : null));
+    if (v.length !== 3 || v.some((x) => x === null)) return null;
+    const lati = (v as number[]).slice().sort((x, y) => y - x);
+    const [base, o1, o2] = lati;
+    if (!stessaMisura(o1, o2)) return null; // storto: resta l'ingombro, com'era
+    const sp = (base + o1 + o2) / 2;
+    const q2 = sp * (sp - base) * (sp - o1) * (sp - o2);
+    if (q2 <= 0) return null;
+    return { forma: 'triangolo', d1: base, d2: (2 * Math.sqrt(q2)) / base };
+  }
+
+  if (n === 4) {
+    const lati = latiQuadrilatero(a);
+    if (!lati) return null;
+    const { alto, basso, sinistro, destro } = lati;
+    // la falda vuole TUTTE E DUE le altezze misurate: non si inventa niente
+    if (sinistro !== null && destro !== null && !stessaMisura(sinistro, destro)) {
+      const base = alto ?? basso;
+      if (base === null) return null;
+      const altraBase = basso ?? alto;
+      if (altraBase !== null && !stessaMisura(base, altraBase)) return null; // storto
+      return { forma: 'trapezioR', d1: Math.max(base, altraBase ?? base), d2: sinistro, d3: destro };
+    }
+    if (alto !== null && basso !== null && !stessaMisura(alto, basso)) {
+      const h = sinistro ?? destro;
+      if (h === null) return null;
+      if (sinistro !== null && destro !== null && !stessaMisura(sinistro, destro)) return null;
+      return {
+        forma: 'trapezio',
+        d1: Math.max(alto, basso),
+        d2: h,
+        d3: Math.min(alto, basso)
+      };
+    }
+  }
+  return null;
+}
+
 /**
  * INGOMBRO DI TAGLIO di una forma, in millimetri.
  *
@@ -188,7 +289,7 @@ function ingombroDaQuote(q: QuotaPoligono): { larghezza: number; altezza: number
 export function ingombroTaglio(
   a: Annotazione,
   foto: CalibFoto
-): { larghezza: number; altezza: number; conAbbondanze: boolean } | null {
+): { larghezza: number; altezza: number; conAbbondanze: boolean; sagoma?: SagomaTaglio } | null {
   if (a.tipo === 'quotaRett') {
     const m = misureElemento(a);
     // di un trapezio o di un quadrilatero si prende l'ingombro: il lato
@@ -203,12 +304,13 @@ export function ingombroTaglio(
     const diametro = a.modo === 'diametro' ? a.valore : a.valore === null ? null : a.valore * 2;
     if (diametro === null || diametro <= 0) return null;
     const margine = a.margine ?? 0;
-    // il cerchio si taglia da un quadrato: il suo ingombro
+    // l'ingombro resta il quadrato; la sagoma dice che dentro c'è un cerchio
     const lato = diametro + 2 * margine;
     return {
       larghezza: mm(lato, a.unita),
       altezza: mm(lato, a.unita),
-      conAbbondanze: margine > 0
+      conAbbondanze: margine > 0,
+      sagoma: { forma: 'cerchio', d1: mm(lato, a.unita), d2: mm(lato, a.unita) }
     };
   }
 
@@ -220,10 +322,19 @@ export function ingombroTaglio(
     // l'artigiano ha davvero preso
     const daQuote = ingombroDaQuote(a);
     if (daQuote) {
+      const s = sagomaDaQuote(a);
       return {
         larghezza: mm(daQuote.larghezza, a.unita),
         altezza: mm(daQuote.altezza, a.unita),
-        conAbbondanze: conAbb
+        conAbbondanze: conAbb,
+        sagoma: s
+          ? {
+              forma: s.forma,
+              d1: mm(s.d1, a.unita),
+              d2: mm(s.d2, a.unita),
+              d3: s.d3 === undefined ? undefined : mm(s.d3, a.unita)
+            }
+          : undefined
       };
     }
 
@@ -324,7 +435,8 @@ export function pezziDaAnnotazioni(
       larghezza: ing.larghezza,
       altezza: ing.altezza,
       quantita: 1,
-      conAbbondanze: ing.conAbbondanze
+      conAbbondanze: ing.conAbbondanze,
+      sagoma: ing.sagoma
     });
   }
   return pezzi;
@@ -367,7 +479,10 @@ export function diagnosiPezzi(annotazioni: Annotazione[], foto: CalibFoto): Diag
 export function raggruppaPezzi(pezzi: PezzoDaMisura[]): PezzoDaMisura[] {
   const mappa = new Map<string, PezzoDaMisura>();
   for (const p of pezzi) {
-    const chiave = `${p.nome}|${p.larghezza}×${p.altezza}`;
+    // due pezzi con lo stesso ingombro ma forma diversa NON sono lo stesso
+    // pezzo: un trapezio e il suo rettangolo si tagliano in modi diversi
+    const sagoma = p.sagoma ? `|${p.sagoma.forma}:${p.sagoma.d1}×${p.sagoma.d2}×${p.sagoma.d3 ?? ''}` : '';
+    const chiave = `${p.nome}|${p.larghezza}×${p.altezza}${sagoma}`;
     const gia = mappa.get(chiave);
     if (gia) {
       gia.quantita += p.quantita;

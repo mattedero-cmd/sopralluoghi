@@ -400,3 +400,157 @@ describe('forme divise in teli', () => {
     expect(pezzi[0].larghezza).toBe(5100);
   });
 });
+
+/* --- sagome vere: la forma non muore più nell'ingombro ----------------- */
+
+describe('sagoma di taglio', () => {
+  it('la finestra sotto falda: base + due altezze diverse → trapezio rettangolo', () => {
+    // quotata come la quota il sopralluogo: base 600, h sx 400, h dx 800
+    const falda = poligono(
+      [
+        [0, 400],
+        [600, 0],
+        [600, 800],
+        [0, 800]
+      ],
+      [
+        { da: 2, a: 3, valore: 600 },
+        { da: 3, a: 0, valore: 400 },
+        { da: 1, a: 2, valore: 800 }
+      ]
+    );
+    const pezzi = pezziDaAnnotazioni([falda], FOTO);
+    expect(pezzi).toHaveLength(1);
+    expect(pezzi[0].sagoma).toEqual({ forma: 'trapezioR', d1: 6000, d2: 4000, d3: 8000 });
+    // l'ingombro resta il rettangolo che la contiene
+    expect(pezzi[0].larghezza).toBe(6000);
+    expect(pezzi[0].altezza).toBe(8000);
+  });
+
+  it('le abbondanze dei lati entrano nelle altezze di taglio', () => {
+    const falda = poligono(
+      [
+        [0, 400],
+        [600, 0],
+        [600, 800],
+        [0, 800]
+      ],
+      [
+        { da: 2, a: 3, valore: 600 },
+        { da: 3, a: 0, valore: 400, abbInizio: 2, abbFine: 3 },
+        { da: 1, a: 2, valore: 800, abbInizio: 5 }
+      ]
+    );
+    const [p] = pezziDaAnnotazioni([falda], FOTO);
+    expect(p.sagoma).toEqual({ forma: 'trapezioR', d1: 6000, d2: 4050, d3: 8050 });
+  });
+
+  it('con una sola altezza misurata NON si inventa la seconda: resta rettangolo', () => {
+    const mezza = poligono(
+      [
+        [0, 400],
+        [600, 0],
+        [600, 800],
+        [0, 800]
+      ],
+      [
+        { da: 2, a: 3, valore: 600 },
+        { da: 1, a: 2, valore: 800 }
+      ]
+    );
+    const [p] = pezziDaAnnotazioni([mezza], FOTO);
+    expect(p.sagoma).toBeUndefined();
+  });
+
+  it('basi diverse e lati uguali → trapezio isoscele B/b×h', () => {
+    const trap = poligono(
+      [
+        [100, 0],
+        [500, 0],
+        [600, 300],
+        [0, 300]
+      ],
+      [
+        { da: 0, a: 1, valore: 400 },
+        { da: 2, a: 3, valore: 600 },
+        { da: 3, a: 0, valore: 300 },
+        { da: 1, a: 2, valore: 300 }
+      ]
+    );
+    const [p] = pezziDaAnnotazioni([trap], FOTO);
+    expect(p.sagoma).toEqual({ forma: 'trapezio', d1: 6000, d2: 3000, d3: 4000 });
+  });
+
+  it('basi E lati diversi: quadrilatero qualunque, niente sagoma', () => {
+    const storto = poligono(
+      [
+        [100, 0],
+        [500, 0],
+        [600, 300],
+        [0, 350]
+      ],
+      [
+        { da: 0, a: 1, valore: 400 },
+        { da: 2, a: 3, valore: 600 },
+        { da: 3, a: 0, valore: 300 },
+        { da: 1, a: 2, valore: 500 }
+      ]
+    );
+    const [p] = pezziDaAnnotazioni([storto], FOTO);
+    expect(p.sagoma).toBeUndefined();
+  });
+
+  it('il cerchio esce come cerchio, margine compreso nel diametro', () => {
+    const [p] = pezziDaAnnotazioni([cerchio(30, 2)], FOTO);
+    expect(p.sagoma).toEqual({ forma: 'cerchio', d1: 340, d2: 340 });
+    expect(p.larghezza).toBe(340);
+  });
+
+  it('il triangolo isoscele diventa sagoma, quello storto resta ingombro', () => {
+    const iso = poligono(
+      [
+        [200, 0],
+        [400, 300],
+        [0, 300]
+      ],
+      [
+        { da: 1, a: 2, valore: 400 },
+        { da: 0, a: 1, valore: 360.5 },
+        { da: 2, a: 0, valore: 360.5 }
+      ]
+    );
+    const [pi] = pezziDaAnnotazioni([iso], FOTO);
+    expect(pi.sagoma?.forma).toBe('triangolo');
+    expect(pi.sagoma?.d1).toBe(4000);
+
+    const storto = poligono(
+      [
+        [200, 0],
+        [400, 300],
+        [0, 300]
+      ],
+      [
+        { da: 1, a: 2, valore: 400 },
+        { da: 0, a: 1, valore: 300 },
+        { da: 2, a: 0, valore: 450 }
+      ]
+    );
+    const [ps] = pezziDaAnnotazioni([storto], FOTO);
+    expect(ps.sagoma).toBeUndefined();
+  });
+
+  it('raggruppaPezzi non fonde un trapezio col suo rettangolo d’ingombro', () => {
+    const doppi = [
+      { nome: 'X', larghezza: 600, altezza: 800, quantita: 1, conAbbondanze: false },
+      {
+        nome: 'X',
+        larghezza: 600,
+        altezza: 800,
+        quantita: 1,
+        conAbbondanze: false,
+        sagoma: { forma: 'trapezioR' as const, d1: 600, d2: 400, d3: 800 }
+      }
+    ];
+    expect(raggruppaPezzi(doppi)).toHaveLength(2);
+  });
+});

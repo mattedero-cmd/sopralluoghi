@@ -8,13 +8,21 @@ import { pannelliDi, type Pannellizzazione } from '../geometry/pannelli';
 import { codicePannello } from '../geometry/nomenclatura';
 import { nuovoId } from '../utils/id';
 import {
-  calcolaNestingMigliore,
   lunghezzaUsata,
   passoGriglia,
   riepilogaNesting,
   type LastraNesting,
   type PezzoNesting
 } from '../geometry/nesting';
+import { calcolaNestingAuto, type EsitoSagome } from '../geometry/nestingSagome';
+import {
+  etichetteMisure,
+  formaDi,
+  haSagome,
+  misureForma,
+  FORME,
+  type FormaPezzo
+} from '../geometry/sagome';
 import {
   frasiRitagli,
   ritagliUtili,
@@ -415,12 +423,20 @@ export function NestingPage({
   const pezziCalcolo = useMemo(() => pezziDi(mat), [mat]);
   const esito = useMemo(
     () =>
-      // sulla bobina si cercano blocchi maneggevoli, su lastra un avanzo
+      // con almeno una SAGOMA in lista lavora il motore a forme vere, che
+      // incastra trapezi e triangoli testa-coda; con soli rettangoli resta
+      // il MaxRects con la sua ricerca di strategie, che lì rende di più.
+      // Sulla bobina si cercano blocchi maneggevoli, su lastra un avanzo
       // rettangolare: le opzioni stanno in un posto solo, così l'anteprima,
       // il PDF e l'SVG mostrano sempre la stessa disposizione
-      calcolaNestingMigliore(parametri, pezziCalcolo, opzioniRicerca(mat)),
+      calcolaNestingAuto(parametri, pezziCalcolo, opzioniRicerca(mat)),
     [parametri, pezziCalcolo, mat.modo]
   );
+  /** quello che il motore a sagome ha dovuto lasciare fuori dal conto */
+  const esclusi = useMemo(() => {
+    const e = esito as Partial<EsitoSagome>;
+    return { incompleti: e.incompleti ?? 0, oltreLimite: e.oltreLimite ?? 0 };
+  }, [esito]);
   const riepilogo = useMemo(
     () => riepilogaNesting(parametri, pezziCalcolo, esito),
     [parametri, pezziCalcolo, esito]
@@ -442,7 +458,8 @@ export function NestingPage({
     const areaConsumata = mat.bobina.larghezza * usatiMm;
     let areaPezzi = 0;
     for (const l of esito.lastre) {
-      for (const pc of l.piazzamenti) areaPezzi += pc.larghezzaFinita * pc.altezzaFinita;
+      for (const pc of l.piazzamenti)
+        areaPezzi += pc.areaVera ?? pc.larghezzaFinita * pc.altezzaFinita;
     }
     return {
       usatiM,
@@ -792,6 +809,8 @@ export function NestingPage({
           nome: p.nome,
           larghezza: p.larghezza,
           altezza: p.altezza,
+          ...(p.misura3 !== undefined ? { misura3: p.misura3 } : {}),
+          ...(p.forma && p.forma !== 'rett' ? { forma: p.forma } : {}),
           quantita: p.quantita,
           // in un'essenza con venatura il pezzo nasce vincolato al suo verso
           ruotabile: p.ruotabile && bersaglio.venatura === 'nessuna',
@@ -1120,7 +1139,7 @@ export function NestingPage({
             >
               Annulla
             </button>
-            {selezionati.length === 1 && (
+            {selezionati.length === 1 && formaDi(selezionati[0]) === 'rett' && (
               <button className="btn piccolo" onClick={() => setInPannelli(selezionati[0].id)}>
                 Dividi in teli…
               </button>
@@ -1137,8 +1156,10 @@ export function NestingPage({
               <span />
               <span>Nome</span>
               <span className="nest-misure">
+                <span className="c">Forma</span>
                 <span className="c">L</span>
                 <span className="c">A</span>
+                <span className="c">3ª</span>
                 <span className="c">Qtà</span>
                 <span className="c">Ruota</span>
               </span>
@@ -1174,20 +1195,69 @@ export function NestingPage({
                   onChange={(e) => aggiornaPezzo(p.id, { nome: e.target.value })}
                 />
                 <span className="nest-misure">
+                  {/* la forma del pezzo: qui si corregge a mano un pezzo
+                      interpretato male, e i campi misura seguono */}
+                  <select
+                    className="nest-forma"
+                    aria-label="Forma del pezzo"
+                    value={formaDi(p)}
+                    onChange={(e) => {
+                      const f = e.target.value as FormaPezzo;
+                      const mod: Partial<PezzoNesting> = { forma: f === 'rett' ? undefined : f };
+                      // il cerchio ha una misura sola; i trapezi ne vogliono
+                      // tre, e la terza parte da un valore sensato da correggere
+                      if (f === 'cerchio') mod.altezza = p.larghezza;
+                      if (f === 'trapezio') mod.misura3 = p.misura3 ?? Math.round(p.larghezza * 0.6);
+                      if (f === 'trapezioR') mod.misura3 = p.misura3 ?? p.altezza;
+                      if (f !== 'trapezio' && f !== 'trapezioR') mod.misura3 = undefined;
+                      aggiornaPezzo(p.id, mod);
+                    }}
+                  >
+                    {FORME.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.nome}
+                      </option>
+                    ))}
+                  </select>
                   <CampoNumero
-                    etichetta="Larghezza"
+                    etichetta={etichetteMisure(formaDi(p)).l}
                     classe="c"
                     min={1}
                     valore={p.larghezza}
-                    onCambia={(v) => aggiornaPezzo(p.id, { larghezza: v })}
+                    onCambia={(v) =>
+                      aggiornaPezzo(
+                        p.id,
+                        // il diametro è una misura sola: i due campi vanno insieme
+                        formaDi(p) === 'cerchio' ? { larghezza: v, altezza: v } : { larghezza: v }
+                      )
+                    }
                   />
-                  <CampoNumero
-                    etichetta="Altezza"
-                    classe="c"
-                    min={1}
-                    valore={p.altezza}
-                    onCambia={(v) => aggiornaPezzo(p.id, { altezza: v })}
-                  />
+                  {etichetteMisure(formaDi(p)).a !== null ? (
+                    <CampoNumero
+                      etichetta={etichetteMisure(formaDi(p)).a!}
+                      classe="c"
+                      min={1}
+                      valore={p.altezza}
+                      onCambia={(v) => aggiornaPezzo(p.id, { altezza: v })}
+                    />
+                  ) : (
+                    <span className="c nest-vuota" aria-hidden="true">
+                      —
+                    </span>
+                  )}
+                  {etichetteMisure(formaDi(p)).m3 !== null ? (
+                    <CampoNumero
+                      etichetta={etichetteMisure(formaDi(p)).m3!}
+                      classe="c"
+                      min={1}
+                      valore={p.misura3 ?? 0}
+                      onCambia={(v) => aggiornaPezzo(p.id, { misura3: v })}
+                    />
+                  ) : (
+                    <span className="c nest-vuota" aria-hidden="true">
+                      —
+                    </span>
+                  )}
                   <CampoNumero
                     etichetta="Quantità"
                     classe="c"
@@ -1230,9 +1300,11 @@ export function NestingPage({
                       : `${fuori} ${fuori === 1 ? 'copia' : 'copie'} su ${totale} non ${
                           fuori === 1 ? 'entra' : 'entrano'
                         }`}
-                    <button className="btn piccolo" onClick={() => setInPannelli(p.id)}>
-                      <Icona nome="griglia" dimensione={15} /> Dividi in teli
-                    </button>
+                    {formaDi(p) === 'rett' && (
+                      <button className="btn piccolo" onClick={() => setInPannelli(p.id)}>
+                        <Icona nome="griglia" dimensione={15} /> Dividi in teli
+                      </button>
+                    )}
                   </span>
                 )}
               </div>
@@ -1336,6 +1408,29 @@ export function NestingPage({
               </div>
             )}
 
+            {(esclusi.incompleti > 0 || esclusi.oltreLimite > 0) && (
+              <div className="nest-avviso">
+                {esclusi.incompleti > 0 && (
+                  <>
+                    <strong>
+                      {esclusi.incompleti}{' '}
+                      {esclusi.incompleti === 1
+                        ? 'pezzo con misure incomplete escluso'
+                        : 'pezzi con misure incomplete esclusi'}
+                    </strong>{' '}
+                    dal calcolo: la sua forma vuole anche la misura che manca (i trapezi ne
+                    chiedono tre). Completa i campi segnati nella lista.
+                  </>
+                )}
+                {esclusi.oltreLimite > 0 && (
+                  <>
+                    {' '}
+                    Oltre {formattaNumero(600)} copie il calcolo si ferma:{' '}
+                    {esclusi.oltreLimite} non sono state provate.
+                  </>
+                )}
+              </div>
+            )}
             {scartatiRaggruppati.length > 0 && (
               <div className="nest-avviso">
                 <strong>
@@ -1348,7 +1443,8 @@ export function NestingPage({
                 <ul>
                   {scartatiRaggruppati.map((s, i) => (
                     <li key={i}>
-                      {s.n}× {s.nome || 'pezzo'} ({formattaNumero(s.l)}×{formattaNumero(s.a)} mm)
+                      {s.n}× {s.nome || 'pezzo'} ({formattaNumero(s.l)}×{formattaNumero(s.a)} mm
+                      d’ingombro)
                     </li>
                   ))}
                 </ul>
@@ -1414,10 +1510,23 @@ export function NestingPage({
         )}
 
         <p className="nest-nota">
-          Nesting <strong>libero</strong> (MaxRects), calcolato per ogni essenza separatamente:
-          si provano tutti gli ordini di inserimento, i versi e i criteri di riempimento, poi si
-          gira un pezzo alla volta finché il lavoro si accorcia. Senza venatura i pezzi girano da
-          soli; con la venatura restano nel loro verso. La <em>resa</em> è l’area dei pezzi finiti sull’area del materiale usato;
+          {haSagome(pezziCalcolo) ? (
+            <>
+              Nesting <strong>a forma vera</strong>, calcolato per ogni essenza separatamente:
+              con almeno una sagoma in lista le forme si appoggiano su una griglia fitta e si
+              incastrano davvero — due trapezi testa-coda condividono il fianco obliquo. Fra un
+              pezzo e l’altro resta sempre almeno la lama. Senza venatura i pezzi girano da
+              soli; con la venatura restano nel loro verso.
+            </>
+          ) : (
+            <>
+              Nesting <strong>libero</strong> (MaxRects), calcolato per ogni essenza
+              separatamente: si provano tutti gli ordini di inserimento, i versi e i criteri di
+              riempimento, poi si gira un pezzo alla volta finché il lavoro si accorcia. Senza
+              venatura i pezzi girano da soli; con la venatura restano nel loro verso.
+            </>
+          )}{' '}
+          La <em>resa</em> è l’area dei pezzi finiti sull’area del materiale usato;
           lo <em>sfrido</em> comprende lama, abbondanze e margini. Il rotolo viene
           impaginato come una striscia unica e poi spezzato in blocchi maneggevoli, tagliando
           solo dove non passa nessun pezzo: quello che vedi qui è quello che trovi nel PDF.
@@ -1590,7 +1699,8 @@ function Lastra({
   const latoMax = Math.max(L, A);
   const areaLastra = L * A;
   const usata = lastra.piazzamenti.reduce(
-    (a, pc) => a + pc.larghezzaFinita * pc.altezzaFinita,
+    // sulle sagome conta l'area geometrica vera, non il prodotto delle misure
+    (a, pc) => a + (pc.areaVera ?? pc.larghezzaFinita * pc.altezzaFinita),
     0
   );
   const resa = areaLastra > 0 ? (usata / areaLastra) * 100 : 0;
@@ -1677,7 +1787,17 @@ function Lastra({
           {lastra.piazzamenti.map((pc, i) => {
             const cx = pc.x + pc.larghezza / 2;
             const cy = pc.y + pc.altezza / 2;
-            const misura = `${formattaNumero(pc.larghezzaFinita)}×${formattaNumero(pc.altezzaFinita)}`;
+            // la sagoma vera del pezzo, in coordinate della lastra; null = rettangolo
+            const sagoma = pc.punti
+              ? pc.punti.map((q) => `${pc.x + q[0]},${pc.y + q[1]}`).join(' ')
+              : null;
+            const cerchio = pc.forma === 'cerchio';
+            const misura = misureForma({
+              forma: pc.forma,
+              larghezza: pc.larghezzaFinita,
+              altezza: pc.altezzaFinita,
+              misura3: pc.misura3Finita
+            });
             // dimensioni pensate in px di schermo, poi convertite nelle unità
             // del disegno: così restano leggibili a qualsiasi scala
             const dim = inUnita(12);
@@ -1690,7 +1810,7 @@ function Lastra({
                     minimo: inUnita(5)
                   })
                 : null;
-            const girabile = siGira(pc.chiave);
+            const girabile = siGira(pc.chiave) && !pc.forma;
             return (
               <g
                 key={i}
@@ -1717,24 +1837,53 @@ function Lastra({
                     ? `${pc.nome || 'Pezzo'} ${misura} — tocca per girare di 90°`
                     : `${pc.nome || 'Pezzo'} ${misura} — bloccato dalla venatura`}
                 </title>
-                <rect
-                  x={pc.x}
-                  y={pc.y}
-                  width={pc.larghezza}
-                  height={pc.altezza}
-                  rx={1.5}
-                  fill={tintaSfondo(pc.tinta)}
-                  stroke={tintaBordo(pc.tinta)}
-                  strokeWidth={girabile && imposti[pc.chiave] != null ? 3 : 1.5}
-                  vectorEffect="non-scaling-stroke"
-                />
+                {cerchio ? (
+                  <circle
+                    cx={cx}
+                    cy={cy}
+                    // come il rettangolo: si vede il pezzo DA TAGLIARE,
+                    // abbondanza compresa
+                    r={pc.larghezza / 2}
+                    fill={tintaSfondo(pc.tinta)}
+                    stroke={tintaBordo(pc.tinta)}
+                    strokeWidth={1.5}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ) : sagoma ? (
+                  <polygon
+                    points={sagoma}
+                    fill={tintaSfondo(pc.tinta)}
+                    stroke={tintaBordo(pc.tinta)}
+                    strokeWidth={1.5}
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ) : (
+                  <rect
+                    x={pc.x}
+                    y={pc.y}
+                    width={pc.larghezza}
+                    height={pc.altezza}
+                    rx={1.5}
+                    fill={tintaSfondo(pc.tinta)}
+                    stroke={tintaBordo(pc.tinta)}
+                    strokeWidth={girabile && imposti[pc.chiave] != null ? 3 : 1.5}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                )}
                 {/* venatura: righe parallele nel verso del materiale, ritagliate
                     dentro il pezzo. Sono i "fili" del legno, quindi seguono la
                     lastra e NON girano col pezzo. */}
                 {venatura !== 'nessuna' && (
                   <g clipPath={`url(#taglio-${indice}-${i})`} opacity={0.28}>
                     <clipPath id={`taglio-${indice}-${i}`}>
-                      <rect x={pc.x} y={pc.y} width={pc.larghezza} height={pc.altezza} rx={1.5} />
+                      {cerchio ? (
+                        <circle cx={cx} cy={cy} r={pc.larghezza / 2} />
+                      ) : sagoma ? (
+                        <polygon points={sagoma} />
+                      ) : (
+                        <rect x={pc.x} y={pc.y} width={pc.larghezza} height={pc.altezza} rx={1.5} />
+                      )}
                     </clipPath>
                     {righeVenatura(pc, venatura, Math.max(inUnita(7), 12)).map((l, k) => (
                       <line
@@ -1821,8 +1970,10 @@ function Lastra({
                 />
                 <strong>{p.nome || '—'}</strong>
                 <span className="q">
-                  {formattaNumero(p.larghezza)}×{formattaNumero(p.altezza)} ·{' '}
-                  {Math.max(0, Math.round(p.quantita)) || 0}×{p.ruotabile ? ' ↻' : ''}
+                  {formaDi(p) === 'rett'
+                    ? `${formattaNumero(p.larghezza)}×${formattaNumero(p.altezza)}`
+                    : misureForma(p)}{' '}
+                  · {Math.max(0, Math.round(p.quantita)) || 0}×{p.ruotabile ? ' ↻' : ''}
                 </span>
               </span>
             ))}
@@ -2369,7 +2520,10 @@ function ModaleIncolla({
     <div className="pv-voce" key={i}>
       <span className="n">{p.nome}</span>
       <span className="d">
-        {formattaNumero(p.larghezza)}×{formattaNumero(p.altezza)} mm
+        {p.forma && p.forma !== 'rett'
+          ? `${FORME.find((f) => f.id === p.forma)?.nome ?? p.forma} ${misureForma(p)}`
+          : `${formattaNumero(p.larghezza)}×${formattaNumero(p.altezza)}`}{' '}
+        mm
       </span>
       <span className="q">×{p.quantita}</span>
       <span className={p.ruotabile ? 'r' : 'r spento'}>{p.ruotabile ? '↻' : '·'}</span>
@@ -2382,7 +2536,9 @@ function ModaleIncolla({
         Incolla la lista, anche il riassunto di una discussione. Riconosco misure (
         <code>597x720</code>, <code>560 × 300</code>), quantità (<code>x4</code>,{' '}
         <code>4 pezzi</code>, <code>q.tà 6</code>), la rotazione (<code>ruotabile</code> /{' '}
-        <code>verso fisso</code>) e le <strong>intestazioni di essenza</strong> (una riga corta
+        <code>verso fisso</code>), le <strong>forme</strong> (<code>cerchio Ø 300</code>,{' '}
+        <code>trapezio 500/300×200</code>, <code>base 600 h sx 400 h dx 800</code>) e le{' '}
+        <strong>intestazioni di essenza</strong> (una riga corta
         senza misure, es. <code>Legno scuro</code>): i pezzi sotto ognuna finiscono nella loro
         essenza. Controlla l’anteprima prima di compilare.
       </p>

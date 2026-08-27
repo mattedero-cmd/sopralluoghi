@@ -9,6 +9,7 @@
 
 import type { LastraNesting } from '../geometry/nesting';
 import { pianoEtichetta } from '../utils/etichettaNesting';
+import { misureForma } from '../geometry/sagome';
 import { tintaBordoEsa, tintaSfondoEsa } from '../utils/tinte';
 import { formattaNumero } from '../utils/format';
 
@@ -28,6 +29,10 @@ export interface RiquadroPdf {
   bordo: string;
   spessore: number;
   tratteggio?: boolean;
+  /** vertici della SAGOMA vera in punti pagina; assenti = rettangolo */
+  poligono?: Array<{ x: number; y: number }>;
+  /** raggio del cerchio in punti pagina (centro del riquadro) */
+  raggio?: number;
 }
 
 export interface TestoPdf {
@@ -146,7 +151,14 @@ export function impaginaLastra(
       altezza: rh,
       riempimento: tintaSfondoEsa(pc.tinta),
       bordo: tintaBordoEsa(pc.tinta),
-      spessore: 0.7
+      spessore: 0.7,
+      // la sagoma vera, scalata in punti pagina: il PDF mostra quello che si
+      // taglia, non il rettangolo che lo contiene
+      poligono: pc.punti
+        ? pc.punti.map((q) => ({ x: rx + q[0] * scala, y: ry + q[1] * scala }))
+        : undefined,
+      // il taglio comprende l'abbondanza: il Ø dell'ingombro, non il finito
+      raggio: pc.forma === 'cerchio' ? rw / 2 : undefined
     });
 
     if (vena === 'verticale') {
@@ -159,7 +171,12 @@ export function impaginaLastra(
       }
     }
 
-    const misura = `${formattaNumero(pc.larghezzaFinita)}×${formattaNumero(pc.altezzaFinita)}`;
+    const misura = misureForma({
+      forma: pc.forma,
+      larghezza: pc.larghezzaFinita,
+      altezza: pc.altezzaFinita,
+      misura3: pc.misura3Finita
+    });
     const piano = pianoEtichetta(rw, rh, pc.nome || '', misura, CORPI_PDF);
     if (!piano) continue;
 

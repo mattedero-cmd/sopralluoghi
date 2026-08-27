@@ -2817,12 +2817,30 @@ a {
   background: color-mix(in srgb, var(--accento) 12%, transparent);
 }
 
-/* blocco delle misure: L, A, Qtà, Ruota */
+/* blocco delle misure: Forma, L, A, terza misura, Qtà, Ruota */
 .nest-misure {
   display: grid;
-  grid-template-columns: 68px 68px 58px 44px;
+  grid-template-columns: 96px 62px 62px 62px 52px 40px;
   gap: 6px;
   align-items: center;
+}
+
+/* il selettore della forma: si corregge a mano un pezzo interpretato male */
+.nest-forma {
+  width: 100%;
+  min-height: 38px;
+  padding: 4px 6px;
+  font-size: 12.5px;
+  background: var(--sfondo);
+  color: var(--testo);
+  border: 1px solid var(--bordo);
+  border-radius: 8px;
+}
+
+/* cella misura che questa forma non usa */
+.nest-vuota {
+  text-align: center;
+  color: var(--bordo);
 }
 
 .nest-intestazione {
@@ -2886,7 +2904,7 @@ a {
   }
   .nest-riga > .nest-misure {
     grid-area: misure;
-    grid-template-columns: 1fr 1fr 1fr 44px;
+    grid-template-columns: 1.4fr 1fr 1fr 1fr 0.9fr 40px;
   }
 }
 

@@ -3,7 +3,8 @@ import {
   pannelliTaglio,
   raggruppaPezzi,
   type PannelloTaglio,
-  type PezzoDaMisura
+  type PezzoDaMisura,
+  type SagomaTaglio
 } from '../geometry/pezziDaSopralluogo';
 import { nestingDiProgetto } from '../db/repository';
 import { contenutoNesting } from './nesting';
@@ -740,10 +741,11 @@ interface RigaMisura {
   derivaDa?: string;
   /**
    * Ingombro DI TAGLIO in millimetri (abbondanze comprese): il rettangolo da
-   * cui ricavare il pezzo. Serve al nesting, che impagina rettangoli; nel PDF
-   * non si stampa, perché lì contano le misure vere della forma.
+   * cui ricavare il pezzo, più — quando le quote la descrivono — la SAGOMA
+   * vera, che il nesting usa per incastrare i pezzi invece di affiancare gli
+   * ingombri. Nel PDF non si stampa: lì contano le misure vere della forma.
    */
-  taglioMm?: { larghezza: number; altezza: number };
+  taglioMm?: { larghezza: number; altezza: number; sagoma?: SagomaTaglio };
   /**
    * TELI di una forma pannellizzata, in millimetri di taglio. Quando ci sono,
    * nella distinta vanno loro e non la forma intera: è quello che si taglia.
@@ -1656,7 +1658,8 @@ export async function pezziDaProgetto(progettoId: string): Promise<PezzoDaMisura
         larghezza: r.taglioMm.larghezza,
         altezza: r.taglioMm.altezza,
         quantita,
-        conAbbondanze: !!r.abbondanze
+        conAbbondanze: !!r.abbondanze,
+        sagoma: r.taglioMm.sagoma
       });
     }
   }
@@ -1685,8 +1688,11 @@ export async function documentoTaglioProgetto(
     pezzi: pezzi.map((p, i) => ({
       id: `p${i + 1}`,
       nome: p.nome,
-      larghezza: p.larghezza,
-      altezza: p.altezza,
+      // con la sagoma le misure sono le SUE (d1/d2/d3); senza, l'ingombro
+      larghezza: p.sagoma?.d1 ?? p.larghezza,
+      altezza: p.sagoma?.d2 ?? p.altezza,
+      misura3: p.sagoma?.d3,
+      forma: p.sagoma?.forma,
       quantita: p.quantita,
       ruotabile: true,
       tinta: prossimaTinta(i)

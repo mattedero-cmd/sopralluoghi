@@ -176,6 +176,39 @@ export function formaQuadrilatera(a: Annotazione): FormaQuadrilatera | null {
   };
 }
 
+/**
+ * I QUATTRO LATI DI TAGLIO di un quadrilatero, ciascuno per conto suo.
+ *
+ * È la risposta alla domanda «questa finestra è sotto falda?»: il sopralluogo
+ * quota OGNI lato con la sua misura (un SegmentoQuota per lato), quindi
+ * l'altezza sinistra e la destra esistono separate nei dati — vanno solo
+ * lette prima che il collasso a ingombro (Math.max) le fonda. I valori sono
+ * DI TAGLIO: misura scritta più le abbondanze del lato, nell'unità della
+ * forma. `null` dove il lato non è quotato.
+ */
+export function latiQuadrilatero(
+  a: Annotazione
+): { alto: number | null; basso: number | null; sinistro: number | null; destro: number | null } | null {
+  if (a.tipo !== 'quotaPoligono' || a.punti.length !== 4 || a.soloEtichetta) return null;
+  const quad = ordinaQuad(a.punti);
+  const indice = quad.map((p) => a.punti.indexOf(p));
+  if (indice.some((i) => i < 0)) return null;
+  const segmenti = segmentiPoligono(a);
+  const lato = (da: number, av: number) =>
+    segmenti.find(
+      (s) =>
+        (s.da === indice[da] && s.a === indice[av]) || (s.da === indice[av] && s.a === indice[da])
+    ) ?? null;
+  const taglio = (s: ReturnType<typeof lato>) =>
+    s && s.valore !== null && s.valore > 0 ? s.valore + abbondanzaTotale(s) : null;
+  return {
+    alto: taglio(lato(0, 1)),
+    basso: taglio(lato(3, 2)),
+    sinistro: taglio(lato(0, 3)),
+    destro: taglio(lato(1, 2))
+  };
+}
+
 /** la pannellizzazione applicata a una forma, se c'è e se regge */
 export function pannellizzazioneDi(a: Annotazione): Pannellizzazione | null {
   if (a.tipo === 'quotaRett' || a.tipo === 'quotaPoligono') return a.pannelli ?? null;

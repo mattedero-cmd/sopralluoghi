@@ -1,4 +1,5 @@
 import { segmentaBobina, strisciaResidua } from './segmenti';
+import type { FormaPezzo, PuntoSagoma } from './sagome';
 
 /**
  * NESTING RETTANGOLARE (ottimizzazione del taglio).
@@ -21,12 +22,23 @@ import { segmentaBobina, strisciaResidua } from './segmenti';
  *   (`larghezza - lama`), spostato del margine.
  */
 
-/** rettangolo da tagliare, come lo inserisce l'utente */
+/** pezzo da tagliare, come lo inserisce l'utente */
 export interface PezzoNesting {
   id: string;
   nome: string;
+  /**
+   * Le misure secondo la forma (vedi geometry/sagome.ts): per il rettangolo
+   * larghezza×altezza come sempre; per il cerchio larghezza = altezza = Ø;
+   * per il trapezio isoscele larghezza = base maggiore e misura3 = minore;
+   * per il trapezio rettangolo altezza = lato sinistro e misura3 = destro —
+   * la finestra sotto falda, quotata com'è quotata nel sopralluogo.
+   */
   larghezza: number;
   altezza: number;
+  /** terza misura, solo per i trapezi */
+  misura3?: number;
+  /** forma vera del pezzo; assente = rettangolo (i salvataggi vecchi) */
+  forma?: FormaPezzo;
   quantita: number;
   /** true = si può girare di 90° */
   ruotabile: boolean;
@@ -129,6 +141,20 @@ export interface Piazzamento {
    * riferimento sopravvive al ricalcolo, che rimescola le posizioni.
    */
   chiave: string;
+  /**
+   * SAGOMA VERA del pezzo (motore geometry/nestingSagome.ts). I vertici sono
+   * RELATIVI a (x, y): chi sposta il piazzamento lungo il rotolo (trasla,
+   * cadono, risalgono) non deve saperne niente. x/y/larghezza/altezza restano
+   * l'ingombro, ed è per questo che segmenti e avanzi funzionano invariati.
+   */
+  forma?: FormaPezzo;
+  punti?: PuntoSagoma[];
+  /** terza misura finita (trapezi), per etichette e testi */
+  misura3Finita?: number;
+  /** rotazione applicata in gradi (0/90/180/270) */
+  rotazione?: number;
+  /** area geometrica vera del pezzo finito (πr² per il cerchio, non il quadrato) */
+  areaVera?: number;
 }
 
 export interface LastraNesting {
@@ -142,6 +168,7 @@ export interface PezzoScartato {
   /** identità della singola copia rimasta fuori (`idPezzo#indice`) */
   chiave: string;
   nome: string;
+  /** ingombro finito: per le sagome è il rettangolo che le contiene */
   larghezzaFinita: number;
   altezzaFinita: number;
 }
@@ -1028,7 +1055,9 @@ export function riepilogaNesting(
   for (const l of esito.lastre) {
     for (const pc of l.piazzamenti) {
       piazzati++;
-      areaFinita += pc.larghezzaFinita * pc.altezzaFinita;
+      // la resa si calcola sull'area GEOMETRICA vera: un cerchio conta πr²,
+      // un trapezio la sua area, non il rettangolo che li contiene
+      areaFinita += pc.areaVera ?? pc.larghezzaFinita * pc.altezzaFinita;
     }
   }
   const richiesti = pezzi.reduce((a, p) => a + (Math.max(0, Math.round(p.quantita)) || 0), 0);
