@@ -17,7 +17,7 @@ import { misuraSegmento } from './calibrazione';
 import { misureElemento } from './calibrazione';
 import { nomeFormaPoligono, simboliPoligono } from './primitive';
 import { formaQuadrilatera, latiQuadrilatero, pannelliDellaForma } from './formaQuadrilatera';
-import { poligonoConvesso, type FormaPezzo } from './sagome';
+import { poligonoConvesso, poligonoSagoma, type FormaPezzo } from './sagome';
 import { codicePannello } from './nomenclatura';
 import { inMillimetri } from '../utils/format';
 
@@ -356,6 +356,13 @@ function sagomaDaQuote(
      * serve la diagonale, quotata se c'è, altrimenti presa dal disegno.
      */
     if (alto !== null && basso !== null && sinistro !== null && destro !== null) {
+      // Lati opposti uguali a due a due: è un parallelogramma, e senza una
+      // diagonale non c'è modo di sapere se è storto o dritto. Un elemento
+      // quotato su tutti e quattro i lati è quasi sempre un rettangolo
+      // misurato per bene, non un parallelogramma: si lascia rettangolo, che
+      // è anche quello che l'app ha sempre fatto. Con la diagonale quotata
+      // invece la forma è determinata e si può seguire.
+      const paralleloDritto = stessaMisura(alto, basso) && stessaMisura(sinistro, destro);
       const forma = formaQuadrilatera(a);
       const ordinati = forma?.quad;
       if (!ordinati) return null;
@@ -372,6 +379,8 @@ function sagomaDaQuote(
       let diagonale: number;
       if (quotata) {
         diagonale = quotata.valore! + abbondanzaTotale(quotata);
+      } else if (paralleloDritto) {
+        return null;
       } else {
         // dal disegno: la diagonale disegnata, riportata in scala sui lati
         // misurati (media dei quattro rapporti, così un lato storto pesa poco)
@@ -488,6 +497,93 @@ export interface PannelloTaglio {
   indice: number;
   larghezza: number;
   altezza: number;
+  /** la forma vera del telo, quando l'elemento non è un rettangolo */
+  sagoma?: SagomaTaglio;
+}
+
+/** ritaglia un poligono convesso con una fascia sull'asse dato */
+function fasciaDiPoligono(
+  poly: Array<[number, number]>,
+  asse: 0 | 1,
+  da: number,
+  a: number
+): Array<[number, number]> {
+  let dentro = poly;
+  const taglia = (tieni: (q: [number, number]) => boolean, dove: number) => {
+    const fuori: Array<[number, number]> = [];
+    for (let i = 0; i < dentro.length; i++) {
+      const p1 = dentro[i];
+      const p2 = dentro[(i + 1) % dentro.length];
+      if (tieni(p1)) fuori.push(p1);
+      if (tieni(p1) !== tieni(p2)) {
+        const d = p2[asse] - p1[asse];
+        const t = Math.abs(d) < 1e-9 ? 0 : (dove - p1[asse]) / d;
+        const q: [number, number] = [
+          p1[0] + (p2[0] - p1[0]) * t,
+          p1[1] + (p2[1] - p1[1]) * t
+        ];
+        q[asse] = dove;
+        fuori.push(q);
+      }
+    }
+    dentro = fuori;
+  };
+  taglia((q) => q[asse] >= da - 1e-9, da);
+  if (dentro.length === 0) return [];
+  taglia((q) => q[asse] <= a + 1e-9, a);
+  // via i vertici doppi che nascono quando il taglio passa per uno spigolo
+  const puliti: Array<[number, number]> = [];
+  for (const q of dentro) {
+    const ultimo = puliti[puliti.length - 1];
+    if (!ultimo || Math.hypot(q[0] - ultimo[0], q[1] - ultimo[1]) > 1e-6) puliti.push(q);
+  }
+  if (
+    puliti.length > 1 &&
+    Math.hypot(puliti[0][0] - puliti[puliti.length - 1][0], puliti[0][1] - puliti[puliti.length - 1][1]) <= 1e-6
+  ) {
+    puliti.pop();
+  }
+  return puliti;
+}
+
+/**
+ * Il telo ritagliato, detto nella lingua più semplice che lo descrive.
+ *
+ * Tagliando un trapezio rettangolo con una fascia verticale escono altri
+ * trapezi rettangoli — base in basso, due lati verticali, sopra la falda — e
+ * conviene dirlo così: l'etichetta diventa «base × h sx | h dx», che è come
+ * si scrive sul telo prima di posarlo. Negli altri casi (fascia orizzontale,
+ * elemento fuori squadro) il telo è un quadrilatero qualunque e viaggia coi
+ * suoi vertici.
+ */
+function sagomaDelTelo(poly: Array<[number, number]>): SagomaTaglio | null {
+  if (poly.length < 3) return null;
+  const xs = poly.map((q) => q[0]);
+  const ys = poly.map((q) => q[1]);
+  const minX = Math.min(...xs);
+  const minY = Math.min(...ys);
+  const vertici = poly.map((q): [number, number] => [
+    Math.round((q[0] - minX) * 1e6) / 1e6,
+    Math.round((q[1] - minY) * 1e6) / 1e6
+  ]);
+  const W = Math.max(...vertici.map((q) => q[0]));
+  const H = Math.max(...vertici.map((q) => q[1]));
+  if (!(W > 0 && H > 0)) return null;
+  if (vertici.length === 4) {
+    const vicino = (a: number, b: number) => Math.abs(a - b) < 1e-6;
+    const sinistri = vertici.filter((q) => vicino(q[0], 0));
+    const destri = vertici.filter((q) => vicino(q[0], W));
+    if (sinistri.length === 2 && destri.length === 2) {
+      const bassoSx = sinistri.find((q) => vicino(q[1], H));
+      const bassoDx = destri.find((q) => vicino(q[1], H));
+      const altoSx = sinistri.find((q) => !vicino(q[1], H));
+      const altoDx = destri.find((q) => !vicino(q[1], H));
+      if (bassoSx && bassoDx && altoSx && altoDx) {
+        return { forma: 'trapezioR', d1: W, d2: H - altoSx[1], d3: H - altoDx[1] };
+      }
+    }
+  }
+  return poligonoConvesso(vertici) ? { forma: 'quad', d1: W, d2: H, vertici } : null;
 }
 
 /**
@@ -503,13 +599,69 @@ export function pannelliTaglio(a: Annotazione): PannelloTaglio[] | null {
   if (!dati) return null;
   const u = dati.forma.unita;
   const verticale = dati.pann.asse === 'verticale';
-  return dati.pannelli.map((p) => ({
-    indice: p.indice,
-    // `larghezza` del pannello è sempre lungo l'asse di divisione: sull'asse
-    // orizzontale è l'altezza del pezzo, non la sua base
-    larghezza: mm(verticale ? p.larghezza : p.altezza, u),
-    altezza: mm(verticale ? p.altezza : p.larghezza, u)
-  }));
+
+  /**
+   * LA PANNELLIZZAZIONE DI UN ELEMENTO NON RETTANGOLARE.
+   *
+   * Le giunzioni restano quello che sono: posizioni lungo un asse, decise
+   * sul vetro. Ma un telo di una finestra sotto falda NON è un rettangolo —
+   * è il pezzo di trapezio compreso fra le sue due giunzioni, e tagliarlo
+   * rettangolare vuol dire buttare il triangolo che avanza e ritrovarsi in
+   * posa un telo che non copre.
+   *
+   * Si prende quindi la sagoma intera già gonfiata delle abbondanze e la si
+   * RITAGLIA fascia per fascia. Le coordinate combaciano: la sagoma ha il
+   * riquadro a partire dal bordo del materiale, e i pannelli sono misurati
+   * sul vetro, quindi basta traslare dell'abbondanza iniziale.
+   */
+  const s = sagomaDaQuote(a);
+  const poly = s && s.forma !== 'rett' ? poligonoSagoma(sagomaComeMisure(s)) : null;
+  const asse: 0 | 1 = verticale ? 0 : 1;
+  // Le giunzioni sono misurate sulla misura DICHIARATA dell'elemento, la
+  // sagoma sul suo ingombro: quasi sempre coincidono, ma se l'elemento è
+  // quotato anche sul lato obliquo la misura dichiarata è più lunga
+  // dell'ingombro. Si passa quindi per la frazione, che è anche quello che
+  // si vede: nell'editor la giunzione sta a quella frazione del pezzo.
+  const estensione = dati.totale + dati.abbondanze.inizio + dati.abbondanze.fine;
+  const largo = poly
+    ? Math.max(...poly.map((q) => q[asse])) - Math.min(...poly.map((q) => q[asse]))
+    : 0;
+  const dove = (u: number) =>
+    estensione > 0 ? ((u + dati.abbondanze.inizio) / estensione) * largo : 0;
+
+  return dati.pannelli.map((p) => {
+    const ritagliato = poly ? fasciaDiPoligono(poly, asse, dove(p.inizio), dove(p.fine)) : [];
+    const sagoma = ritagliato.length >= 3 ? sagomaDelTelo(ritagliato) : null;
+    if (sagoma) {
+      const xs = ritagliato.map((q) => q[0]);
+      const ys = ritagliato.map((q) => q[1]);
+      return {
+        indice: p.indice,
+        // l'ingombro del telo è quello della sua sagoma, comunque sia girata
+        larghezza: mm(Math.max(...xs) - Math.min(...xs), u),
+        altezza: mm(Math.max(...ys) - Math.min(...ys), u),
+        sagoma: {
+          forma: sagoma.forma,
+          d1: mm(sagoma.d1, u),
+          d2: mm(sagoma.d2, u),
+          d3: sagoma.d3 === undefined ? undefined : mm(sagoma.d3, u),
+          vertici: sagoma.vertici?.map((q): [number, number] => [mm(q[0], u), mm(q[1], u)])
+        }
+      };
+    }
+    return {
+      indice: p.indice,
+      // `larghezza` del pannello è sempre lungo l'asse di divisione: sull'asse
+      // orizzontale è l'altezza del pezzo, non la sua base
+      larghezza: mm(verticale ? p.larghezza : p.altezza, u),
+      altezza: mm(verticale ? p.altezza : p.larghezza, u)
+    };
+  });
+}
+
+/** la sagoma di taglio letta come misure di forma, per farne il poligono */
+function sagomaComeMisure(s: SagomaTaglio) {
+  return { forma: s.forma, larghezza: s.d1, altezza: s.d2, misura3: s.d3, vertici: s.vertici };
 }
 
 /**
@@ -543,7 +695,8 @@ export function pezziDaAnnotazioni(
           larghezza: t.larghezza,
           altezza: t.altezza,
           quantita: 1,
-          conAbbondanze: ing.conAbbondanze
+          conAbbondanze: ing.conAbbondanze,
+          sagoma: t.sagoma
         });
       }
       continue;

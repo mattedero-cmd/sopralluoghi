@@ -10,6 +10,27 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.31.0 — Pannellizzare la finestra sotto falda
+
+- **I teli seguono la falda.** La pannellizzazione divideva sempre in teli
+  RETTANGOLARI, anche quando l'elemento non lo era: su una finestra sotto
+  falda ogni telo veniva alto quanto il punto più alto, quindi si buttava il
+  triangolo che avanza e in posa il telo non copriva dove serviva. Ora ogni
+  telo è ritagliato dalla sagoma vera — il pezzo di trapezio compreso fra le
+  sue due giunzioni — e arriva nel piano di taglio come trapezio rettangolo
+  con le SUE due altezze.
+- Le giunzioni non cambiano: restano posizioni sull'asse, decise sul vetro
+  nell'editor come prima. Cambia solo la forma che se ne ricava.
+- Vale anche per la fascia orizzontale e per il quadrilatero fuori squadro:
+  il telo è sempre il ritaglio della sagoma, e quando non è un trapezio
+  rettangolo viaggia coi suoi vertici.
+- **Correzione:** un rettangolo quotato su tutti e quattro i lati era
+  diventato un quadrilatero storto, preso dalla pendenza del disegno. Lati
+  opposti uguali a due a due vuol dire parallelogramma, e senza una diagonale
+  non c'è modo di sapere se è dritto o storto: resta rettangolo, come ha
+  sempre fatto l'app. Con la diagonale quotata invece la forma è determinata
+  e si segue.
+
 ## 1.30.1 — Le etichette non escono più dal pezzo
 
 - Sul quadrilatero storto il nome usciva dalla sagoma. Spostare la scritta sul

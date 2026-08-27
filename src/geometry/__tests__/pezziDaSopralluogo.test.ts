@@ -611,6 +611,85 @@ describe('sagoma di taglio', () => {
     expect(pezziDaAnnotazioni([monco], FOTO)[0]?.sagoma).toBeUndefined();
   });
 
+  it('la finestra sotto falda pannellizzata dà TELI a trapezio, non rettangoli', () => {
+    // base 300, lato sinistro 200, lato destro 400: la falda sale da sinistra
+    // a destra. Divisa a metà (giunzione a 150) con 2 di sormonto, i due teli
+    // sono due trapezi, e le altezze si leggono sulla falda vera
+    const falda = poligono(
+      [
+        [0, 200],
+        [300, 0],
+        [300, 400],
+        [0, 400]
+      ],
+      // come si quota davvero: base e due altezze. La falda non si misura,
+      // esce dalle altre tre
+      [
+        { da: 3, a: 2, valore: 300 }, // base, in basso
+        { da: 0, a: 3, valore: 200 }, // lato sinistro
+        { da: 1, a: 2, valore: 400 } // lato destro
+      ]
+    );
+    (falda as unknown as { pannelli: unknown }).pannelli = {
+      asse: 'verticale',
+      giunti: [150],
+      sormonto: 2,
+      verso: 'centro'
+    };
+    const teli = pezziDaAnnotazioni([falda], FOTO);
+    expect(teli).toHaveLength(2);
+    for (const t of teli) {
+      expect(t.sagoma?.forma).toBe('trapezioR');
+      // ogni telo ha le SUE due altezze, diverse fra loro: se fossero uguali
+      // saremmo tornati a tagliare rettangoli
+      expect(t.sagoma!.d2).not.toBeCloseTo(t.sagoma!.d3!, 1);
+    }
+    // il telo di sinistra è il più basso, quello di destra il più alto
+    const [sx, dx] = teli;
+    expect(Math.max(sx.sagoma!.d2, sx.sagoma!.d3!)).toBeLessThan(
+      Math.max(dx.sagoma!.d2, dx.sagoma!.d3!)
+    );
+    // e la falda è continua: dove i due teli si toccano l'altezza combacia
+    // (a meno del sormonto, che li fa sovrapporre di 2)
+    expect(sx.sagoma!.d3!).toBeGreaterThan(dx.sagoma!.d2);
+  });
+
+  it('i teli della falda si passano l’altezza, sormonto compreso', () => {
+    // base 500 (+5 e +5 di abbondanza), lato sx 180 (+10 sotto), lato dx 300
+    // (+10 sotto), divisa in tre con 2 di sormonto
+    const falda = poligono(
+      [
+        [0, 120],
+        [500, 0],
+        [500, 300],
+        [0, 300]
+      ],
+      [
+        { da: 3, a: 2, valore: 500, abbInizio: 5, abbFine: 5 },
+        { da: 0, a: 3, valore: 180, abbFine: 10 },
+        { da: 1, a: 2, valore: 300, abbFine: 10 }
+      ]
+    );
+    (falda as unknown as { pannelli: unknown }).pannelli = {
+      asse: 'verticale',
+      giunti: [170, 340],
+      sormonto: 2,
+      verso: 'centro'
+    };
+    const teli = pezziDaAnnotazioni([falda], FOTO);
+    expect(teli).toHaveLength(3);
+    expect(teli.every((t) => t.sagoma?.forma === 'trapezioR')).toBe(true);
+    // la falda sale: ogni telo comincia dove finiva il precedente, meno il
+    // sormonto che li fa sovrapporre
+    for (let i = 1; i < teli.length; i++) {
+      expect(teli[i].sagoma!.d2).toBeLessThan(teli[i - 1].sagoma!.d3!);
+      expect(teli[i].sagoma!.d3!).toBeGreaterThan(teli[i - 1].sagoma!.d3!);
+    }
+    // il materiale in più è esattamente due sormonti: 510 + 2·20 = 550 mm
+    const somma = teli.reduce((a, t) => a + t.sagoma!.d1, 0);
+    expect(somma).toBeCloseTo(5100 + 2 * 20, 1);
+  });
+
   it('raggruppaPezzi non fonde un trapezio col suo rettangolo d’ingombro', () => {
     const doppi = [
       { nome: 'X', larghezza: 600, altezza: 800, quantita: 1, conAbbondanze: false },
