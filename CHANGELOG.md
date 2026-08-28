@@ -10,6 +10,21 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.46.0 — Una misura per famiglia calibra la prospettiva
+
+- **Un elemento ripetuto non pesa più di quel che vale.** Cinque copie dello
+  stesso serramento portano cinque volte la stessa misura: contarle tutte
+  darebbe a quel serramento il peso di tutta la parete, e la prospettiva
+  finirebbe per assecondare lui. Adesso della famiglia entra UNA forma sola —
+  l'ORIGINALE, cioè la misura presa sul posto (A1), non le sue repliche.
+- Le copie «solo etichetta» (A1.2, A1.3… richiamate o duplicate) non entravano
+  già prima, perché non hanno quote proprie. Il buco era un altro: due membri
+  della stessa famiglia che portano entrambi le quote — dati vecchi, o due
+  forme raggruppate dopo — contavano due volte. Ora no.
+- Se l'originale della famiglia sta in un'altra foto, in questa comanda il
+  membro che si vede meglio: il più grande nell'immagine, che è quello su cui
+  l'errore del dito conta meno.
+
 ## 1.45.0 — Adesso le pareti si uniscono davvero
 
 - **Il vertice di giunzione non si formava quasi mai.** Due pareti si uniscono

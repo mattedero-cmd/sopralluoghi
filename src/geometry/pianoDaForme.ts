@@ -28,6 +28,7 @@
 import type { Annotazione, Foto, PianoProspettiva, Punto, Unita } from '../db/types';
 import { segmentiPoligono } from '../db/types';
 import { formaQuadrilatera } from './formaQuadrilatera';
+import { famigliaDi } from './nomenclatura';
 import { pianoDi } from './calibrazione';
 import {
   applicaOmografia,
@@ -76,9 +77,16 @@ export interface EsitoPiano {
  * la finestra sotto falda, l'elemento fuori squadro. Restano fuori le forme
  * senza misure, le copie solo-etichetta e — soprattutto — tutto ciò che la
  * calibrazione ha già calcolato da sé.
+ *
+ * E UNA SOLA FORMA PER FAMIGLIA. Un elemento ripetuto — cinque volte lo stesso
+ * serramento — porta cinque volte la stessa misura: contarla cinque volte
+ * darebbe a quel serramento un peso che non ha, e la prospettiva finirebbe per
+ * assecondare lui invece di tutta la parete. Della famiglia entra il suo
+ * ORIGINALE, che è la misura presa sul posto; le copie richiamate portano solo
+ * il codice, e già non entravano.
  */
 export function riferimentiPiano(annotazioni: Annotazione[]): RiferimentoPiano[] {
-  const rif: RiferimentoPiano[] = [];
+  const rif: Array<RiferimentoPiano & { famiglia: string; originale: boolean }> = [];
   for (const a of annotazioni) {
     if (a.tipo !== 'quotaPoligono' && a.tipo !== 'quotaRett') continue;
     if (misureCalcolate(a)) continue;
@@ -97,9 +105,31 @@ export function riferimentiPiano(annotazioni: Annotazione[]): RiferimentoPiano[]
     const peso = lati.reduce((s, v) => s + v, 0);
     if (!(peso > 0) || lati.some((v) => v < 8)) continue;
     if (reale.some((p) => !Number.isFinite(p.x) || !Number.isFinite(p.y))) continue;
-    rif.push({ id: a.id, immagine: forma.quad.map((p) => ({ ...p })), reale, peso });
+    const famiglia = famigliaDi(a);
+    rif.push({
+      id: a.id,
+      immagine: forma.quad.map((p) => ({ ...p })),
+      reale,
+      peso,
+      famiglia,
+      // la chiave della famiglia è l'id dell'originale: chi ce l'ha uguale al
+      // proprio è la misura vera, gli altri sono repliche della stessa
+      originale: famiglia === a.id
+    });
   }
-  return rif;
+
+  // una per famiglia: l'originale se c'è, altrimenti la più grande — quando
+  // l'originale sta in un'altra foto, di qua comanda quella che si vede meglio
+  const scelta = new Map<string, (typeof rif)[number]>();
+  for (const r of rif) {
+    const gia = scelta.get(r.famiglia);
+    if (!gia || (r.originale && !gia.originale) || (r.originale === gia.originale && r.peso > gia.peso)) {
+      scelta.set(r.famiglia, r);
+    }
+  }
+  return rif
+    .filter((r) => scelta.get(r.famiglia) === r)
+    .map(({ id, immagine, reale, peso }) => ({ id, immagine, reale, peso }));
 }
 
 /**
