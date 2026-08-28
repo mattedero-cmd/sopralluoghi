@@ -78,15 +78,22 @@ export interface EsitoPiano {
  * senza misure, le copie solo-etichetta e — soprattutto — tutto ciò che la
  * calibrazione ha già calcolato da sé.
  *
- * E UNA SOLA FORMA PER FAMIGLIA. Un elemento ripetuto — cinque volte lo stesso
- * serramento — porta cinque volte la stessa misura: contarla cinque volte
- * darebbe a quel serramento un peso che non ha, e la prospettiva finirebbe per
- * assecondare lui invece di tutta la parete. Della famiglia entra il suo
- * ORIGINALE, che è la misura presa sul posto; le copie richiamate portano solo
- * il codice, e già non entravano.
+ * E DI OGNI FAMIGLIA SOLO L'ORIGINALE (A1.1), mai le sue repliche (A1.2 in
+ * poi). Non è una questione di peso: una misura richiamata si porta dietro la
+ * FORMA dell'originale, e viene posata dove serve il codice — su un'altra
+ * campata, più lontano, di sbieco. Quel quadrilatero non è più l'immagine di
+ * un rettangolo visto da lì, e darlo in pasto all'omografia vuol dire chiedere
+ * alla prospettiva di assecondare una forma che nella foto non esiste.
+ *
+ * L'originale invece è la misura presa sul posto, sull'apertura vera, con gli
+ * angoli puntati lì: quella calibra. Le copie «solo etichetta» non entravano
+ * già prima, perché non hanno quote proprie; qui cadono anche quelle che le
+ * quote se le portano dietro. E se l'originale non sta in questa foto, di
+ * quella famiglia non calibra nessuno: meglio un riferimento in meno che uno
+ * sbagliato.
  */
 export function riferimentiPiano(annotazioni: Annotazione[]): RiferimentoPiano[] {
-  const rif: Array<RiferimentoPiano & { famiglia: string; originale: boolean }> = [];
+  const rif: RiferimentoPiano[] = [];
   for (const a of annotazioni) {
     if (a.tipo !== 'quotaPoligono' && a.tipo !== 'quotaRett') continue;
     if (misureCalcolate(a)) continue;
@@ -105,31 +112,13 @@ export function riferimentiPiano(annotazioni: Annotazione[]): RiferimentoPiano[]
     const peso = lati.reduce((s, v) => s + v, 0);
     if (!(peso > 0) || lati.some((v) => v < 8)) continue;
     if (reale.some((p) => !Number.isFinite(p.x) || !Number.isFinite(p.y))) continue;
-    const famiglia = famigliaDi(a);
-    rif.push({
-      id: a.id,
-      immagine: forma.quad.map((p) => ({ ...p })),
-      reale,
-      peso,
-      famiglia,
-      // la chiave della famiglia è l'id dell'originale: chi ce l'ha uguale al
-      // proprio è la misura vera, gli altri sono repliche della stessa
-      originale: famiglia === a.id
-    });
+    // la chiave della famiglia è l'id dell'originale: chi ce l'ha uguale al
+    // proprio È l'originale, gli altri sono repliche. Una forma senza famiglia
+    // è originale di se stessa, e passa senza accorgersi di niente.
+    if (famigliaDi(a) !== a.id) continue;
+    rif.push({ id: a.id, immagine: forma.quad.map((p) => ({ ...p })), reale, peso });
   }
-
-  // una per famiglia: l'originale se c'è, altrimenti la più grande — quando
-  // l'originale sta in un'altra foto, di qua comanda quella che si vede meglio
-  const scelta = new Map<string, (typeof rif)[number]>();
-  for (const r of rif) {
-    const gia = scelta.get(r.famiglia);
-    if (!gia || (r.originale && !gia.originale) || (r.originale === gia.originale && r.peso > gia.peso)) {
-      scelta.set(r.famiglia, r);
-    }
-  }
-  return rif
-    .filter((r) => scelta.get(r.famiglia) === r)
-    .map(({ id, immagine, reale, peso }) => ({ id, immagine, reale, peso }));
+  return rif;
 }
 
 /**

@@ -10,20 +10,21 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
-## 1.46.0 — Una misura per famiglia calibra la prospettiva
+## 1.46.0 — Calibra solo l'originale, non le misure richiamate
 
-- **Un elemento ripetuto non pesa più di quel che vale.** Cinque copie dello
-  stesso serramento portano cinque volte la stessa misura: contarle tutte
-  darebbe a quel serramento il peso di tutta la parete, e la prospettiva
-  finirebbe per assecondare lui. Adesso della famiglia entra UNA forma sola —
-  l'ORIGINALE, cioè la misura presa sul posto (A1), non le sue repliche.
-- Le copie «solo etichetta» (A1.2, A1.3… richiamate o duplicate) non entravano
-  già prima, perché non hanno quote proprie. Il buco era un altro: due membri
-  della stessa famiglia che portano entrambi le quote — dati vecchi, o due
-  forme raggruppate dopo — contavano due volte. Ora no.
-- Se l'originale della famiglia sta in un'altra foto, in questa comanda il
-  membro che si vede meglio: il più grande nell'immagine, che è quello su cui
-  l'errore del dito conta meno.
+- **Le misure richiamate non calibrano più la prospettiva.** Una misura
+  richiamata (A1.2, A1.3…) si porta dietro la FORMA dell'originale e viene
+  posata dove serve il codice: su un'altra campata, più lontano, di sbieco.
+  Quel quadrilatero non è più l'immagine di un rettangolo visto da lì, e
+  darlo in pasto all'omografia vuol dire chiedere alla prospettiva di
+  assecondare una forma che nella foto non esiste. Calibra l'ORIGINALE
+  (A1.1), che è la misura presa sul posto con gli angoli puntati lì.
+- Le copie «solo etichetta» non entravano già prima, perché non hanno quote
+  proprie. Adesso cadono anche quelle che le quote se le portano dietro —
+  dati vecchi, o due forme raggruppate dopo.
+- **Se l'originale non sta in questa foto, di quella famiglia non calibra
+  nessuno.** Meglio un riferimento in meno che uno sbagliato: le forme
+  rilevate in questa foto continuano a calibrare come sempre.
 
 ## 1.45.0 — Adesso le pareti si uniscono davvero
 
