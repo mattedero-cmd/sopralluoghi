@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { latoDelloSpigolo, spigoliDellaFoto, spigoloFraPiani } from '../spigolo';
+import {
+  latoDelloSpigolo,
+  ritagliaPoligono,
+  ritagliaSegmento,
+  spigoliDellaFoto,
+  spigoloFraPiani,
+  vincoliDelPiano
+} from '../spigolo';
 import { pianiDalleForme, riferimentiPiano } from '../pianoDaForme';
 import { pianoDi } from '../calibrazione';
 import type { Annotazione, PianoProspettiva, Punto } from '../../db/types';
@@ -344,3 +351,71 @@ describe('vicino all’angolo comanda lo spigolo, non la forma più vicina', () 
     expect(pianoDi(senza, suFoto(G1, 250, 1200))).toBe(fianco);
   });
 });
+
+describe('ogni parete si disegna a casa sua', () => {
+  const s = scena(-0.09);
+  const spigoli = spigoliDellaFoto([s.fronte, s.fianco], LARGHEZZA, ALTEZZA);
+
+  it('il riquadro del fronte si ferma allo spigolo', () => {
+    const vincoli = vincoliDelPiano(spigoli, 0);
+    expect(vincoli).toHaveLength(1);
+    const tagliato = ritagliaPoligono(s.fronte.punti, vincoli);
+    expect(tagliato.length).toBeGreaterThanOrEqual(3);
+    // nessun pezzo del fronte resta dalla parte del fianco
+    for (const p of tagliato) {
+      expect(latoDelloSpigolo(spigoli[0].spigolo, p) * spigoli[0].spigolo.segnoPrimo).toBeGreaterThanOrEqual(-1e-9);
+    }
+    // e le forme del fronte ci sono ancora dentro
+    expect(dentro(tagliato, s.ancoreFronte[0])).toBe(true);
+  });
+
+  it('e quello del fianco dall’altra parte: insieme non si sovrappongono', () => {
+    const a = ritagliaPoligono(s.fronte.punti, vincoliDelPiano(spigoli, 0));
+    const b = ritagliaPoligono(s.fianco.punti, vincoliDelPiano(spigoli, 1));
+    expect(dentro(b, s.ancoreFianco[0])).toBe(true);
+    // i due pezzi si toccano sullo spigolo ma non si accavallano: nessun
+    // punto INTERNO dell'uno sta dentro l'altro (i vertici sul confine sì,
+    // ed è giusto — è lo stesso spigolo)
+    const interni = (poly: Punto[]) => {
+      const c = {
+        x: poly.reduce((t, p) => t + p.x, 0) / poly.length,
+        y: poly.reduce((t, p) => t + p.y, 0) / poly.length
+      };
+      return [c, ...poly.map((p) => ({ x: (p.x + c.x) / 2, y: (p.y + c.y) / 2 }))];
+    };
+    for (const p of interni(a)) expect(dentro(b, p)).toBe(false);
+    for (const p of interni(b)) expect(dentro(a, p)).toBe(false);
+  });
+
+  it('una linea di griglia si accorcia allo spigolo', () => {
+    const vincoli = vincoliDelPiano(spigoli, 0);
+    // una riga orizzontale che attraversa tutta la foto
+    const y = 400;
+    const tagliata = ritagliaSegmento({ x: 0, y }, { x: LARGHEZZA, y }, vincoli)!;
+    expect(tagliata).toBeTruthy();
+    const lunga = Math.hypot(tagliata[1].x - tagliata[0].x, tagliata[1].y - tagliata[0].y);
+    expect(lunga).toBeLessThan(LARGHEZZA);
+    expect(lunga).toBeGreaterThan(100);
+  });
+
+  it('senza spigoli non si taglia niente', () => {
+    expect(vincoliDelPiano([], 0)).toHaveLength(0);
+    expect(ritagliaPoligono(s.fronte.punti, [])).toHaveLength(4);
+  });
+});
+
+/** un punto sta dentro un poligono convesso? */
+function dentro(poly: Punto[], p: Punto): boolean {
+  if (poly.length < 3) return false;
+  let segno = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i];
+    const b = poly[(i + 1) % poly.length];
+    const croce = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+    if (Math.abs(croce) < 1e-9) continue;
+    const s = croce > 0 ? 1 : -1;
+    if (segno === 0) segno = s;
+    else if (s !== segno) return false;
+  }
+  return true;
+}

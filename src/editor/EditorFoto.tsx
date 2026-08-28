@@ -636,6 +636,15 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [oggettoDims, setOggettoDims] = useState(false);
   /** griglia di verifica sul piano calibrato (controllo visivo della scala) */
   const [mostraGriglia, setMostraGriglia] = useState(false);
+  /** la parete che si sta aggiustando a mano, fra quelle della foto */
+  const [pianoAttivo, setPianoAttivo] = useState<number | null>(0);
+  /**
+   * La parete mentre la si trascina: sta qui e non nel database, così il dito
+   * scorre liscio. Al rilascio si salva e le misure automatiche si rifanno.
+   */
+  const [pianoLive, setPianoLive] = useState<{ indice: number; piano: PianoProspettiva } | null>(
+    null
+  );
   /** esito del comando «Piano dalle forme», in attesa di conferma */
   const [pianoForme, setPianoForme] = useState<{
     /** un piano per parete: una foto di tre quarti ne inquadra due */
@@ -2784,6 +2793,43 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   };
 
   /**
+   * UNA PARETE AGGIUSTATA A MANO SULLA FOTO.
+   *
+   * Arriva già calcolata dallo Stage — tirando un lato o spostando un
+   * vertice — e qui si salva. Le forme del sopralluogo non si toccano: quello
+   * che cambia sono le misure CALCOLATE, che seguono la nuova prospettiva.
+   * Le quote scritte a mano restano quelle, sempre.
+   */
+  const modificaPiano = (indice: number, piano: PianoProspettiva) =>
+    setPianoLive({ indice, piano });
+
+  /** dito alzato: la parete aggiustata si salva, e le misure la seguono */
+  const finePiano = async () => {
+    const live = pianoLive;
+    setPianoLive(null);
+    if (!foto || !live) return;
+    const tutti = [foto.piano, ...(foto.piani ?? [])].filter((x): x is PianoProspettiva => !!x);
+    if (live.indice < 0 || live.indice >= tutti.length) return;
+    const nuovi = tutti.map((x, i) => (i === live.indice ? live.piano : x));
+    const [primo, ...altri] = nuovi;
+    await aggiornaFoto(foto.id, { piano: primo, piani: altri });
+    ricalcolaConCalibrazione({ scala: foto.scala, piano: primo, piani: altri });
+  };
+
+  /**
+   * La foto COME LA VEDE IL DISEGNO: se una parete è in mano, al suo posto
+   * c'è la versione che si sta trascinando. Nel database ci va solo al
+   * rilascio, ma sullo schermo si muove subito.
+   */
+  const fotoVista = useMemo(() => {
+    if (!foto || !pianoLive) return foto;
+    const tutti = [foto.piano, ...(foto.piani ?? [])].filter((x): x is PianoProspettiva => !!x);
+    if (pianoLive.indice < 0 || pianoLive.indice >= tutti.length) return foto;
+    const nuovi = tutti.map((x, i) => (i === pianoLive.indice ? pianoLive.piano : x));
+    return { ...foto, piano: nuovi[0], piani: nuovi.slice(1) };
+  }, [foto, pianoLive]);
+
+  /**
    * PIÙ PIANI INSIEME: uno per parete.
    *
    * Il primo resta `piano` — le foto di sempre non cambiano — e gli altri si
@@ -3424,7 +3470,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       </div>
 
       <StageEditor
-        foto={foto}
+        foto={fotoVista ?? foto}
         immagine={immagine}
         annotazioni={annotazioni}
         codiceForma={codiceForma}
@@ -3435,6 +3481,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         sogliaSnap={impostazioni.sogliaSnap}
         ricercaBordi={ricercaBordi}
         filtroVisibile={(a) => layerVisibili[categoriaAnnotazione(a)]}
+        pianoAttivo={pianoAttivo}
+        onPianoAttivo={setPianoAttivo}
+        onPianoModificato={modificaPiano}
+        onPianoFine={() => void finePiano()}
         proposte={proposta ? [proposta] : []}
         onAutoTocco={autoTocco}
         onRiferimento={riferimentoTocco}

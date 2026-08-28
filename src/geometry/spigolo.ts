@@ -387,3 +387,82 @@ export function spigoliDellaFoto(
   memoria = { firma, spigoli };
   return spigoli;
 }
+
+/** una retta orientata: si tiene quello che sta dove il valore è ≥ 0 */
+export type Vincolo = { a: number; b: number; c: number };
+
+/**
+ * I CONFINI DI UNA PARETE: gli spigoli che la riguardano, orientati verso
+ * casa sua.
+ *
+ * Servono a non disegnare due pareti una sopra l'altra. Il riquadro di un
+ * piano è grande quanto serve a coprire le sue forme, e oltre lo spigolo
+ * continua su un muro che non è il suo: là la sua griglia non vuol dire
+ * niente, e va tagliata.
+ */
+export function vincoliDelPiano(spigoli: SpigoloFraDue[], indice: number): Vincolo[] {
+  const vincoli: Vincolo[] = [];
+  for (const s of spigoli) {
+    if (s.a !== indice && s.b !== indice) continue;
+    // il segno che la retta assume dalla parte di questo piano
+    const verso = s.a === indice ? s.spigolo.segnoPrimo : -s.spigolo.segnoPrimo;
+    vincoli.push({
+      a: s.spigolo.retta.a * verso,
+      b: s.spigolo.retta.b * verso,
+      c: s.spigolo.retta.c * verso
+    });
+  }
+  return vincoli;
+}
+
+const valoreVincolo = (v: Vincolo, p: Punto) => v.a * p.x + v.b * p.y + v.c;
+
+/** il pezzo di poligono che sta dalla parte buona di tutti i vincoli */
+export function ritagliaPoligono(poligono: Punto[], vincoli: Vincolo[]): Punto[] {
+  let dentro = poligono.map((p) => ({ ...p }));
+  for (const v of vincoli) {
+    if (dentro.length === 0) return [];
+    const fuori: Punto[] = [];
+    for (let i = 0; i < dentro.length; i++) {
+      const p1 = dentro[i];
+      const p2 = dentro[(i + 1) % dentro.length];
+      const d1 = valoreVincolo(v, p1);
+      const d2 = valoreVincolo(v, p2);
+      if (d1 >= 0) fuori.push(p1);
+      if (d1 >= 0 !== d2 >= 0) {
+        const t = d1 / (d1 - d2);
+        fuori.push({ x: p1.x + (p2.x - p1.x) * t, y: p1.y + (p2.y - p1.y) * t });
+      }
+    }
+    dentro = fuori;
+  }
+  return dentro;
+}
+
+/** il pezzo di segmento che sta dalla parte buona di tutti i vincoli */
+export function ritagliaSegmento(
+  a: Punto,
+  b: Punto,
+  vincoli: Vincolo[]
+): [Punto, Punto] | null {
+  let t0 = 0;
+  let t1 = 1;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  for (const v of vincoli) {
+    const den = v.a * dx + v.b * dy;
+    const val = valoreVincolo(v, a);
+    if (Math.abs(den) < 1e-12) {
+      if (val < 0) return null; // tutto il segmento sta dalla parte sbagliata
+      continue;
+    }
+    const t = -val / den;
+    if (den > 0) t0 = Math.max(t0, t);
+    else t1 = Math.min(t1, t);
+    if (t0 > t1) return null;
+  }
+  return [
+    { x: a.x + dx * t0, y: a.y + dy * t0 },
+    { x: a.x + dx * t1, y: a.y + dy * t1 }
+  ];
+}

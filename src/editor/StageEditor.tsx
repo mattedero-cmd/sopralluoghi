@@ -42,7 +42,13 @@ import { immagineDettaglio } from '../utils/immaginiCallout';
 import { eFormaEtichettabile, vociLegenda } from '../geometry/nomenclatura';
 import { omografiaPianoInversa } from '../geometry/omografia';
 import { pianiDi } from '../geometry/calibrazione';
-import { spigoliDellaFoto } from '../geometry/spigolo';
+import {
+  ritagliaPoligono,
+  ritagliaSegmento,
+  spigoliDellaFoto,
+  vincoliDelPiano
+} from '../geometry/spigolo';
+import { maniglieDeiLati, pianoConLato, pianoConVertice } from '../geometry/pianoModifica';
 
 export type Strumento =
   | 'seleziona'
@@ -183,6 +189,18 @@ interface Props {
   onCalibGrigliaCorner: (punti: [Punto, Punto, Punto, Punto]) => void;
   /** mostra la griglia di verifica sul piano calibrato */
   mostraGriglia: boolean;
+  /**
+   * LA PARETE IN MANO: indice nell'elenco dei piani della foto, o null.
+   * Solo lei mostra le maniglie — quattro agli angoli per aggiustare la
+   * prospettiva, quattro a metà dei lati per allargare il riquadro — così su
+   * una foto a più pareti non si finisce con trentadue pallini addosso.
+   */
+  pianoAttivo?: number | null;
+  onPianoAttivo?: (indice: number | null) => void;
+  /** un piano mentre lo si trascina: indice e versione live (non ancora salvata) */
+  onPianoModificato?: (indice: number, piano: PianoProspettiva) => void;
+  /** dito alzato: la modifica del piano si salva e le misure si rifanno */
+  onPianoFine?: () => void;
   /** numero di celle della griglia (es. 3 → 3×3 attorno al riferimento) */
   celleGriglia: number;
   /** inquadra automaticamente un'area dell'immagine (zoom sul riferimento) */
@@ -595,6 +613,18 @@ export function StageEditor(p: Props) {
 
     if (p.strumento === 'seleziona') {
       if (e.target === stage || e.target.name() === 'sfondo-foto') {
+        // COL RETICOLO ACCESO il tocco sceglie la parete: con più muri nella
+        // stessa foto è così che si prende in mano quello da aggiustare
+        if (p.mostraGriglia && pianiFoto.length > 0) {
+          const dentro = pianiFoto.findIndex((piano, i) => {
+            const contorno = ritagliaPoligono(piano.punti, vincoliDelPiano(spigoliPiani, i));
+            return contorno.length >= 3 && dentroPoligono(contorno, pos);
+          });
+          if (dentro >= 0 && dentro !== p.pianoAttivo) {
+            p.onPianoAttivo?.(dentro);
+            return;
+          }
+        }
         // in modalità duplica il tocco sul vuoto NON deseleziona (la copia
         // viene creata sull'onClick/onTap, che non scatta dopo un trascinamento)
         if (!p.onDuplica) p.onSeleziona(null);
@@ -1196,6 +1226,16 @@ export function StageEditor(p: Props) {
   const primoFissato = puntoFisso(bozza);
 
   const selezionata = annotazioniVisibili.find((a) => a.id === p.selezioneId) ?? null;
+  /** le pareti della foto e gli spigoli fra loro: si calcolano una volta */
+  const pianiFoto = pianiDi(p.foto);
+  const spigoliPiani = useMemo(
+    () => spigoliDellaFoto(pianiFoto, p.foto.larghezzaPx, p.foto.altezzaPx),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [p.foto.piano, p.foto.piani, p.foto.larghezzaPx, p.foto.altezzaPx]
+  );
+  /** la parete in mano, quella con le maniglie */
+  const pianoInMano = p.pianoAttivo != null ? (pianiFoto[p.pianoAttivo] ?? null) : null;
+
   const raggioManiglia = 15 / vista.scala;
 
   const committaLive = () => {
@@ -1441,45 +1481,41 @@ export function StageEditor(p: Props) {
 
         {/* Riferimenti di calibrazione + maniglie ampie pensate per il tocco */}
         <Layer>
-          {p.strumento === 'piano' &&
-            pianiDi(p.foto).map((piano, i) => (
-              <Line
-                key={`bordo${i}`}
-                points={piano.punti.flatMap((pt) => [pt.x, pt.y])}
-                closed
-                stroke="#34c759"
-                strokeWidth={2 / vista.scala}
-                dash={[10 / vista.scala, 6 / vista.scala]}
-                listening={false}
-              />
-            ))}
-          {/* Griglia di verifica su OGNI piano calibrato: una foto di tre
-              quarti ha una parete per lato dello spigolo, e ognuna ha la sua */}
-          {p.mostraGriglia &&
-            pianiDi(p.foto).map((piano, i) => {
+          {/* OGNI PARETE A CASA SUA: il riquadro e la griglia si fermano allo
+              spigolo, così due muri non si disegnano uno sopra l'altro */}
+          {(p.mostraGriglia || p.strumento === 'piano') &&
+            pianiFoto.map((piano, i) => {
               try {
-                // se il piano è stato calibrato con la griglia (celle>1) si
-                // suddivide il quadrilatero; altrimenti griglia attorno al riferimento
-                const linee =
-                  piano.celle && piano.celle > 1
-                    ? grigliaSuddivisa(piano, piano.celle)
-                    : griglia(piano, p.foto.larghezzaPx, p.foto.altezzaPx, p.celleGriglia);
+                const vincoli = vincoliDelPiano(spigoliPiani, i);
+                const contorno = ritagliaPoligono(piano.punti, vincoli);
+                if (contorno.length < 3) return null;
+                const linee = p.mostraGriglia
+                  ? (piano.celle && piano.celle > 1
+                      ? grigliaSuddivisa(piano, piano.celle)
+                      : griglia(piano, p.foto.larghezzaPx, p.foto.altezzaPx, p.celleGriglia)
+                    )
+                      .map((pt) =>
+                        ritagliaSegmento({ x: pt[0], y: pt[1] }, { x: pt[2], y: pt[3] }, vincoli)
+                      )
+                      .filter((v): v is [Punto, Punto] => v !== null)
+                  : [];
+                const attivo = p.pianoAttivo === i;
                 return (
                   <Fragment key={`griglia${i}`}>
-                    {linee.map((pt, k) => (
+                    {linee.map((seg, k) => (
                       <Line
                         key={k}
-                        points={pt}
+                        points={[seg[0].x, seg[0].y, seg[1].x, seg[1].y]}
                         stroke="rgba(52,199,89,0.55)"
                         strokeWidth={1.2 / vista.scala}
                         listening={false}
                       />
                     ))}
                     <Line
-                      points={piano.punti.flatMap((pt) => [pt.x, pt.y])}
+                      points={contorno.flatMap((pt) => [pt.x, pt.y])}
                       closed
                       stroke="#34c759"
-                      strokeWidth={2.5 / vista.scala}
+                      strokeWidth={(attivo ? 3.5 : 2.5) / vista.scala}
                       listening={false}
                     />
                   </Fragment>
@@ -1488,6 +1524,68 @@ export function StageEditor(p: Props) {
                 return null;
               }
             })}
+          {/* LE MANIGLIE della parete in mano: agli angoli la prospettiva, a
+              metà dei lati l'estensione del riquadro */}
+          {p.mostraGriglia && p.strumento === 'seleziona' && pianoInMano && (
+            <>
+              <Line
+                points={pianoInMano.punti.flatMap((pt) => [pt.x, pt.y])}
+                closed
+                stroke="#34c759"
+                strokeWidth={1.5 / vista.scala}
+                dash={[10 / vista.scala, 7 / vista.scala]}
+                opacity={0.7}
+                listening={false}
+              />
+              {maniglieDeiLati(pianoInMano).map((pt, i) => (
+                <Rect
+                  key={`lato${i}`}
+                  x={pt.x - raggioManiglia * 0.75}
+                  y={pt.y - raggioManiglia * 0.75}
+                  width={raggioManiglia * 1.5}
+                  height={raggioManiglia * 1.5}
+                  cornerRadius={raggioManiglia * 0.35}
+                  fill="rgba(52,199,89,0.45)"
+                  stroke="#34c759"
+                  strokeWidth={2.5 / vista.scala}
+                  draggable
+                  onDragMove={(e) => {
+                    const nuovo = { x: e.target.x() + raggioManiglia * 0.75, y: e.target.y() + raggioManiglia * 0.75 };
+                    setPuntoLente(nuovo);
+                    const agg = pianoConLato(pianoInMano, i as 0 | 1 | 2 | 3, nuovo);
+                    if (agg && p.pianoAttivo != null) p.onPianoModificato?.(p.pianoAttivo, agg);
+                  }}
+                  onDragEnd={(e) => {
+                    setPuntoLente(null);
+                    e.target.position({ x: 0, y: 0 });
+                    p.onPianoFine?.();
+                  }}
+                />
+              ))}
+              {pianoInMano.punti.map((pt, i) => (
+                <Circle
+                  key={`ang${i}`}
+                  x={pt.x}
+                  y={pt.y}
+                  radius={raggioManiglia}
+                  fill="rgba(255,196,0,0.4)"
+                  stroke="#ffc400"
+                  strokeWidth={3 / vista.scala}
+                  draggable
+                  onDragMove={(e) => {
+                    const nuovo = { x: e.target.x(), y: e.target.y() };
+                    setPuntoLente(nuovo);
+                    const agg = pianoConVertice(pianoInMano, i, nuovo);
+                    if (agg && p.pianoAttivo != null) p.onPianoModificato?.(p.pianoAttivo, agg);
+                  }}
+                  onDragEnd={() => {
+                    setPuntoLente(null);
+                    p.onPianoFine?.();
+                  }}
+                />
+              ))}
+            </>
+          )}
           {/* LO SPIGOLO fra due pareti: la riga dove una finisce e l'altra
               comincia, ricavata dalle due prospettive */}
           {p.mostraGriglia &&
@@ -2130,6 +2228,22 @@ function AnnotazioneShape({
       }}
     />
   );
+}
+
+/** un punto sta dentro un poligono convesso? */
+function dentroPoligono(poly: Punto[], p: Punto): boolean {
+  if (poly.length < 3) return false;
+  let segno = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i];
+    const b = poly[(i + 1) % poly.length];
+    const croce = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+    if (Math.abs(croce) < 1e-9) continue;
+    const s = croce > 0 ? 1 : -1;
+    if (segno === 0) segno = s;
+    else if (s !== segno) return false;
+  }
+  return segno !== 0;
 }
 
 /** passo "tondo" (1, 2, 5 ×10^n) vicino al valore grezzo */

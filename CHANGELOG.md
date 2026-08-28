@@ -10,6 +10,28 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.39.0 — Il riquadro del piano si tira e si aggiusta
+
+- **Ogni parete si disegna a casa sua.** Con più muri nella stessa foto i
+  riquadri verdi si accavallavano oltre lo spigolo, e si vedevano due griglie
+  sovrapposte su un muro solo. Ora ognuna si ferma allo spigolo: quello che
+  vedi su un muro è la prospettiva di quel muro, e basta.
+- **Tirando un LATO si allarga il riquadro, la prospettiva non si tocca.** Le
+  maniglie quadrate verdi a metà di ogni lato servono a coprire più parete —
+  per portare la griglia fin dove serve guardarla — e le misure restano
+  identiche al millesimo: sotto, il riquadro cresce nelle coordinate del muro
+  e torna sulla foto con la stessa identica omografia.
+- **Spostando un VERTICE si aggiusta la prospettiva.** Le maniglie tonde gialle
+  agli angoli sono la regolazione fine: si guarda la griglia e la si fa
+  combaciare con quello che si vede — i corsi dei pannelli, il filo dei
+  serramenti — finché il piano non dice il vero.
+- **Le forme del sopralluogo non si muovono mai.** Aggiustare il piano cambia
+  soltanto le misure CALCOLATE; le quote scritte a mano restano quelle, e
+  nessun disegno si deforma.
+- Con più pareti, si prende in mano quella che serve toccandola: le maniglie
+  si spostano lì. Il riquadro completo della parete in mano resta tratteggiato
+  anche oltre lo spigolo, così si vede fin dove arriva.
+
 ## 1.38.0 — Facciate a più svolte
 
 - **Tre, quattro, cinque pareti nella stessa foto.** Un capannone coi
