@@ -1700,7 +1700,11 @@ export async function pezziDaProgetto(progettoId: string): Promise<PezzoDaMisura
             larghezza: t.larghezza,
             altezza: t.altezza,
             quantita,
-            conAbbondanze: !!r.abbondanze
+            conAbbondanze: !!r.abbondanze,
+            // il telo di una falda è un trapezio: senza la sua sagoma il
+            // nesting lo impaginerebbe — e lo taglierebbe — come il
+            // rettangolo che lo contiene
+            sagoma: t.sagoma
           });
         }
         continue;

@@ -122,6 +122,47 @@ describe('pezziDaProgetto con una parete pannellizzata', () => {
     expect(somma).toBe(5000 + 100 + 3 * 20);
   });
 
+  it('i teli di una falda portano la loro sagoma fin nel piano di taglio', async () => {
+    // finestra sotto falda: base 300, altezza sinistra 200, destra 400,
+    // divisa a metà. Ogni telo è un trapezio, e deve arrivare tale al
+    // nesting: senza sagoma verrebbe impaginato — e tagliato — come il
+    // rettangolo che lo contiene
+    const falda = {
+      id: 'a2',
+      fotoId: 'f1',
+      zIndex: 0,
+      stile: { colore: '#ffc400', spessore: 3, dimensioneTesto: 18 },
+      tipo: 'quotaPoligono',
+      unita: 'cm',
+      stato: 'reale',
+      creatoIl: ora,
+      punti: [
+        { x: 0, y: 200 },
+        { x: 300, y: 0 },
+        { x: 300, y: 400 },
+        { x: 0, y: 400 }
+      ],
+      segmenti: [
+        { da: 3, a: 2, valore: 300 },
+        { da: 0, a: 3, valore: 200 },
+        { da: 1, a: 2, valore: 400 }
+      ],
+      pannelli: { asse: 'verticale', sormonto: 0, verso: 'centro', giunti: [150] }
+    } as unknown as Annotazione;
+    await db.annotazioni.put(falda);
+    const pezzi = await pezziDaProgetto('p1');
+    expect(pezzi).toHaveLength(2);
+    for (const p of pezzi) {
+      expect(p.sagoma?.forma).toBe('trapezioR');
+      // le due altezze del telo sono diverse: se fossero uguali saremmo
+      // tornati al rettangolo d'ingombro
+      expect(p.sagoma!.d2).not.toBeCloseTo(p.sagoma!.d3!, 1);
+    }
+    // primo telo: base 150 cm, altezze 200 e 300 cm
+    expect(pezzi[0].sagoma).toMatchObject({ d1: 1500, d2: 2000, d3: 3000 });
+    expect(pezzi[1].sagoma).toMatchObject({ d1: 1500, d2: 3000, d3: 4000 });
+  });
+
   it('una divisione rimasta fuori misura non produce teli fantasma', async () => {
     // le giunzioni erano state messe su una parete più larga, poi corretta
     await db.annotazioni.put(

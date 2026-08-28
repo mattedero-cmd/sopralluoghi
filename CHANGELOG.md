@@ -10,6 +10,18 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.33.1 — I teli arrivano al taglio con la loro forma
+
+- **Il telo di una falda non è più un rettangolo nel nesting.** Portando il
+  sopralluogo nel piano di taglio, una forma divisa in teli entrava come i
+  suoi teli — giusto — ma ognuno **senza la sua sagoma**: nel disegno del
+  nesting si vedeva il rettangolo d'ingombro, e il file di taglio seguiva
+  quello. Adesso ogni telo porta con sé la forma che ha (`1525×2000|3016.7`),
+  si incastra con gli altri e si taglia com'è.
+- Vale per il piano creato dal sopralluogo e per quello allegato al report.
+  I **piani già salvati** non cambiano da soli: rifai «Crea piano di taglio»
+  dal sopralluogo, oppure scegli la forma nella riga del pezzo.
+
 ## 1.33.0 — La falda si divide come una falda
 
 - **Basta col rettangolo in prospettiva.** Aprendo «Dividi in teli» su una
