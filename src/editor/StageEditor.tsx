@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Stage, Layer, Image as KonvaImage, Shape, Circle, Ellipse, Rect, Line } from 'react-konva';
 import type Konva from 'konva';
 
@@ -41,6 +41,7 @@ import { traslaAnnotazione } from './fabbrica';
 import { immagineDettaglio } from '../utils/immaginiCallout';
 import { eFormaEtichettabile, vociLegenda } from '../geometry/nomenclatura';
 import { omografiaPianoInversa } from '../geometry/omografia';
+import { pianiDi } from '../geometry/calibrazione';
 
 export type Strumento =
   | 'seleziona'
@@ -1439,22 +1440,23 @@ export function StageEditor(p: Props) {
 
         {/* Riferimenti di calibrazione + maniglie ampie pensate per il tocco */}
         <Layer>
-          {p.foto.piano && p.strumento === 'piano' && (
-            <Line
-              points={p.foto.piano.punti.flatMap((pt) => [pt.x, pt.y])}
-              closed
-              stroke="#34c759"
-              strokeWidth={2 / vista.scala}
-              dash={[10 / vista.scala, 6 / vista.scala]}
-              listening={false}
-            />
-          )}
-          {/* Griglia di verifica sul piano calibrato */}
+          {p.strumento === 'piano' &&
+            pianiDi(p.foto).map((piano, i) => (
+              <Line
+                key={`bordo${i}`}
+                points={piano.punti.flatMap((pt) => [pt.x, pt.y])}
+                closed
+                stroke="#34c759"
+                strokeWidth={2 / vista.scala}
+                dash={[10 / vista.scala, 6 / vista.scala]}
+                listening={false}
+              />
+            ))}
+          {/* Griglia di verifica su OGNI piano calibrato: una foto di tre
+              quarti ha una parete per lato dello spigolo, e ognuna ha la sua */}
           {p.mostraGriglia &&
-            p.foto.piano &&
-            (() => {
+            pianiDi(p.foto).map((piano, i) => {
               try {
-                const piano = p.foto.piano;
                 // se il piano è stato calibrato con la griglia (celle>1) si
                 // suddivide il quadrilatero; altrimenti griglia attorno al riferimento
                 const linee =
@@ -1462,10 +1464,10 @@ export function StageEditor(p: Props) {
                     ? grigliaSuddivisa(piano, piano.celle)
                     : griglia(piano, p.foto.larghezzaPx, p.foto.altezzaPx, p.celleGriglia);
                 return (
-                  <>
-                    {linee.map((pt, i) => (
+                  <Fragment key={`griglia${i}`}>
+                    {linee.map((pt, k) => (
                       <Line
-                        key={i}
+                        key={k}
                         points={pt}
                         stroke="rgba(52,199,89,0.55)"
                         strokeWidth={1.2 / vista.scala}
@@ -1473,18 +1475,18 @@ export function StageEditor(p: Props) {
                       />
                     ))}
                     <Line
-                      points={p.foto.piano.punti.flatMap((pt) => [pt.x, pt.y])}
+                      points={piano.punti.flatMap((pt) => [pt.x, pt.y])}
                       closed
                       stroke="#34c759"
                       strokeWidth={2.5 / vista.scala}
                       listening={false}
                     />
-                  </>
+                  </Fragment>
                 );
               } catch {
                 return null;
               }
-            })()}
+            })}
           {/* Griglia LIVE durante la calibrazione: aiuta a rifinire la proporzione */}
           {p.calibPiano &&
             (() => {

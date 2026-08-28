@@ -10,6 +10,29 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.36.0 — Due pareti, due piani
+
+- **Una foto di tre quarti inquadra due muri.** Il box di cantiere ripreso
+  d'angolo ha le finestre del fianco e quelle del fronte nella stessa foto:
+  sono due piani, e una prospettiva sola non può descriverli entrambi. Messe
+  tutte nello stesso conto ne usciva una griglia che attraversava lo spigolo e
+  non era giusta da nessuna delle due parti.
+- Ora «Piano dalle forme» **riconosce da sé le pareti**: parte dalla forma più
+  grande, aggiunge quelle che reggono la stessa prospettiva e chiude il gruppo
+  quando nessun'altra ci sta più. La scheda le elenca — «A1 A2 A3 · 3 forme ·
+  3,7 mm», «A4 A5 · 2 forme · 1,3 mm» — e le applichi tutte insieme o solo
+  quelle che vuoi.
+- **La foto tiene più piani insieme.** Ogni misura usa la parete più vicina:
+  una quota presa sul fianco legge il fianco, una presa sul fronte legge il
+  fronte, anche a due dita dallo spigolo. La griglia di verifica si disegna su
+  ciascuna, e si vede subito dove finisce una parete e comincia l'altra.
+- Il confronto con la calibrazione di prima usa la stessa regola, forma per
+  forma: se la foto era già calibrata a due pareti, la scheda non dice più che
+  il piano di adesso è pessimo solo perché stava misurando il fianco col piano
+  del fronte.
+- Le foto con un piano solo non cambiano di una virgola: è lo stesso piano di
+  sempre, che vale su tutta la foto.
+
 ## 1.35.0 — Il piano ricavato da tutte le forme quotate
 
 - **Le misure dimenticate si prendono dopo, sulla foto.** Ogni quadrilatero

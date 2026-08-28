@@ -117,11 +117,10 @@ import {
 } from '../geometry/nomenclatura';
 import { applicaOmografia, omografiaPiano, omografiaPianoInversa } from '../geometry/omografia';
 import {
-  adattaPiano,
-  pianoDaOmografia,
+  pianiDalleForme,
   riferimentiPiano,
-  verificaPiano,
-  type EsitoPiano
+  scartoCalibrazione,
+  type PianoRicavato
 } from '../geometry/pianoDaForme';
 import { lunghezzaPxQuota } from '../geometry/punti';
 import { RicercaBordi } from '../geometry/bordi';
@@ -639,10 +638,12 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [mostraGriglia, setMostraGriglia] = useState(false);
   /** esito del comando «Piano dalle forme», in attesa di conferma */
   const [pianoForme, setPianoForme] = useState<{
-    esito: EsitoPiano;
-    piano: PianoProspettiva;
+    /** un piano per parete: una foto di tre quarti ne inquadra due */
+    pareti: PianoRicavato[];
     /** scarto medio del piano che c'è adesso, per confronto (mm); null = non c'è */
     prima: number | null;
+    /** quali pareti applicare (indici) */
+    scelte: number[];
   } | null>(null);
   /** picker della foto di riferimento (sfondo) per una pianta */
   const [pickerSfondo, setPickerSfondo] = useState(false);
@@ -2741,7 +2742,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   // ---------------------------------------------------------------------------
 
   /** dopo un cambio di calibrazione i valori auto vengono ricalcolati */
-  const ricalcolaConCalibrazione = (fotoAggiornata: Pick<Foto, 'scala' | 'piano'>) => {
+  const ricalcolaConCalibrazione = (fotoAggiornata: Pick<Foto, 'scala' | 'piano' | 'piani'>) => {
     if (!annotazioni) return;
     commit(applicaValoriAuto(annotazioni, fotoAggiornata));
   };
@@ -2781,6 +2782,34 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   };
 
   /**
+   * PIÙ PIANI INSIEME: uno per parete.
+   *
+   * Il primo resta `piano` — le foto di sempre non cambiano — e gli altri si
+   * aggiungono. Ogni piano porta le sue ancore, cioè le forme da cui è nato:
+   * è così che poi una misura ritrova la parete giusta.
+   */
+  const salvaPiani = async (piani: PianoProspettiva[]) => {
+    if (!foto || piani.length === 0) return;
+    try {
+      for (const p of piani) omografiaPiano(p);
+    } catch (e) {
+      mostraToast('errore', e instanceof Error ? e.message : 'Punti del piano non validi.');
+      return;
+    }
+    const [primo, ...altri] = piani;
+    await aggiornaFoto(foto.id, { piano: primo, piani: altri });
+    ricalcolaConCalibrazione({ scala: foto.scala, piano: primo, piani: altri });
+    setMostraGriglia(true);
+    mostraToast(
+      'successo',
+      altri.length > 0
+        ? `${piani.length} piani attivi: ogni misura usa la parete più vicina.`
+        : 'Piano attivo: la griglia di verifica mostra la scala reale.'
+    );
+    setStrumento('seleziona');
+  };
+
+  /**
    * IL PIANO RICAVATO DA TUTTE LE FORME QUOTATE.
    *
    * Non tocca niente da solo: calcola, misura quanto sbaglia — sul piano di
@@ -2796,35 +2825,30 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       );
       return;
     }
-    const esito = adattaPiano(rif);
-    if (!esito) {
-      mostraToast('errore', 'Le forme quotate non bastano a ricavare un piano.');
-      return;
-    }
-    const piano = pianoDaOmografia(esito.H, esito.riferimenti);
-    if (!piano) {
+    // le forme si dividono da sole per parete: una foto di tre quarti
+    // inquadra due muri, e un piano solo non può descriverli entrambi
+    const pareti = pianiDalleForme(rif);
+    if (pareti.length === 0) {
       mostraToast(
         'errore',
         'La prospettiva di questa foto è troppo inclinata per scriverne un piano: calibra a mano con «Piano».'
       );
       return;
     }
-    // lo scarto del piano che c'è adesso, misurato con lo stesso metro (mm)
-    let prima: number | null = null;
-    if (foto.piano) {
-      try {
-        const inMm = {
-          ...foto.piano,
-          larghezzaReale: inMillimetri(foto.piano.larghezzaReale, foto.piano.unita),
-          altezzaReale: inMillimetri(foto.piano.altezzaReale, foto.piano.unita),
-          unita: 'mm' as Unita
-        };
-        prima = verificaPiano(omografiaPiano(inMm), esito.riferimenti).medio;
-      } catch {
-        prima = null; // piano vecchio degenere: non c'è niente da confrontare
-      }
+    // il nome della parete sono i codici delle sue forme: è così che la
+    // riconosci sulla foto
+    for (const parete of pareti) {
+      const codici = parete.esito.riferimenti
+        .map((r) => (annotazioni ?? []).find((a) => a.id === r.id))
+        .filter((a): a is Annotazione => !!a)
+        .map((a) => codiceForma(a))
+        .filter(Boolean);
+      parete.piano.nome = codici.join(' ') || 'Parete';
     }
-    setPianoForme({ esito, piano, prima });
+    // lo scarto della calibrazione che c'è adesso, misurato con lo stesso
+    // metro (mm) e con la stessa regola: ogni forma col piano che la riguarda
+    const prima = scartoCalibrazione(foto, rif);
+    setPianoForme({ pareti, prima, scelte: pareti.map((_, i) => i) });
   };
 
   const calibraDaQuota = async (q: Quota) => {
@@ -4703,42 +4727,85 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       )}
       {pianoForme &&
         (() => {
-          const { esito, piano, prima } = pianoForme;
-          const n = esito.riferimenti.length;
+          const { pareti, prima, scelte } = pianoForme;
           const mm = (v: number) => `${Math.round(v * 10) / 10} mm`;
-          const peggiore = esito.peggiore;
-          const annPeggiore = peggiore
-            ? (annotazioni ?? []).find((a) => a.id === peggiore.id)
-            : undefined;
-          const migliora = prima === null || esito.erroreMedio <= prima + 0.05;
+          const nForme = pareti.reduce((s, p) => s + p.esito.riferimenti.length, 0);
+          const scelti = pareti.filter((_, i) => scelte.includes(i));
+          const medioNuovo =
+            scelti.length > 0
+              ? scelti.reduce((s, p) => s + p.esito.erroreMedio * p.esito.riferimenti.length, 0) /
+                scelti.reduce((s, p) => s + p.esito.riferimenti.length, 0)
+              : 0;
+          const migliora = prima === null || medioNuovo <= prima + 0.05;
+          const commuta = (i: number) =>
+            setPianoForme((v) =>
+              v
+                ? {
+                    ...v,
+                    scelte: v.scelte.includes(i)
+                      ? v.scelte.filter((k) => k !== i)
+                      : [...v.scelte, i].sort((a, b) => a - b)
+                  }
+                : v
+            );
           return (
             <Modale titolo="Piano dalle forme quotate" onChiudi={() => setPianoForme(null)}>
               <p style={{ marginTop: 0 }}>
-                {n === 1 ? 'C’è una forma sola' : `Ci sono ${n} forme`} con le misure scritte a
-                mano: il piano si ricava {n === 1 ? 'da lei' : 'da tutte insieme'}, e più sono
-                sparse sulla foto più tiene anche dove non hai quotato niente.
+                {nForme === 1 ? 'C’è una forma sola' : `Ci sono ${nForme} forme`} con le misure
+                scritte a mano
+                {pareti.length > 1
+                  ? `, e non stanno tutte sullo stesso muro: ne escono ${pareti.length} pareti. Una foto di tre quarti ne inquadra due, e una prospettiva sola non può descriverle entrambe — quindi si tengono separate, e ogni misura userà quella più vicina.`
+                  : ': il piano si ricava da tutte insieme, e più sono sparse più tiene anche dove non hai quotato niente.'}
               </p>
-              <div className="ap-riepilogo">
-                {prima !== null && (
+              {prima !== null && (
+                <div className="ap-riepilogo">
                   <span>
                     piano di adesso: <strong>{mm(prima)}</strong> di scarto medio
                   </span>
-                )}
-                <span>
-                  piano ricavato: <strong>{mm(esito.erroreMedio)}</strong>
-                  {prima !== null ? ' di scarto medio' : ' di scarto medio sui lati quotati'}
-                </span>
-                {peggiore && peggiore.massimo > 0.05 && (
-                  <span>
-                    peggio su <strong>{annPeggiore ? codiceForma(annPeggiore) : '—'}</strong>:{' '}
-                    {mm(peggiore.massimo)} sul lato peggiore
-                  </span>
-                )}
+                </div>
+              )}
+              <span className="et">
+                {pareti.length > 1 ? 'Pareti trovate' : 'Piano ricavato'}
+              </span>
+              <div className="ap-elenco">
+                {pareti.map((parete, i) => {
+                  const attiva = scelte.includes(i);
+                  const peggiore = parete.esito.peggiore;
+                  const annPeggiore = peggiore
+                    ? (annotazioni ?? []).find((a) => a.id === peggiore.id)
+                    : undefined;
+                  return (
+                    <button
+                      key={i}
+                      className={attiva ? 'ap-pezzo attivo' : 'ap-pezzo'}
+                      style={{
+                        textAlign: 'left',
+                        width: '100%',
+                        opacity: attiva ? 1 : 0.45,
+                        cursor: 'pointer'
+                      }}
+                      aria-pressed={attiva}
+                      onClick={() => commuta(i)}
+                    >
+                      <span className="n">
+                        {attiva ? '☑' : '☐'} {parete.piano.nome || `Parete ${i + 1}`}
+                      </span>
+                      <span className="d">
+                        {parete.esito.riferimenti.length}{' '}
+                        {parete.esito.riferimenti.length === 1 ? 'forma' : 'forme'} ·{' '}
+                        {mm(parete.esito.erroreMedio)}
+                        {peggiore && peggiore.massimo > 0.05 && annPeggiore
+                          ? ` · peggio ${codiceForma(annPeggiore)} ${mm(peggiore.massimo)}`
+                          : ''}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
-              {n === 1 && (
+              {pareti.some((p) => p.esito.riferimenti.length === 1) && (
                 <p style={{ color: '#ff9500', fontWeight: 600, fontSize: 13 }}>
-                  Con una forma sola il piano è esatto su di lei, ma niente garantisce il resto
-                  della foto: quotane un’altra lontana da questa e rifai il conto.
+                  Una parete con una forma sola è esatta su di lei, ma niente garantisce il resto:
+                  quotane un’altra lontana, sullo stesso muro, e rifai il conto.
                 </p>
               )}
               {!migliora && (
@@ -4749,10 +4816,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               )}
               <p className="nest-sub">
                 Lo <em>scarto</em> è la differenza fra la misura che hai scritto su un lato e
-                quella che il piano legge sullo stesso lato. Zero vuol dire che tutte le forme si
-                raccontano la stessa prospettiva; qualche millimetro è normale — gli angoli si
-                puntano col dito. Se una forma sballa da sola, quasi sempre è la sua quota a
-                essere sbagliata, non il piano.
+                quella che il piano legge sullo stesso lato. Zero vuol dire che tutte le forme di
+                quella parete si raccontano la stessa prospettiva; qualche millimetro è normale —
+                gli angoli si puntano col dito. Se una forma sballa da sola, quasi sempre è la sua
+                quota a essere sbagliata, non il piano.
               </p>
               <div className="riga-pulsanti">
                 <button className="btn" onClick={() => setPianoForme(null)}>
@@ -4760,18 +4827,13 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 </button>
                 <button
                   className="btn primario"
+                  disabled={scelti.length === 0}
                   onClick={() => {
                     setPianoForme(null);
-                    void salvaPiano(
-                      piano.punti,
-                      piano.larghezzaReale,
-                      piano.altezzaReale,
-                      piano.unita,
-                      piano.celle ?? 4
-                    );
+                    void salvaPiani(scelti.map((p) => p.piano));
                   }}
                 >
-                  Applica il piano
+                  {scelti.length > 1 ? `Applica ${scelti.length} piani` : 'Applica il piano'}
                 </button>
               </div>
             </Modale>
@@ -8709,7 +8771,7 @@ function SchedaNoteFoto({
   onChiudi
 }: {
   foto: Foto;
-  onRimuoviCalibrazione: (f: Pick<Foto, 'scala' | 'piano'>) => void;
+  onRimuoviCalibrazione: (f: Pick<Foto, 'scala' | 'piano' | 'piani'>) => void;
   onChiudi: () => void;
 }) {
   const [didascalia, setDidascalia] = useState(foto.didascalia);
@@ -8828,7 +8890,7 @@ function SchedaNoteFoto({
                 style={{ minHeight: 40 }}
                 onClick={async () => {
                   await aggiornaFoto(foto.id, { scala: null });
-                  onRimuoviCalibrazione({ scala: null, piano: foto.piano });
+                  onRimuoviCalibrazione({ scala: null, piano: foto.piano, piani: foto.piani });
                 }}
               >
                 Rimuovi
@@ -8838,15 +8900,21 @@ function SchedaNoteFoto({
           {foto.piano && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ flex: 1 }}>
-                Piano: {formattaNumero(foto.piano.larghezzaReale)} ×{' '}
-                {formattaNumero(foto.piano.altezzaReale)} {foto.piano.unita}
+                {(foto.piani ?? []).length > 0
+                  ? `Piani: ${1 + (foto.piani ?? []).length} pareti (${[foto.piano, ...(foto.piani ?? [])]
+                      .map((p, i) => p.nome || `parete ${i + 1}`)
+                      .join(', ')})`
+                  : `Piano: ${formattaNumero(foto.piano.larghezzaReale)} × ${formattaNumero(
+                      foto.piano.altezzaReale
+                    )} ${foto.piano.unita}`}
               </span>
               <button
                 className="btn pericolo"
                 style={{ minHeight: 40 }}
                 onClick={async () => {
-                  await aggiornaFoto(foto.id, { piano: null });
-                  onRimuoviCalibrazione({ scala: foto.scala, piano: null });
+                  // via il piano, via tutte le pareti: restano insieme
+                  await aggiornaFoto(foto.id, { piano: null, piani: [] });
+                  onRimuoviCalibrazione({ scala: foto.scala, piano: null, piani: [] });
                 }}
               >
                 Rimuovi

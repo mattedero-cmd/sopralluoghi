@@ -25,9 +25,10 @@
  * ragione da solo.
  */
 
-import type { Annotazione, PianoProspettiva, Punto, Unita } from '../db/types';
+import type { Annotazione, Foto, PianoProspettiva, Punto, Unita } from '../db/types';
 import { segmentiPoligono } from '../db/types';
 import { formaQuadrilatera } from './formaQuadrilatera';
+import { pianoDi } from './calibrazione';
 import {
   applicaOmografia,
   calcolaOmografia,
@@ -154,6 +155,39 @@ export function verificaPiano(
   return { medio, peggiore };
 }
 
+/**
+ * LO SCARTO DELLA CALIBRAZIONE CHE C'È ADESSO, per confronto.
+ *
+ * Ogni forma si misura col piano che la riguarda davvero — quello con
+ * l'ancora più vicina — altrimenti su una foto già calibrata a due pareti il
+ * confronto direbbe sempre che il piano di adesso è pessimo, solo perché si
+ * starebbe misurando il fianco col piano del fronte.
+ */
+export function scartoCalibrazione(
+  foto: Pick<Foto, 'piano' | 'piani' | 'scala'>,
+  rif: RiferimentoPiano[]
+): number | null {
+  if (rif.length === 0) return null;
+  const scarti: number[] = [];
+  for (const r of rif) {
+    const piano = pianoDi(foto, r.immagine);
+    if (!piano) continue;
+    try {
+      const inMm = {
+        ...piano,
+        larghezzaReale: inMillimetri(piano.larghezzaReale, piano.unita),
+        altezzaReale: inMillimetri(piano.altezzaReale, piano.unita),
+        unita: 'mm' as Unita
+      };
+      scarti.push(scartoDelPiano(omografiaPiano(inMm), r).medio);
+    } catch {
+      // piano degenere: quella forma non entra nel confronto
+    }
+  }
+  if (scarti.length === 0) return null;
+  return scarti.reduce((s, v) => s + v, 0) / scarti.length;
+}
+
 /** la posa di una sagoma sul piano: ruotata e spostata, mai stirata */
 function posaRigida(sagoma: Punto[], osservati: Punto[]): Punto[] {
   const n = sagoma.length;
@@ -237,6 +271,96 @@ export function adattaPiano(riferimenti: RiferimentoPiano[]): EsitoPiano | null 
 
   const v = verificaPiano(migliore.H, rif);
   return { H: migliore.H, riferimenti: rif, erroreMedio: v.medio, peggiore: v.peggiore };
+}
+
+/**
+ * QUANTO PUÒ SBAGLIARE UNA FORMA e restare sullo stesso piano.
+ *
+ * Gli angoli si puntano col dito su uno schermo: un paio di pixel di scarto
+ * su una finestra piccola valgono già un centimetro. La soglia è quindi
+ * proporzionale alla forma — il 2% del suo lato medio — con un minimo di un
+ * centimetro per le forme piccole. Sopra, la forma sta su un'altra parete:
+ * lo scarto di una parete diversa non è di millimetri, è di decine.
+ */
+function tolleranza(r: RiferimentoPiano): number {
+  let lato = 0;
+  for (let i = 0; i < 4; i++) {
+    lato +=
+      Math.hypot(
+        r.reale[(i + 1) % 4].x - r.reale[i].x,
+        r.reale[(i + 1) % 4].y - r.reale[i].y
+      ) / 4;
+  }
+  return Math.max(10, lato * 0.02);
+}
+
+/**
+ * LE FORME RAGGRUPPATE PER PARETE.
+ *
+ * Una foto di tre quarti inquadra due pareti insieme: il fianco del box con
+ * le sue finestre e il fronte con le sue. Sono DUE piani, e una sola
+ * omografia non può descriverli entrambi — se le si mette tutte nello stesso
+ * conto esce un piano che non è giusto da nessuna delle due parti.
+ *
+ * Qui si scopre da sé quali forme stanno insieme: si parte dalla più grande,
+ * si prova ad aggiungere quella che regge meglio, e la si tiene solo se resta
+ * dentro la sua tolleranza. Quando nessuna regge più, il gruppo è chiuso e si
+ * ricomincia con quelle rimaste. Le forme che non si accompagnano a nessuna
+ * restano da sole: un piano da una forma sola è comunque esatto su di lei.
+ */
+export function gruppiDiPiano(riferimenti: RiferimentoPiano[]): RiferimentoPiano[][] {
+  let restanti = [...riferimenti].sort((a, b) => b.peso - a.peso);
+  const gruppi: RiferimentoPiano[][] = [];
+  while (restanti.length > 0) {
+    let gruppo = [restanti[0]];
+    let fuori = restanti.slice(1);
+    for (;;) {
+      let scelta: { r: RiferimentoPiano; scarto: number } | null = null;
+      for (const r of fuori) {
+        const esito = adattaPiano([...gruppo, r]);
+        if (!esito) continue;
+        const scarto = scartoDelPiano(esito.H, r).medio;
+        // e non deve rovinare quelle che c'erano già
+        const rovina = gruppo.some((g) => scartoDelPiano(esito.H, g).medio > tolleranza(g));
+        if (rovina || scarto > tolleranza(r)) continue;
+        if (!scelta || scarto < scelta.scarto) scelta = { r, scarto };
+      }
+      if (!scelta) break;
+      gruppo = [...gruppo, scelta.r];
+      fuori = fuori.filter((r) => r !== scelta!.r);
+    }
+    gruppi.push(gruppo);
+    restanti = fuori;
+  }
+  return gruppi;
+}
+
+/** un piano pronto da salvare, con le forme che lo hanno prodotto */
+export interface PianoRicavato {
+  esito: EsitoPiano;
+  piano: PianoProspettiva;
+}
+
+/**
+ * I PIANI DI UNA FOTO, uno per parete, già scritti come piani salvabili.
+ *
+ * Le ancore di ciascuno sono i baricentri delle sue forme: è così che poi
+ * ogni misura ritrova la parete giusta.
+ */
+export function pianiDalleForme(riferimenti: RiferimentoPiano[]): PianoRicavato[] {
+  const fuori: PianoRicavato[] = [];
+  for (const gruppo of gruppiDiPiano(riferimenti)) {
+    const esito = adattaPiano(gruppo);
+    if (!esito) continue;
+    const piano = pianoDaOmografia(esito.H, esito.riferimenti);
+    if (!piano) continue;
+    piano.ancore = gruppo.map((r) => ({
+      x: r.immagine.reduce((s, p) => s + p.x, 0) / 4,
+      y: r.immagine.reduce((s, p) => s + p.y, 0) / 4
+    }));
+    fuori.push({ esito, piano });
+  }
+  return fuori;
 }
 
 /**

@@ -188,6 +188,12 @@ export interface Foto {
    * misure su quel piano tramite omografia anche in foto non frontali.
    */
   piano?: PianoProspettiva | null;
+  /**
+   * GLI ALTRI PIANI della foto, quando le forme quotate stanno su pareti
+   * diverse. `piano` resta il primo — le foto di sempre non cambiano di una
+   * virgola — e questi si aggiungono: ogni misura sceglie il piano più vicino.
+   */
+  piani?: PianoProspettiva[];
   /** Ordine di presentazione nel progetto e nel PDF */
   ordine: number;
   /** Sezione del progetto a cui appartiene la foto (es. Piano 1); assente = nessuna */
@@ -296,6 +302,16 @@ export interface PianoProspettiva {
   unita: Unita;
   /** suddivisioni della griglia di verifica (1 = solo il riferimento) */
   celle?: number;
+  /** nome breve del piano quando la foto ne ha più d'uno (es. «G1 G2») */
+  nome?: string;
+  /**
+   * DOVE VALE QUESTO PIANO: i baricentri (px immagine) delle forme da cui è
+   * nato. Una foto può inquadrare due pareti — il fianco e il fronte di un
+   * box, la falda e il timpano — e una sola omografia non le descrive
+   * entrambe. Con più piani, ogni misura usa quello con l'ancora più vicina.
+   * Assente = piano unico, vale su tutta la foto (com'è sempre stato).
+   */
+  ancore?: Punto[];
 }
 
 export type TipoAnnotazione =

@@ -4,6 +4,7 @@ import {
   segmentoELato,
   type Annotazione,
   type Foto,
+  type PianoProspettiva,
   type Punto,
   type QuotaPoligono,
   type QuotaRettangolo,
@@ -20,16 +21,64 @@ import { direzioneQuota, distanza, dot, scala as scalaPunto, somma, sottrai } fr
  * la geometria cambia; un valore inserito a mano non viene mai toccato.
  */
 
-type CalibrazioneFoto = Pick<Foto, 'scala' | 'piano'>;
+type CalibrazioneFoto = Pick<Foto, 'scala' | 'piano' | 'piani'>;
 
 export function haCalibrazione(foto: CalibrazioneFoto): boolean {
-  return Boolean(foto.piano) || Boolean(foto.scala);
+  return pianiDi(foto).length > 0 || Boolean(foto.scala);
 }
 
-function omografiaDiFoto(foto: CalibrazioneFoto): Omografia | null {
-  if (!foto.piano) return null;
+/** tutti i piani della foto, il principale per primo */
+export function pianiDi(foto: CalibrazioneFoto): PianoProspettiva[] {
+  const tutti = [foto.piano, ...(foto.piani ?? [])];
+  return tutti.filter((p): p is PianoProspettiva => !!p);
+}
+
+/**
+ * IL PIANO CHE VALE IN UN PUNTO DELLA FOTO.
+ *
+ * Con un piano solo è sempre lui, e non cambia niente. Con più piani — il
+ * fianco e il fronte di un box inquadrati insieme — vince quello con
+ * l'ancora più vicina: le ancore sono i baricentri delle forme da cui il
+ * piano è nato, quindi una misura presa vicino alle finestre del fianco usa
+ * il piano del fianco. Senza ancore si guarda il centro del suo riquadro.
+ */
+export function pianoDi(foto: CalibrazioneFoto, dove?: Punto | Punto[]): PianoProspettiva | null {
+  const piani = pianiDi(foto);
+  if (piani.length <= 1) return piani[0] ?? null;
+  const punti = dove === undefined ? [] : Array.isArray(dove) ? dove : [dove];
+  if (punti.length === 0) return piani[0];
+  const centro = {
+    x: punti.reduce((s, p) => s + p.x, 0) / punti.length,
+    y: punti.reduce((s, p) => s + p.y, 0) / punti.length
+  };
+  let scelto = piani[0];
+  let minima = Infinity;
+  for (const piano of piani) {
+    const ancore = piano.ancore?.length ? piano.ancore : [baricentro(piano.punti)];
+    for (const a of ancore) {
+      const d = Math.hypot(a.x - centro.x, a.y - centro.y);
+      if (d < minima) {
+        minima = d;
+        scelto = piano;
+      }
+    }
+  }
+  return scelto;
+}
+
+const baricentro = (punti: Punto[]): Punto => ({
+  x: punti.reduce((s, p) => s + p.x, 0) / punti.length,
+  y: punti.reduce((s, p) => s + p.y, 0) / punti.length
+});
+
+function omografiaDiFoto(
+  foto: CalibrazioneFoto,
+  dove?: Punto | Punto[]
+): { H: Omografia; piano: PianoProspettiva } | null {
+  const piano = pianoDi(foto, dove);
+  if (!piano) return null;
   try {
-    return omografiaPiano(foto.piano);
+    return { H: omografiaPiano(piano), piano };
   } catch {
     return null; // piano degenere: si ignora la calibrazione
   }
@@ -41,11 +90,11 @@ function distanzaReale(
   p1: Punto,
   p2: Punto
 ): { valore: number; unita: Unita } | null {
-  const H = omografiaDiFoto(foto);
-  if (H && foto.piano) {
-    const a = applicaOmografia(H, p1);
-    const b = applicaOmografia(H, p2);
-    return { valore: Math.hypot(a.x - b.x, a.y - b.y), unita: foto.piano.unita };
+  const piano = omografiaDiFoto(foto, [p1, p2]);
+  if (piano) {
+    const a = applicaOmografia(piano.H, p1);
+    const b = applicaOmografia(piano.H, p2);
+    return { valore: Math.hypot(a.x - b.x, a.y - b.y), unita: piano.piano.unita };
   }
   if (foto.scala && foto.scala.px > 0) {
     return {
@@ -95,9 +144,13 @@ export function valoreAutomatico(a: Annotazione, foto: CalibrazioneFoto): number
     case 'quotaAngolo': {
       // con il piano di riferimento l'angolo è misurato sul piano
       // rettificato; senza, direttamente sull'immagine (stima)
-      const H = omografiaDiFoto(foto);
-      const [v, pa, pb] = H
-        ? [applicaOmografia(H, a.vertice), applicaOmografia(H, a.a), applicaOmografia(H, a.b)]
+      const piano = omografiaDiFoto(foto, [a.vertice, a.a, a.b]);
+      const [v, pa, pb] = piano
+        ? [
+            applicaOmografia(piano.H, a.vertice),
+            applicaOmografia(piano.H, a.a),
+            applicaOmografia(piano.H, a.b)
+          ]
         : [a.vertice, a.a, a.b];
       return Math.round(angoloGradi(v, pa, pb) * 10) / 10;
     }
@@ -456,11 +509,11 @@ export interface AreaReale {
  *     come non affidabile, perché la prospettiva la falsa.
  */
 export function areaReale(q: QuotaPoligono, foto: CalibrazioneFoto): AreaReale | null {
-  const H = omografiaDiFoto(foto);
-  if (H && foto.piano) {
-    const reali = q.punti.map((p) => applicaOmografia(H, p));
+  const piano = omografiaDiFoto(foto, q.punti);
+  if (piano) {
+    const reali = q.punti.map((p) => applicaOmografia(piano.H, p));
     return {
-      m2: areaInMetriQuadri(Math.abs(areaShoelace(reali)), foto.piano.unita),
+      m2: areaInMetriQuadri(Math.abs(areaShoelace(reali)), piano.piano.unita),
       affidabile: true,
       metodo: 'piano'
     };
@@ -487,12 +540,12 @@ export function areaReale(q: QuotaPoligono, foto: CalibrazioneFoto): AreaReale |
 
 /** Area reale (m²) dell'elemento rettangolo legacy, stessa logica del poligono */
 export function areaElemento(q: QuotaRettangolo, foto: CalibrazioneFoto): AreaReale | null {
-  const H = omografiaDiFoto(foto);
   const punti = quadrilateroQuotaRett(q);
-  if (H && foto.piano) {
-    const reali = punti.map((p) => applicaOmografia(H, p));
+  const piano = omografiaDiFoto(foto, punti);
+  if (piano) {
+    const reali = punti.map((p) => applicaOmografia(piano.H, p));
     return {
-      m2: areaInMetriQuadri(Math.abs(areaShoelace(reali)), foto.piano.unita),
+      m2: areaInMetriQuadri(Math.abs(areaShoelace(reali)), piano.piano.unita),
       affidabile: true,
       metodo: 'piano'
     };

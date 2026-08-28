@@ -389,6 +389,9 @@ export async function creaPiantaDaFoto(progettoId: ID, sorgente: Foto): Promise<
     noteDato: '',
     scala: sorgente.scala ? { ...sorgente.scala } : null,
     piano: sorgente.piano ?? null,
+    // la calibrazione si copia INTERA: se la foto aveva due pareti, la pianta
+    // ricalcata sopra deve avere le stesse due
+    piani: sorgente.piani?.map((p) => ({ ...p })),
     ePianta: true,
     sfondoNascosto: false,
     // PRIVACY: copiando i pixel si copiano anche le regioni oscurate, altrimenti
@@ -420,6 +423,7 @@ export async function impostaSfondoPianta(piantaId: ID, sorgente: Foto): Promise
       altezzaPx: sorgente.altezzaPx,
       scala: sorgente.scala ? { ...sorgente.scala } : null,
       piano: sorgente.piano ?? null,
+      piani: sorgente.piani?.map((p) => ({ ...p })),
       sfondoNascosto: false,
       // PRIVACY: le regioni oscurate seguono i pixel della foto di riferimento
       censure: sorgente.censure?.map((c) => ({ ...c })),
