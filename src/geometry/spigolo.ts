@@ -318,9 +318,32 @@ export interface SpigoloFraDue {
   a: number;
   b: number;
   spigolo: Spigolo;
+  /**
+   * SEPARA DAVVERO le due pareti?
+   *
+   * Su un angolo di fabbricato sì: le forme dell'una stanno tutte di qua e
+   * quelle dell'altra tutte di là. Su un incrocio a T no — il tramezzo tocca
+   * il muro nel mezzo, e il muro CONTINUA dall'altra parte della riga. Lì lo
+   * spigolo si vede (è un angolo vero) ma non è un confine: tagliarci il
+   * riquadro, o agganciarcelo, vorrebbe dire buttare via mezza parete.
+   */
+  separante: boolean;
 }
 
 let memoria: { firma: string; spigoli: SpigoloFraDue[] } | null = null;
+
+/**
+ * Lo spigolo lascia le forme dell'una parete tutte da un lato e quelle
+ * dell'altra tutte dall'altro? Solo allora è un confine.
+ */
+function separa(s: Spigolo, A: PianoProspettiva, B: PianoProspettiva): boolean {
+  const ancoreA = A.ancore ?? [];
+  const ancoreB = B.ancore ?? [];
+  if (ancoreA.length === 0 || ancoreB.length === 0) return true; // non si può dire
+  const tutte = (punti: Punto[], verso: number) =>
+    punti.every((p) => latoDelloSpigolo(s, p) * verso >= 0);
+  return tutte(ancoreA, s.segnoPrimo) && tutte(ancoreB, -s.segnoPrimo);
+}
 
 /** il baricentro delle forme di un piano, o del suo riquadro se non le ha */
 function dovePosa(piano: PianoProspettiva): Punto {
@@ -381,7 +404,7 @@ export function spigoliDellaFoto(
         piani[i].ancore,
         piani[j].ancore
       );
-      if (s) spigoli.push({ a: i, b: j, spigolo: s });
+      if (s) spigoli.push({ a: i, b: j, spigolo: s, separante: separa(s, piani[i], piani[j]) });
     }
   }
   memoria = { firma, spigoli };
@@ -404,6 +427,8 @@ export function vincoliDelPiano(spigoli: SpigoloFraDue[], indice: number): Vinco
   const vincoli: Vincolo[] = [];
   for (const s of spigoli) {
     if (s.a !== indice && s.b !== indice) continue;
+    // un incrocio a T non taglia niente: la parete continua di là
+    if (!s.separante) continue;
     // il segno che la retta assume dalla parte di questo piano
     const verso = s.a === indice ? s.spigolo.segnoPrimo : -s.spigolo.segnoPrimo;
     vincoli.push({

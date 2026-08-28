@@ -210,18 +210,30 @@ export function pianoAgganciato(
     if (![a.x, a.y, b.x, b.y].every(Number.isFinite)) continue;
     const dx = Math.abs(b.x - a.x);
     const dy = Math.abs(b.y - a.y);
+    // UN AGGANCIO È UN RITOCCO, non uno stiramento: se per arrivare allo
+    // spigolo il bordo dovesse fare più di mezzo riquadro, quelle due pareti
+    // non si toccano in questa foto — una sta dietro l'altra, o l'angolo cade
+    // lontano — e si lascia perdere
+    const ritocco = (vecchio: number, nuovo: number, misura: number) =>
+      Math.abs(nuovo - vecchio) <= misura * 0.5;
     if (dx <= dy) {
       // spigolo VERTICALE sul muro: fa da bordo destro o sinistro
       const cx = (a.x + b.x) / 2;
       const centro = (x0 + x1) / 2;
-      if (cx < centro) x0 = Math.min(cx, x1 - L * 0.1);
-      else x1 = Math.max(cx, x0 + L * 0.1);
+      if (cx < centro) {
+        if (ritocco(x0, cx, L)) x0 = Math.min(cx, x1 - L * 0.1);
+      } else if (ritocco(x1, cx, L)) {
+        x1 = Math.max(cx, x0 + L * 0.1);
+      }
     } else {
       // spigolo ORIZZONTALE: il muro col soffitto, o col pavimento
       const cy = (a.y + b.y) / 2;
       const centro = (y0 + y1) / 2;
-      if (cy < centro) y0 = Math.min(cy, y1 - A * 0.1);
-      else y1 = Math.max(cy, y0 + A * 0.1);
+      if (cy < centro) {
+        if (ritocco(y0, cy, A)) y0 = Math.min(cy, y1 - A * 0.1);
+      } else if (ritocco(y1, cy, A)) {
+        y1 = Math.max(cy, y0 + A * 0.1);
+      }
     }
   }
 
@@ -248,6 +260,17 @@ export function pianoAgganciato(
   });
   if (angoli.some((p) => !p || !Number.isFinite(p.x) || !Number.isFinite(p.y))) return null;
 
+  // le forme della parete devono restare DENTRO il suo riquadro: se
+  // l'aggancio ne taglia fuori una, quello spigolo non era un confine
+  const suoi = (piano.ancore ?? []).map((p) => applicaOmografia(H, p));
+  if (
+    suoi.some(
+      (p) => p.x < x0 - 1e-6 || p.x > x1 + 1e-6 || p.y < y0 - 1e-6 || p.y > y1 + 1e-6
+    )
+  ) {
+    return null;
+  }
+
   return {
     ...piano,
     punti: angoli as [Punto, Punto, Punto, Punto],
@@ -273,7 +296,7 @@ export function pianiAgganciati(
   if (spigoli.length === 0) return piani;
   return piani.map((piano, i) => {
     const suoi = spigoli
-      .filter((s) => s.a === i || s.b === i)
+      .filter((s) => s.separante && (s.a === i || s.b === i))
       .map((s) => ({ p1: s.spigolo.p1, p2: s.spigolo.p2 }));
     return pianoAgganciato(piano, suoi) ?? piano;
   });

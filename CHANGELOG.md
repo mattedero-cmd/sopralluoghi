@@ -10,6 +10,25 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.42.0 — Non tutti gli incroci sono angoli
+
+- **L'incrocio a T non taglia più il muro.** Un tramezzo che tocca la parete
+  nel mezzo fa uno spigolo vero, ma la parete CONTINUA dall'altra parte: prima
+  il riquadro veniva tagliato e agganciato là, e una delle finestre restava
+  fuori. Adesso l'app guarda da che parte stanno le forme: se una parete ne ha
+  di qua e di là, quella riga non è un confine — lo spigolo si vede lo stesso,
+  ma non taglia, non aggancia e non decide più a chi appartiene una misura.
+- **L'aggancio è un ritocco, non uno stiramento.** Se per arrivare allo
+  spigolo il bordo dovesse fare più di mezzo riquadro, le due pareti non si
+  toccano in questa foto — una sta dietro l'altra, o l'angolo cade lontano — e
+  si lascia perdere. E un aggancio non può mai portare fuori dal riquadro una
+  forma della sua parete.
+- **Le pareti di scorcio non scappano più dall'inquadratura.** Un muro ripreso
+  quasi di taglio ha l'orizzonte a due passi dalle sue forme: allargare il
+  riquadro di un quarto poteva portarne gli angoli a migliaia di pixel, e sullo
+  schermo si vedevano righe verdi che scappavano da tutte le parti. Ora il
+  riquadro resta nei paraggi delle forme da cui nasce.
+
 ## 1.41.0 — Le pareti unite, e il vertice di giunzione
 
 - **Lo spigolo è verde**, come le pareti a cui appartiene: stessa famiglia di

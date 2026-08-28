@@ -402,6 +402,7 @@ export function pianoSuEstensione(
     };
   });
   if (angoli.some((p) => !p || !Number.isFinite(p.x) || !Number.isFinite(p.y))) return null;
+  if (!stanoInPiedi(angoli as Punto[], angoliImmagine)) return null;
   return {
     punti: angoli as [Punto, Punto, Punto, Punto],
     larghezzaReale: L,
@@ -519,6 +520,37 @@ function ugualeAbbastanza(a: PianoProspettiva, b: PianoProspettiva): boolean {
  * Se il rettangolo, riportato indietro, cade oltre l'orizzonte — succede sulle
  * foto molto inclinate — si stringe finché torna un quadrilatero sano.
  */
+/**
+ * IL RIQUADRO NON PUÒ SCAPPARE DALLA FOTO.
+ *
+ * Una parete ripresa di scorcio ha l'orizzonte a due passi dalle sue forme:
+ * allargare il riquadro di un quarto sulle coordinate del muro può portarne
+ * gli angoli a migliaia di pixel, fuori dall'inquadratura, e sullo schermo si
+ * vedono righe verdi che scappano da tutte le parti. Il riquadro resta quindi
+ * nei paraggi delle forme da cui nasce: al massimo una volta e mezza il loro
+ * ingombro per lato.
+ */
+function stanoInPiedi(angoli: Punto[], attorno: Punto[]): boolean {
+  if (attorno.length === 0) return true;
+  const xs = attorno.map((p) => p.x);
+  const ys = attorno.map((p) => p.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const larghi = Math.max(1, maxX - minX) * 1.5;
+  const alti = Math.max(1, maxY - minY) * 1.5;
+  return angoli.every(
+    (p) =>
+      Number.isFinite(p.x) &&
+      Number.isFinite(p.y) &&
+      p.x > minX - larghi &&
+      p.x < maxX + larghi &&
+      p.y > minY - alti &&
+      p.y < maxY + alti
+  );
+}
+
 export function pianoDaOmografia(
   H: Omografia,
   riferimenti: RiferimentoPiano[],
@@ -554,6 +586,9 @@ export function pianoDaOmografia(
       };
     });
     if (angoli.some((p) => !p || !Number.isFinite(p.x) || !Number.isFinite(p.y))) continue;
+    // e non deve scappare lontano dalle forme: su una parete di scorcio un
+    // margine generoso porterebbe gli angoli fuori dal mondo
+    if (!stanoInPiedi(angoli as Punto[], riferimenti.flatMap((r) => r.immagine))) continue;
     const piano: PianoProspettiva = {
       punti: angoli as [Punto, Punto, Punto, Punto],
       larghezzaReale: L,

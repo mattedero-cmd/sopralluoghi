@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { spigoliDellaFoto } from '../spigolo';
+import { spigoliDellaFoto, vincoliDelPiano } from '../spigolo';
 import { pianiAggiornati, pianiDalleForme, riferimentiPiano } from '../pianoDaForme';
 import {
   pianiAgganciati,
@@ -442,5 +442,98 @@ describe('pareti attaccate lungo lo spigolo', () => {
     expect(secondo.punti[gemelli[0].vertice]).toEqual(destinazione);
     expect(primo.aMano).toBe(true);
     expect(secondo.aMano).toBe(true);
+  });
+});
+
+/* --- gli incroci che NON sono angoli di fabbricato ----------------------- */
+
+describe('un incrocio a T non è un confine', () => {
+  /**
+   * Un tramezzo che tocca il muro nel mezzo: lo spigolo c'è e si vede, ma il
+   * muro CONTINUA dall'altra parte della riga. Tagliarci il riquadro — o
+   * agganciarcelo — vorrebbe dire buttare via mezza parete.
+   */
+  const scena = () => {
+    const R = rotX(-0.05);
+    const principale = muro(R, [-3000, -1300, 7000], [1, 0, 0]);
+    const tramezzo = muro(R, [0, -1300, 7000], [0.5, 0, -0.866]);
+    const annotazioni = [
+      finestra(principale, 'p1', 800, 600, 900, 1000, 0),
+      finestra(principale, 'p2', 4000, 600, 900, 1000, 0),
+      finestra(tramezzo, 't1', 600, 600, 800, 900, 0),
+      finestra(tramezzo, 't2', 1700, 600, 800, 900, 0)
+    ];
+    const piani = pianiDalleForme(riferimentiPiano(annotazioni)).map((p) => p.piano);
+    return { principale, tramezzo, annotazioni, piani };
+  };
+
+  /** un punto sta dentro un poligono convesso? */
+  const dentro = (poly: Punto[], q: Punto) => {
+    let segno = 0;
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i];
+      const b = poly[(i + 1) % poly.length];
+      const cr = (b.x - a.x) * (q.y - a.y) - (b.y - a.y) * (q.x - a.x);
+      if (Math.abs(cr) < 1e-9) continue;
+      const s = cr > 0 ? 1 : -1;
+      if (segno === 0) segno = s;
+      else if (s !== segno) return false;
+    }
+    return segno !== 0;
+  };
+
+  it('lo spigolo c’è, ma è marcato come non separante', () => {
+    const { piani } = scena();
+    expect(piani).toHaveLength(2);
+    const spigoli = spigoliDellaFoto(piani, LARGHEZZA, ALTEZZA);
+    expect(spigoli).toHaveLength(1);
+    expect(spigoli[0].separante).toBe(false);
+  });
+
+  it('il muro non si taglia a metà: nessun vincolo di disegno', () => {
+    const { piani } = scena();
+    const spigoli = spigoliDellaFoto(piani, LARGHEZZA, ALTEZZA);
+    const muroPrincipale = piani.findIndex((p) => p.origini?.includes('p1'));
+    expect(vincoliDelPiano(spigoli, muroPrincipale)).toHaveLength(0);
+  });
+
+  it('e l’aggancio non gli porta via una finestra', () => {
+    const { piani } = scena();
+    const attaccati = pianiAgganciati(piani, LARGHEZZA, ALTEZZA);
+    for (const piano of attaccati) {
+      for (const ancora of piano.ancore ?? []) {
+        expect(dentro(piano.punti, ancora)).toBe(true);
+      }
+    }
+  });
+});
+
+describe('una parete di scorcio non scappa dalla foto', () => {
+  it('il riquadro resta nei paraggi delle sue forme', () => {
+    // muro che fugge indietro, ripreso quasi di taglio: l'orizzonte è a due
+    // passi, e un margine generoso porterebbe gli angoli a migliaia di pixel
+    const R = mul(rotX(-0.05), rotY(0.1));
+    const scorcio = muro(R, [1200, -1300, 5000], [0.34, 0, 0.94]);
+    const annotazioni = [
+      finestra(scorcio, 's1', 600, 700, 500, 400, 0),
+      finestra(scorcio, 's2', 1500, 700, 500, 400, 0)
+    ];
+    const piani = pianiDalleForme(riferimentiPiano(annotazioni)).map((p) => p.piano);
+    expect(piani).toHaveLength(1);
+    const forme = annotazioni.flatMap((a) =>
+      (a as unknown as { punti: Punto[] }).punti
+    );
+    const minX = Math.min(...forme.map((p) => p.x));
+    const maxX = Math.max(...forme.map((p) => p.x));
+    const minY = Math.min(...forme.map((p) => p.y));
+    const maxY = Math.max(...forme.map((p) => p.y));
+    const largo = (maxX - minX) * 1.5;
+    const alto = (maxY - minY) * 1.5;
+    for (const p of piani[0].punti) {
+      expect(p.x).toBeGreaterThan(minX - largo);
+      expect(p.x).toBeLessThan(maxX + largo);
+      expect(p.y).toBeGreaterThan(minY - alto);
+      expect(p.y).toBeLessThan(maxY + alto);
+    }
   });
 });
