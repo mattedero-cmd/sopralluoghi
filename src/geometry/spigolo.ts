@@ -322,6 +322,43 @@ export interface SpigoloFraDue {
 
 let memoria: { firma: string; spigoli: SpigoloFraDue[] } | null = null;
 
+/** il baricentro delle forme di un piano, o del suo riquadro se non le ha */
+function dovePosa(piano: PianoProspettiva): Punto {
+  const punti = piano.ancore?.length ? piano.ancore : piano.punti;
+  return {
+    x: punti.reduce((s, p) => s + p.x, 0) / punti.length,
+    y: punti.reduce((s, p) => s + p.y, 0) / punti.length
+  };
+}
+
+/**
+ * DUE PARETI SONO CONTIGUE, o c'è un altro muro in mezzo?
+ *
+ * Due piani non paralleli si incontrano SEMPRE in una retta, anche il primo e
+ * l'ultimo muro di una facciata a zig-zag: quella retta esiste in geometria ma
+ * non è uno spigolo che si vede, e disegnarla sarebbe una riga in mezzo alla
+ * foto che non corrisponde a niente. Si guarda quindi se fra le forme dell'una
+ * e quelle dell'altra ne cade in mezzo un'altra parete: allora non si toccano,
+ * e il loro incrocio non si disegna.
+ */
+function contigue(A: PianoProspettiva, B: PianoProspettiva, altri: PianoProspettiva[]): boolean {
+  const a = dovePosa(A);
+  const b = dovePosa(B);
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lung = Math.hypot(dx, dy);
+  if (!(lung > 1e-6)) return true;
+  for (const C of altri) {
+    const c = dovePosa(C);
+    // dove cade C lungo il segmento fra le due pareti, e quanto se ne discosta
+    const t = ((c.x - a.x) * dx + (c.y - a.y) * dy) / (lung * lung);
+    if (t <= 0.08 || t >= 0.92) continue; // sta al di là di una delle due
+    const fuori = Math.abs((c.x - a.x) * dy - (c.y - a.y) * dx) / lung;
+    if (fuori < 0.4 * lung) return false; // c'è un muro in mezzo
+  }
+  return true;
+}
+
 export function spigoliDellaFoto(
   piani: PianoProspettiva[],
   larghezza: number,
@@ -333,6 +370,9 @@ export function spigoliDellaFoto(
   const spigoli: SpigoloFraDue[] = [];
   for (let i = 0; i < piani.length; i++) {
     for (let j = i + 1; j < piani.length; j++) {
+      // solo le pareti che si toccano davvero: l'incrocio del primo muro con
+      // l'ultimo di una facciata a svolte non è uno spigolo che si vede
+      if (!contigue(piani[i], piani[j], piani.filter((_, k) => k !== i && k !== j))) continue;
       const s = spigoloFraPiani(
         piani[i],
         piani[j],

@@ -10,6 +10,26 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.38.0 — Facciate a più svolte
+
+- **Tre, quattro, cinque pareti nella stessa foto.** Un capannone coi
+  risvolti, un terrazzo a tre lati, una casa a fisarmonica: le forme quotate
+  si dividono da sole in tante pareti quanti sono i muri, ognuna con le sue
+  finestre, e ogni misura ritrova il muro suo — anche presa a venti
+  centimetri da una svolta.
+- **Niente spigoli inventati.** Due muri che non si toccano si incrociano
+  comunque, in geometria: il primo e il terzo di una facciata a zig-zag hanno
+  una retta d'intersezione, che però non è uno spigolo che si vede. Prima
+  veniva disegnata in mezzo alla foto; adesso l'app guarda se fra le due
+  pareti ne cade in mezzo un'altra, e in quel caso lascia perdere. Restano le
+  svolte vere, una per ogni angolo inquadrato.
+- Due muri **paralleli** — quelli alterni di una fisarmonica — non fanno
+  spigolo e nessuna riga compare. Una svolta che cade **fuori dall'inquadratura**
+  non si disegna: là comanda di nuovo la parete più vicina.
+- Il conto è anche più svelto, perché le coppie che non si toccano non
+  vengono nemmeno calcolate: cinque pareti si sistemano in una ventina di
+  millisecondi, e il risultato resta in memoria finché non si ricalibra.
+
 ## 1.37.0 — Lo spigolo fra due pareti
 
 - **Si vede dove finisce un muro e comincia l'altro.** Con più pareti sulla
