@@ -1036,6 +1036,8 @@ export interface Impostazioni {
     mostraGeotag: boolean;
     mostraDataScatto: boolean;
   };
+  /** Mirino della lente di precisione (croce sotto il dito) */
+  mirino?: Mirino;
   /** Configurazione del backup cloud (Supabase), opzionale */
   cloud?: ConfigCloud | null;
   /**
@@ -1046,6 +1048,56 @@ export interface Impostazioni {
    */
   modificatoIl?: number;
 }
+
+/**
+ * MIRINO DELLA LENTE: la croce che compare sotto il dito quando si posa un
+ * punto. È l'unico strumento di puntamento fine che l'app ha, quindi il suo
+ * aspetto è tutto: un filetto che sparisce sullo sfondo costa un errore di
+ * qualche millimetro reale. Per questo il colore predefinito è calcolato
+ * pixel per pixel sul complementare di ciò che il filetto attraversa.
+ */
+export interface Mirino {
+  /** lato della lente, in px schermo */
+  lato: number;
+  /** ingrandimento rispetto alla vista corrente (moltiplicatore) */
+  ingrandimento: number;
+  /** spessore del filetto della croce, in px schermo */
+  spessore: number;
+  /** semi-vuoto al centro, in px: 0 = croce continua, filo su filo */
+  vuoto: number;
+  /** cerchietto centrale attorno al punto */
+  cerchio: boolean;
+  /**
+   * 'complementare' = ogni tratto prende il complementare del colore che
+   * sta attraversando (massima leggibilità su qualsiasi sfondo);
+   * gli altri valori sono colori fissi.
+   */
+  colore: 'complementare' | 'bianco' | 'nero' | 'giallo' | 'magenta' | 'verde';
+  /** alone scuro dietro il filetto (utile solo con i colori fissi) */
+  alone: boolean;
+}
+
+/** Il mirino come chiesto: croce continua, sottile, a colore complementare. */
+export const MIRINO_DEFAULT: Mirino = {
+  lato: 150,
+  ingrandimento: 3,
+  spessore: 2,
+  vuoto: 0,
+  cerchio: false,
+  colore: 'complementare',
+  alone: false
+};
+
+/** Il mirino "classico": croce bianca con alone, vuoto e cerchietto al centro. */
+export const MIRINO_CLASSICO: Mirino = {
+  lato: 150,
+  ingrandimento: 3,
+  spessore: 1.5,
+  vuoto: 7,
+  cerchio: true,
+  colore: 'bianco',
+  alone: true
+};
 
 /** Configurazione fiscale dell'utente, usata per costruire i preventivi */
 export interface Fiscale {
@@ -1108,7 +1160,8 @@ export const IMPOSTAZIONI_DEFAULT: Impostazioni = {
     dicituraForfettario:
       'Operazione effettuata ai sensi dell’art. 1, commi 54-89, L. 190/2014 - regime forfettario. Importo non soggetto a ritenuta d’acconto.'
   },
-  pdf: { colore: '#1a4f8b', pieDiPagina: '', mostraGeotag: true, mostraDataScatto: true }
+  pdf: { colore: '#1a4f8b', pieDiPagina: '', mostraGeotag: true, mostraDataScatto: true },
+  mirino: MIRINO_DEFAULT
 };
 
 /** Colori convenzionali per la distinzione reale/stimata in tutta l'app */

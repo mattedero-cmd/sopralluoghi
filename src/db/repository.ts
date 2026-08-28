@@ -1,6 +1,7 @@
 import { db } from './db';
 import {
   IMPOSTAZIONI_DEFAULT,
+  MIRINO_DEFAULT,
   type Annotazione,
   type Cartella,
   type Cliente,
@@ -668,7 +669,8 @@ export async function leggiImpostazioni(): Promise<Impostazioni> {
     professionista: { ...IMPOSTAZIONI_DEFAULT.professionista, ...i.professionista },
     stileDefault: { ...IMPOSTAZIONI_DEFAULT.stileDefault, ...i.stileDefault },
     fiscale: { ...IMPOSTAZIONI_DEFAULT.fiscale, ...i.fiscale },
-    pdf: { ...IMPOSTAZIONI_DEFAULT.pdf, ...i.pdf }
+    pdf: { ...IMPOSTAZIONI_DEFAULT.pdf, ...i.pdf },
+    mirino: { ...MIRINO_DEFAULT, ...i.mirino }
   };
 }
 

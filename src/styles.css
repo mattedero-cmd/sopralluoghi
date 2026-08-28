@@ -588,8 +588,7 @@ h2 {
 /* Lente di ingrandimento per il posizionamento di precisione */
 .lente {
   position: absolute;
-  width: 150px;
-  height: 150px;
+  /* lato impostato inline: il mirino è parametrizzabile */
   border-radius: 50%;
   overflow: hidden;
   border: 3px solid var(--accento);

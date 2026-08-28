@@ -7,10 +7,12 @@ import type Konva from 'konva';
 const PUNTATORE_FINE = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: fine)').matches;
 import {
   COLORE_QUOTA_TECNICA,
+  MIRINO_DEFAULT,
   quadrilateroQuotaRett,
   segmentiPoligono,
   type Annotazione,
   type Foto,
+  type Mirino,
   type PianoProspettiva,
   type Punto,
   type RegioneCensura,
@@ -38,6 +40,7 @@ import {
 } from '../geometry/punti';
 import type { RicercaBordi } from '../geometry/bordi';
 import { traslaAnnotazione } from './fabbrica';
+import { disegnaMirino } from './mirino';
 import { immagineDettaglio } from '../utils/immaginiCallout';
 import { eFormaEtichettabile, vociLegenda } from '../geometry/nomenclatura';
 import { omografiaPianoInversa } from '../geometry/omografia';
@@ -138,6 +141,8 @@ interface Props {
   snapAttivo: boolean;
   vincolo: ModalitaVincolo;
   sogliaSnap: number;
+  /** aspetto della croce nella lente di precisione */
+  mirino?: Mirino;
   /** snap ai bordi dell'immagine (rilevamento contorni), se attivo */
   ricercaBordi: RicercaBordi | null;
   /** layer: quali categorie di annotazioni mostrare */
@@ -1903,6 +1908,7 @@ export function StageEditor(p: Props) {
           vista={vista}
           contenitore={dimensioni}
           abbondanze={p.foto.mostraAbbondanze}
+          mirino={p.mirino ?? MIRINO_DEFAULT}
         />
       )}
       {/* zoom: con le dita (pinch) su touch; +/− e "adatta" col puntatore */}
@@ -1935,8 +1941,6 @@ export function StageEditor(p: Props) {
 // nell'angolo opposto al dito per il posizionamento di precisione.
 // ---------------------------------------------------------------------------
 
-const LATO_LENTE = 150;
-
 function Lente({
   immagine,
   annotazioni,
@@ -1945,7 +1949,8 @@ function Lente({
   agganciato,
   vista,
   contenitore,
-  abbondanze
+  abbondanze,
+  mirino
 }: {
   immagine: ImmagineDisegnabile;
   annotazioni: Annotazione[];
@@ -1956,31 +1961,35 @@ function Lente({
   contenitore: { w: number; h: number };
   /** true = anche nella lente si vede il contorno del pezzo da tagliare */
   abbondanze?: boolean;
+  mirino: Mirino;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const lato = mirino.lato;
 
   // ingrandimento: sempre più stretto della vista corrente, mai sgranato oltre 6x
-  const zoom = Math.min(6, Math.max(1.4, vista.scala * 3));
+  const zoom = Math.min(6, Math.max(1.4, vista.scala * mirino.ingrandimento));
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    // willReadFrequently: il mirino complementare rilegge i pixel a ogni frame
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
     const dpr = window.devicePixelRatio || 1;
-    if (canvas.width !== LATO_LENTE * dpr) {
-      canvas.width = LATO_LENTE * dpr;
-      canvas.height = LATO_LENTE * dpr;
+    if (canvas.width !== Math.round(lato * dpr)) {
+      canvas.width = Math.round(lato * dpr);
+      canvas.height = Math.round(lato * dpr);
     }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.save();
     ctx.scale(dpr, dpr);
-    ctx.clearRect(0, 0, LATO_LENTE, LATO_LENTE);
+    ctx.clearRect(0, 0, lato, lato);
     ctx.fillStyle = '#05070a';
-    ctx.fillRect(0, 0, LATO_LENTE, LATO_LENTE);
+    ctx.fillRect(0, 0, lato, lato);
 
     // foto + annotazioni centrate sul punto, ingrandite
     ctx.save();
-    ctx.translate(LATO_LENTE / 2, LATO_LENTE / 2);
+    ctx.translate(lato / 2, lato / 2);
     ctx.scale(zoom, zoom);
     ctx.translate(-punto.x, -punto.y);
     ctx.drawImage(immagine, 0, 0);
@@ -1996,32 +2005,12 @@ function Lente({
       for (const prim of primitiveAnnotazione(bozza)) disegnaPrimitiva(ctx, prim, immagine);
     }
     ctx.restore();
-
-    // mirino a croce con alone scuro per leggibilità su qualsiasi sfondo
-    const c = LATO_LENTE / 2;
-    const gap = 7;
-    for (const [colore, sp] of [
-      ['rgba(0,0,0,0.85)', 3.5],
-      [agganciato ? '#32d74b' : '#ffffff', 1.5]
-    ] as const) {
-      ctx.strokeStyle = colore;
-      ctx.lineWidth = sp;
-      ctx.beginPath();
-      ctx.moveTo(4, c);
-      ctx.lineTo(c - gap, c);
-      ctx.moveTo(c + gap, c);
-      ctx.lineTo(LATO_LENTE - 4, c);
-      ctx.moveTo(c, 4);
-      ctx.lineTo(c, c - gap);
-      ctx.moveTo(c, c + gap);
-      ctx.lineTo(c, LATO_LENTE - 4);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(c, c, gap, 0, Math.PI * 2);
-      ctx.stroke();
-    }
     ctx.restore();
-  }, [immagine, annotazioni, bozza, punto, agganciato, zoom]);
+
+    // mirino: disegnato in pixel dispositivo, così il complementare campiona
+    // esattamente i pixel che il filetto copre
+    disegnaMirino(ctx, canvas.width, mirino, dpr, agganciato);
+  }, [immagine, annotazioni, bozza, punto, agganciato, zoom, lato, mirino]);
 
   // posizione: angolo orizzontalmente opposto al dito; in alto, oppure in
   // basso quando il dito lavora nella parte alta dello schermo
@@ -2030,13 +2019,15 @@ function Lente({
   const sinistra = schermo.x > contenitore.w / 2;
   const sopra = schermo.y > contenitore.h * 0.4;
   const stile: React.CSSProperties = {
-    left: sinistra ? margine : contenitore.w - LATO_LENTE - margine,
-    top: sopra ? margine : contenitore.h - LATO_LENTE - margine
+    left: sinistra ? margine : contenitore.w - lato - margine,
+    top: sopra ? margine : contenitore.h - lato - margine,
+    width: lato,
+    height: lato
   };
 
   return (
     <div className={`lente${agganciato ? ' agganciata' : ''}`} style={stile}>
-      <canvas ref={canvasRef} style={{ width: LATO_LENTE, height: LATO_LENTE }} />
+      <canvas ref={canvasRef} style={{ width: lato, height: lato }} />
     </div>
   );
 }

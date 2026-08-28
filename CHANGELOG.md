@@ -10,6 +10,31 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.43.0 — Un mirino che non sparisce mai
+
+- **La croce della lente prende il colore complementare di ciò che
+  attraversa.** Finora era un filetto bianco con l'alone nero: leggibile quasi
+  sempre, ma «quasi» non basta quando un pixel di lente sono millimetri veri
+  sul serramento. Adesso il filetto legge, tratto per tratto, i pixel che sta
+  coprendo — foto e annotazioni comprese — e per ognuno usa il complementare:
+  tinta ruotata di 180°, luminosità dalla parte opposta. Sul bianco va scuro,
+  sul nero va chiaro, sul rosso diventa ciano. Misurato su tutta la gamma dei
+  colori, il contrasto peggiore resta 3,8:1 (la soglia per la grafica non
+  testuale è 3:1); nella lente vera, sopra una banda rossa, 5,4:1.
+- **Croce continua, senza cerchietto.** I due filetti si incrociano: il punto è
+  esattamente dove si toccano, e non c'è più il vuoto centrale che obbligava a
+  immaginare dove cadesse. I due bracci vengono campionati PRIMA che se ne
+  disegni uno, altrimenti il verticale, all'incrocio, leggerebbe il colore del
+  mirino stesso e proprio il pixel centrale uscirebbe sbagliato.
+- **Il mirino si parametrizza** in Impostazioni → «Mirino di precisione»:
+  colore (complementare o fisso), spessore del filetto, vuoto al centro,
+  cerchietto, dimensione e ingrandimento della lente. Con un riquadro di prova
+  a bande — bianco, grigio, nero e tinte sature — per vedere subito l'effetto
+  senza uscire dalle impostazioni.
+- **Si torna indietro con un pulsante.** «Torna al mirino classico» rimette
+  esattamente il filetto di prima (bianco, alone, vuoto e cerchietto);
+  «Ripristina il predefinito» rimette il nuovo.
+
 ## 1.42.0 — Non tutti gli incroci sono angoli
 
 - **L'incrocio a T non taglia più il muro.** Un tramezzo che tocca la parete

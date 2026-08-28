@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ConfigCloud, Fiscale, Impostazioni, Unita } from '../db/types';
+import {
+  MIRINO_CLASSICO,
+  MIRINO_DEFAULT,
+  type ConfigCloud,
+  type Fiscale,
+  type Impostazioni,
+  type Mirino,
+  type Unita
+} from '../db/types';
+import { disegnaMirino } from '../editor/mirino';
 import { nomeRegime } from '../fiscale/calcolo';
 import { accediCloud, disconnettiCloud } from '../cloud/supabaseBackup';
 import { sincronizza } from '../cloud/sincronizzazione';
@@ -202,6 +211,14 @@ export function ImpostazioniPage() {
             </span>
           </>
         )}
+
+        <h2>Mirino di precisione</h2>
+        <p className="aiuto">
+          La croce che compare nella lente quando posi un punto con il dito. Di serie prende, tratto
+          per tratto, il colore complementare di ciò che attraversa: così resta leggibile su
+          qualsiasi sfondo, che sia un serramento bianco o una siepe scura.
+        </p>
+        <SezioneMirino imp={imp} aggiorna={aggiorna} />
 
         <h2>Report PDF</h2>
         <div className="campo">
@@ -597,5 +614,173 @@ function SezioneFiscale({ imp, aggiorna }: { imp: Impostazioni; aggiorna: (m: Pa
         </>
       )}
     </>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// Mirino della lente di precisione
+// ---------------------------------------------------------------------------
+
+function SezioneMirino({
+  imp,
+  aggiorna
+}: {
+  imp: Impostazioni;
+  aggiorna: (m: Partial<Impostazioni>) => void;
+}) {
+  const m: Mirino = { ...MIRINO_DEFAULT, ...imp.mirino };
+  const set = (mod: Partial<Mirino>) => aggiorna({ mirino: { ...m, ...mod } });
+
+  return (
+    <>
+      <AnteprimaMirino mirino={m} />
+
+      <div className="campo">
+        <label>Colore del filetto</label>
+        <select value={m.colore} onChange={(e) => set({ colore: e.target.value as Mirino['colore'] })}>
+          <option value="complementare">Complementare a ciò che attraversa (consigliato)</option>
+          <option value="bianco">Bianco</option>
+          <option value="nero">Nero</option>
+          <option value="giallo">Giallo</option>
+          <option value="magenta">Magenta</option>
+          <option value="verde">Verde</option>
+        </select>
+      </div>
+
+      <div className="campo">
+        <label>Spessore del filetto: {m.spessore.toFixed(1)} px</label>
+        <input
+          type="range"
+          min={1}
+          max={6}
+          step={0.5}
+          value={m.spessore}
+          onChange={(e) => set({ spessore: Number(e.target.value) })}
+        />
+      </div>
+
+      <div className="campo">
+        <label>Vuoto al centro: {m.vuoto === 0 ? 'nessuno (croce continua)' : `${m.vuoto} px`}</label>
+        <input
+          type="range"
+          min={0}
+          max={20}
+          step={1}
+          value={m.vuoto}
+          onChange={(e) => set({ vuoto: Number(e.target.value) })}
+        />
+        <p className="aiuto">
+          A zero i due filetti si incrociano: il punto è esattamente dove si toccano, ed è la
+          posizione più precisa da leggere.
+        </p>
+      </div>
+
+      <label className="fisc-check campo">
+        <input type="checkbox" checked={m.cerchio} onChange={(e) => set({ cerchio: e.target.checked })} />
+        Cerchietto al centro
+      </label>
+
+      {m.colore !== 'complementare' && (
+        <label className="fisc-check campo">
+          <input type="checkbox" checked={m.alone} onChange={(e) => set({ alone: e.target.checked })} />
+          Alone scuro dietro il filetto
+        </label>
+      )}
+
+      <div className="campo">
+        <label>Dimensione della lente</label>
+        <select value={String(m.lato)} onChange={(e) => set({ lato: Number(e.target.value) })}>
+          <option value="120">120 px — discreta</option>
+          <option value="150">150 px — consigliata</option>
+          <option value="190">190 px — grande</option>
+          <option value="230">230 px — molto grande</option>
+        </select>
+      </div>
+
+      <div className="campo">
+        <label>Ingrandimento della lente</label>
+        <select
+          value={String(m.ingrandimento)}
+          onChange={(e) => set({ ingrandimento: Number(e.target.value) })}
+        >
+          <option value="2">2× la vista</option>
+          <option value="3">3× la vista — consigliato</option>
+          <option value="4">4× la vista</option>
+          <option value="5">5× la vista</option>
+        </select>
+        <p className="aiuto">Comunque mai oltre 6× l’immagine, per non ingrandire la sgranatura.</p>
+      </div>
+
+      <div className="campo" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button className="btn" onClick={() => aggiorna({ mirino: { ...MIRINO_DEFAULT } })}>
+          Ripristina il predefinito
+        </button>
+        <button className="btn" onClick={() => aggiorna({ mirino: { ...MIRINO_CLASSICO } })}>
+          Torna al mirino classico
+        </button>
+      </div>
+      <p className="aiuto">
+        «Classico» è il mirino delle versioni precedenti: filetto bianco con alone, vuoto e
+        cerchietto al centro.
+      </p>
+    </>
+  );
+}
+
+/** Lato del riquadro di prova, in px CSS. */
+const LATO_PROVA = 220;
+
+/**
+ * Prova del mirino su una striscia di colori: bianco, grigio medio, nero e
+ * tinte sature. È il caso peggiore per un filetto a colore fisso, e mostra a
+ * colpo d'occhio cosa fa il complementare.
+ */
+function AnteprimaMirino({ mirino }: { mirino: Mirino }) {
+  const rif = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = rif.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+    const lato = Math.round(LATO_PROVA * dpr);
+    canvas.width = lato;
+    canvas.height = lato;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    // fondo a bande verticali + una fascia orizzontale, per incrociare
+    // tutti i casi difficili con entrambi i bracci
+    const bande = ['#ffffff', '#808080', '#000000', '#c8102e', '#0a7d2b', '#1a4f8b'];
+    const w = lato / bande.length;
+    bande.forEach((c, i) => {
+      ctx.fillStyle = c;
+      ctx.fillRect(i * w, 0, Math.ceil(w), lato);
+    });
+    const grad = ctx.createLinearGradient(0, 0, lato, 0);
+    grad.addColorStop(0, 'rgba(0,0,0,0.85)');
+    grad.addColorStop(0.5, 'rgba(128,128,128,0.85)');
+    grad.addColorStop(1, 'rgba(255,255,255,0.85)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, lato * 0.38, lato, lato * 0.24);
+
+    disegnaMirino(ctx, lato, mirino, dpr, false);
+  }, [mirino]);
+
+  return (
+    <div className="campo">
+      <label>Prova</label>
+      <canvas
+        ref={rif}
+        style={{
+          width: LATO_PROVA,
+          height: LATO_PROVA,
+          maxWidth: '100%',
+          borderRadius: 12,
+          border: '1px solid var(--bordo)'
+        }}
+      />
+    </div>
   );
 }

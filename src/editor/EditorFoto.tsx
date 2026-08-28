@@ -3548,6 +3548,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         snapAttivo={snapAttivo}
         vincolo={vincolo}
         sogliaSnap={impostazioni.sogliaSnap}
+        mirino={impostazioni.mirino}
         ricercaBordi={ricercaBordi}
         filtroVisibile={(a) => layerVisibili[categoriaAnnotazione(a)]}
         pianoAttivo={pianoAttivo}
