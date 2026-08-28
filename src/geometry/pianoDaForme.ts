@@ -358,9 +358,154 @@ export function pianiDalleForme(riferimenti: RiferimentoPiano[]): PianoRicavato[
       x: r.immagine.reduce((s, p) => s + p.x, 0) / 4,
       y: r.immagine.reduce((s, p) => s + p.y, 0) / 4
     }));
+    // le forme da cui è nato: finché ci sono, il piano le segue
+    piano.origini = gruppo.map((r) => r.id);
     fuori.push({ esito, piano });
   }
   return fuori;
+}
+
+/**
+ * L'OMOGRAFIA SCRITTA COME PIANO su un'estensione DATA.
+ *
+ * Serve quando un piano si rifà: la prospettiva è nuova, ma il riquadro verde
+ * deve restare quello che l'utente ha in mano — magari allargato apposta per
+ * vedere la griglia fin dove serviva. Si prendono i suoi quattro angoli sulla
+ * foto, si guarda dove cadono nella prospettiva nuova, e da lì si riscrive il
+ * riquadro.
+ */
+export function pianoSuEstensione(
+  H: Omografia,
+  angoliImmagine: Punto[],
+  celle = 4
+): PianoProspettiva | null {
+  const Hinv = invertiOmografia(H);
+  if (!Hinv || angoliImmagine.length === 0) return null;
+  const punti = angoliImmagine.map((p) => applicaOmografia(H, p));
+  const minX = Math.min(...punti.map((p) => p.x));
+  const maxX = Math.max(...punti.map((p) => p.x));
+  const minY = Math.min(...punti.map((p) => p.y));
+  const maxY = Math.max(...punti.map((p) => p.y));
+  const L = Math.max(1, maxX - minX);
+  const A = Math.max(1, maxY - minY);
+  const angoli = [
+    { x: minX, y: minY },
+    { x: maxX, y: minY },
+    { x: maxX, y: maxY },
+    { x: minX, y: maxY }
+  ].map((q) => {
+    const w = Hinv[6] * q.x + Hinv[7] * q.y + Hinv[8];
+    if (!(Math.abs(w) > 1e-9)) return null;
+    return {
+      x: (Hinv[0] * q.x + Hinv[1] * q.y + Hinv[2]) / w,
+      y: (Hinv[3] * q.x + Hinv[4] * q.y + Hinv[5]) / w
+    };
+  });
+  if (angoli.some((p) => !p || !Number.isFinite(p.x) || !Number.isFinite(p.y))) return null;
+  return {
+    punti: angoli as [Punto, Punto, Punto, Punto],
+    larghezzaReale: L,
+    altezzaReale: A,
+    unita: 'mm' as Unita,
+    celle
+  };
+}
+
+/**
+ * I PIANI RIFATTI DOPO UNA MODIFICA ALLE FORME.
+ *
+ * Una volta acceso, il piano segue le forme da cui è nato: si corregge una
+ * quota, si sposta l'angolo di una finestra, e la prospettiva si aggiorna di
+ * conseguenza — senza chiedere niente, perché è quello che deve fare.
+ *
+ * Con due riguardi, però:
+ * - il RIQUADRO resta quello che è, anche se allargato a mano: cambia la
+ *   prospettiva, non fin dove arriva la griglia;
+ * - un piano AGGIUSTATO A MANO non si tocca. Chi ha spostato un vertice
+ *   guardando la foto ne sa più del conto, e cancellargli la correzione al
+ *   primo ritocco di una quota sarebbe un dispetto. Per rifarlo dalle forme
+ *   basta ridare «Piano dalle forme».
+ * - così pure un piano calibrato a mano, che di forme non ne ha.
+ *
+ * Torna `null` quando non c'è niente da cambiare: è il caso normale, e non
+ * deve costare niente.
+ */
+export function pianiAggiornati(
+  attuali: PianoProspettiva[],
+  annotazioni: Annotazione[]
+): PianoProspettiva[] | null {
+  const daForme = attuali.filter((p) => p.origini?.length && !p.aMano);
+  if (daForme.length === 0) return null;
+
+  const rifatti = pianiDalleForme(riferimentiPiano(annotazioni));
+  let cambiato = false;
+  const fuori: PianoProspettiva[] = [];
+  const usati = new Set<number>();
+
+  for (const piano of attuali) {
+    if (!piano.origini?.length || piano.aMano) {
+      fuori.push(piano); // a mano, o calibrato a mano: non si tocca
+      // le sue forme restano sue: il gruppo che le raccoglie non deve poi
+      // rientrare dalla finestra come parete «nuova»
+      if (piano.origini?.length) {
+        const mie = new Set(piano.origini);
+        rifatti.forEach((r, i) => {
+          if (r.esito.riferimenti.some((x) => mie.has(x.id))) usati.add(i);
+        });
+      }
+      continue;
+    }
+    // il gruppo che raccoglie le stesse forme: si riconosce dai codici
+    const origini = new Set(piano.origini);
+    let scelto = -1;
+    let quante = 0;
+    rifatti.forEach((r, i) => {
+      if (usati.has(i)) return;
+      const comuni = r.esito.riferimenti.filter((x) => origini.has(x.id)).length;
+      if (comuni > quante) {
+        quante = comuni;
+        scelto = i;
+      }
+    });
+    if (scelto < 0) {
+      // le sue forme sono sparite tutte: il piano non ha più fondamento
+      cambiato = true;
+      continue;
+    }
+    usati.add(scelto);
+    const nuovo = pianoSuEstensione(rifatti[scelto].esito.H, piano.punti, piano.celle ?? 4);
+    if (!nuovo) {
+      fuori.push(piano);
+      continue;
+    }
+    fuori.push({
+      ...nuovo,
+      nome: rifatti[scelto].piano.nome ?? piano.nome,
+      ancore: rifatti[scelto].piano.ancore,
+      origini: rifatti[scelto].piano.origini
+    });
+    if (!ugualeAbbastanza(piano, fuori[fuori.length - 1])) cambiato = true;
+  }
+
+  // una parete NUOVA — hai quotato due finestre su un muro che prima non
+  // c'era — entra da sé: è la stessa regola, applicata a un gruppo in più
+  rifatti.forEach((r, i) => {
+    if (usati.has(i)) return;
+    if (r.esito.riferimenti.length < 2) return; // una forma sola non fa parete
+    fuori.push(r.piano);
+    cambiato = true;
+  });
+
+  return cambiato && fuori.length > 0 ? fuori : null;
+}
+
+/** due piani sono lo stesso, a meno di un decimo di pixel? */
+function ugualeAbbastanza(a: PianoProspettiva, b: PianoProspettiva): boolean {
+  if (Math.abs(a.larghezzaReale - b.larghezzaReale) > 0.1) return false;
+  if (Math.abs(a.altezzaReale - b.altezzaReale) > 0.1) return false;
+  return a.punti.every(
+    (p, i) => Math.abs(p.x - b.punti[i].x) < 0.1 && Math.abs(p.y - b.punti[i].y) < 0.1
+  );
 }
 
 /**

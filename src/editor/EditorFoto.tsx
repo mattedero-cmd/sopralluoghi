@@ -117,6 +117,7 @@ import {
 } from '../geometry/nomenclatura';
 import { applicaOmografia, omografiaPiano, omografiaPianoInversa } from '../geometry/omografia';
 import {
+  pianiAggiornati,
   pianiDalleForme,
   riferimentiPiano,
   scartoCalibrazione,
@@ -2815,6 +2816,60 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     await aggiornaFoto(foto.id, { piano: primo, piani: altri });
     ricalcolaConCalibrazione({ scala: foto.scala, piano: primo, piani: altri });
   };
+
+  /**
+   * IL PIANO SEGUE LE FORME.
+   *
+   * Una volta acceso, il piano è figlio delle forme quotate: se se ne corregge
+   * una — una misura sbagliata, un angolo puntato male — la prospettiva si
+   * rifà da sola, e con lei tutte le misure calcolate. Il riquadro verde resta
+   * dov'è, anche se allargato a mano, e una prospettiva aggiustata a mano non
+   * si tocca: là comanda l'uomo.
+   *
+   * Si aspetta mezzo secondo prima di rifare i conti — mentre si trascina un
+   * vertice arrivano venti modifiche al secondo, e rifarli venti volte non
+   * servirebbe a niente.
+   */
+  const firmaForme = useRef<string | null>(null);
+  /**
+   * L'attesa vive in un `ref`, non nel ciclo di vita dell'effetto: un
+   * ri-render qualunque — e ne arrivano in continuazione — ne annullerebbe la
+   * pulizia, e il ricalcolo non scatterebbe mai.
+   */
+  const attesaPiani = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!foto || !annotazioni || pianoLive) return;
+    const piani = [foto.piano, ...(foto.piani ?? [])].filter(
+      (x): x is PianoProspettiva => !!x
+    );
+    if (!piani.some((x) => x.origini?.length && !x.aMano)) return;
+    // la firma delle forme che contano: se non cambia non c'è niente da fare
+    const firma = JSON.stringify(
+      riferimentiPiano(annotazioni).map((r) => [r.id, r.immagine, r.reale])
+    );
+    if (firma === firmaForme.current) return;
+    const primoGiro = firmaForme.current === null;
+    firmaForme.current = firma;
+    if (primoGiro) return; // aprendo la foto non si tocca niente
+    if (attesaPiani.current) clearTimeout(attesaPiani.current);
+    attesaPiani.current = setTimeout(() => {
+      attesaPiani.current = null;
+      const nuovi = pianiAggiornati(piani, annotazioni);
+      if (!nuovi || nuovi.length === 0) return;
+      const [primo, ...altri] = nuovi;
+      void aggiornaFoto(foto.id, { piano: primo, piani: altri });
+      ricalcolaConCalibrazione({ scala: foto.scala, piano: primo, piani: altri });
+    }, 500);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [annotazioni, foto, pianoLive]);
+
+  // uscendo dalla foto non resta niente in sospeso
+  useEffect(
+    () => () => {
+      if (attesaPiani.current) clearTimeout(attesaPiani.current);
+    },
+    []
+  );
 
   /**
    * La foto COME LA VEDE IL DISEGNO: se una parete è in mano, al suo posto

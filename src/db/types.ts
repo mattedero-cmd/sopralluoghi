@@ -305,6 +305,19 @@ export interface PianoProspettiva {
   /** nome breve del piano quando la foto ne ha più d'uno (es. «G1 G2») */
   nome?: string;
   /**
+   * LE FORME DA CUI IL PIANO È NATO. Finché ci sono, il piano le segue: se
+   * correggi una quota o sposti un angolo di una di loro, la prospettiva si
+   * rifà da sola. Assente = piano calibrato a mano, che non segue niente.
+   */
+  origini?: ID[];
+  /**
+   * true quando la prospettiva è stata aggiustata a mano tirandone un
+   * vertice. Da lì in poi il piano non si ricalcola più da solo — sarebbe
+   * come cancellare la correzione appena fatta — e per rifarlo dalle forme
+   * bisogna ridare «Piano dalle forme».
+   */
+  aMano?: boolean;
+  /**
    * DOVE VALE QUESTO PIANO: i baricentri (px immagine) delle forme da cui è
    * nato. Una foto può inquadrare due pareti — il fianco e il fronte di un
    * box, la falda e il timpano — e una sola omografia non le descrive

@@ -53,7 +53,10 @@ export function pianoConVertice(
     Punto,
     Punto
   ];
-  const provvisorio = { ...piano, punti };
+  // da qui in poi la prospettiva è roba dell'uomo: non si ricalcola più da
+  // sola dalle forme, o la correzione appena fatta sparirebbe al primo
+  // ritocco di una quota
+  const provvisorio = { ...piano, punti, aMano: true };
   try {
     omografiaPiano(provvisorio); // quattro angoli degeneri: si rifiuta
   } catch {

@@ -10,6 +10,26 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.40.0 — Il piano segue le forme
+
+- **Acceso il piano, comandano le forme.** Correggi la misura di una finestra
+  o sposti l'angolo di un rettangolo quotato, e la prospettiva si rifà da
+  sola: con lei tutte le misure calcolate. Non c'è più niente da ridare a
+  mano — il piano è figlio di quelle forme, e le segue.
+- Cambia **solo la parete che c'entra**: correggere una finestra del fronte
+  non tocca il fianco.
+- **Il riquadro verde resta dov'è**, anche se l'hai allargato tirando un lato:
+  cambia la prospettiva, non fin dove arriva la griglia.
+- **Una prospettiva aggiustata a mano non si tocca più.** Se hai spostato un
+  vertice guardando la foto, quella correzione vale più del conto: da lì in
+  poi il piano non si ricalcola da solo. Per rifarlo dalle forme basta ridare
+  «Piano dalle forme».
+- Quotando due forme su un muro che prima non c'era, **la sua parete compare
+  da sé**. E un piano calibrato a mano, che di forme non ne ha, resta com'è.
+- Il ricalcolo aspetta mezzo secondo di quiete: mentre trascini un angolo
+  arrivano venti modifiche al secondo, e rifare i conti venti volte non
+  servirebbe a niente.
+
 ## 1.39.0 — Il riquadro del piano si tira e si aggiusta
 
 - **Ogni parete si disegna a casa sua.** Con più muri nella stessa foto i

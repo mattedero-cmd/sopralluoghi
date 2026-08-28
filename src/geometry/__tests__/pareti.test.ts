@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { spigoliDellaFoto } from '../spigolo';
-import { pianiDalleForme, riferimentiPiano } from '../pianoDaForme';
+import { pianiAggiornati, pianiDalleForme, riferimentiPiano } from '../pianoDaForme';
+import { pianoConLato, pianoConVertice } from '../pianoModifica';
+import { applicaOmografia, omografiaPiano } from '../omografia';
 import { pianoDi } from '../calibrazione';
-import type { Annotazione, Punto } from '../../db/types';
+import type { Annotazione, PianoProspettiva, Punto } from '../../db/types';
 
 /**
  * UNA FACCIATA A SVOLTE, con le sue finestre quotate.
@@ -208,5 +210,133 @@ describe('facciate con più svolte', () => {
       );
       expect(trovato).toBe(false);
     }
+  });
+});
+
+/* --- il piano segue le forme -------------------------------------------- */
+
+describe('acceso il piano, le forme comandano', () => {
+  /** la scena di due muri, con le sue annotazioni e i suoi piani */
+  const impianto = () => {
+    const f = facciata(2, 0);
+    const pareti = pianiDalleForme(riferimentiPiano(f.annotazioni));
+    return { ...f, piani: pareti.map((p) => p.piano) };
+  };
+
+  /** cambia la misura scritta su un lato di una finestra */
+  const conQuota = (ann: Annotazione[], id: string, valore: number): Annotazione[] =>
+    ann.map((a) =>
+      a.id === id
+        ? ({
+            ...a,
+            segmenti: (a as unknown as { segmenti: Array<{ valore: number }> }).segmenti.map(
+              (s, i) => (i === 0 || i === 2 ? { ...s, valore } : s)
+            )
+          } as Annotazione)
+        : a
+    );
+
+  it('il piano nasce sapendo da quali forme viene', () => {
+    const { piani } = impianto();
+    expect(piani[0].origini?.length).toBe(2);
+    expect(piani[0].aMano).toBeUndefined();
+  });
+
+  it('senza modifiche non si rifà niente', () => {
+    const { piani, annotazioni } = impianto();
+    expect(pianiAggiornati(piani, annotazioni)).toBeNull();
+  });
+
+  it('correggendo una quota la prospettiva si aggiorna di conseguenza', () => {
+    const { piani, annotazioni, muri } = impianto();
+    // la finestra m0a era larga 700: adesso dice 900
+    const corrette = conQuota(annotazioni, 'm0a', 900);
+    const nuovi = pianiAggiornati(piani, corrette)!;
+    expect(nuovi).toBeTruthy();
+    // il piano di quel muro ora legge misure diverse: è quello che deve fare
+    const p = suFoto(muri[0], 1000, 1300);
+    const q = suFoto(muri[0], 2000, 1300);
+    const misura = (piano: PianoProspettiva) => {
+      const H = omografiaPiano(piano);
+      const a = applicaOmografia(H, p);
+      const b = applicaOmografia(H, q);
+      return Math.hypot(b.x - a.x, b.y - a.y);
+    };
+    const quale = (elenco: PianoProspettiva[]) =>
+      elenco.find((x) => x.origini?.includes('m0a'))!;
+    expect(Math.abs(misura(quale(nuovi)) - misura(quale(piani)))).toBeGreaterThan(20);
+    // l'altro muro non c'entra: resta com'era
+    const altro = (elenco: PianoProspettiva[]) => elenco.find((x) => x.origini?.includes('m1a'))!;
+    expect(misura(altro(nuovi))).toBeCloseTo(misura(altro(piani)), 3);
+  });
+
+  it('il riquadro allargato a mano resta allargato', () => {
+    const { piani, annotazioni } = impianto();
+    // il piano del primo muro, quello che verrà toccato dalla correzione
+    const suo = piani.find((p) => p.origini?.includes('m0a'))!;
+    const altri = piani.filter((p) => p !== suo);
+    // si allarga il suo riquadro, come tirando il lato destro
+    const largo = pianoConLato(suo, 1, { x: suo.punti[1].x + 120, y: suo.punti[1].y })!;
+    expect(largo.larghezzaReale).toBeGreaterThan(suo.larghezzaReale);
+    // una correzione come capita: la finestra era 700, si scopre che è 730
+    const nuovi = pianiAggiornati([largo, ...altri], conQuota(annotazioni, 'm0a', 730))!;
+    const rifatto = nuovi.find((x) => x.origini?.includes('m0a'))!;
+    // il riquadro copre ancora lo stesso pezzo di foto: gli angoli sono lì
+    largo.punti.forEach((p, i) => {
+      expect(Math.hypot(p.x - rifatto.punti[i].x, p.y - rifatto.punti[i].y)).toBeLessThan(40);
+    });
+    // e non si è ristretto: il pezzo di parete coperto prima ci sta ancora
+    const area = (q: Punto[]) =>
+      Math.abs(
+        q.reduce((s, p, i) => {
+          const r = q[(i + 1) % q.length];
+          return s + (p.x * r.y - r.x * p.y);
+        }, 0) / 2
+      );
+    expect(area(rifatto.punti)).toBeGreaterThan(area(largo.punti) * 0.9);
+    expect(area(rifatto.punti)).toBeLessThan(area(largo.punti) * 1.6);
+  });
+
+  it('una prospettiva aggiustata a mano non si tocca più', () => {
+    const { piani, annotazioni } = impianto();
+    const suo = piani.find((p) => p.origini?.includes('m0a'))!;
+    const altri = piani.filter((p) => p !== suo);
+    const aMano = pianoConVertice(suo, 1, { x: suo.punti[1].x + 30, y: suo.punti[1].y - 20 })!;
+    expect(aMano.aMano).toBe(true);
+    const nuovi = pianiAggiornati([aMano, ...altri], conQuota(annotazioni, 'm0a', 900));
+    // l'altro piano non è cambiato, questo è protetto: non c'è niente da fare
+    if (nuovi) {
+      const suo = nuovi.find((x) => x.origini?.includes('m0a'))!;
+      expect(suo.punti).toEqual(aMano.punti);
+      expect(suo.larghezzaReale).toBe(aMano.larghezzaReale);
+    }
+  });
+
+  it('un piano calibrato a mano non segue nessuna forma', () => {
+    const { annotazioni } = impianto();
+    const aMano: PianoProspettiva = {
+      punti: [
+        { x: 100, y: 100 },
+        { x: 500, y: 120 },
+        { x: 495, y: 400 },
+        { x: 105, y: 380 }
+      ],
+      larghezzaReale: 1000,
+      altezzaReale: 800,
+      unita: 'mm'
+    };
+    expect(pianiAggiornati([aMano], annotazioni)).toBeNull();
+  });
+
+  it('quotando un muro nuovo compare la sua parete', () => {
+    const f = facciata(3, 0);
+    // si parte con le sole finestre dei primi due muri
+    const primi = f.annotazioni.filter((a) => !a.id.startsWith('m2'));
+    const piani = pianiDalleForme(riferimentiPiano(primi)).map((p) => p.piano);
+    expect(piani).toHaveLength(2);
+    const nuovi = pianiAggiornati(piani, f.annotazioni)!;
+    expect(nuovi).toBeTruthy();
+    expect(nuovi).toHaveLength(3);
+    expect(nuovi.some((p) => p.origini?.some((x) => x.startsWith('m2')))).toBe(true);
   });
 });
