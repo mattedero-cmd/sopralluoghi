@@ -21,7 +21,7 @@ import {
   segmentoELato
 } from '../db/types';
 import { misureElemento } from './calibrazione';
-import { ordinaQuad, quadConvesso } from './punti';
+import { offsetPoligono, ordinaQuad, quadConvesso } from './punti';
 import {
   fasciaDiPoligono,
   poligonoConvesso,
@@ -301,31 +301,12 @@ export function sagomaDiTaglioQuad(
 ): Punto[] {
   if (vertici.length !== 4) return vertici.map((p) => ({ ...p }));
   // lato i = da vertici[i] a vertici[i+1]: alto, destro, basso, sinistro
-  const sbordi = [abbondanze.sopra, abbondanze.destra, abbondanze.sotto, abbondanze.sinistra];
-  const rette = vertici.map((p, i) => {
-    const q = vertici[(i + 1) % 4];
-    const dx = q.x - p.x;
-    const dy = q.y - p.y;
-    const len = Math.hypot(dx, dy);
-    if (len < 1e-9) return null;
-    // normale uscente: coi vertici in verso orario e la y verso il basso è (dy, -dx)
-    const n = { x: dy / len, y: -dx / len };
-    return { n, c: n.x * p.x + n.y * p.y + sbordi[i] };
-  });
-  // lo zero negativo dell'aritmetica in virgola mobile non è un vertice
-  // diverso da zero: si arrotonda al micron, come le altre sagome
-  const pulito = (v: number) => Math.round(v * 1e6) / 1e6 + 0;
-  return vertici.map((p, i) => {
-    const r1 = rette[(i + 3) % 4];
-    const r2 = rette[i];
-    if (!r1 || !r2) return { ...p };
-    const det = r1.n.x * r2.n.y - r1.n.y * r2.n.x;
-    if (Math.abs(det) < 1e-9) return { ...p };
-    return {
-      x: pulito((r1.c * r2.n.y - r2.c * r1.n.y) / det),
-      y: pulito((r1.n.x * r2.c - r2.n.x * r1.c) / det)
-    };
-  });
+  return offsetPoligono(vertici, [
+    abbondanze.sopra,
+    abbondanze.destra,
+    abbondanze.sotto,
+    abbondanze.sinistra
+  ]);
 }
 
 /** la coordinata che corre lungo l'asse di divisione: x se verticale, y se no */

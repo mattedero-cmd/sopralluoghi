@@ -91,7 +91,9 @@ export async function renderFotoAnnotata(
 
   const ordinate = [...annotazioni].sort((a, b) => a.zIndex - b.zIndex);
   for (const ann of ordinate) {
-    for (const p of primitiveAnnotazione(ann, risolvi, codiceForma, () => voci)) {
+    for (const p of primitiveAnnotazione(ann, risolvi, codiceForma, () => voci, {
+      abbondanze: foto.mostraAbbondanze
+    })) {
       disegnaPrimitiva(ctx, p, img);
     }
   }

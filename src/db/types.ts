@@ -227,6 +227,13 @@ export interface Foto {
   censure?: RegioneCensura[];
   /** true quando il rilevamento automatico dei volti è già stato eseguito */
   voltiCercati?: boolean;
+  /**
+   * ABBONDANZE A VISTA: con l'interruttore acceso ogni forma abbondata mostra
+   * sulla foto il contorno del pezzo da tagliare (filetto verde tratteggiato).
+   * Vale anche per il PDF e per le immagini condivise: quello che si vede è
+   * quello che si stampa.
+   */
+  mostraAbbondanze?: boolean;
   creataIl: number;
   modificataIl: number;
 }

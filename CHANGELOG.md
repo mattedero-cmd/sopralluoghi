@@ -10,6 +10,22 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.34.0 — Le abbondanze a vista sulla foto
+
+- **Un interruttore per vedere il pezzo da tagliare.** L'abbondanza è scritta
+  nei lati e non si vedeva da nessuna parte: la foto diceva la misura a vista
+  e basta. In *Opzioni → Abbondanze a vista* ora c'è **Mostra / Nascondi**: da
+  acceso, ogni forma abbondata porta il contorno verde tratteggiato del pezzo
+  che esce dalla macchina — lo stesso segno dell'ambiente di pannellizzazione,
+  così il linguaggio è uno solo.
+- L'interruttore sta **sulla foto**, non sull'app: puoi tenerlo acceso dove
+  serve e spento dove no. E comanda anche il **PDF** e le immagini condivise:
+  quello che vedi è quello che stampi.
+- Segue la forma vera, non il riquadro: su una finestra sotto falda
+  l'abbondanza corre parallela all'obliquo; su un cerchio col margine diventa
+  un cerchio più grande; su un triangolo o un pezzo a cinque lati ogni lato si
+  sposta di quanto dice la sua quota.
+
 ## 1.33.1 — I teli arrivano al taglio con la loro forma
 
 - **Il telo di una falda non è più un rettangolo nel nesting.** Portando il

@@ -110,3 +110,57 @@ export function quadConvesso(punti: Punto[]): boolean {
   }
   return segno !== 0;
 }
+
+/**
+ * IL POLIGONO GONFIATO, lato per lato.
+ *
+ * Ogni lato si sposta in fuori del suo `sbordo` e i lati si reincontrano dove
+ * si incrociano: su un rettangolo tornano i quattro spigoli allargati, su una
+ * falda l'obliquo resta obliquo. È il contorno del pezzo da tagliare, e vale
+ * sia in millimetri reali sia in pixel dell'immagine — a chi chiama decidere
+ * in che unità sono gli sbordi.
+ *
+ * `sbordi[i]` è quello del lato che va da `punti[i]` a `punti[i+1]`. Il verso
+ * «fuori» si decide col baricentro, quindi non conta come è stato disegnato il
+ * poligono. Vale per i poligoni convessi: su uno rientrante i lati si
+ * incrocerebbero dalla parte sbagliata, e si torna il poligono com'era.
+ */
+export function offsetPoligono(punti: Punto[], sbordi: number[]): Punto[] {
+  const n = punti.length;
+  if (n < 3) return punti.map((p) => ({ ...p }));
+  let cx = 0;
+  let cy = 0;
+  for (const p of punti) {
+    cx += p.x / n;
+    cy += p.y / n;
+  }
+  // una retta per lato, già spostata in fuori: normale uscente + distanza
+  const rette = punti.map((p, i) => {
+    const q = punti[(i + 1) % n];
+    const dx = q.x - p.x;
+    const dy = q.y - p.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-9) return null;
+    let nx = dy / len;
+    let ny = -dx / len;
+    // la normale guarda dalla parte opposta al baricentro
+    if (nx * ((p.x + q.x) / 2 - cx) + ny * ((p.y + q.y) / 2 - cy) < 0) {
+      nx = -nx;
+      ny = -ny;
+    }
+    return { nx, ny, c: nx * p.x + ny * p.y + (sbordi[i] ?? 0) };
+  });
+  // il vertice i è l'incrocio fra la retta del lato prima e quella del suo
+  const pulito = (v: number) => Math.round(v * 1e6) / 1e6 + 0;
+  return punti.map((p, i) => {
+    const r1 = rette[(i + n - 1) % n];
+    const r2 = rette[i];
+    if (!r1 || !r2) return { ...p };
+    const det = r1.nx * r2.ny - r1.ny * r2.nx;
+    if (Math.abs(det) < 1e-9) return { ...p }; // lati allineati: niente spigolo
+    return {
+      x: pulito((r1.c * r2.ny - r2.c * r1.ny) / det),
+      y: pulito((r1.nx * r2.c - r2.nx * r1.c) / det)
+    };
+  });
+}

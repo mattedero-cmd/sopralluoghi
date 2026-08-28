@@ -1272,6 +1272,7 @@ export function StageEditor(p: Props) {
               interattiva={p.strumento === 'seleziona'}
               hitWidth={Math.max(28 / vista.scala, 12)}
               scala={vista.scala}
+              abbondanze={p.foto.mostraAbbondanze}
               gestoMulti={() => gestoMulti.current}
               onSeleziona={() => p.onSeleziona(a.id)}
               onModifica={() => p.onModifica(a.id)}
@@ -1755,6 +1756,7 @@ export function StageEditor(p: Props) {
           agganciato={indicatoreSnap !== null}
           vista={vista}
           contenitore={dimensioni}
+          abbondanze={p.foto.mostraAbbondanze}
         />
       )}
       {/* zoom: con le dita (pinch) su touch; +/− e "adatta" col puntatore */}
@@ -1796,7 +1798,8 @@ function Lente({
   punto,
   agganciato,
   vista,
-  contenitore
+  contenitore,
+  abbondanze
 }: {
   immagine: ImmagineDisegnabile;
   annotazioni: Annotazione[];
@@ -1805,6 +1808,8 @@ function Lente({
   agganciato: boolean;
   vista: Vista;
   contenitore: { w: number; h: number };
+  /** true = anche nella lente si vede il contorno del pezzo da tagliare */
+  abbondanze?: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -1835,7 +1840,9 @@ function Lente({
     ctx.drawImage(immagine, 0, 0);
     const vociLente = vociLegenda(annotazioni);
     for (const a of annotazioni) {
-      for (const prim of primitiveAnnotazione(a, undefined, undefined, () => vociLente)) {
+      for (const prim of primitiveAnnotazione(a, undefined, undefined, () => vociLente, {
+        abbondanze
+      })) {
         disegnaPrimitiva(ctx, prim, immagine);
       }
     }
@@ -1965,6 +1972,7 @@ function AnnotazioneShape({
   interattiva,
   hitWidth,
   scala,
+  abbondanze,
   gestoMulti,
   onSeleziona,
   onModifica,
@@ -1983,6 +1991,8 @@ function AnnotazioneShape({
   hitWidth: number;
   /** scala della vista: per distinguere un tocco da un trascinamento reale */
   scala: number;
+  /** true = mostra anche il contorno del pezzo da tagliare, abbondanze comprese */
+  abbondanze?: boolean;
   /** true mentre è in corso un gesto a due dita (zoom): blocca select/drag */
   gestoMulti?: () => boolean;
   onSeleziona: () => void;
@@ -1990,8 +2000,11 @@ function AnnotazioneShape({
   onTrascinata: (dx: number, dy: number) => void;
 }) {
   const prims = useMemo(
-    () => primitiveAnnotazione(ann, () => immagineDettaglio ?? null, () => etichetta, () => voci ?? []),
-    [ann, immagineDettaglio, etichetta, voci]
+    () =>
+      primitiveAnnotazione(ann, () => immagineDettaglio ?? null, () => etichetta, () => voci ?? [], {
+        abbondanze
+      }),
+    [ann, immagineDettaglio, etichetta, voci, abbondanze]
   );
   // ricorda se l'oggetto era già selezionato all'inizio del tocco: un tocco
   // "secco" su un oggetto già selezionato apre la modifica (secondo tap)

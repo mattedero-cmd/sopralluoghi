@@ -15,6 +15,7 @@ import type {
   QuotaRettangolo,
   QuotaTecnica,
   Rettangolo,
+  SegmentoQuota,
   TestoFoto,
   Unita
 } from '../db/types';
@@ -29,6 +30,7 @@ import {
 import {
   bordiSagoma,
   fasciaSagoma,
+  formaQuadrilatera,
   pannelliDellaForma,
   sagomaDiTaglioQuad
 } from './formaQuadrilatera';
@@ -46,6 +48,7 @@ import {
   dot,
   normale,
   normalizza,
+  offsetPoligono,
   scala,
   somma,
   sottrai
@@ -461,6 +464,111 @@ export function latiQuotaRett(
     }
   }
   return lati;
+}
+
+/**
+ * LE ABBONDANZE SULLA FOTO: il contorno del pezzo DA TAGLIARE.
+ *
+ * A sopralluogo finito la foto dice le misure a vista; l'abbondanza invece è
+ * scritta nei lati e non si vede da nessuna parte. Acceso l'interruttore, ogni
+ * forma abbondata mostra il filetto verde tratteggiato del pezzo che esce
+ * dalla macchina — lo stesso segno dell'ambiente di pannellizzazione, così il
+ * linguaggio è uno solo.
+ *
+ * Due strade, secondo quel che si sa della forma:
+ * - QUADRILATERO quotato: si conosce la sagoma vera, quindi il contorno si
+ *   gonfia in millimetri reali e si riporta sulla foto con l'omografia dei
+ *   suoi quattro angoli. In prospettiva l'abbondanza si stringe da sola dove
+ *   la forma si allontana, che è come sta sul muro;
+ * - ogni altro poligono (il triangolo, il pezzo a cinque lati): la sagoma
+ *   vera non è nota, e si sposta ogni lato in PIXEL, usando la scala del lato
+ *   che porta quell'abbondanza. Su una foto frontale è esatto, sulle altre è
+ *   la stessa approssimazione che l'app fa già quando manca una quota.
+ */
+export function primitiveAbbondanze(a: Annotazione): Primitiva[] {
+  const contorno = (punti: Punto[], spessore: number): Primitiva[] => {
+    if (punti.length < 3) return [];
+    const numeri: number[] = [];
+    for (const p of punti) numeri.push(p.x, p.y);
+    numeri.push(punti[0].x, punti[0].y);
+    return [
+      {
+        kind: 'polilinea',
+        punti: numeri,
+        colore: COLORE_PANNELLO,
+        spessore: Math.max(0.75, spessore * 0.25),
+        tratteggio: [6, 5],
+        alone: ALONE
+      }
+    ];
+  };
+
+  // CERCHIO: il margine allarga il raggio, e il pezzo resta un cerchio
+  if (a.tipo === 'quotaRaggio') {
+    const margine = a.margine ?? 0;
+    if (!(margine > 0) || a.valore === null || a.valore <= 0) return [];
+    const raggioPx = distanza(a.centro, a.bordo);
+    if (!(raggioPx > 0)) return [];
+    // il valore scritto è raggio o diametro: la scala si legge di conseguenza
+    const raggioReale = a.modo === 'diametro' ? a.valore / 2 : a.valore;
+    if (!(raggioReale > 0)) return [];
+    return [
+      {
+        kind: 'cerchio',
+        centro: a.centro,
+        raggio: raggioPx * (1 + margine / raggioReale),
+        colore: COLORE_PANNELLO,
+        spessore: Math.max(0.75, a.stile.spessore * 0.25),
+        tratteggio: [6, 5],
+        alone: ALONE
+      }
+    ];
+  }
+
+  if (a.tipo !== 'quotaPoligono' || a.soloEtichetta) return [];
+
+  // QUADRILATERO: la sagoma vera, gonfiata in millimetri e riportata sulla foto
+  const forma = formaQuadrilatera(a);
+  if (forma && quadConvesso(forma.quad)) {
+    const abb = forma.abbondanze;
+    if (!(abb.sinistra > 0 || abb.destra > 0 || abb.sopra > 0 || abb.sotto > 0)) return [];
+    try {
+      const H = calcolaOmografia(forma.verticiNetti, forma.quad);
+      const taglio = sagomaDiTaglioQuad(forma.verticiNetti, abb);
+      return contorno(
+        taglio.map((p) => applicaOmografia(H, p)),
+        a.stile.spessore
+      );
+    } catch {
+      return []; // quattro angoli degeneri: meglio non disegnare niente
+    }
+  }
+
+  // OGNI ALTRO POLIGONO: si sposta ogni lato in pixel, con la scala del lato
+  // che porta l'abbondanza
+  const n = a.punti.length;
+  if (n < 3) return [];
+  const segs = segmentiPoligono(a).filter((s) => segmentoELato(s, n));
+  /** l'abbondanza del lato `s` al vertice `v`, già in pixel dell'immagine */
+  const abbPx = (s: SegmentoQuota | undefined, v: number): number => {
+    if (!s || s.valore === null || s.valore <= 0) return 0;
+    const q = s.da === v ? (s.abbInizio ?? 0) : s.a === v ? (s.abbFine ?? 0) : 0;
+    if (!(q > 0)) return 0;
+    const p1 = a.punti[s.da];
+    const p2 = a.punti[s.a];
+    if (!p1 || !p2) return 0;
+    return (q * distanza(p1, p2)) / s.valore;
+  };
+  const lato = (i: number) =>
+    segs.find((s) => (s.da === i && s.a === (i + 1) % n) || (s.a === i && s.da === (i + 1) % n));
+  // il lato i sborda di quanto dicono i suoi VICINI ai due vertici che
+  // condivide: un'abbondanza sta sul lato che la misura, ma allarga quello di
+  // fianco
+  const sbordi = a.punti.map((_, i) =>
+    Math.max(abbPx(lato((i + n - 1) % n), i), abbPx(lato((i + 1) % n), (i + 1) % n))
+  );
+  if (!sbordi.some((v) => v > 0)) return [];
+  return contorno(offsetPoligono(a.punti, sbordi), a.stile.spessore);
 }
 
 /**
@@ -2020,6 +2128,12 @@ function puntoSuBordo(r: Rettangolo, target: Punto): Punto {
   return somma(c, scala(v, t));
 }
 
+/** che cosa mostrare, oltre all'annotazione stessa */
+export interface OpzioniPrimitive {
+  /** true = disegna anche il contorno del pezzo da tagliare, abbondanze comprese */
+  abbondanze?: boolean;
+}
+
 export function primitiveAnnotazione(
   a: Annotazione,
   /** risolve la foto-dettaglio di un callout (già caricata) */
@@ -2027,6 +2141,19 @@ export function primitiveAnnotazione(
   /** codice/etichetta calcolato della forma (nomenclatura strutturata) */
   etichettaForma?: (a: Annotazione) => string | undefined,
   /** voci della legenda della foto (lettera = descrizione = quantità), in ordine */
+  vociLegenda?: () => Array<{ lettera: string; descrizione: string; quantita?: number }>,
+  opzioni?: OpzioniPrimitive
+): Primitiva[] {
+  const proprie = primitiveDiTipo(a, risolviDettaglio, etichettaForma, vociLegenda);
+  // le abbondanze stanno SOPRA la forma: sono il contorno del pezzo, e devono
+  // leggersi anche dove passa una quota
+  return opzioni?.abbondanze ? [...proprie, ...primitiveAbbondanze(a)] : proprie;
+}
+
+function primitiveDiTipo(
+  a: Annotazione,
+  risolviDettaglio?: (c: Callout) => CanvasImageSource | null,
+  etichettaForma?: (a: Annotazione) => string | undefined,
   vociLegenda?: () => Array<{ lettera: string; descrizione: string; quantita?: number }>
 ): Primitiva[] {
   switch (a.tipo) {

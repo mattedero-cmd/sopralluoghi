@@ -4591,6 +4591,27 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             </span>
           </div>
           <div className="campo">
+            <label>Abbondanze a vista</label>
+            <span className="segmenti" role="group" aria-label="Contorno del pezzo da tagliare">
+              <button
+                className={foto.mostraAbbondanze ? 'attivo' : ''}
+                onClick={() => void aggiornaFoto(foto.id, { mostraAbbondanze: true })}
+              >
+                <Icona nome="griglia" dimensione={18} /> Mostra
+              </button>
+              <button
+                className={!foto.mostraAbbondanze ? 'attivo' : ''}
+                onClick={() => void aggiornaFoto(foto.id, { mostraAbbondanze: false })}
+              >
+                Nascondi
+              </button>
+            </span>
+            <small style={{ color: 'var(--testo-2)' }}>
+              Il contorno verde tratteggiato del pezzo da tagliare, abbondanze comprese. Resta
+              acceso anche nel PDF e nelle foto condivise.
+            </small>
+          </div>
+          <div className="campo">
             <label>Livelli visibili</label>
             <span className="segmenti" role="group">
               <button className={layerVisibili.quote ? 'attivo' : ''} onClick={() => toggleLayer('quote')}>
