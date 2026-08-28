@@ -1161,7 +1161,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             ? ({ ...poli, segmenti: nuoviSegs, valoreAuto: true, lati: undefined, offsetLati: undefined } as Annotazione)
             : a
         );
-        commit(applicaValoriAuto(conAuto, { scala, piano: undefined }));
+        commit(applicaValoriAuto(conAuto, { ...foto, scala, piano: undefined, piani: [] }));
         return true;
       }
     }
@@ -2743,8 +2743,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
 
   /** dopo un cambio di calibrazione i valori auto vengono ricalcolati */
   const ricalcolaConCalibrazione = (fotoAggiornata: Pick<Foto, 'scala' | 'piano' | 'piani'>) => {
-    if (!annotazioni) return;
-    commit(applicaValoriAuto(annotazioni, fotoAggiornata));
+    if (!annotazioni || !foto) return;
+    // con le misure della foto: servono a capire da che parte dello spigolo
+    // cade ogni quota, quando le pareti sono più d'una
+    commit(applicaValoriAuto(annotazioni, { ...foto, ...fotoAggiornata }));
   };
 
   const salvaScala = async (px: number, reale: number, unita: Unita) => {
@@ -2881,7 +2883,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         : segs;
       return { ...p, segmenti, lati: undefined, offsetLati: undefined, valoreAuto: true } as Annotazione;
     });
-    commit(applicaValoriAuto(conAuto, { scala, piano: foto.piano }));
+    commit(applicaValoriAuto(conAuto, { ...foto, scala, piano: foto.piano }));
     mostraToast('successo', 'Scala ricavata dal lato: gli altri lati sono ora misurati.');
   };
 
@@ -2943,7 +2945,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     // commitGeometria rifarebbe applicaValoriAuto con la `foto` di closure ancora
     // vecchia (scala/piano non ancora propagati da useLiveQuery), sovrascrivendo
     // le misure appena calcolate con quelle della vecchia calibrazione.
-    commit(applicaValoriAuto(conNuovo, { scala, piano: undefined }));
+    commit(applicaValoriAuto(conNuovo, { ...foto, scala, piano: undefined, piani: [] }));
     mostraToast('successo', 'Schizzo ricostruito in scala dalle misure inserite.');
   };
 
@@ -4802,6 +4804,13 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                   );
                 })}
               </div>
+              {pareti.length > 1 && (
+                <p className="nest-sub">
+                  Dove due pareti si incontrano compare lo <strong>spigolo</strong>, la riga
+                  bianca: è ricavato dalle due prospettive — è l’unica riga dove misurano uguale —
+                  e decide da che parte sta ogni misura presa vicino all’angolo.
+                </p>
+              )}
               {pareti.some((p) => p.esito.riferimenti.length === 1) && (
                 <p style={{ color: '#ff9500', fontWeight: 600, fontSize: 13 }}>
                   Una parete con una forma sola è esatta su di lei, ma niente garantisce il resto:
@@ -5591,7 +5600,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                           ? ({ ...poli, segmenti: nuoviSegs, unita: nuova.unita, stato: nuova.stato, stile: nuova.stile, valoreAuto: true, lati: undefined, offsetLati: undefined } as Annotazione)
                           : a
                       );
-                      commit(applicaValoriAuto(conAuto, { scala, piano: undefined }));
+                      commit(applicaValoriAuto(conAuto, { ...foto, scala, piano: undefined, piani: [] }));
                       mostraToast(
                         'successo',
                         'Scala dello schizzo impostata da questo lato: ora modificando le quote la geometria si adatta.'

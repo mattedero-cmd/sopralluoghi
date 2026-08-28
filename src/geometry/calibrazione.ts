@@ -12,6 +12,7 @@ import {
 } from '../db/types';
 import { daMillimetri, inMillimetri } from '../utils/format';
 import { applicaOmografia, omografiaPiano, type Omografia } from './omografia';
+import { latoDelloSpigolo, spigoliDellaFoto } from './spigolo';
 import { direzioneQuota, distanza, dot, scala as scalaPunto, somma, sottrai } from './punti';
 
 /**
@@ -21,7 +22,8 @@ import { direzioneQuota, distanza, dot, scala as scalaPunto, somma, sottrai } fr
  * la geometria cambia; un valore inserito a mano non viene mai toccato.
  */
 
-type CalibrazioneFoto = Pick<Foto, 'scala' | 'piano' | 'piani'>;
+type CalibrazioneFoto = Pick<Foto, 'scala' | 'piano' | 'piani'> &
+  Partial<Pick<Foto, 'larghezzaPx' | 'altezzaPx'>>;
 
 export function haCalibrazione(foto: CalibrazioneFoto): boolean {
   return pianiDi(foto).length > 0 || Boolean(foto.scala);
@@ -51,19 +53,34 @@ export function pianoDi(foto: CalibrazioneFoto, dove?: Punto | Punto[]): PianoPr
     x: punti.reduce((s, p) => s + p.x, 0) / punti.length,
     y: punti.reduce((s, p) => s + p.y, 0) / punti.length
   };
-  let scelto = piani[0];
-  let minima = Infinity;
-  for (const piano of piani) {
+  // le due pareti candidate: quelle con le forme più vicine
+  const distanza = (piano: PianoProspettiva) => {
     const ancore = piano.ancore?.length ? piano.ancore : [baricentro(piano.punti)];
-    for (const a of ancore) {
-      const d = Math.hypot(a.x - centro.x, a.y - centro.y);
-      if (d < minima) {
-        minima = d;
-        scelto = piano;
-      }
+    return Math.min(...ancore.map((a) => Math.hypot(a.x - centro.x, a.y - centro.y)));
+  };
+  const ordinati = piani
+    .map((piano, i) => ({ piano, i, d: distanza(piano) }))
+    .sort((a, b) => a.d - b.d);
+
+  // SE FRA LE DUE C'È UNO SPIGOLO, COMANDA LUI. Vicino all'angolo le forme
+  // dell'una e dell'altra parete sono quasi equidistanti, e «la più vicina»
+  // diventa un lancio di moneta; lo spigolo invece dice esattamente dove
+  // finisce un muro e comincia l'altro — ed è la riga che si vede disegnata.
+  if (foto.larghezzaPx && foto.altezzaPx) {
+    const spigoli = spigoliDellaFoto(piani, foto.larghezzaPx, foto.altezzaPx);
+    const [primo, secondo] = ordinati;
+    const trovato = spigoli.find(
+      (s) =>
+        (s.a === primo.i && s.b === secondo.i) || (s.a === secondo.i && s.b === primo.i)
+    );
+    if (trovato) {
+      const lato = latoDelloSpigolo(trovato.spigolo, centro);
+      const dalLatoDelPrimoDellaCoppia = lato === trovato.spigolo.segnoPrimo;
+      const scelto = dalLatoDelPrimoDellaCoppia ? trovato.a : trovato.b;
+      return piani[scelto];
     }
   }
-  return scelto;
+  return ordinati[0].piano;
 }
 
 const baricentro = (punti: Punto[]): Punto => ({

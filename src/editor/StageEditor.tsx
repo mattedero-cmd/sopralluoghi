@@ -42,6 +42,7 @@ import { immagineDettaglio } from '../utils/immaginiCallout';
 import { eFormaEtichettabile, vociLegenda } from '../geometry/nomenclatura';
 import { omografiaPianoInversa } from '../geometry/omografia';
 import { pianiDi } from '../geometry/calibrazione';
+import { spigoliDellaFoto } from '../geometry/spigolo';
 
 export type Strumento =
   | 'seleziona'
@@ -1487,6 +1488,25 @@ export function StageEditor(p: Props) {
                 return null;
               }
             })}
+          {/* LO SPIGOLO fra due pareti: la riga dove una finisce e l'altra
+              comincia, ricavata dalle due prospettive */}
+          {p.mostraGriglia &&
+            spigoliDellaFoto(pianiDi(p.foto), p.foto.larghezzaPx, p.foto.altezzaPx).map((s, i) => (
+              <Fragment key={`spigolo${i}`}>
+                <Line
+                  points={[s.spigolo.p1.x, s.spigolo.p1.y, s.spigolo.p2.x, s.spigolo.p2.y]}
+                  stroke="rgba(0,0,0,0.65)"
+                  strokeWidth={6 / vista.scala}
+                  listening={false}
+                />
+                <Line
+                  points={[s.spigolo.p1.x, s.spigolo.p1.y, s.spigolo.p2.x, s.spigolo.p2.y]}
+                  stroke="#ffffff"
+                  strokeWidth={2.5 / vista.scala}
+                  listening={false}
+                />
+              </Fragment>
+            ))}
           {/* Griglia LIVE durante la calibrazione: aiuta a rifinire la proporzione */}
           {p.calibPiano &&
             (() => {

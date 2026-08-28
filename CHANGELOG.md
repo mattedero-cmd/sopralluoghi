@@ -10,6 +10,24 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.37.0 — Lo spigolo fra due pareti
+
+- **Si vede dove finisce un muro e comincia l'altro.** Con più pareti sulla
+  stessa foto compare lo *spigolo*: la riga bianca dove le due prospettive si
+  incontrano. Non è disegnata a occhio — si ricava dalle due pareti, perché
+  un punto dello spigolo appartiene a tutte e due e lì, e solo lì, le due
+  prospettive misurano la stessa cosa. L'app cerca proprio quella riga.
+- **E lo spigolo comanda.** Vicino all'angolo «la parete con la forma più
+  vicina» è un lancio di moneta: una quota presa venticinque centimetri oltre
+  lo spigolo poteva finire sull'altro muro. Adesso decide lo spigolo, ed è la
+  stessa riga che vedi disegnata — quello che guardi è quello che l'app usa.
+- Il conto si fa dentro l'immagine, dove le prospettive valgono: mezzo pixel
+  di errore nel puntare gli angoli sposta lo spigolo di una trentina di pixel
+  su un'immagine da milleduecento, il 2%. Due pareti parallele — che spigolo
+  non ne fanno — non producono nessuna riga: l'app se ne accorge e non
+  inventa niente.
+- Con tre pareti gli spigoli sono tre, uno per ogni coppia che si incontra.
+
 ## 1.36.0 — Due pareti, due piani
 
 - **Una foto di tre quarti inquadra due muri.** Il box di cantiere ripreso
