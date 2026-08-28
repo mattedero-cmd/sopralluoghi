@@ -10,6 +10,30 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.35.0 — Il piano ricavato da tutte le forme quotate
+
+- **Le misure dimenticate si prendono dopo, sulla foto.** Ogni quadrilatero
+  che quoti È già un riferimento prospettico: quattro angoli puntati e le
+  misure vere prese sul posto. Finora ne serviva uno solo, scelto apposta, e
+  la precisione del piano era quella di quell'unico riquadro — piccolo o in
+  un angolo, sbagliava dappertutto.
+- Nuovo comando in **Quotature → Scala e piano → «Piano dalle forme»**: prende
+  TUTTE le forme quotate a mano e ne ricava un piano solo, che le mette
+  d'accordo. Più sono sparse sulla foto, più il piano tiene anche dove non hai
+  quotato niente: su una prova con cinque forme sparse su una parete di
+  4 × 2,6 m, l'errore su una misura da un metro presa a caso è passato da
+  **28 mm a 2,7 mm**.
+- **Non cambia niente da solo.** Il comando calcola e apre una scheda che dice
+  quante forme ha trovato, quanto sbaglia il piano che hai adesso, quanto
+  sbaglia quello nuovo e su quale forma va peggio. Applicare è una tua scelta,
+  e se il piano nuovo fosse peggiore te lo dice.
+- Lo *scarto* mostrato è la differenza fra la misura che hai scritto su un
+  lato e quella che il piano legge sullo stesso lato: qualche millimetro è
+  normale, ma una forma che sballa da sola quasi sempre ha una quota sbagliata
+  — così la scheda serve anche a trovare gli errori di battitura del rilievo.
+- Le forme quotate DAL piano restano fuori dal conto: una misura calcolata non
+  può correggere la calibrazione che l'ha prodotta.
+
 ## 1.34.0 — Le abbondanze a vista sulla foto
 
 - **Un interruttore per vedere il pezzo da tagliare.** L'abbondanza è scritta

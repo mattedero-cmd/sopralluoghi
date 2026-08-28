@@ -7,6 +7,7 @@ import type {
   Etichetta,
   Foto,
   Impostazioni,
+  PianoProspettiva,
   PosizioneTesto,
   Punto,
   RegioneCensura,
@@ -115,6 +116,13 @@ import {
   vociLegenda
 } from '../geometry/nomenclatura';
 import { applicaOmografia, omografiaPiano, omografiaPianoInversa } from '../geometry/omografia';
+import {
+  adattaPiano,
+  pianoDaOmografia,
+  riferimentiPiano,
+  verificaPiano,
+  type EsitoPiano
+} from '../geometry/pianoDaForme';
 import { lunghezzaPxQuota } from '../geometry/punti';
 import { RicercaBordi } from '../geometry/bordi';
 import { rilevaQuad4, type EsitoQuad4 } from '../geometry/quad4';
@@ -258,7 +266,8 @@ const GRUPPI_STRUMENTI_QUOTATURE: GruppoStrumenti[] = [
       { s: 'auto', icona: 'auto', testo: 'Quotatura automatica' },
       { s: 'riferimento', icona: 'riferimento', testo: 'Riferimento auto' },
       { s: 'calibra', icona: 'righello', testo: 'Scala (segmento)' },
-      { s: 'piano', icona: 'piano', testo: 'Piano (prospettiva)' }
+      { s: 'piano', icona: 'piano', testo: 'Piano (prospettiva)' },
+      { s: 'pianoForme', icona: 'auto', testo: 'Piano dalle forme' }
     ]
   }
 ];
@@ -628,6 +637,13 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [oggettoDims, setOggettoDims] = useState(false);
   /** griglia di verifica sul piano calibrato (controllo visivo della scala) */
   const [mostraGriglia, setMostraGriglia] = useState(false);
+  /** esito del comando «Piano dalle forme», in attesa di conferma */
+  const [pianoForme, setPianoForme] = useState<{
+    esito: EsitoPiano;
+    piano: PianoProspettiva;
+    /** scarto medio del piano che c'è adesso, per confronto (mm); null = non c'è */
+    prima: number | null;
+  } | null>(null);
   /** picker della foto di riferimento (sfondo) per una pianta */
   const [pickerSfondo, setPickerSfondo] = useState(false);
   /** passo di snap angolare (gradi) applicato allo schizzo: 0 = libero */
@@ -2764,6 +2780,53 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     setStrumento('seleziona');
   };
 
+  /**
+   * IL PIANO RICAVATO DA TUTTE LE FORME QUOTATE.
+   *
+   * Non tocca niente da solo: calcola, misura quanto sbaglia — sul piano di
+   * adesso e su quello nuovo — e apre la scheda. Applicare è una scelta.
+   */
+  const ricavaPianoDalleForme = () => {
+    if (!foto) return;
+    const rif = riferimentiPiano(annotazioni ?? []);
+    if (rif.length === 0) {
+      mostraToast(
+        'info',
+        'Nessuna forma con misure scritte a mano: quota un rettangolo (o un poligono a quattro lati) e riprova.'
+      );
+      return;
+    }
+    const esito = adattaPiano(rif);
+    if (!esito) {
+      mostraToast('errore', 'Le forme quotate non bastano a ricavare un piano.');
+      return;
+    }
+    const piano = pianoDaOmografia(esito.H, esito.riferimenti);
+    if (!piano) {
+      mostraToast(
+        'errore',
+        'La prospettiva di questa foto è troppo inclinata per scriverne un piano: calibra a mano con «Piano».'
+      );
+      return;
+    }
+    // lo scarto del piano che c'è adesso, misurato con lo stesso metro (mm)
+    let prima: number | null = null;
+    if (foto.piano) {
+      try {
+        const inMm = {
+          ...foto.piano,
+          larghezzaReale: inMillimetri(foto.piano.larghezzaReale, foto.piano.unita),
+          altezzaReale: inMillimetri(foto.piano.altezzaReale, foto.piano.unita),
+          unita: 'mm' as Unita
+        };
+        prima = verificaPiano(omografiaPiano(inMm), esito.riferimenti).medio;
+      } catch {
+        prima = null; // piano vecchio degenere: non c'è niente da confrontare
+      }
+    }
+    setPianoForme({ esito, piano, prima });
+  };
+
   const calibraDaQuota = async (q: Quota) => {
     if (!foto || q.valore === null) return;
     const px = lunghezzaPxQuota(q);
@@ -4479,6 +4542,12 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                         mostraToast('info', 'Questo strumento tecnico arriva nelle prossime fasi.');
                         return;
                       }
+                      if (v.s === 'pianoForme') {
+                        // non è uno strumento da posare: è un comando, e apre
+                        // la sua scheda di verifica
+                        ricavaPianoDalleForme();
+                        return;
+                      }
                       setStrumento(v.s);
                     }}
                   >
@@ -4632,6 +4701,82 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           </div>
         </Modale>
       )}
+      {pianoForme &&
+        (() => {
+          const { esito, piano, prima } = pianoForme;
+          const n = esito.riferimenti.length;
+          const mm = (v: number) => `${Math.round(v * 10) / 10} mm`;
+          const peggiore = esito.peggiore;
+          const annPeggiore = peggiore
+            ? (annotazioni ?? []).find((a) => a.id === peggiore.id)
+            : undefined;
+          const migliora = prima === null || esito.erroreMedio <= prima + 0.05;
+          return (
+            <Modale titolo="Piano dalle forme quotate" onChiudi={() => setPianoForme(null)}>
+              <p style={{ marginTop: 0 }}>
+                {n === 1 ? 'C’è una forma sola' : `Ci sono ${n} forme`} con le misure scritte a
+                mano: il piano si ricava {n === 1 ? 'da lei' : 'da tutte insieme'}, e più sono
+                sparse sulla foto più tiene anche dove non hai quotato niente.
+              </p>
+              <div className="ap-riepilogo">
+                {prima !== null && (
+                  <span>
+                    piano di adesso: <strong>{mm(prima)}</strong> di scarto medio
+                  </span>
+                )}
+                <span>
+                  piano ricavato: <strong>{mm(esito.erroreMedio)}</strong>
+                  {prima !== null ? ' di scarto medio' : ' di scarto medio sui lati quotati'}
+                </span>
+                {peggiore && peggiore.massimo > 0.05 && (
+                  <span>
+                    peggio su <strong>{annPeggiore ? codiceForma(annPeggiore) : '—'}</strong>:{' '}
+                    {mm(peggiore.massimo)} sul lato peggiore
+                  </span>
+                )}
+              </div>
+              {n === 1 && (
+                <p style={{ color: '#ff9500', fontWeight: 600, fontSize: 13 }}>
+                  Con una forma sola il piano è esatto su di lei, ma niente garantisce il resto
+                  della foto: quotane un’altra lontana da questa e rifai il conto.
+                </p>
+              )}
+              {!migliora && (
+                <p style={{ color: '#ff9500', fontWeight: 600, fontSize: 13 }}>
+                  ⚠ Il piano che hai adesso sbaglia meno di questo: applicalo solo se sai che il
+                  riferimento di prima era quello sbagliato.
+                </p>
+              )}
+              <p className="nest-sub">
+                Lo <em>scarto</em> è la differenza fra la misura che hai scritto su un lato e
+                quella che il piano legge sullo stesso lato. Zero vuol dire che tutte le forme si
+                raccontano la stessa prospettiva; qualche millimetro è normale — gli angoli si
+                puntano col dito. Se una forma sballa da sola, quasi sempre è la sua quota a
+                essere sbagliata, non il piano.
+              </p>
+              <div className="riga-pulsanti">
+                <button className="btn" onClick={() => setPianoForme(null)}>
+                  Annulla
+                </button>
+                <button
+                  className="btn primario"
+                  onClick={() => {
+                    setPianoForme(null);
+                    void salvaPiano(
+                      piano.punti,
+                      piano.larghezzaReale,
+                      piano.altezzaReale,
+                      piano.unita,
+                      piano.celle ?? 4
+                    );
+                  }}
+                >
+                  Applica il piano
+                </button>
+              </div>
+            </Modale>
+          );
+        })()}
       {schedaNote && (
         <SchedaNoteFoto
           foto={foto}

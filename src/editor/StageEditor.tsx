@@ -62,6 +62,8 @@ export type Strumento =
   | 'callout'
   | 'calibra'
   | 'piano'
+  // comando (non uno strumento da posare): ricava il piano dalle forme quotate
+  | 'pianoForme'
   | 'riferimento'
   | 'etichetta'
   // schizzo parametrico: modalità "applica vincolo" a tocchi (tap-tap)
