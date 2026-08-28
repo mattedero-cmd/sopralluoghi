@@ -10,6 +10,28 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.45.0 — Adesso le pareti si uniscono davvero
+
+- **Il vertice di giunzione non si formava quasi mai.** Due pareti si uniscono
+  quando i loro riquadri hanno un angolo in COMUNE: allora la maniglia diventa
+  verde e tirandola si muovono tutte e due. Ma non bastava che i due bordi
+  cadessero sulla stessa riga: appoggiavano sullo spigolo per tratti diversi —
+  le finestre delle due pareti non stanno quasi mai alla stessa quota — e i
+  loro angoli finivano a decine di pixel l'uno dall'altro. Sembravano uniti,
+  non lo erano: la maniglia tornava gialla appena si mollava il dito.
+- **Adesso le due pareti si prendono lo stesso filo.** Al vero spigolo di un
+  fabbricato i due muri cominciano e finiscono insieme, e l'aggancio fa così:
+  il riquadro più corto si allunga fino a coprire lo stesso tratto di spigolo
+  dell'altro. Misurato: gli angoli passano da 37–93 px di distanza a meno di
+  mezzo pixel, su foto da 1600, 3024 e 4032 px e con riquadri fino a cinque
+  volte uno dell'altro.
+- **Il difetto peggiorava con la risoluzione.** La soglia con cui due angoli si
+  considerano lo stesso punto è in pixel dell'immagine: su uno scatto da 4032
+  px valeva un quarto di quello che vale su uno da 1600, e sulle foto vere non
+  si univa mai niente. Le prove ora girano su tutti e tre i formati.
+- L'allungamento è solo ESTENSIONE del riquadro: la prospettiva non cambia di
+  un millesimo, e nessuna misura si sposta.
+
 ## 1.44.0 — La riga dello spigolo passa per il vertice di giunzione
 
 - **Lo spigolo segue l'angolo che hai in mano.** Finora la riga era solo

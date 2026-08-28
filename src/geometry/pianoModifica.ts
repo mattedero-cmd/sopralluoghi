@@ -204,18 +204,29 @@ export function pianoAgganciato(
   let x1 = L;
   let y1 = A;
 
+  // UN AGGANCIO È UN RITOCCO, non uno stiramento: se per arrivare allo
+  // spigolo il bordo dovesse fare più di mezzo riquadro, quelle due pareti
+  // non si toccano in questa foto — una sta dietro l'altra, o l'angolo cade
+  // lontano — e si lascia perdere
+  const ritocco = (vecchio: number, nuovo: number, misura: number) =>
+    Math.abs(nuovo - vecchio) <= misura * 0.5;
+
+  // ALLUNGARSI LUNGO LO SPIGOLO è un'altra cosa che avvicinarsi ad esso: non
+  // si sta stirando una parete verso un muro lontano, si sta coprendo lo
+  // stesso filo di fabbricato che copre la parete accanto. Il limite resta,
+  // perché una parete di scorcio non trascini l'altra fuori dalla foto, ma è
+  // più largo: sotto mezzo riquadro non si arrivava mai a chiudere il giunto,
+  // e con muri di altezza molto diversa — la norma, quando le finestre stanno
+  // a quote diverse — nemmeno sotto il doppio.
+  const allungo = (vecchio: number, nuovo: number, misura: number) =>
+    Math.abs(nuovo - vecchio) <= misura * 8;
+
   for (const spigolo of spigoli) {
     const a = applicaOmografia(H, spigolo.p1);
     const b = applicaOmografia(H, spigolo.p2);
     if (![a.x, a.y, b.x, b.y].every(Number.isFinite)) continue;
     const dx = Math.abs(b.x - a.x);
     const dy = Math.abs(b.y - a.y);
-    // UN AGGANCIO È UN RITOCCO, non uno stiramento: se per arrivare allo
-    // spigolo il bordo dovesse fare più di mezzo riquadro, quelle due pareti
-    // non si toccano in questa foto — una sta dietro l'altra, o l'angolo cade
-    // lontano — e si lascia perdere
-    const ritocco = (vecchio: number, nuovo: number, misura: number) =>
-      Math.abs(nuovo - vecchio) <= misura * 0.5;
     if (dx <= dy) {
       // spigolo VERTICALE sul muro: fa da bordo destro o sinistro
       const cx = (a.x + b.x) / 2;
@@ -225,6 +236,15 @@ export function pianoAgganciato(
       } else if (ritocco(x1, cx, L)) {
         x1 = Math.max(cx, x0 + L * 0.1);
       }
+      // …e il riquadro si allunga fino a coprire tutto il filo dello
+      // spigolo: al vero angolo di fabbricato le due pareti finiscono in
+      // alto e in basso nello stesso punto, ed è quello il vertice di
+      // giunzione. Senza questo i due angoli restano a decine di pixel
+      // l'uno dall'altro e le pareti non si uniscono mai.
+      const su = Math.min(a.y, b.y);
+      const giu = Math.max(a.y, b.y);
+      if (su < y0 && allungo(y0, su, A)) y0 = su;
+      if (giu > y1 && allungo(y1, giu, A)) y1 = giu;
     } else {
       // spigolo ORIZZONTALE: il muro col soffitto, o col pavimento
       const cy = (a.y + b.y) / 2;
@@ -234,6 +254,10 @@ export function pianoAgganciato(
       } else if (ritocco(y1, cy, A)) {
         y1 = Math.max(cy, y0 + A * 0.1);
       }
+      const sx = Math.min(a.x, b.x);
+      const dxx = Math.max(a.x, b.x);
+      if (sx < x0 && allungo(x0, sx, L)) x0 = sx;
+      if (dxx > x1 && allungo(x1, dxx, L)) x1 = dxx;
     }
   }
 
@@ -307,9 +331,45 @@ export function pianiAgganciati(
   return piani.map((piano, i) => {
     const suoi = spigoli
       .filter((s) => s.separante && (s.a === i || s.b === i))
-      .map((s) => ({ p1: s.spigolo.p1, p2: s.spigolo.p2 }));
+      .map((s) => trattoCondiviso(piani[s.a], piani[s.b], s.spigolo));
     return pianoAgganciato(piano, suoi) ?? piano;
   });
+}
+
+/**
+ * IL TRATTO DI SPIGOLO CHE LE DUE PARETI SI DIVIDONO.
+ *
+ * La riga dello spigolo attraversa tutta la foto, ma lo spigolo vero del
+ * fabbricato comincia e finisce dove finiscono i due muri. Si prende quindi
+ * l'unione dei due bordi che gli si affacciano: è il filo verticale che le
+ * pareti hanno in comune, dal punto più alto dell'una o dell'altra al più
+ * basso. Agganciandosi a quel tratto tutte e due, i loro angoli finiscono
+ * nello stesso posto — ed è lì che nasce il vertice di giunzione.
+ */
+function trattoCondiviso(
+  A: PianoProspettiva,
+  B: PianoProspettiva,
+  s: { p1: Punto; p2: Punto }
+): { p1: Punto; p2: Punto } {
+  const dx = s.p2.x - s.p1.x;
+  const dy = s.p2.y - s.p1.y;
+  const lung2 = dx * dx + dy * dy;
+  if (!(lung2 > 1e-12)) return s;
+  const dove = (p: Punto) => ((p.x - s.p1.x) * dx + (p.y - s.p1.y) * dy) / lung2;
+  const daRetta = (p: Punto) => Math.abs((p.x - s.p1.x) * dy - (p.y - s.p1.y) * dx) / Math.sqrt(lung2);
+  /** i due angoli del riquadro che stanno sullo spigolo: il bordo affacciato */
+  const bordo = (piano: PianoProspettiva) =>
+    [...piano.punti]
+      .sort((p, q) => daRetta(p) - daRetta(q))
+      .slice(0, 2)
+      .map(dove);
+  const t = [...bordo(A), ...bordo(B)];
+  const su = Math.min(...t);
+  const giu = Math.max(...t);
+  return {
+    p1: { x: s.p1.x + dx * su, y: s.p1.y + dy * su },
+    p2: { x: s.p1.x + dx * giu, y: s.p1.y + dy * giu }
+  };
 }
 
 /**

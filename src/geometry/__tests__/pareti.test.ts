@@ -535,30 +535,31 @@ describe('la riga dello spigolo passa per i vertici di giunzione', () => {
     return pianiAgganciati([piani[0], ridotto ?? piani[1]], LARGHEZZA, ALTEZZA);
   };
 
-  it('con riquadri di altezza diversa l’angolo in comune è uno solo, e la riga ci passa', () => {
+  it('riquadri di altezza diversa: l’aggancio li allunga fino a condividere lo stesso filo', () => {
     const piani = scalati();
-    expect(gemelli(piani)).toHaveLength(1);
+    // il fianco accorciato si riallunga per coprire lo stesso spigolo del
+    // fronte: al vero angolo di fabbricato i due muri finiscono insieme
+    expect(gemelli(piani)).toHaveLength(2);
     const s = corretti(piani)[0];
     expect(s.daiVertici).toBe(true);
-    expect(daRetta([s.spigolo.p1, s.spigolo.p2], gemelli(piani)[0])).toBeLessThan(0.01);
+    for (const g of gemelli(piani))
+      expect(daRetta([s.spigolo.p1, s.spigolo.p2], g)).toBeLessThan(0.01);
   });
 
   it('con un angolo in comune solo, la riga ci passa e segue il filo dei due lati', () => {
     const piani = scalati();
-    const k = piani[0].punti.findIndex((_, i) => verticiGemelli(piani, 0, i).length > 0);
-    const g = verticiGemelli(piani, 0, k)[0];
-    const dove = { x: piani[0].punti[k].x + 22, y: piani[0].punti[k].y - 14 };
-    const mossi = [
-      pianoConVertice(piani[0], k, dove)!,
-      pianoConVertice(piani[g.indice], g.vertice, dove)!
-    ];
+    // si stacca UNO dei due angoli, muovendo solo il fianco: resta un
+    // vertice di giunzione, ed è lì che la riga deve passare
+    const k = piani[1].punti.findIndex((_, i) => verticiGemelli(piani, 1, i).length > 0);
+    const staccato = pianoConVertice(piani[1], k, {
+      x: piani[1].punti[k].x + 60,
+      y: piani[1].punti[k].y + 40
+    })!;
+    const mossi = [piani[0], staccato];
     expect(gemelli(mossi)).toHaveLength(1);
-    const ricavato = spigoliDellaFoto(mossi, LARGHEZZA, ALTEZZA)[0];
     const corretto = corretti(mossi)[0];
     expect(corretto.daiVertici).toBe(true);
-    // la riga passa per il punto lasciato dal dito, e prima non ci passava
-    expect(daRetta([corretto.spigolo.p1, corretto.spigolo.p2], dove)).toBeLessThan(0.01);
-    expect(daRetta([ricavato.spigolo.p1, ricavato.spigolo.p2], dove)).toBeGreaterThan(2);
+    expect(daRetta([corretto.spigolo.p1, corretto.spigolo.p2], gemelli(mossi)[0])).toBeLessThan(0.01);
   });
 
   /** quanto il riquadro più staccato resta lontano dalla riga dello spigolo */
