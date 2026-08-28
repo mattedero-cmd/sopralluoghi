@@ -1919,8 +1919,12 @@ export function StageEditor(p: Props) {
       {puntoLente && !PUNTATORE_FINE && (
         <Lente
           immagine={p.immagine}
-          annotazioni={annotazioniVisibili}
-          bozza={bozzaAnnotazione}
+          // LA MISURA CHE STAI PUNTANDO NON SI DISEGNA NELLA LENTE. La sua
+          // freccia finisce esattamente sotto il dito, cioè al centro della
+          // lente, proprio sul pixel che stai mirando: si guarda dentro la
+          // lente per vedere il punto, e lì si trova la punta della freccia.
+          // Le altre annotazioni restano — servono a capire dove si è.
+          annotazioni={annotazioniVisibili.filter((a) => a.id !== annLive?.id)}
           punto={puntoLente}
           agganciato={indicatoreSnap !== null}
           vista={vista}
@@ -1962,7 +1966,6 @@ export function StageEditor(p: Props) {
 function Lente({
   immagine,
   annotazioni,
-  bozza,
   punto,
   agganciato,
   vista,
@@ -1972,7 +1975,6 @@ function Lente({
 }: {
   immagine: ImmagineDisegnabile;
   annotazioni: Annotazione[];
-  bozza: Annotazione | null;
   punto: Punto;
   agganciato: boolean;
   vista: Vista;
@@ -2019,16 +2021,13 @@ function Lente({
         disegnaPrimitiva(ctx, prim, immagine);
       }
     }
-    if (bozza) {
-      for (const prim of primitiveAnnotazione(bozza)) disegnaPrimitiva(ctx, prim, immagine);
-    }
     ctx.restore();
     ctx.restore();
 
     // mirino: disegnato in pixel dispositivo, così il complementare campiona
     // esattamente i pixel che il filetto copre
     disegnaMirino(ctx, canvas.width, mirino, dpr, agganciato);
-  }, [immagine, annotazioni, bozza, punto, agganciato, zoom, lato, mirino]);
+  }, [immagine, annotazioni, punto, agganciato, zoom, lato, mirino]);
 
   // posizione: angolo orizzontalmente opposto al dito; in alto, oppure in
   // basso quando il dito lavora nella parte alta dello schermo

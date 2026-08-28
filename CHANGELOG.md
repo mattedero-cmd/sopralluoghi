@@ -10,6 +10,16 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.46.1 — Nella lente solo la croce, non la freccia
+
+- **La misura che stai puntando non si disegna più dentro la lente.** La sua
+  freccia finisce esattamente sotto il dito, cioè al centro della lente:
+  proprio sul pixel che stai mirando. Si apriva la lente per vedere il punto e
+  ci si trovava la punta della freccia. Vale sia quando si posa il secondo
+  punto di una quota nuova, sia quando si ritocca l'estremo di una già fatta.
+- Le altre annotazioni restano visibili nella lente: servono a capire dove si
+  è, e non stanno sotto il dito.
+
 ## 1.46.0 — Calibra solo l'originale, non le misure richiamate
 
 - **Le misure richiamate non calibrano più la prospettiva.** Una misura
