@@ -7,6 +7,7 @@ import type Konva from 'konva';
 const PUNTATORE_FINE = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: fine)').matches;
 import {
   COLORE_QUOTA_TECNICA,
+  COLORE_STIMATA,
   MIRINO_DEFAULT,
   quadrilateroQuotaRett,
   segmentiPoligono,
@@ -49,6 +50,8 @@ import {
   ritagliaPoligono,
   ritagliaSegmento,
   spigoliDellaFoto,
+  spigoliSuiVertici,
+  spigoloInDisaccordo,
   vincoliDelPiano
 } from '../geometry/spigolo';
 import {
@@ -1243,7 +1246,15 @@ export function StageEditor(p: Props) {
   /** le pareti della foto e gli spigoli fra loro: si calcolano una volta */
   const pianiFoto = pianiDi(p.foto);
   const spigoliPiani = useMemo(
-    () => spigoliDellaFoto(pianiFoto, p.foto.larghezzaPx, p.foto.altezzaPx),
+    () =>
+      // la riga passa per i vertici in comune, quando le pareti sono unite:
+      // il taglio dei riquadri e la riga disegnata dicono così la stessa cosa
+      spigoliSuiVertici(
+        spigoliDellaFoto(pianiFoto, p.foto.larghezzaPx, p.foto.altezzaPx),
+        pianiFoto,
+        p.foto.larghezzaPx,
+        p.foto.altezzaPx
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [p.foto.piano, p.foto.piani, p.foto.larghezzaPx, p.foto.altezzaPx]
   );
@@ -1616,9 +1627,12 @@ export function StageEditor(p: Props) {
             </>
           )}
           {/* LO SPIGOLO fra due pareti: la riga dove una finisce e l'altra
-              comincia, ricavata dalle due prospettive */}
+              comincia. Passa per i due angoli che le pareti hanno in comune;
+              diventa arancione quando le due prospettive non sono più
+              d'accordo con quella riga — il disaccordo si mostra, non si
+              nasconde disegnando altrove */}
           {p.mostraGriglia &&
-            spigoliDellaFoto(pianiDi(p.foto), p.foto.larghezzaPx, p.foto.altezzaPx).map((s, i) => (
+            spigoliPiani.map((s, i) => (
               <Fragment key={`spigolo${i}`}>
                 <Line
                   points={[s.spigolo.p1.x, s.spigolo.p1.y, s.spigolo.p2.x, s.spigolo.p2.y]}
@@ -1628,7 +1642,11 @@ export function StageEditor(p: Props) {
                 />
                 <Line
                   points={[s.spigolo.p1.x, s.spigolo.p1.y, s.spigolo.p2.x, s.spigolo.p2.y]}
-                  stroke="#34c759"
+                  stroke={
+                    spigoloInDisaccordo(s, p.foto.larghezzaPx, p.foto.altezzaPx)
+                      ? COLORE_STIMATA
+                      : '#34c759'
+                  }
                   strokeWidth={3 / vista.scala}
                   listening={false}
                 />

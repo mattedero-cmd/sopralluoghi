@@ -10,6 +10,32 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.44.0 — La riga dello spigolo passa per il vertice di giunzione
+
+- **Lo spigolo segue l'angolo che hai in mano.** Finora la riga era solo
+  *ricavata* dalle due prospettive — l'unica dove i due muri misurano uguale —
+  e tirando il vertice di giunzione se ne andava per conto suo: le due pareti
+  si leggevano come separate proprio nel punto in cui sono unite. Adesso dove
+  i riquadri si toccano c'è un angolo che è di tutte e due, e la riga ci passa
+  sempre. Con due angoli in comune la riga è tutta loro; con uno solo la
+  posizione è sua e l'inclinazione la dà il filo dei due lati che si affacciano
+  lì. Misurato dopo un ritocco a mano di 30 px: prima una delle due pareti
+  restava larga 88 px dalla riga, ora il distacco è 31 px e distribuito fra le
+  due.
+- **La riga non sparisce più.** Dopo un ritocco a mano deciso le due
+  prospettive possono non avere più nessuna riga in comune, e lo spigolo
+  spariva dallo schermo proprio mentre lo si stava spostando. Ora lo spigolo
+  fra due pareti unite c'è sempre: la sua inclinazione la danno i riquadri.
+- **L'aggancio, il taglio dei riquadri e l'assegnazione delle misure usano la
+  stessa riga che si vede.** Una sola verità: quello che tagli, quello che
+  misuri e quello che disegni non possono dire tre cose diverse.
+- **Quando le prospettive non reggono più, la riga diventa arancione.** Il
+  disaccordo si mostra invece di nasconderlo disegnando altrove. La soglia è il
+  2% della diagonale della foto — la precisione dello spigolo ricavato,
+  misurata: sotto quella è rumore del conto, e un avviso che suona sempre non
+  serve a niente. Un ritocco fino a ~40 px su una foto da 1600×1000 resta
+  verde; uno strappo che manda via le prospettive diventa arancione.
+
 ## 1.43.0 — Un mirino che non sparisce mai
 
 - **La croce della lente prende il colore complementare di ciò che

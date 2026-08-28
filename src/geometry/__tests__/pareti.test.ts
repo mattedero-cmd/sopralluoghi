@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { spigoliDellaFoto, vincoliDelPiano } from '../spigolo';
+import {
+  latoDelloSpigolo,
+  spigoliDellaFoto,
+  spigoliSuiVertici,
+  spigoloInDisaccordo,
+  vincoliDelPiano
+} from '../spigolo';
 import { pianiAggiornati, pianiDalleForme, riferimentiPiano } from '../pianoDaForme';
 import {
   pianiAgganciati,
@@ -442,6 +448,232 @@ describe('pareti attaccate lungo lo spigolo', () => {
     expect(secondo.punti[gemelli[0].vertice]).toEqual(destinazione);
     expect(primo.aMano).toBe(true);
     expect(secondo.aMano).toBe(true);
+  });
+});
+
+/* --- la riga dello spigolo passa per i vertici in comune ----------------- */
+
+describe('la riga dello spigolo passa per i vertici di giunzione', () => {
+  const impianto = () => {
+    const f = facciata(2, 0);
+    const piani = pianiDalleForme(riferimentiPiano(f.annotazioni)).map((p) => p.piano);
+    return { ...f, piani: pianiAgganciati(piani, LARGHEZZA, ALTEZZA) };
+  };
+
+  const corretti = (piani: PianoProspettiva[]) =>
+    spigoliSuiVertici(
+      spigoliDellaFoto(piani, LARGHEZZA, ALTEZZA),
+      piani,
+      LARGHEZZA,
+      ALTEZZA
+    );
+
+  /** gli angoli che le due pareti hanno in comune (di norma uno, a volte due) */
+  const gemelli = (piani: PianoProspettiva[]): Punto[] => {
+    const fuori: Punto[] = [];
+    piani[0].punti.forEach((p, k) => {
+      if (verticiGemelli(piani, 0, k).length > 0) fuori.push(p);
+    });
+    return fuori;
+  };
+
+  it('quando le pareti sono unite la riga passa per i loro angoli in comune', () => {
+    const { piani } = impianto();
+    const s = corretti(piani);
+    expect(s).toHaveLength(1);
+    expect(s[0].daiVertici).toBe(true);
+    expect(gemelli(piani).length).toBeGreaterThan(0);
+    for (const g of gemelli(piani))
+      expect(daRetta([s[0].spigolo.p1, s[0].spigolo.p2], g)).toBeLessThan(0.01);
+  });
+
+  it('nel caso automatico non cambia niente: i vertici erano già sulla retta ricavata', () => {
+    const { piani } = impianto();
+    const ricavato = spigoliDellaFoto(piani, LARGHEZZA, ALTEZZA)[0];
+    const corretto = corretti(piani)[0];
+    // le due righe coincidono a meno di un pixel, e non c'è disaccordo
+    for (const p of [ricavato.spigolo.p1, ricavato.spigolo.p2])
+      expect(daRetta([corretto.spigolo.p1, corretto.spigolo.p2], p)).toBeLessThan(1);
+    expect(corretto.scarto).toBeLessThan(1);
+    expect(spigoloInDisaccordo(corretto, LARGHEZZA, ALTEZZA)).toBe(false);
+  });
+
+  it('tirato il vertice di giunzione, la riga lo segue — prima non lo faceva', () => {
+    const { piani } = impianto();
+    const k = piani[0].punti.findIndex((_, i) => verticiGemelli(piani, 0, i).length > 0);
+    const g = verticiGemelli(piani, 0, k)[0];
+    const dove = { x: piani[0].punti[k].x + 26, y: piani[0].punti[k].y - 16 };
+    const mossi = [
+      pianoConVertice(piani[0], k, dove)!,
+      pianoConVertice(piani[g.indice], g.vertice, dove)!
+    ];
+    const ricavato = spigoliDellaFoto(mossi, LARGHEZZA, ALTEZZA)[0];
+    const corretto = corretti(mossi)[0];
+    // la riga ricavata dalle prospettive o non passa per il punto lasciato dal
+    // dito, o non esiste più affatto: è il difetto che si voleva togliere
+    if (ricavato) expect(daRetta([ricavato.spigolo.p1, ricavato.spigolo.p2], dove)).toBeGreaterThan(2);
+    // quella disegnata sì, e per gli altri angoli in comune anche
+    expect(corretto.daiVertici).toBe(true);
+    expect(daRetta([corretto.spigolo.p1, corretto.spigolo.p2], dove)).toBeLessThan(0.01);
+    for (const p of gemelli(mossi))
+      expect(daRetta([corretto.spigolo.p1, corretto.spigolo.p2], p)).toBeLessThan(0.01);
+  });
+
+  /**
+   * DUE RIQUADRI DI ALTEZZA DIVERSA: è il caso comune sul campo, perché le
+   * finestre delle due pareti non stanno mai alla stessa quota. Le pareti si
+   * toccano in un angolo solo — quello è il vertice di giunzione.
+   */
+  const scalati = () => {
+    const { piani } = impianto();
+    // si accorcia il fianco dall'alto: resta in comune il solo angolo basso
+    const alto = piani[1].punti[0].y < piani[1].punti[3].y ? 0 : 2;
+    const ridotto = pianoConLato(piani[1], alto as 0 | 1 | 2 | 3, {
+      x: piani[1].punti[alto].x,
+      y: piani[1].punti[alto].y + 90
+    });
+    return pianiAgganciati([piani[0], ridotto ?? piani[1]], LARGHEZZA, ALTEZZA);
+  };
+
+  it('con riquadri di altezza diversa l’angolo in comune è uno solo, e la riga ci passa', () => {
+    const piani = scalati();
+    expect(gemelli(piani)).toHaveLength(1);
+    const s = corretti(piani)[0];
+    expect(s.daiVertici).toBe(true);
+    expect(daRetta([s.spigolo.p1, s.spigolo.p2], gemelli(piani)[0])).toBeLessThan(0.01);
+  });
+
+  it('con un angolo in comune solo, la riga ci passa e segue il filo dei due lati', () => {
+    const piani = scalati();
+    const k = piani[0].punti.findIndex((_, i) => verticiGemelli(piani, 0, i).length > 0);
+    const g = verticiGemelli(piani, 0, k)[0];
+    const dove = { x: piani[0].punti[k].x + 22, y: piani[0].punti[k].y - 14 };
+    const mossi = [
+      pianoConVertice(piani[0], k, dove)!,
+      pianoConVertice(piani[g.indice], g.vertice, dove)!
+    ];
+    expect(gemelli(mossi)).toHaveLength(1);
+    const ricavato = spigoliDellaFoto(mossi, LARGHEZZA, ALTEZZA)[0];
+    const corretto = corretti(mossi)[0];
+    expect(corretto.daiVertici).toBe(true);
+    // la riga passa per il punto lasciato dal dito, e prima non ci passava
+    expect(daRetta([corretto.spigolo.p1, corretto.spigolo.p2], dove)).toBeLessThan(0.01);
+    expect(daRetta([ricavato.spigolo.p1, ricavato.spigolo.p2], dove)).toBeGreaterThan(2);
+  });
+
+  /** quanto il riquadro più staccato resta lontano dalla riga dello spigolo */
+  const distacco = (piani: PianoProspettiva[], retta: [Punto, Punto]) =>
+    Math.max(
+      ...piani.map((piano) =>
+        piano.punti
+          .map((q) => daRetta(retta, q))
+          .sort((x, y) => x - y)[1]
+      )
+    );
+
+  it('dopo il ritocco a mano nessuna delle due pareti resta staccata dalla riga', () => {
+    const piani = scalati();
+    const k = piani[0].punti.findIndex((_, i) => verticiGemelli(piani, 0, i).length > 0);
+    const g = verticiGemelli(piani, 0, k)[0];
+    const dove = { x: piani[0].punti[k].x + 30, y: piani[0].punti[k].y - 20 };
+    const mossi = pianiAgganciati(
+      [
+        pianoConVertice(piani[0], k, dove)!,
+        pianoConVertice(piani[g.indice], g.vertice, dove)!
+      ],
+      LARGHEZZA,
+      ALTEZZA
+    );
+    const corretto = corretti(mossi)[0];
+    const ricavato = spigoliDellaFoto(mossi, LARGHEZZA, ALTEZZA)[0];
+    const conLaRiga = distacco(mossi, [corretto.spigolo.p1, corretto.spigolo.p2]);
+    // il filo dei due lati distribuisce lo scarto invece di lasciarne una
+    // visibilmente staccata: misurato, da 88 px a 31
+    expect(conLaRiga).toBeLessThan(40);
+    if (ricavato)
+      expect(conLaRiga).toBeLessThan(
+        distacco(mossi, [ricavato.spigolo.p1, ricavato.spigolo.p2])
+      );
+    // e la riga passa ancora per il punto lasciato dal dito
+    expect(daRetta([corretto.spigolo.p1, corretto.spigolo.p2], dove)).toBeLessThan(2);
+  });
+
+  it('il verso resta quello di prima: ogni parete sta sempre da casa sua', () => {
+    const { piani } = impianto();
+    const ricavato = spigoliDellaFoto(piani, LARGHEZZA, ALTEZZA)[0];
+    const corretto = corretti(piani)[0];
+    expect(corretto.spigolo.segnoPrimo).toBe(ricavato.spigolo.segnoPrimo);
+    // e non solo il numero: le due pareti restano ciascuna dal lato suo
+    const cA = { x: piani[0].punti.reduce((t, q) => t + q.x, 0) / 4, y: piani[0].punti.reduce((t, q) => t + q.y, 0) / 4 };
+    expect(latoDelloSpigolo(corretto.spigolo, cA)).toBe(latoDelloSpigolo(ricavato.spigolo, cA));
+    expect(corretto.a).toBe(ricavato.a);
+    expect(corretto.b).toBe(ricavato.b);
+    expect(corretto.separante).toBe(ricavato.separante);
+  });
+
+  it('e le misure continuano a ritrovare il muro loro', () => {
+    const { piani, muri } = impianto();
+    const foto = {
+      scala: null,
+      piano: piani[0],
+      piani: piani.slice(1),
+      larghezzaPx: LARGHEZZA,
+      altezzaPx: ALTEZZA
+    };
+    const quale = (id: string) => piani.find((p) => p.origini?.includes(id))!;
+    for (const [i, id] of [
+      [0, 'm0a'],
+      [1, 'm1a']
+    ] as Array<[number, string]>) {
+      for (const a of [300, 1300, 2300]) {
+        const p = suFoto(muri[i], a, 1300);
+        if (!nellaFoto(p)) continue;
+        expect(pianoDi(foto, p)).toBe(quale(id));
+      }
+    }
+  });
+
+  it('pareti non unite: nessun vertice in comune, resta la riga ricavata', () => {
+    const f = facciata(2, 0);
+    // niente aggancio: i due riquadri non si toccano
+    const piani = pianiDalleForme(riferimentiPiano(f.annotazioni)).map((p) => p.piano);
+    const vicini = piani.some((_, i) =>
+      piani[0].punti.some((_, k) => (i === 0 ? false : verticiGemelli(piani, 0, k).length > 0))
+    );
+    expect(vicini).toBe(false);
+    const s = corretti(piani);
+    expect(s[0].daiVertici).toBe(false);
+    expect(s[0].scarto).toBe(0);
+    expect(spigoloInDisaccordo(s[0], LARGHEZZA, ALTEZZA)).toBe(false);
+  });
+
+  it('anche se le prospettive non hanno più una riga in comune, lo spigolo si vede', () => {
+    const { piani } = impianto();
+    const k = piani[0].punti.findIndex((_, i) => verticiGemelli(piani, 0, i).length > 0);
+    const g = verticiGemelli(piani, 0, k)[0];
+    const dove = { x: piani[0].punti[k].x + 26, y: piani[0].punti[k].y - 16 };
+    const mossi = [
+      pianoConVertice(piani[0], k, dove)!,
+      pianoConVertice(piani[g.indice], g.vertice, dove)!
+    ];
+    const s = corretti(mossi);
+    expect(s).toHaveLength(1);
+    expect(s[0].daiVertici).toBe(true);
+    if (!s[0].ricavato) expect(spigoloInDisaccordo(s[0], LARGHEZZA, ALTEZZA)).toBe(true);
+  });
+
+  it('quando le prospettive si allontanano dalla riga, la riga lo dice', () => {
+    const { piani } = impianto();
+    const k = piani[0].punti.findIndex((_, i) => verticiGemelli(piani, 0, i).length > 0);
+    const g = verticiGemelli(piani, 0, k)[0];
+    // uno strappo grosso: il vertice va lontano da dove le prospettive lo vogliono
+    const dove = { x: piani[0].punti[k].x + 90, y: piani[0].punti[k].y - 60 };
+    const mossi = [
+      pianoConVertice(piani[0], k, dove)!,
+      pianoConVertice(piani[g.indice], g.vertice, dove)!
+    ];
+    const s = corretti(mossi)[0];
+    expect(spigoloInDisaccordo(s, LARGHEZZA, ALTEZZA)).toBe(true);
   });
 });
 

@@ -22,7 +22,7 @@
 
 import type { PianoProspettiva, Punto } from '../db/types';
 import { applicaOmografia, invertiOmografia, omografiaPiano } from './omografia';
-import { spigoliDellaFoto } from './spigolo';
+import { spigoliDellaFoto, spigoliSuiVertici } from './spigolo';
 
 /** i quattro lati del riquadro, nell'ordine dei vertici */
 export type LatoPiano = 0 | 1 | 2 | 3; // alto, destro, basso, sinistro
@@ -292,7 +292,17 @@ export function pianiAgganciati(
   altezza: number
 ): PianoProspettiva[] {
   if (piani.length < 2) return piani;
-  const spigoli = spigoliDellaFoto(piani, larghezza, altezza);
+  // ci si aggancia alla riga che si VEDE: quella che passa per i vertici di
+  // giunzione, quando ce ne sono. Alla nascita delle pareti non ce ne sono
+  // ancora e la riga è quella ricavata, come sempre; dopo un ritocco a mano
+  // invece comanda l'angolo che l'utente ha messo lì, e i due riquadri gli si
+  // richiudono attorno invece di aprirsi a V sotto di esso.
+  const spigoli = spigoliSuiVertici(
+    spigoliDellaFoto(piani, larghezza, altezza),
+    piani,
+    larghezza,
+    altezza
+  );
   if (spigoli.length === 0) return piani;
   return piani.map((piano, i) => {
     const suoi = spigoli

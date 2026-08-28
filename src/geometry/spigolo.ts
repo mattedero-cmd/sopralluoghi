@@ -328,6 +328,24 @@ export interface SpigoloFraDue {
    * riquadro, o agganciarcelo, vorrebbe dire buttare via mezza parete.
    */
   separante: boolean;
+  /**
+   * La riga è quella che passa per i due VERTICI IN COMUNE delle due pareti,
+   * invece di quella ricavata dalle prospettive. Vedi `spigoliSuiVertici`.
+   */
+  daiVertici: boolean;
+  /**
+   * Le due prospettive hanno ancora una riga in comune? Dopo un ritocco a
+   * mano deciso può non esserci più: i due muri non misurano uguale da
+   * nessuna parte. Lo spigolo però si vede lo stesso — è dove i due riquadri
+   * si toccano — e va disegnato, segnalando che le prospettive non reggono.
+   */
+  ricavato: boolean;
+  /**
+   * Di quanti pixel i vertici in comune si scostano dalla retta ricavata
+   * dalle due prospettive: zero quando le due cose dicono la stessa cosa,
+   * grande quando le prospettive non sono più d'accordo con il disegno.
+   */
+  scarto: number;
 }
 
 let memoria: { firma: string; spigoli: SpigoloFraDue[] } | null = null;
@@ -404,7 +422,16 @@ export function spigoliDellaFoto(
         piani[i].ancore,
         piani[j].ancore
       );
-      if (s) spigoli.push({ a: i, b: j, spigolo: s, separante: separa(s, piani[i], piani[j]) });
+      if (s)
+        spigoli.push({
+          a: i,
+          b: j,
+          spigolo: s,
+          separante: separa(s, piani[i], piani[j]),
+          daiVertici: false,
+          ricavato: true,
+          scarto: 0
+        });
     }
   }
   memoria = { firma, spigoli };
@@ -412,6 +439,236 @@ export function spigoliDellaFoto(
 }
 
 /** una retta orientata: si tiene quello che sta dove il valore è ≥ 0 */
+/** distanza di un punto da una retta in forma implicita (a,b normalizzati) */
+function daRetta(retta: { a: number; b: number; c: number }, p: Punto): number {
+  return Math.abs(retta.a * p.x + retta.b * p.y + retta.c) / Math.hypot(retta.a, retta.b);
+}
+
+/**
+ * GLI ANGOLI CHE DUE PARETI HANNO IN COMUNE.
+ *
+ * Quando i riquadri sono agganciati si toccano lungo lo spigolo, e là un
+ * angolo dell'una cade sopra un angolo dell'altra: è l'angolo del fabbricato,
+ * e appartiene a tutte e due. Di solito è uno solo — i due riquadri sono
+ * alti diversi, e solo una coppia di angoli si incontra; quando i muri hanno
+ * la stessa estensione sono due, l'alto e il basso dello stesso spigolo.
+ */
+interface Gemello {
+  punto: Punto;
+  /** l'indice dell'angolo nella prima parete e nella seconda */
+  iA: number;
+  iB: number;
+}
+
+function gemelliFraDue(A: PianoProspettiva, B: PianoProspettiva, tolleranza: number): Gemello[] {
+  const incontri: Gemello[] = [];
+  A.punti.forEach((p, iA) => {
+    B.punti.forEach((q, iB) => {
+      if (Math.hypot(p.x - q.x, p.y - q.y) > tolleranza) return;
+      const punto = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
+      // due coppie che si incontrano nello stesso posto contano per una
+      if (incontri.some((v) => Math.hypot(v.punto.x - punto.x, v.punto.y - punto.y) <= tolleranza))
+        return;
+      incontri.push({ punto, iA, iB });
+    });
+  });
+  return incontri;
+}
+
+/**
+ * LA DIREZIONE DEL LATO IN COMUNE fra i due riquadri, nell'angolo dove si
+ * toccano. È lo spigolo disegnato: dei due lati che ogni riquadro ha in
+ * quell'angolo si prende la coppia più allineata — quella che i due muri
+ * hanno in comune — e se ne fa la media.
+ */
+function direzioneDelGiunto(
+  A: PianoProspettiva,
+  B: PianoProspettiva,
+  g: Gemello
+): { a: number; b: number } | null {
+  const versi = (punti: Punto[], i: number) =>
+    [punti[(i + 1) % punti.length], punti[(i + punti.length - 1) % punti.length]]
+      .map((q) => ({ x: q.x - punti[i].x, y: q.y - punti[i].y }))
+      .map((v) => {
+        const l = Math.hypot(v.x, v.y);
+        return l > 1e-9 ? { x: v.x / l, y: v.y / l } : null;
+      })
+      .filter((v): v is Punto => v !== null);
+  let migliore: [Punto, Punto] | null = null;
+  let allineamento = 0;
+  for (const u of versi(A.punti, g.iA)) {
+    for (const v of versi(B.punti, g.iB)) {
+      const cos = Math.abs(u.x * v.x + u.y * v.y);
+      if (cos > allineamento) {
+        allineamento = cos;
+        migliore = [u, v.x * u.x + v.y * u.y < 0 ? { x: -v.x, y: -v.y } : v];
+      }
+    }
+  }
+  if (!migliore || allineamento < 0.9) return null; // non sono lo stesso lato
+  const mx = (migliore[0].x + migliore[1].x) / 2;
+  const my = (migliore[0].y + migliore[1].y) / 2;
+  const l = Math.hypot(mx, my);
+  return l > 1e-9 ? { a: -my / l, b: mx / l } : null;
+}
+
+/** i due punti più lontani fra loro di un elenco */
+function iPiuLontani(gemelli: Gemello[]): [Punto, Punto] | null {
+  const punti = gemelli.map((g) => g.punto);
+  let migliore: [Punto, Punto] | null = null;
+  let massima = 0;
+  for (let i = 0; i < punti.length; i++) {
+    for (let j = i + 1; j < punti.length; j++) {
+      const d = Math.hypot(punti[i].x - punti[j].x, punti[i].y - punti[j].y);
+      if (d > massima) {
+        massima = d;
+        migliore = [punti[i], punti[j]];
+      }
+    }
+  }
+  return massima > 1 ? migliore : null;
+}
+
+/**
+ * LA RIGA DELLO SPIGOLO PASSA PER I VERTICI DI GIUNZIONE.
+ *
+ * Lo spigolo si RICAVA dalle due prospettive: è l'unica riga dove i due muri
+ * misurano uguale, ed è per questo una misura del fabbricato e non una scelta
+ * di disegno. Ma dove i due riquadri si toccano c'è un angolo che è di tutte
+ * e due — lo si tira e si muovono insieme — e quell'angolo STA sullo spigolo.
+ * Se la riga non ci passasse, le due pareti si leggerebbero come separate
+ * proprio nel punto in cui sono unite.
+ *
+ * Non è un'imposizione, è una condizione di coerenza, e si spartisce così:
+ * - con due angoli in comune la riga è tutta loro: due punti la fanno da soli;
+ * - con uno solo la posizione è sua, e l'inclinazione la danno i due lati che
+ *   i riquadri si affacciano lì — è il filo che l'occhio legge come spigolo.
+ *   Se quei lati non sono più allineati fra loro si torna all'inclinazione
+ *   ricavata dalle prospettive.
+ *
+ * Misurato su due pareti dopo un ritocco a mano di 30 px: con l'inclinazione
+ * ricavata i due riquadri restavano larghi 88 e 16 px dalla riga — uno dei
+ * due visibilmente staccato; con quella dei lati, 24 e 31, distribuiti.
+ *
+ * Nel caso automatico non cambia niente, perché l'aggancio ha già messo gli
+ * angoli sulla retta ricavata; quando invece si tira a mano il vertice di
+ * giunzione la riga segue il dito — come deve — e `scarto` dice di quanto le
+ * prospettive si stanno allontanando dal disegno.
+ */
+export function spigoliSuiVertici(
+  spigoli: SpigoloFraDue[],
+  piani: PianoProspettiva[],
+  larghezza: number,
+  altezza: number,
+  tolleranza = 14
+): SpigoloFraDue[] {
+  /** la riga per un punto, con una direzione data, tagliata al riquadro */
+  const riga = (
+    A: PianoProspettiva,
+    per: Punto,
+    normale: { a: number; b: number }
+  ): Spigolo | null => {
+    const retta = { ...normale, c: -(normale.a * per.x + normale.b * per.y) };
+    const seg = tagliaAlRiquadro(retta, larghezza, altezza);
+    if (!seg) return null;
+    const cA = dovePosa(A);
+    const valore = retta.a * cA.x + retta.b * cA.y + retta.c;
+    return { p1: seg[0], p2: seg[1], retta, segnoPrimo: valore < 0 ? -1 : 1 };
+  };
+
+  /** la normale della riga per due punti, orientata come quella di prima */
+  const normaleFra = (g: [Punto, Punto], verso?: { a: number; b: number }) => {
+    const dx = g[1].x - g[0].x;
+    const dy = g[1].y - g[0].y;
+    const lung = Math.hypot(dx, dy);
+    if (!(lung > 1e-9)) return null;
+    let a = -dy / lung;
+    let b = dx / lung;
+    // la normale punta come quella della retta ricavata, così il segno del
+    // lato conserva il valore che aveva: chi l'ha in mano non se ne accorge
+    if (verso && a * verso.a + b * verso.b < 0) {
+      a = -a;
+      b = -b;
+    }
+    return { a, b };
+  };
+
+  const corretti = spigoli.map((s) => {
+    const A = piani[s.a];
+    const B = piani[s.b];
+    if (!A || !B) return s;
+    const g = gemelliFraDue(A, B, tolleranza);
+    if (g.length === 0) return s;
+    const due = g.length >= 2 ? iPiuLontani(g) : null;
+    const normale = due
+      ? normaleFra(due, s.spigolo.retta)
+      : (direzioneDelGiunto(A, B, g[0]) ?? s.spigolo.retta);
+    if (!normale) return s;
+    const nuova = riga(A, due ? due[0] : g[0].punto, normale);
+    if (!nuova) return s;
+    return {
+      ...s,
+      spigolo: nuova,
+      daiVertici: true,
+      scarto: Math.max(...g.map((x) => daRetta(s.spigolo.retta, x.punto)))
+    };
+  });
+
+  // LE PARETI UNITE HANNO SEMPRE IL LORO SPIGOLO, anche quando le due
+  // prospettive non ne hanno più uno in comune: dopo un ritocco a mano
+  // deciso il conto non trova più nessuna riga dove i due muri misurino
+  // uguale, e senza questo la riga sparirebbe dallo schermo proprio mentre
+  // la si sta spostando. L'inclinazione, che le prospettive non danno più,
+  // la danno i riquadri stessi: due angoli in comune fanno la riga, e con
+  // uno solo la fa il lato che i due riquadri hanno in comune lì.
+  const gia = new Set(corretti.map((s) => `${Math.min(s.a, s.b)}|${Math.max(s.a, s.b)}`));
+  for (let i = 0; i < piani.length; i++) {
+    for (let j = i + 1; j < piani.length; j++) {
+      if (gia.has(`${i}|${j}`)) continue;
+      const g = gemelliFraDue(piani[i], piani[j], tolleranza);
+      if (g.length === 0) continue;
+      const due = iPiuLontani(g);
+      const normale = due ? normaleFra(due) : direzioneDelGiunto(piani[i], piani[j], g[0]);
+      if (!normale) continue;
+      const nuova = riga(piani[i], due ? due[0] : g[0].punto, normale);
+      if (!nuova) continue;
+      corretti.push({
+        a: i,
+        b: j,
+        spigolo: nuova,
+        separante: separa(nuova, piani[i], piani[j]),
+        daiVertici: true,
+        ricavato: false,
+        scarto: 0
+      });
+    }
+  }
+  return corretti;
+}
+
+/**
+ * LE DUE COSE NON SI DICONO PIÙ LA STESSA.
+ *
+ * La riga passa per i vertici in comune, ma le prospettive la vorrebbero
+ * altrove: allora il disaccordo non è nella riga, è nei due piani — e va
+ * mostrato invece che nascosto.
+ *
+ * La soglia è il 2% della diagonale della foto: è la precisione dello spigolo
+ * ricavato, misurata (su 1600×1000, con mezzo pixel di errore sugli angoli
+ * delle forme, lo spigolo cade entro ~30 px). Sotto quella soglia il
+ * disaccordo è rumore del conto, non un errore dell'utente, e gridarlo
+ * renderebbe l'avviso inutile a forza di suonare.
+ */
+export function spigoloInDisaccordo(
+  s: SpigoloFraDue,
+  larghezza: number,
+  altezza: number
+): boolean {
+  if (!s.daiVertici) return false;
+  if (!s.ricavato) return true; // non c'è più nessuna riga su cui siano d'accordo
+  return s.scarto > 0.02 * Math.hypot(larghezza, altezza);
+}
+
 export type Vincolo = { a: number; b: number; c: number };
 
 /**

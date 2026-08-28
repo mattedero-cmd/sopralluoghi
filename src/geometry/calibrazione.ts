@@ -12,7 +12,7 @@ import {
 } from '../db/types';
 import { daMillimetri, inMillimetri } from '../utils/format';
 import { applicaOmografia, omografiaPiano, type Omografia } from './omografia';
-import { latoDelloSpigolo, spigoliDellaFoto } from './spigolo';
+import { latoDelloSpigolo, spigoliDellaFoto, spigoliSuiVertici } from './spigolo';
 import { direzioneQuota, distanza, dot, scala as scalaPunto, somma, sottrai } from './punti';
 
 /**
@@ -67,7 +67,12 @@ export function pianoDi(foto: CalibrazioneFoto, dove?: Punto | Punto[]): PianoPr
   // diventa un lancio di moneta; lo spigolo invece dice esattamente dove
   // finisce un muro e comincia l'altro — ed è la riga che si vede disegnata.
   if (foto.larghezzaPx && foto.altezzaPx) {
-    const spigoli = spigoliDellaFoto(piani, foto.larghezzaPx, foto.altezzaPx);
+    const spigoli = spigoliSuiVertici(
+      spigoliDellaFoto(piani, foto.larghezzaPx, foto.altezzaPx),
+      piani,
+      foto.larghezzaPx,
+      foto.altezzaPx
+    );
     const [primo, secondo] = ordinati;
     const trovato = spigoli.find(
       (s) =>
