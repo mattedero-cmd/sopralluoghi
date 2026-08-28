@@ -222,3 +222,65 @@ describe('forme che non si possono mappare', () => {
     expect(Math.max(...x)).toBeLessThan(401);
   });
 });
+
+/* --- la finestra sotto falda ------------------------------------------ */
+
+describe('una forma che non è un rettangolo', () => {
+  /**
+   * Trapezio rettangolo disegnato frontale: base 300 cm su 300 px (1 cm = 1
+   * px), altezza sinistra 200 e destra 400. Nessuna prospettiva, così quello
+   * che esce si legge in centimetri.
+   */
+  const falda = (pannelli: Pannellizzazione) =>
+    ({
+      id: 'p1',
+      fotoId: 'f',
+      zIndex: 0,
+      stile,
+      tipo: 'quotaPoligono',
+      punti: [
+        { x: 0, y: 200 },
+        { x: 300, y: 0 },
+        { x: 300, y: 400 },
+        { x: 0, y: 400 }
+      ],
+      segmenti: [
+        { da: 1, a: 2, valore: 400 },
+        { da: 2, a: 3, valore: 300 },
+        { da: 3, a: 0, valore: 200 }
+      ],
+      unita: 'cm',
+      stato: 'reale',
+      pannelli
+    }) as unknown as Parameters<typeof primitivePannelli>[0];
+
+  const meta: Pannellizzazione = {
+    asse: 'verticale',
+    sormonto: 0,
+    verso: 'centro',
+    giunti: [150]
+  };
+
+  it('la giunzione si ferma sulla falda, non spara sopra il tetto', () => {
+    const l = linee(primitivePannelli(falda(meta)));
+    expect(l).toHaveLength(1);
+    const [x1, y1, x2, y2] = l[0].punti;
+    expect(x1).toBeCloseTo(150, 6);
+    expect(x2).toBeCloseTo(150, 6);
+    // a metà base la falda è a metà fra le due altezze: 100 px dal bordo alto
+    const alto = Math.min(y1, y2);
+    const basso = Math.max(y1, y2);
+    expect(alto).toBeCloseTo(100, 6);
+    expect(basso).toBeCloseTo(400, 6);
+  });
+
+  it('il codice del telo sta dentro la sagoma, non sopra', () => {
+    const t = testi(primitivePannelli(falda(meta), 'B1'));
+    expect(t.map((x) => x.testo)).toEqual(['B1.a', 'B1.b']);
+    // il primo telo va da 0 a 150: a metà la falda è a 150 px dall'alto, e la
+    // scritta sta più in basso ancora
+    expect(t[0].posizione.y).toBeGreaterThan(150);
+    expect(t[1].posizione.y).toBeGreaterThan(50);
+    expect(t.every((x) => x.posizione.y < 400)).toBe(true);
+  });
+});

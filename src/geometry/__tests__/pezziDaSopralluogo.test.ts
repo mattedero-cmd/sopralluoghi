@@ -654,6 +654,43 @@ describe('sagoma di taglio', () => {
     expect(sx.sagoma!.d3!).toBeGreaterThan(dx.sagoma!.d2);
   });
 
+  it('i teli con le abbondanze: le stesse misure che si leggono nell’ambiente', () => {
+    // È il caso guardato a schermo: base 300, altezze 200 e 400, abbondanze
+    // 15 ai fianchi e 10 sopra e sotto, giunzione a metà con 5 di sormonto.
+    // Questi numeri devono essere gli stessi che l'ambiente di
+    // pannellizzazione scrive sotto «Pezzi da tagliare», o quello che si
+    // guarda non è quello che si taglia.
+    const falda = poligono(
+      [
+        [0, 200],
+        [300, 0],
+        [300, 400],
+        [0, 400]
+      ],
+      [
+        { da: 3, a: 2, valore: 300, abbInizio: 15, abbFine: 15 },
+        { da: 0, a: 3, valore: 200, abbInizio: 10, abbFine: 10 },
+        { da: 1, a: 2, valore: 400, abbInizio: 10, abbFine: 10 }
+      ]
+    );
+    (falda as unknown as { pannelli: unknown }).pannelli = {
+      asse: 'verticale',
+      giunti: [150],
+      sormonto: 5,
+      verso: 'centro'
+    };
+    const teli = pezziDaAnnotazioni([falda], FOTO);
+    expect(teli).toHaveLength(2);
+    // in millimetri: 167,5 cm di base, e le due altezze sulla falda gonfiata
+    expect(teli[0].sagoma).toMatchObject({ forma: 'trapezioR' });
+    expect(teli[0].sagoma!.d1).toBeCloseTo(1675, 2);
+    expect(teli[0].sagoma!.d2).toBeCloseTo(2120.2, 1);
+    expect(teli[0].sagoma!.d3).toBeCloseTo(3236.9, 1);
+    expect(teli[1].sagoma!.d1).toBeCloseTo(1675, 2);
+    expect(teli[1].sagoma!.d2).toBeCloseTo(3203.5, 1);
+    expect(teli[1].sagoma!.d3).toBeCloseTo(4320.2, 1);
+  });
+
   it('i teli della falda si passano l’altezza, sormonto compreso', () => {
     // base 500 (+5 e +5 di abbondanza), lato sx 180 (+10 sotto), lato dx 300
     // (+10 sotto), divisa in tre con 2 di sormonto

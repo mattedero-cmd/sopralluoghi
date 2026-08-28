@@ -26,7 +26,12 @@ import {
   segmentiPoligono,
   segmentoELato
 } from '../db/types';
-import { pannelliDellaForma } from './formaQuadrilatera';
+import {
+  bordiSagoma,
+  fasciaSagoma,
+  pannelliDellaForma,
+  sagomaDiTaglioQuad
+} from './formaQuadrilatera';
 import { sbordo } from './pannelli';
 import { applicaOmografia, calcolaOmografia } from './omografia';
 import { codicePannello } from './nomenclatura';
@@ -488,15 +493,10 @@ export function primitivePannelli(
 
   let H;
   try {
-    H = calcolaOmografia(
-      [
-        { x: 0, y: 0 },
-        { x: L, y: 0 },
-        { x: L, y: A },
-        { x: 0, y: A }
-      ],
-      forma.quad
-    );
+    // si parte dai quattro angoli VERI del vetro: mandare un rettangolo sul
+    // quadrilatero della foto vorrebbe dire disegnare una finestra sotto
+    // falda come un rettangolo messo in prospettiva
+    H = calcolaOmografia(forma.verticiNetti, forma.quad);
   } catch {
     // quattro angoli degeneri: meglio non disegnare che disegnare storto
     return [];
@@ -512,10 +512,15 @@ export function primitivePannelli(
   const punto = (u: number, v: number): Punto =>
     applicaOmografia(H, verticale ? { x: u, y: v } : { x: v, y: u });
 
+  /** i due capi di una linea di giunzione: dove la SAGOMA comincia e finisce */
+  const capi = (u: number) =>
+    bordiSagoma(forma.verticiNetti, pann.asse, u) ?? { da: 0, a: trasversaleNetto };
+
   const spessore = Math.max(1, q.stile.spessore * 0.45);
   const linea = (u: number, tratteggio?: number[]): Primitiva => {
-    const a = punto(u, 0);
-    const b = punto(u, trasversaleNetto);
+    const c = capi(u);
+    const a = punto(u, c.da);
+    const b = punto(u, c.a);
     return {
       kind: 'linea',
       punti: [a.x, a.y, b.x, b.y],
@@ -532,15 +537,14 @@ export function primitivePannelli(
   // sottile della giunzione. È quello che si taglia davvero, e messo sopra il
   // vetro dice a colpo d'occhio se la divisione sta in piedi.
   if (abbondanze.inizio || abbondanze.fine || abbondanze.trasversaleInizio || abbondanze.trasversaleFine) {
-    const v0 = -abbondanze.trasversaleInizio;
-    const v1 = trasversaleNetto + abbondanze.trasversaleFine;
+    // il contorno si ritaglia dalla sagoma di taglio: sotto una falda il telo
+    // è un trapezio, e un rettangolo direbbe di tagliare il pezzo sbagliato
+    const taglio = sagomaDiTaglioQuad(forma.verticiNetti, forma.abbondanze);
     for (const telo of pannelli) {
-      const angoli = [
-        punto(telo.inizio, v0),
-        punto(telo.fine, v0),
-        punto(telo.fine, v1),
-        punto(telo.inizio, v1)
-      ];
+      const ritagliato = fasciaSagoma(taglio, pann.asse, telo.inizio, telo.fine);
+      if (ritagliato.length < 3) continue;
+      // il ritaglio è già in coordinate del vetro: non c'è nessun verso da girare
+      const angoli = ritagliato.map((p) => applicaOmografia(H, p));
       const contornoTelo: number[] = [];
       for (const q of angoli) contornoTelo.push(q.x, q.y);
       contornoTelo.push(angoli[0].x, angoli[0].y);
@@ -576,7 +580,9 @@ export function primitivePannelli(
     for (const telo of pannelli) {
       // un po' sotto il bordo: sulla linea di quota del lato si leggerebbero
       // uno sull'altro, e la quota deve restare la cosa più leggibile
-      const centro = punto((telo.vistaInizio + telo.vistaFine) / 2, trasversaleNetto * 0.17);
+      const u = (telo.vistaInizio + telo.vistaFine) / 2;
+      const c = capi(u);
+      const centro = punto(u, c.da + (c.a - c.da) * 0.17);
       prim.push({
         kind: 'testo',
         testo: codicePannello(codice, telo.indice - 1),

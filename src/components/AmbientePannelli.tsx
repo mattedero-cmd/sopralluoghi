@@ -4,6 +4,7 @@ import { Icona } from './Icona';
 import { CampoNumero } from './CampoNumero';
 import { applicaOmografia, calcolaOmografia } from '../geometry/omografia';
 import { quadConvesso } from '../geometry/punti';
+import { bordiSagoma, fasciaSagoma, sagomaDiTaglioQuad } from '../geometry/formaQuadrilatera';
 import {
   giuntiAutomatici,
   numeroMinimo,
@@ -45,6 +46,16 @@ export interface FormaDaPannellizzare {
    * teli di bordo, e quando sono asimmetriche i teli risultano diversi.
    */
   abbondanze?: { sinistra: number; destra: number; sopra: number; sotto: number };
+  /**
+   * LA SAGOMA VERA DEL VETRO, in coordinate reali: x da 0 a `larghezza`, y da
+   * 0 a `altezza`, quattro angoli nello stesso verso di `prospettiva.punti`.
+   *
+   * Senza, l'elemento è un rettangolo. Con, è quello che si divide davvero:
+   * su una finestra sotto falda la giunzione arriva fin sotto l'obliquo e il
+   * telo che ne esce è un trapezio — disegnarlo rettangolare vorrebbe dire
+   * far vedere un pezzo diverso da quello che si taglia.
+   */
+  vertici?: Punto[] | null;
   /** etichetta dell'unità, per i testi (mm, cm, m) */
   unita: string;
   /**
@@ -133,6 +144,8 @@ export function AmbientePannelli({
   );
   const numero = pannelli.length;
   const troppoLarghi = massimo > 0 ? pannelli.filter((p) => p.larghezza > massimo + 1e-6) : [];
+  /** vero quando l'elemento ha una sagoma sua, e non è il solito rettangolo */
+  const conSagoma = !!(forma.vertici && forma.vertici.length === 4 && quadConvesso(forma.vertici));
 
   /* --- ridistribuzione automatica ---------------------------------- */
 
@@ -213,37 +226,75 @@ export function AmbientePannelli({
     return () => osservatore.disconnect();
   }, []);
 
-  /** i 4 angoli nello spazio del disegno: la foto, o il rettangolo puro */
-  const quad = useMemo<Punto[]>(() => {
-    const p = forma.prospettiva?.punti;
-    // una forma rientrante manderebbe l'omografia a ribaltare l'interno con
-    // l'esterno: si rinuncia alla prospettiva e si disegna il rettangolo
-    if (p && p.length === 4 && quadConvesso(p)) return p;
+  /**
+   * LA SAGOMA DEL VETRO in coordinate reali: quella vera se chi chiama la
+   * conosce, se no il riquadro. È lei il modello dell'elemento — l'ambiente
+   * non sa più fare finta che tutto sia un rettangolo.
+   */
+  const sagoma = useMemo<Punto[]>(() => {
+    const v = forma.vertici;
+    if (v && v.length === 4 && quadConvesso(v)) return v;
     return [
       { x: 0, y: 0 },
       { x: L, y: 0 },
       { x: L, y: A },
       { x: 0, y: A }
     ];
-  }, [forma.prospettiva, L, A]);
+  }, [forma.vertici, L, A]);
 
-  /** reale → disegno e ritorno: le due strade devono restare coerenti */
+  /** la sagoma DI TAGLIO: il vetro gonfiato delle abbondanze, lato per lato */
+  const sagomaTaglio = useMemo<Punto[]>(
+    () => sagomaDiTaglioQuad(sagoma, abb),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sagoma, abb.sinistra, abb.destra, abb.sopra, abb.sotto]
+  );
+
+  /**
+   * LE MISURE VERE DI OGNI TELO.
+   *
+   * Un telo di trapezio rettangolo non è un rettangolo: ha la sua base e DUE
+   * altezze, una per capo. Sono i numeri che si scrivono sul telo prima di
+   * posarlo, ed è quello che arriva nel piano di taglio.
+   */
+  const misureTeli = useMemo(
+    () =>
+      pannelli.map((p) => {
+        const primo = bordiSagoma(sagomaTaglio, pann.asse, p.inizio);
+        const secondo = bordiSagoma(sagomaTaglio, pann.asse, p.fine);
+        const h1 = primo ? primo.a - primo.da : p.altezza;
+        const h2 = secondo ? secondo.a - secondo.da : p.altezza;
+        return { lungo: p.larghezza, h1, h2, dritto: arrotonda(h1) === arrotonda(h2) };
+      }),
+    [pannelli, sagomaTaglio, pann.asse]
+  );
+
+  /** i 4 angoli nello spazio del disegno: la foto, o la sagoma in scala */
+  const quad = useMemo<Punto[]>(() => {
+    const p = forma.prospettiva?.punti;
+    // una forma rientrante manderebbe l'omografia a ribaltare l'interno con
+    // l'esterno: si rinuncia alla prospettiva e si disegna la sagoma com'è
+    if (p && p.length === 4 && quadConvesso(p)) return p;
+    return sagoma;
+  }, [forma.prospettiva, sagoma]);
+
+  /**
+   * Reale → disegno e ritorno.
+   *
+   * La partenza sono i quattro angoli VERI del vetro, non quelli di un
+   * rettangolo: mandare un rettangolo sul quadrilatero della foto vorrebbe
+   * dire disegnare un trapezio rettangolo come un rettangolo in prospettiva,
+   * e le giunzioni cadrebbero dove non cadono.
+   */
   const omografie = useMemo(() => {
-    const reali = [
-      { x: 0, y: 0 },
-      { x: L, y: 0 },
-      { x: L, y: A },
-      { x: 0, y: A }
-    ];
     try {
       return {
-        versoDisegno: calcolaOmografia(reali, quad),
-        versoReale: calcolaOmografia(quad, reali)
+        versoDisegno: calcolaOmografia(sagoma, quad),
+        versoReale: calcolaOmografia(quad, sagoma)
       };
     } catch {
       return null;
     }
-  }, [quad, L, A]);
+  }, [quad, sagoma]);
 
   /**
    * Il contorno da inquadrare: il vetro più le abbondanze. Se si inquadrasse
@@ -252,15 +303,8 @@ export function AmbientePannelli({
    */
   const contorno = useMemo<Punto[]>(() => {
     if (!omografie) return quad;
-    const angoli = [
-      { x: -abb.sinistra, y: -abb.sopra },
-      { x: L + abb.destra, y: -abb.sopra },
-      { x: L + abb.destra, y: A + abb.sotto },
-      { x: -abb.sinistra, y: A + abb.sotto }
-    ];
-    return angoli.map((p) => applicaOmografia(omografie.versoDisegno, p));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [omografie, quad, L, A, abb.sinistra, abb.destra, abb.sopra, abb.sotto]);
+    return sagomaTaglio.map((p) => applicaOmografia(omografie.versoDisegno, p));
+  }, [omografie, quad, sagomaTaglio]);
 
   /** inquadratura di base: il quadrilatero riempie l'area disponibile */
   const vista = useMemo(() => {
@@ -310,6 +354,16 @@ export function AmbientePannelli({
     return pann.asse === 'verticale' ? reale.x : reale.y;
   };
 
+  /** un poligono in coordinate del vetro, portato sullo schermo */
+  const poligonoSchermo = (poly: Punto[]): Punto[] =>
+    omografie ? poly.map((p) => aSchermo(applicaOmografia(omografie.versoDisegno, p))) : [];
+
+  /** i due capi di una giunzione: dove la sagoma comincia e dove finisce */
+  const capiGiunto = (g: number): [Punto, Punto] => {
+    const b = bordiSagoma(sagoma, pann.asse, g) ?? { da: 0, a: trasversale };
+    return [puntoSchermo(g, b.da), puntoSchermo(g, b.a)];
+  };
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !vista || !omografie) return;
@@ -347,18 +401,16 @@ export function AmbientePannelli({
       ctx.closePath();
     };
 
-    // fasce di sormonto: il doppio strato di materiale, dove si sovrappone
+    // fasce di sormonto: il doppio strato di materiale, dove si sovrappone.
+    // Ritagliate dalla sagoma, così sotto una falda la fascia finisce in punta
     const sb = sbordo(pann);
     for (const g of pann.giunti) {
       const a = Math.max(0, g - sb.inizio);
       const b = Math.min(totale, g + sb.fine);
       if (b - a <= 0) continue;
-      percorso([
-        puntoSchermo(a, 0),
-        puntoSchermo(b, 0),
-        puntoSchermo(b, trasversale),
-        puntoSchermo(a, trasversale)
-      ]);
+      const bordo = poligonoSchermo(fasciaSagoma(sagoma, pann.asse, a, b));
+      if (bordo.length < 3) continue;
+      percorso(bordo);
       ctx.fillStyle = 'rgba(255,196,0,0.28)';
       ctx.fill();
     }
@@ -378,18 +430,13 @@ export function AmbientePannelli({
     // colpo d'occhio se la divisione tiene, e come si distribuiscono le
     // abbondanze quando non sono uguali su tutti i lati.
     if (conAbbondanze) {
-      const v0 = -abbondanze.trasversaleInizio;
-      const v1 = trasversale + abbondanze.trasversaleFine;
       ctx.setLineDash([5, 4]);
       ctx.strokeStyle = VERDE_ABBONDANZA;
       ctx.lineWidth = 1.25;
       for (const telo of pannelli) {
-        percorso([
-          puntoSchermo(telo.inizio, v0),
-          puntoSchermo(telo.fine, v0),
-          puntoSchermo(telo.fine, v1),
-          puntoSchermo(telo.inizio, v1)
-        ]);
+        const bordo = poligonoSchermo(fasciaSagoma(sagomaTaglio, pann.asse, telo.inizio, telo.fine));
+        if (bordo.length < 3) continue;
+        percorso(bordo);
         ctx.stroke();
       }
       ctx.setLineDash([]);
@@ -397,8 +444,7 @@ export function AmbientePannelli({
 
     // linee di giunzione: quelle che si vedranno sul muro
     pann.giunti.forEach((g, i) => {
-      const a = puntoSchermo(g, 0);
-      const b = puntoSchermo(g, trasversale);
+      const [a, b] = capiGiunto(g);
       for (const [col, lw] of [
         ['rgba(0,0,0,0.7)', 8],
         [preso === i ? '#ffffff' : '#ffc400', 3.5]
@@ -430,7 +476,11 @@ export function AmbientePannelli({
       // i teli stretti finirebbero uno sopra l'altro: le scritte si alternano
       // in alto e in basso, così restano leggibili anche su una striscia
       const altezzaTesto = p.indice % 2 === 0 ? 0.62 : 0.38;
-      const c = puntoSchermo((p.vistaInizio + p.vistaFine) / 2, trasversale * altezzaTesto);
+      // dentro la sagoma, non dentro il riquadro: sotto una falda la scritta
+      // starebbe sopra il tetto
+      const u = (p.vistaInizio + p.vistaFine) / 2;
+      const b = bordiSagoma(sagoma, pann.asse, u) ?? { da: 0, a: trasversale };
+      const c = puntoSchermo(u, b.da + (b.a - b.da) * altezzaTesto);
       const testo = `${p.indice}  ·  ${formattaNumero(arrotonda(p.larghezza))} ${forma.unita}`;
       ctx.lineWidth = Math.max(2, dim * 0.24);
       ctx.strokeStyle = 'rgba(0,0,0,0.75)';
@@ -441,7 +491,23 @@ export function AmbientePannelli({
 
     ctx.restore();
     // il disegno dipende da tutto quello che si vede: se cambia, si rifà
-  }, [vista, omografie, pann, pannelli, zoom, pan, preso, forma.prospettiva, totale, trasversale, conAbbondanze]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    vista,
+    omografie,
+    pann,
+    pannelli,
+    zoom,
+    pan,
+    preso,
+    forma.prospettiva,
+    totale,
+    trasversale,
+    conAbbondanze,
+    sagoma,
+    sagomaTaglio,
+    quad
+  ]);
 
   /* --- dito e mouse -------------------------------------------------- */
 
@@ -458,8 +524,7 @@ export function AmbientePannelli({
     let scelto: number | null = null;
     let minima = PRESA;
     pann.giunti.forEach((g, i) => {
-      const a = puntoSchermo(g, 0);
-      const b = puntoSchermo(g, trasversale);
+      const [a, b] = capiGiunto(g);
       const d = distanzaDaSegmento(p, a, b);
       if (d < minima) {
         minima = d;
@@ -752,18 +817,26 @@ export function AmbientePannelli({
 
           <span className="et">Pezzi da tagliare</span>
           <div className="ap-elenco">
-            {pannelli.map((p) => (
-              <div className="ap-pezzo" key={p.indice}>
-                <span className="n">
-                  {forma.nome} {p.indice}/{numero}
-                </span>
-                <span className="d">
-                  {formattaNumero(arrotonda(pann.asse === 'verticale' ? p.larghezza : p.altezza))} ×{' '}
-                  {formattaNumero(arrotonda(pann.asse === 'verticale' ? p.altezza : p.larghezza))}{' '}
-                  {unita}
-                </span>
-              </div>
-            ))}
+            {pannelli.map((p, i) => {
+              const m = misureTeli[i];
+              const n = (v: number) => formattaNumero(arrotonda(v));
+              // sull'asse di divisione il telo ha una misura sola; di traverso
+              // ne ha due quando la sagoma è obliqua, una per capo
+              const trasverso = m.dritto ? n(m.h1) : `${n(m.h1)} | ${n(m.h2)}`;
+              return (
+                <div className="ap-pezzo" key={p.indice}>
+                  <span className="n">
+                    {forma.nome} {p.indice}/{numero}
+                  </span>
+                  <span className="d">
+                    {pann.asse === 'verticale'
+                      ? `${n(m.lungo)} × ${trasverso}`
+                      : `${trasverso} × ${n(m.lungo)}`}{' '}
+                    {unita}
+                  </span>
+                </div>
+              );
+            })}
           </div>
           <p className="nest-sub">
             Si divide il <strong>vetro</strong>: la giunzione cade dove la vedi cadere. Le misure
@@ -772,6 +845,9 @@ export function AmbientePannelli({
             bordo, l’abbondanza di quel lato.{' '}
             {conAbbondanze
               ? 'Il filetto verde tratteggiato è il contorno di ogni pezzo, abbondanze comprese.'
+              : ''}{' '}
+            {conSagoma
+              ? 'L’elemento non è un rettangolo: i teli seguono la sagoma vera, e dove il lato è obliquo il pezzo ha due misure di traverso — una per capo.'
               : ''}
           </p>
         </div>

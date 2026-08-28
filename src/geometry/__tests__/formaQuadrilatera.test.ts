@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  bordiSagoma,
   ePannellizzabile,
+  fasciaSagoma,
   formaQuadrilatera,
-  pannelliDellaForma
+  pannelliDellaForma,
+  sagomaDiTaglioQuad
 } from '../formaQuadrilatera';
 import type { Annotazione } from '../../db/types';
 import type { Pannellizzazione } from '../pannelli';
@@ -323,5 +326,213 @@ describe('la misura di taglio è la stessa della distinta', () => {
     expect(d?.totale).toBe(500);
     const somma = d!.pannelli.reduce((s, p) => s + p.larghezza, 0);
     expect(somma).toBe(500 + 3 * 2);
+  });
+});
+
+/* --- la sagoma vera del vetro ----------------------------------------- */
+
+describe('verticiNetti', () => {
+  it('un rettangolo resta il suo riquadro', () => {
+    const f = formaQuadrilatera(
+      poligono(
+        [
+          [0, 0],
+          [500, 0],
+          [500, 230],
+          [0, 230]
+        ],
+        [
+          { da: 0, a: 1, valore: 500 },
+          { da: 1, a: 2, valore: 230 },
+          { da: 2, a: 3, valore: 500 },
+          { da: 3, a: 0, valore: 230 }
+        ]
+      )
+    )!;
+    expect(f.rettangolare).toBe(true);
+    expect(f.verticiNetti).toEqual([
+      { x: 0, y: 0 },
+      { x: 500, y: 0 },
+      { x: 500, y: 230 },
+      { x: 0, y: 230 }
+    ]);
+  });
+
+  it('la finestra sotto falda è un trapezio, e la falda pende dal suo lato', () => {
+    // come si quota davvero: base 300, altezza sinistra 200, destra 400.
+    // La falda non si misura, la disegna il tetto
+    const f = formaQuadrilatera(
+      poligono(
+        [
+          [0, 200],
+          [300, 0],
+          [300, 400],
+          [0, 400]
+        ],
+        [
+          { da: 1, a: 2, valore: 400 },
+          { da: 2, a: 3, valore: 300 },
+          { da: 3, a: 0, valore: 200 }
+        ]
+      )
+    )!;
+    expect(f.rettangolare).toBe(false);
+    expect(f.netta).toEqual({ larghezza: 300, altezza: 400 });
+    // i quattro angoli, nel riquadro del vetro: il lato corto sta a sinistra,
+    // dov'è stato misurato, e l'obliquo resta obliquo
+    expect(f.verticiNetti).toEqual([
+      { x: 0, y: 200 },
+      { x: 300, y: 0 },
+      { x: 300, y: 400 },
+      { x: 0, y: 400 }
+    ]);
+  });
+
+  it('quotando anche la falda l’elemento diventa un quadrilatero storto', () => {
+    // quattro lati tutti diversi: non è più un trapezio rettangolo, ed è
+    // giusto così — la forma la dicono le misure, non il nome
+    const f = formaQuadrilatera(
+      poligono(
+        [
+          [0, 200],
+          [300, 0],
+          [300, 400],
+          [0, 400]
+        ],
+        [
+          { da: 0, a: 1, valore: 360 },
+          { da: 1, a: 2, valore: 400 },
+          { da: 2, a: 3, valore: 300 },
+          { da: 3, a: 0, valore: 200 }
+        ]
+      )
+    )!;
+    expect(f.rettangolare).toBe(false);
+    // i vertici riempiono il riquadro dichiarato, che è quello in cui cadono
+    // le giunzioni
+    const xs = f.verticiNetti.map((p) => p.x);
+    const ys = f.verticiNetti.map((p) => p.y);
+    expect(Math.min(...xs)).toBeCloseTo(0, 6);
+    expect(Math.max(...xs)).toBeCloseTo(f.netta.larghezza, 6);
+    expect(Math.min(...ys)).toBeCloseTo(0, 6);
+    expect(Math.max(...ys)).toBeCloseTo(f.netta.altezza, 6);
+  });
+
+  it('due altezze uguali non fanno una falda: il vetro resta rettangolare', () => {
+    const f = formaQuadrilatera(
+      poligono(
+        [
+          [0, 0],
+          [300, 0],
+          [300, 200],
+          [0, 200]
+        ],
+        [
+          { da: 0, a: 1, valore: 300 },
+          { da: 1, a: 2, valore: 200 },
+          { da: 2, a: 3, valore: 300 },
+          { da: 3, a: 0, valore: 200 }
+        ]
+      )
+    )!;
+    expect(f.rettangolare).toBe(true);
+  });
+});
+
+describe('sagomaDiTaglioQuad', () => {
+  const riquadro = [
+    { x: 0, y: 0 },
+    { x: 400, y: 0 },
+    { x: 400, y: 300 },
+    { x: 0, y: 300 }
+  ];
+
+  it('su un rettangolo sono i quattro spigoli allargati, lato per lato', () => {
+    expect(sagomaDiTaglioQuad(riquadro, { sinistra: 2, destra: 5, sopra: 10, sotto: 1 })).toEqual([
+      { x: -2, y: -10 },
+      { x: 405, y: -10 },
+      { x: 405, y: 301 },
+      { x: -2, y: 301 }
+    ]);
+  });
+
+  it('senza abbondanze la sagoma non si muove', () => {
+    expect(sagomaDiTaglioQuad(riquadro, { sinistra: 0, destra: 0, sopra: 0, sotto: 0 })).toEqual(
+      riquadro
+    );
+  });
+
+  it('su una falda l’obliquo resta obliquo e il pezzo cresce di quel che deve', () => {
+    // trapezio rettangolo: base 400, h sx 200, h dx 300
+    const falda = [
+      { x: 0, y: 100 },
+      { x: 400, y: 0 },
+      { x: 400, y: 300 },
+      { x: 0, y: 300 }
+    ];
+    const t = sagomaDiTaglioQuad(falda, { sinistra: 10, destra: 10, sopra: 20, sotto: 20 });
+    const xs = t.map((p) => p.x);
+    const ys = t.map((p) => p.y);
+    // l'ingombro cresce esattamente delle abbondanze
+    expect(Math.min(...xs)).toBeCloseTo(-10, 6);
+    expect(Math.max(...xs)).toBeCloseTo(410, 6);
+    expect(Math.max(...ys)).toBeCloseTo(320, 6);
+    // il lato obliquo si è spostato in fuori restando parallelo a sé stesso:
+    // la sua pendenza non cambia
+    const pend = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+      (b.y - a.y) / (b.x - a.x);
+    expect(pend(t[0], t[1])).toBeCloseTo(pend(falda[0], falda[1]), 9);
+    // e sta più in alto dell'originale, di quanto vale l'abbondanza in verticale
+    const dist =
+      (t[0].y - falda[0].y) / Math.hypot(1, pend(falda[0], falda[1])) === 0
+        ? 0
+        : Math.abs(
+            ((falda[1].y - falda[0].y) * t[0].x -
+              (falda[1].x - falda[0].x) * t[0].y +
+              falda[1].x * falda[0].y -
+              falda[1].y * falda[0].x) /
+              Math.hypot(falda[1].x - falda[0].x, falda[1].y - falda[0].y)
+          );
+    expect(dist).toBeCloseTo(20, 6);
+  });
+});
+
+describe('bordiSagoma e fasciaSagoma', () => {
+  // trapezio rettangolo: base 300, altezza sinistra 200, destra 400
+  const falda = [
+    { x: 0, y: 200 },
+    { x: 300, y: 0 },
+    { x: 300, y: 400 },
+    { x: 0, y: 400 }
+  ];
+
+  it('a metà base la giunzione va dal davanzale alla falda, non da cima a fondo', () => {
+    expect(bordiSagoma(falda, 'verticale', 150)).toEqual({ da: 100, a: 400 });
+    // ai due capi comandano i lati verticali, che sono quelli misurati
+    expect(bordiSagoma(falda, 'verticale', 0)).toEqual({ da: 200, a: 400 });
+    expect(bordiSagoma(falda, 'verticale', 300)).toEqual({ da: 0, a: 400 });
+  });
+
+  it('sull’asse orizzontale i bordi sono gli altri due', () => {
+    // a 100 dall'alto la falda è già scesa: la fascia parte da lì
+    expect(bordiSagoma(falda, 'orizzontale', 100)?.a).toBeCloseTo(300, 6);
+    expect(bordiSagoma(falda, 'orizzontale', 100)?.da).toBeCloseTo(150, 6);
+  });
+
+  it('fuori dalla sagoma non c’è niente da misurare', () => {
+    expect(bordiSagoma(falda, 'verticale', -10)).toBeNull();
+    expect(bordiSagoma(falda, 'verticale', 400)).toBeNull();
+  });
+
+  it('un telo ritagliato dalla falda è ancora un trapezio', () => {
+    const telo = fasciaSagoma(falda, 'verticale', 0, 150);
+    const xs = telo.map((p) => p.x);
+    const ys = telo.map((p) => p.y);
+    expect(telo).toHaveLength(4);
+    expect(Math.min(...xs)).toBeCloseTo(0, 6);
+    expect(Math.max(...xs)).toBeCloseTo(150, 6);
+    // il lato di taglio è alto quanto dice la falda in quel punto
+    expect(Math.min(...ys)).toBeCloseTo(100, 6);
+    expect(Math.max(...ys)).toBeCloseTo(400, 6);
   });
 });

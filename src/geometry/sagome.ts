@@ -327,6 +327,56 @@ export function poligonoSagoma(p: MisureForma): PuntoSagoma[] | null {
 }
 
 /**
+ * RITAGLIA un poligono convesso con una fascia sull'asse dato.
+ *
+ * È il taglio di un telo: la sagoma intera entra, esce il pezzo compreso fra
+ * due giunzioni. Coordinate assolute sull'asse (0 = x, 1 = y).
+ */
+export function fasciaDiPoligono(
+  poly: PuntoSagoma[],
+  asse: 0 | 1,
+  da: number,
+  a: number
+): PuntoSagoma[] {
+  let dentro = poly;
+  const taglia = (tieni: (q: PuntoSagoma) => boolean, dove: number) => {
+    const fuori: PuntoSagoma[] = [];
+    for (let i = 0; i < dentro.length; i++) {
+      const p1 = dentro[i];
+      const p2 = dentro[(i + 1) % dentro.length];
+      if (tieni(p1)) fuori.push(p1);
+      if (tieni(p1) !== tieni(p2)) {
+        const d = p2[asse] - p1[asse];
+        const t = Math.abs(d) < 1e-9 ? 0 : (dove - p1[asse]) / d;
+        const q: PuntoSagoma = [p1[0] + (p2[0] - p1[0]) * t, p1[1] + (p2[1] - p1[1]) * t];
+        q[asse] = dove;
+        fuori.push(q);
+      }
+    }
+    dentro = fuori;
+  };
+  taglia((q) => q[asse] >= da - 1e-9, da);
+  if (dentro.length === 0) return [];
+  taglia((q) => q[asse] <= a + 1e-9, a);
+  // via i vertici doppi che nascono quando il taglio passa per uno spigolo
+  const puliti: PuntoSagoma[] = [];
+  for (const q of dentro) {
+    const ultimo = puliti[puliti.length - 1];
+    if (!ultimo || Math.hypot(q[0] - ultimo[0], q[1] - ultimo[1]) > 1e-6) puliti.push(q);
+  }
+  if (
+    puliti.length > 1 &&
+    Math.hypot(
+      puliti[0][0] - puliti[puliti.length - 1][0],
+      puliti[0][1] - puliti[puliti.length - 1][1]
+    ) <= 1e-6
+  ) {
+    puliti.pop();
+  }
+  return puliti;
+}
+
+/**
  * Ruota i punti e ritrasla il bbox in (0,0). L'arrotondamento a 1e-6 tiene
  * stabili le chiavi di cache fra rotazioni equivalenti.
  */

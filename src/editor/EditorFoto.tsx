@@ -5003,6 +5003,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 // nei teli di bordo
                 larghezza: forma.netta.larghezza,
                 altezza: forma.netta.altezza,
+                // e si divide la SAGOMA VERA: sotto una falda la giunzione
+                // arriva fin sotto l'obliquo, e il telo che ne esce è un
+                // trapezio — non un rettangolo messo in prospettiva
+                vertici: forma.rettangolare ? null : forma.verticiNetti,
                 abbondanze: forma.abbondanze,
                 unita: forma.unita,
                 prospettiva: { punti: forma.quad, immagine }

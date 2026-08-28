@@ -10,6 +10,28 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.33.0 — La falda si divide come una falda
+
+- **Basta col rettangolo in prospettiva.** Aprendo «Dividi in teli» su una
+  finestra sotto falda, l'ambiente disegnava un RETTANGOLO deformato dalla
+  prospettiva: l'obliquo si vedeva solo perché era il contorno della foto, ma
+  il modello sotto era sempre un rettangolo. La giunzione finiva così a un
+  terzo della base invece che a metà, e i teli erano riquadri.
+- Ora l'ambiente parte dai **quattro angoli veri del vetro**: la giunzione
+  cade dove dicono i centimetri, la linea gialla si ferma sulla falda invece
+  di sparare sopra il tetto, e il contorno verde di ogni telo è il trapezio
+  che esce dalla macchina, abbondanze comprese.
+- Sotto «Pezzi da tagliare» un telo obliquo porta **due misure di traverso**,
+  una per capo — `167,5 × 212 | 323,7` — perché è così che si scrive sul telo
+  prima di posarlo. Sono gli stessi numeri della distinta di taglio: quello
+  che si guarda e quello che si taglia sono lo stesso pezzo.
+- Stessa correzione **sulla foto del sopralluogo** e nel PDF: le giunzioni
+  verdi, i lembi di sormonto e i codici dei teli seguivano il rettangolo
+  d'ingombro, adesso seguono la sagoma.
+- Sotto, una sola regola per tutti: la forma di un quadrilatero — falda,
+  trapezio isoscele, finestra fuori squadro — si legge in un posto solo, e da
+  lì passano il disegno, l'ambiente dei teli e il piano di taglio.
+
 ## 1.32.0 — La misura speculare
 
 - **Due finestre affacciate, un rilievo solo.** Sotto il colmo di un tetto le
