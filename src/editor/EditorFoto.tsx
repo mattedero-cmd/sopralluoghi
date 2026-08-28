@@ -63,6 +63,7 @@ import {
   pannelliDellaForma
 } from '../geometry/formaQuadrilatera';
 import { normalizzaPannellizzazione } from '../geometry/pannelli';
+import { pianiAgganciati } from '../geometry/pianoModifica';
 import { calcolaCatene, sommaCatenaInUnita } from '../geometry/catene';
 import {
   angoloGradi,
@@ -643,9 +644,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
    * La parete mentre la si trascina: sta qui e non nel database, così il dito
    * scorre liscio. Al rilascio si salva e le misure automatiche si rifanno.
    */
-  const [pianoLive, setPianoLive] = useState<{ indice: number; piano: PianoProspettiva } | null>(
-    null
-  );
+  const [pianoLive, setPianoLive] = useState<Array<{
+    indice: number;
+    piano: PianoProspettiva;
+  }> | null>(null);
   /** esito del comando «Piano dalle forme», in attesa di conferma */
   const [pianoForme, setPianoForme] = useState<{
     /** un piano per parete: una foto di tre quarti ne inquadra due */
@@ -2801,18 +2803,29 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
    * che cambia sono le misure CALCOLATE, che seguono la nuova prospettiva.
    * Le quote scritte a mano restano quelle, sempre.
    */
-  const modificaPiano = (indice: number, piano: PianoProspettiva) =>
-    setPianoLive({ indice, piano });
+  const modificaPiano = (modifiche: Array<{ indice: number; piano: PianoProspettiva }>) =>
+    setPianoLive(modifiche.length > 0 ? modifiche : null);
 
-  /** dito alzato: la parete aggiustata si salva, e le misure la seguono */
+  /** dito alzato: le pareti aggiustate si salvano, e le misure le seguono */
   const finePiano = async () => {
     const live = pianoLive;
     setPianoLive(null);
-    if (!foto || !live) return;
+    if (!foto || !live || live.length === 0) return;
     const tutti = [foto.piano, ...(foto.piani ?? [])].filter((x): x is PianoProspettiva => !!x);
-    if (live.indice < 0 || live.indice >= tutti.length) return;
-    const nuovi = tutti.map((x, i) => (i === live.indice ? live.piano : x));
-    const [primo, ...altri] = nuovi;
+    const nuovi = tutti.map((x, i) => live.find((m) => m.indice === i)?.piano ?? x);
+    await salvaPianiAgganciati(nuovi);
+  };
+
+  /**
+   * Salva le pareti tenendole ATTACCATE fra loro: prima di andare nel
+   * database ogni riquadro si aggancia ai suoi spigoli, così le due pareti si
+   * disegnano unite e il vertice di giunzione resta uno solo. È un ritocco
+   * della sola estensione: la prospettiva non si tocca.
+   */
+  const salvaPianiAgganciati = async (piani: PianoProspettiva[]) => {
+    if (!foto || piani.length === 0) return;
+    const attaccati = pianiAgganciati(piani, foto.larghezzaPx, foto.altezzaPx);
+    const [primo, ...altri] = attaccati;
     await aggiornaFoto(foto.id, { piano: primo, piani: altri });
     ricalcolaConCalibrazione({ scala: foto.scala, piano: primo, piani: altri });
   };
@@ -2856,7 +2869,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       attesaPiani.current = null;
       const nuovi = pianiAggiornati(piani, annotazioni);
       if (!nuovi || nuovi.length === 0) return;
-      const [primo, ...altri] = nuovi;
+      const attaccati = pianiAgganciati(nuovi, foto.larghezzaPx, foto.altezzaPx);
+      const [primo, ...altri] = attaccati;
       void aggiornaFoto(foto.id, { piano: primo, piani: altri });
       ricalcolaConCalibrazione({ scala: foto.scala, piano: primo, piani: altri });
     }, 500);
@@ -2877,10 +2891,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
    * rilascio, ma sullo schermo si muove subito.
    */
   const fotoVista = useMemo(() => {
-    if (!foto || !pianoLive) return foto;
+    if (!foto || !pianoLive || pianoLive.length === 0) return foto;
     const tutti = [foto.piano, ...(foto.piani ?? [])].filter((x): x is PianoProspettiva => !!x);
-    if (pianoLive.indice < 0 || pianoLive.indice >= tutti.length) return foto;
-    const nuovi = tutti.map((x, i) => (i === pianoLive.indice ? pianoLive.piano : x));
+    const nuovi = tutti.map((x, i) => pianoLive.find((m) => m.indice === i)?.piano ?? x);
     return { ...foto, piano: nuovi[0], piani: nuovi.slice(1) };
   }, [foto, pianoLive]);
 
@@ -2899,7 +2912,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       mostraToast('errore', e instanceof Error ? e.message : 'Punti del piano non validi.');
       return;
     }
-    const [primo, ...altri] = piani;
+    const attaccati = pianiAgganciati(piani, foto.larghezzaPx, foto.altezzaPx);
+    const [primo, ...altri] = attaccati;
     await aggiornaFoto(foto.id, { piano: primo, piani: altri });
     ricalcolaConCalibrazione({ scala: foto.scala, piano: primo, piani: altri });
     setMostraGriglia(true);

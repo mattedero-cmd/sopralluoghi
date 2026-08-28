@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { spigoliDellaFoto } from '../spigolo';
 import { pianiAggiornati, pianiDalleForme, riferimentiPiano } from '../pianoDaForme';
-import { pianoConLato, pianoConVertice } from '../pianoModifica';
+import {
+  pianiAgganciati,
+  pianoConLato,
+  pianoConVertice,
+  verticiGemelli
+} from '../pianoModifica';
 import { applicaOmografia, omografiaPiano } from '../omografia';
 import { pianoDi } from '../calibrazione';
 import type { Annotazione, PianoProspettiva, Punto } from '../../db/types';
@@ -338,5 +343,104 @@ describe('acceso il piano, le forme comandano', () => {
     expect(nuovi).toBeTruthy();
     expect(nuovi).toHaveLength(3);
     expect(nuovi.some((p) => p.origini?.some((x) => x.startsWith('m2')))).toBe(true);
+  });
+});
+
+/* --- le pareti si agganciano allo spigolo -------------------------------- */
+
+describe('pareti attaccate lungo lo spigolo', () => {
+  const impianto = () => {
+    const f = facciata(2, 0);
+    const piani = pianiDalleForme(riferimentiPiano(f.annotazioni)).map((p) => p.piano);
+    return { ...f, piani };
+  };
+
+  /** quanto dista un punto dalla retta di uno spigolo */
+  const daSpigolo = (s: { p1: Punto; p2: Punto }, p: Punto) => {
+    const a = s.p2.y - s.p1.y;
+    const b = s.p1.x - s.p2.x;
+    const c = -(a * s.p1.x + b * s.p1.y);
+    return Math.abs(a * p.x + b * p.y + c) / Math.hypot(a, b);
+  };
+
+  it('dopo l’aggancio ogni riquadro finisce sullo spigolo', () => {
+    const { piani } = impianto();
+    const attaccati = pianiAgganciati(piani, LARGHEZZA, ALTEZZA);
+    const spigoli = spigoliDellaFoto(attaccati, LARGHEZZA, ALTEZZA);
+    expect(spigoli).toHaveLength(1);
+    const s = spigoli[0].spigolo;
+    // due angoli per parete cadono sulla riga dello spigolo
+    for (const piano of attaccati) {
+      const sopra = piano.punti.filter((p) => daSpigolo(s, p) < 2);
+      expect(sopra.length).toBe(2);
+    }
+  });
+
+  it('e le due pareti si trovano nello stesso punto: è il vertice di giunzione', () => {
+    const { piani } = impianto();
+    const attaccati = pianiAgganciati(piani, LARGHEZZA, ALTEZZA);
+    // ogni angolo sullo spigolo della prima parete ha il suo gemello
+    let gemelli = 0;
+    attaccati[0].punti.forEach((_, k) => {
+      if (verticiGemelli(attaccati, 0, k).length > 0) gemelli++;
+    });
+    expect(gemelli).toBe(2);
+  });
+
+  it('l’aggancio non tocca la prospettiva', () => {
+    const { piani, muri } = impianto();
+    const provini: Array<[Punto, Punto]> = [
+      [suFoto(muri[0], 600, 900), suFoto(muri[0], 1600, 900)],
+      [suFoto(muri[0], 900, 600), suFoto(muri[0], 900, 1800)]
+    ];
+    const misura = (piano: PianoProspettiva, a: Punto, b: Punto) => {
+      const H = omografiaPiano(piano);
+      const x = applicaOmografia(H, a);
+      const y = applicaOmografia(H, b);
+      return Math.hypot(y.x - x.x, y.y - x.y);
+    };
+    const attaccati = pianiAgganciati(piani, LARGHEZZA, ALTEZZA);
+    const quale = (elenco: PianoProspettiva[]) => elenco.find((p) => p.origini?.includes('m0a'))!;
+    provini.forEach(([a, b]) => {
+      expect(misura(quale(attaccati), a, b)).toBeCloseTo(misura(quale(piani), a, b), 3);
+    });
+  });
+
+  it('agganciare due volte non cambia più niente', () => {
+    const { piani } = impianto();
+    const una = pianiAgganciati(piani, LARGHEZZA, ALTEZZA);
+    const due = pianiAgganciati(una, LARGHEZZA, ALTEZZA);
+    una.forEach((p, i) => {
+      p.punti.forEach((q, k) => {
+        expect(Math.hypot(q.x - due[i].punti[k].x, q.y - due[i].punti[k].y)).toBeLessThan(0.5);
+      });
+    });
+  });
+
+  it('con una parete sola non c’è niente da agganciare', () => {
+    const f = facciata(1, 0);
+    const piani = pianiDalleForme(riferimentiPiano(f.annotazioni)).map((p) => p.piano);
+    expect(pianiAgganciati(piani, LARGHEZZA, ALTEZZA)).toEqual(piani);
+  });
+
+  it('il vertice di giunzione si tira in due: le due pareti seguono insieme', () => {
+    const { piani } = impianto();
+    const attaccati = pianiAgganciati(piani, LARGHEZZA, ALTEZZA);
+    // si prende un angolo sullo spigolo e si guarda chi altro sta lì
+    const k = attaccati[0].punti.findIndex((_, i) => verticiGemelli(attaccati, 0, i).length > 0);
+    expect(k).toBeGreaterThanOrEqual(0);
+    const gemelli = verticiGemelli(attaccati, 0, k);
+    expect(gemelli).toHaveLength(1);
+    const destinazione = {
+      x: attaccati[0].punti[k].x + 18,
+      y: attaccati[0].punti[k].y - 10
+    };
+    const primo = pianoConVertice(attaccati[0], k, destinazione)!;
+    const secondo = pianoConVertice(attaccati[gemelli[0].indice], gemelli[0].vertice, destinazione)!;
+    // tutti e due hanno ora l'angolo lì, e tutti e due sono passati «a mano»
+    expect(primo.punti[k]).toEqual(destinazione);
+    expect(secondo.punti[gemelli[0].vertice]).toEqual(destinazione);
+    expect(primo.aMano).toBe(true);
+    expect(secondo.aMano).toBe(true);
   });
 });

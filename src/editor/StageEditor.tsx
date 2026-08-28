@@ -48,7 +48,12 @@ import {
   spigoliDellaFoto,
   vincoliDelPiano
 } from '../geometry/spigolo';
-import { maniglieDeiLati, pianoConLato, pianoConVertice } from '../geometry/pianoModifica';
+import {
+  maniglieDeiLati,
+  pianoConLato,
+  pianoConVertice,
+  verticiGemelli
+} from '../geometry/pianoModifica';
 
 export type Strumento =
   | 'seleziona'
@@ -197,8 +202,12 @@ interface Props {
    */
   pianoAttivo?: number | null;
   onPianoAttivo?: (indice: number | null) => void;
-  /** un piano mentre lo si trascina: indice e versione live (non ancora salvata) */
-  onPianoModificato?: (indice: number, piano: PianoProspettiva) => void;
+  /**
+   * Uno o più piani mentre li si trascina (versione live, non ancora salvata).
+   * Sono più d'uno quando si tira il VERTICE DI GIUNZIONE: quell'angolo
+   * appartiene a tutte e due le pareti, e le due seguono insieme.
+   */
+  onPianoModificato?: (modifiche: Array<{ indice: number; piano: PianoProspettiva }>) => void;
   /** dito alzato: la modifica del piano si salva e le misure si rifanno */
   onPianoFine?: () => void;
   /** numero di celle della griglia (es. 3 → 3×3 attorno al riferimento) */
@@ -1553,7 +1562,8 @@ export function StageEditor(p: Props) {
                     const nuovo = { x: e.target.x() + raggioManiglia * 0.75, y: e.target.y() + raggioManiglia * 0.75 };
                     setPuntoLente(nuovo);
                     const agg = pianoConLato(pianoInMano, i as 0 | 1 | 2 | 3, nuovo);
-                    if (agg && p.pianoAttivo != null) p.onPianoModificato?.(p.pianoAttivo, agg);
+                    if (agg && p.pianoAttivo != null)
+                      p.onPianoModificato?.([{ indice: p.pianoAttivo, piano: agg }]);
                   }}
                   onDragEnd={(e) => {
                     setPuntoLente(null);
@@ -1562,28 +1572,42 @@ export function StageEditor(p: Props) {
                   }}
                 />
               ))}
-              {pianoInMano.punti.map((pt, i) => (
+              {pianoInMano.punti.map((pt, i) => {
+                const giunzione =
+                  p.pianoAttivo != null && verticiGemelli(pianiFoto, p.pianoAttivo, i).length > 0;
+                return (
                 <Circle
                   key={`ang${i}`}
                   x={pt.x}
                   y={pt.y}
-                  radius={raggioManiglia}
-                  fill="rgba(255,196,0,0.4)"
-                  stroke="#ffc400"
-                  strokeWidth={3 / vista.scala}
+                  radius={raggioManiglia * (giunzione ? 1.2 : 1)}
+                  fill={giunzione ? 'rgba(52,199,89,0.45)' : 'rgba(255,196,0,0.4)'}
+                  stroke={giunzione ? '#34c759' : '#ffc400'}
+                  strokeWidth={(giunzione ? 3.5 : 3) / vista.scala}
                   draggable
                   onDragMove={(e) => {
                     const nuovo = { x: e.target.x(), y: e.target.y() };
                     setPuntoLente(nuovo);
+                    if (p.pianoAttivo == null) return;
                     const agg = pianoConVertice(pianoInMano, i, nuovo);
-                    if (agg && p.pianoAttivo != null) p.onPianoModificato?.(p.pianoAttivo, agg);
+                    if (!agg) return;
+                    // IL VERTICE DI GIUNZIONE è l'angolo del fabbricato, e le
+                    // due pareti ce l'hanno in comune: tirandolo si tirano
+                    // tutte e due, o si staccherebbero
+                    const modifiche = [{ indice: p.pianoAttivo, piano: agg }];
+                    for (const g of verticiGemelli(pianiFoto, p.pianoAttivo, i)) {
+                      const suo = pianoConVertice(pianiFoto[g.indice], g.vertice, nuovo);
+                      if (suo) modifiche.push({ indice: g.indice, piano: suo });
+                    }
+                    p.onPianoModificato?.(modifiche);
                   }}
                   onDragEnd={() => {
                     setPuntoLente(null);
                     p.onPianoFine?.();
                   }}
                 />
-              ))}
+                );
+              })}
             </>
           )}
           {/* LO SPIGOLO fra due pareti: la riga dove una finisce e l'altra
@@ -1599,8 +1623,8 @@ export function StageEditor(p: Props) {
                 />
                 <Line
                   points={[s.spigolo.p1.x, s.spigolo.p1.y, s.spigolo.p2.x, s.spigolo.p2.y]}
-                  stroke="#ffffff"
-                  strokeWidth={2.5 / vista.scala}
+                  stroke="#34c759"
+                  strokeWidth={3 / vista.scala}
                   listening={false}
                 />
               </Fragment>

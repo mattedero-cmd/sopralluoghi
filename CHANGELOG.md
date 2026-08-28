@@ -10,6 +10,21 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.41.0 — Le pareti unite, e il vertice di giunzione
+
+- **Lo spigolo è verde**, come le pareti a cui appartiene: stessa famiglia di
+  segni, una riga più marcata della griglia.
+- **Le pareti nascono unite.** Il riquadro dell'una finisce dove comincia
+  quello dell'altra, sulla riga dello spigolo: niente più bordi che si
+  scavalcano, e le due griglie si toccano dove si tocca il fabbricato.
+  L'aggancio ritocca solo l'ESTENSIONE del riquadro — la prospettiva non
+  cambia di un millesimo — e vale sempre: alla nascita, quando il piano si
+  rifà da solo, e dopo ogni aggiustata a mano.
+- **Il vertice di giunzione si tira in due.** Sull'angolo del fabbricato le
+  due pareti hanno lo stesso vertice, e adesso è una maniglia sola — verde e
+  più grande delle altre. Tirandola si muovono tutte e due le prospettive
+  insieme: l'angolo resta l'angolo, e le pareti non si staccano.
+
 ## 1.40.0 — Il piano segue le forme
 
 - **Acceso il piano, comandano le forme.** Correggi la misura di una finestra
