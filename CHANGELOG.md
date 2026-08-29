@@ -10,6 +10,31 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.48.0 — La panoramica si fa dalla fotocamera, e si ritaglia
+
+- **Niente più galleria.** «Panoramica» apre la fotocamera dentro l'app: si
+  scatta quello che serve, uno dietro l'altro, senza uscire e rientrare. Sotto
+  il mirino compaiono le miniature di quello che hai già preso, e in basso è
+  scritta la risoluzione con cui il telefono sta scattando.
+- **Poi si sceglie cosa tenere.** Alla chiusura della fotocamera si vedono gli
+  scatti in fila: si tocca quelli da escludere e si conferma. Gli scatti
+  scartati non vengono salvati da nessuna parte — non sono mai entrati
+  nell'archivio, quindi non c'è niente da cancellare dopo.
+- **E alla fine si ritaglia e si raddrizza.** Sulla panoramica cucita
+  compaiono quattro maniglie: portandole sugli spigoli del muro, quel muro
+  viene visto di fronte; lasciandole dove sono è un semplice ritaglio. **Le
+  misure restano valide in tutti e due i casi**, perché comporre un'omografia
+  con un'altra dà ancora un'omografia: le righe dritte restano dritte e il
+  piano prospettico continua a funzionare.
+- Il ritaglio parte già dal **rettangolo più grande che sta dentro la parte
+  coperta** dagli scatti, senza cunei di fondo. Trovarlo a occhio non basta:
+  la prima versione stringeva «il lato messo peggio» e su una panoramica a
+  farfalla finiva con una striscia di 44 px d'altezza. Adesso il rettangolo
+  massimo si calcola esatto.
+- E la parte coperta si sa per GEOMETRIA, non dal colore: riconoscere il fondo
+  «perché è scuro» faceva passare per buco l'interno di una finestra o
+  un'ombra sotto la gronda, e il ritaglio le evitava.
+
 ## 1.47.0 — Panoramiche da più scatti
 
 - **Una vetrina lunga adesso ci sta in una foto sola.** «Panoramica» nel

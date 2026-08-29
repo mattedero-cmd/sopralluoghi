@@ -14,12 +14,19 @@
  * invece di un ciclo su venti milioni di pixel.
  */
 
-import { applicaOmografia, prodotto, type Omografia } from '../geometry/omografia';
+import {
+  applicaOmografia,
+  calcolaOmografia,
+  prodotto,
+  type Omografia
+} from '../geometry/omografia';
+import type { Punto } from '../db/types';
 import {
   catenaDiScatti,
   disposizione,
   inGrigio,
-  type Grigia
+  type Grigia,
+  type Scatto
 } from '../geometry/panoramica';
 
 /** lato massimo su cui si cercano gli angoli: oltre è tempo buttato */
@@ -38,6 +45,8 @@ export interface EsitoCucitura {
   blob: Blob;
   larghezza: number;
   altezza: number;
+  /** dove la tela è coperta da almeno uno scatto (bianco) e dove no (nero) */
+  copertura: { dati: Uint8ClampedArray; larghezza: number; altezza: number } | null;
   /** errore medio di riproiezione su ogni giunzione, in pixel dello scatto */
   errori: number[];
   /** quanti scatti sono stati cuciti */
@@ -291,6 +300,172 @@ function conBordoSfumato(
   return canvas;
 }
 
+/**
+ * IL RIQUADRO PIENO: il rettangolo PIÙ GRANDE che non tocca il vuoto lasciato
+ * dal cucito.
+ *
+ * Una panoramica piana non è un rettangolo: gli scatti ai lati si inclinano e
+ * restano dei cunei di fondo sopra e sotto, a farfalla. Qui si cerca il
+ * rettangolo massimo che ne sta fuori — non uno qualunque: il massimo.
+ *
+ * Il modo ovvio — «stringi il lato messo peggio finché il bordo è pulito» — è
+ * quello sbagliato, e si vede: su una farfalla i bordi alto e basso restano
+ * sporchi più a lungo dei fianchi, così si continua a mangiare l'altezza e si
+ * finisce con una striscia. (Provato: 933×44 su una tela 988×672.) Serve
+ * l'algoritmo esatto: per ogni riga si guarda quanto sale la colonna di pieno
+ * sopra ogni pixel, e su quell'istogramma si cerca il rettangolo massimo con
+ * la pila. Costa quanto leggere l'immagine una volta.
+ *
+ * La maschera si legge a passo grosso: il ritaglio non ha bisogno del pixel —
+ * è solo il punto di partenza, da lì si tira a mano — e su una panoramica da
+ * venti megapixel leggere tutto costerebbe più del cucito.
+ */
+export function riquadroPieno(
+  dati: Uint8ClampedArray,
+  w: number,
+  h: number,
+  eVuoto: (r: number, g: number, b: number) => boolean = (r) => eScoperto(r),
+  latoMaschera = 900
+): { x: number; y: number; larghezza: number; altezza: number } {
+  const passo = Math.max(1, Math.ceil(Math.max(w, h) / latoMaschera));
+  const mw = Math.floor(w / passo);
+  const mh = Math.floor(h / passo);
+  if (mw < 2 || mh < 2) return { x: 0, y: 0, larghezza: w, altezza: h };
+
+  // quanto è alta la colonna di pieno che finisce su questo pixel
+  const colonna = new Int32Array(mw);
+  let migliore = { x: 0, y: 0, larghezza: 0, altezza: 0, area: 0 };
+  const pila: number[] = [];
+  for (let j = 0; j < mh; j++) {
+    for (let i = 0; i < mw; i++) {
+      const k = (Math.min(h - 1, j * passo) * w + Math.min(w - 1, i * passo)) * 4;
+      colonna[i] = eVuoto(dati[k], dati[k + 1], dati[k + 2]) ? 0 : colonna[i] + 1;
+    }
+    // rettangolo massimo nell'istogramma della riga j
+    pila.length = 0;
+    for (let i = 0; i <= mw; i++) {
+      const altezza = i === mw ? 0 : colonna[i];
+      while (pila.length > 0 && colonna[pila[pila.length - 1]] >= altezza) {
+        const alto = colonna[pila.pop()!];
+        const sinistra = pila.length === 0 ? 0 : pila[pila.length - 1] + 1;
+        const largo = i - sinistra;
+        const area = largo * alto;
+        if (area > migliore.area) {
+          migliore = {
+            x: sinistra,
+            y: j - alto + 1,
+            larghezza: largo,
+            altezza: alto,
+            area
+          };
+        }
+      }
+      pila.push(i);
+    }
+  }
+  if (migliore.area === 0) return { x: 0, y: 0, larghezza: w, altezza: h };
+  // si torna ai pixel veri, stando un passo dentro: la maschera è a campione
+  // e il bordo esatto può cadere fra un campione e l'altro
+  const x0 = Math.min(w - 2, (migliore.x + 1) * passo);
+  const y0 = Math.min(h - 2, (migliore.y + 1) * passo);
+  const x1 = Math.max(x0 + 1, (migliore.x + migliore.larghezza - 1) * passo);
+  const y1 = Math.max(y0 + 1, (migliore.y + migliore.altezza - 1) * passo);
+  return { x: x0, y: y0, larghezza: x1 - x0, altezza: y1 - y0 };
+}
+
+/**
+ * DOV'È COPERTA LA TELA, saputo per geometria e non indovinato dal colore.
+ *
+ * Riconoscere i cunei di fondo «dal fatto che sono scuri» sembra comodo e non
+ * funziona: l'interno di una finestra, una porta aperta, un'ombra sotto la
+ * gronda sono scuri quanto il fondo, e il ritaglio comincerebbe a evitarli
+ * come se fossero buchi. (Provato: una facciata con le finestre scure dava un
+ * ritaglio di 39 px d'altezza.) Ma dove cade ogni scatto lo sappiamo con
+ * esattezza — sono i quattro angoli passati per la sua omografia — e da lì la
+ * maschera esce giusta per costruzione.
+ */
+export function mascheraCopertura(
+  scatti: Scatto[],
+  verso: Omografia[],
+  larghezza: number,
+  altezza: number,
+  lato = 900
+): { dati: Uint8ClampedArray; larghezza: number; altezza: number } | null {
+  const k = Math.min(1, lato / Math.max(larghezza, altezza));
+  const w = Math.max(2, Math.round(larghezza * k));
+  const h = Math.max(2, Math.round(altezza * k));
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return null;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = '#fff';
+  scatti.forEach((s, i) => {
+    const angoli = [
+      { x: 0, y: 0 },
+      { x: s.larghezza, y: 0 },
+      { x: s.larghezza, y: s.altezza },
+      { x: 0, y: s.altezza }
+    ].map((p) => applicaOmografia(verso[i], p));
+    ctx.beginPath();
+    angoli.forEach((p, j) => {
+      if (j === 0) ctx.moveTo(p.x * k, p.y * k);
+      else ctx.lineTo(p.x * k, p.y * k);
+    });
+    ctx.closePath();
+    ctx.fill();
+  });
+  return { dati: ctx.getImageData(0, 0, w, h).data, larghezza: w, altezza: h };
+}
+
+/** nella maschera di copertura, nero = fuori da ogni scatto */
+export const eScoperto = (r: number): boolean => r < 128;
+
+/**
+ * RADDRIZZA E RITAGLIA: il quadrilatero scelto diventa il rettangolo finale.
+ *
+ * Serve a due cose in un gesto solo. Se i quattro angoli restano quelli di un
+ * rettangolo, è un semplice RITAGLIO. Se invece li si porta sui quattro
+ * spigoli del muro, quel muro viene RADDRIZZATO — visto di fronte, come se la
+ * macchina fosse stata lì davanti.
+ *
+ * E le misure restano valide: la foto è legata al muro da un'omografia, e
+ * comporne un'altra dà ancora un'omografia. Le righe dritte restano dritte,
+ * le quote continuano a leggersi, il piano prospettico pure.
+ */
+export async function raddrizza(
+  sorgente: CanvasImageSource,
+  larghezza: number,
+  altezza: number,
+  quad: [Punto, Punto, Punto, Punto],
+  qualita = 0.9
+): Promise<{ blob: Blob; larghezza: number; altezza: number }> {
+  // il rettangolo di arrivo: la media dei lati opposti, così non si stira né
+  // si schiaccia niente rispetto a com'era
+  const lato = (a: Punto, b: Punto) => Math.hypot(b.x - a.x, b.y - a.y);
+  const largo = Math.round((lato(quad[0], quad[1]) + lato(quad[3], quad[2])) / 2);
+  const alto = Math.round((lato(quad[1], quad[2]) + lato(quad[0], quad[3])) / 2);
+  if (!(largo > 8) || !(alto > 8)) throw new CucituraFallita('Ritaglio troppo piccolo.');
+  const H = calcolaOmografia(quad, [
+    { x: 0, y: 0 },
+    { x: largo, y: 0 },
+    { x: largo, y: alto },
+    { x: 0, y: alto }
+  ]);
+  const tela = document.createElement('canvas');
+  tela.width = largo;
+  tela.height = alto;
+  const ctx = tela.getContext('2d');
+  if (!ctx) throw new CucituraFallita('Il dispositivo non permette di elaborare le immagini.');
+  ctx.imageSmoothingQuality = 'high';
+  disegnaDeformata(ctx, sorgente, larghezza, altezza, H);
+  const blob = await new Promise<Blob | null>((res) => tela.toBlob(res, 'image/jpeg', qualita));
+  if (!blob) throw new CucituraFallita('Non è stato possibile salvare il ritaglio.');
+  return { blob, larghezza: largo, altezza: alto };
+}
+
 export interface OpzioniCucitura {
   /** lato lungo massimo della panoramica (px) */
   latoMax?: number;
@@ -374,6 +549,7 @@ export async function cuciPanoramica(
       blob,
       larghezza: tela.width,
       altezza: tela.height,
+      copertura: mascheraCopertura(scatti, disp.verso, tela.width, tela.height),
       errori: catena.allineamenti.map((a) => a.errore),
       scatti: bitmap.length
     };
