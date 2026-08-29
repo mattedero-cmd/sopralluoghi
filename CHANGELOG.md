@@ -10,6 +10,20 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.49.2 — Il teleobiettivo dice il suo ingrandimento vero
+
+- **«2×» era una bugia.** Sul 16 Pro il teleobiettivo è 5×, su altri modelli
+  2× o 3×, e il sistema non lo dichiara. Scrivere un numero a caso è peggio
+  che non scriverne nessuno: chi misura si fida dei numeri che l'app stampa.
+- **Prima si chiede al telefono.** Alcuni dispositivi espongono
+  l'ingrandimento fra le capacità della fotocamera: quando c'è, quello è, e
+  non si chiede niente a nessuno.
+- **Se il telefono non lo dice, lo chiede a te — una volta sola.** La prima
+  volta che scegli il teleobiettivo compare una riga: «Quanto ingrandisce
+  questo obiettivo?» con 2× · 2,5× · 3× · 5× · 10×. Un tocco, e da lì in poi
+  la fila dice il numero giusto. C'è anche «Non lo so»: resta «Tele», che è
+  vero.
+
 ## 1.49.1 — Un obiettivo per obiettivo, e la fotocamera si accende piano
 
 - **Basta 1× ripetuti.** Il telefono non elenca le sue tre fotocamere: elenca

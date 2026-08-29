@@ -4052,3 +4052,49 @@ a {
   border-radius: 999px;
   white-space: nowrap;
 }
+
+/* la domanda sull'ingrandimento del teleobiettivo: una volta sola, e poi mai più */
+.pano-chiedi {
+  position: absolute;
+  left: 50%;
+  bottom: 74px;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(10px);
+  border-radius: 16px;
+  padding: 12px 14px;
+  text-align: center;
+  max-width: 92%;
+}
+.pano-chiedi p {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: #fff;
+}
+.pano-chiedi-scelte {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.pano-chiedi-scelte button {
+  min-width: 52px;
+  height: 40px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.pano-chiedi-scelte button:active { background: rgba(255, 255, 255, 0.3); }
+.pano-chiedi-salta {
+  margin-top: 8px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+}

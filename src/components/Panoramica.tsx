@@ -43,10 +43,54 @@ export interface Obiettivo {
   deviceId: string;
   /** come si chiama sul telefono */
   etichetta: string;
-  /** il numerino da mostrare: 0.5×, 1×, 2×… */
+  /** il numerino da mostrare: 0,5×, 1×, 5×… */
   segno: string;
   /** per metterli in ordine dal più largo al più stretto */
   ordine: number;
+  /** true per il teleobiettivo, di cui il fattore non si sa finché non si sa */
+  tele?: boolean;
+}
+
+/**
+ * IL FATTORE DEL TELEOBIETTIVO, quando lo si è saputo.
+ *
+ * Non si può indovinare: sul 16 Pro è 5×, su altri modelli 2× o 3×, e il
+ * sistema non lo dice. Scriverci un numero a caso sarebbe peggio che non
+ * scriverne nessuno — chi misura si fida dei numeri che l'app stampa. Lo si
+ * chiede una volta a chi il telefono ce l'ha in mano, e non si chiede più.
+ */
+const CHIAVE_TELE = 'panoramica.fattoreTele.';
+
+export function fattoreTeleSalvato(deviceId: string): number | null {
+  try {
+    const v = Number(localStorage.getItem(CHIAVE_TELE + deviceId));
+    return Number.isFinite(v) && v > 1 ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+export function salvaFattoreTele(deviceId: string, fattore: number): void {
+  try {
+    localStorage.setItem(CHIAVE_TELE + deviceId, String(fattore));
+  } catch {
+    // niente memoria locale: si richiederà la prossima volta, pazienza
+  }
+}
+
+/**
+ * Il fattore che il SISTEMA dichiara, se lo dichiara.
+ *
+ * Alcuni telefoni espongono l'ingrandimento fra le capacità della traccia
+ * video: quando c'è, è la verità e non c'è niente da chiedere a nessuno.
+ */
+export function fattoreDichiarato(flusso: MediaStream): number | null {
+  const t = flusso.getVideoTracks()[0] as unknown as
+    | { getCapabilities?: () => { zoom?: { max?: number } } }
+    | undefined;
+  const z = t?.getCapabilities?.().zoom;
+  const max = z?.max;
+  return typeof max === 'number' && max > 1 && max < 100 ? max : null;
 }
 
 /**
@@ -97,7 +141,13 @@ export function scegliObiettivi(
     if (candidati.length === 0) continue;
     const scelto = candidati.find((d) => !composita.test(d.label)) ?? candidati[0];
     presi.add(scelto.deviceId);
-    fuori.push({ deviceId: scelto.deviceId, etichetta: scelto.label, segno: r.segno, ordine: r.ordine });
+    fuori.push({
+      deviceId: scelto.deviceId,
+      etichetta: scelto.label,
+      segno: r.segno,
+      ordine: r.ordine,
+      tele: r.ordine === 2
+    });
   }
   // IL GRANDANGOLO: tutto quello che resta, e qui la scelta conta. La voce
   // generica («Fotocamera posteriore», «Back Camera») è la fotocamera VIRTUALE
@@ -117,7 +167,13 @@ export function scegliObiettivi(
   }
   // un obiettivo solo non è una scelta: non si mostra la fila
   if (fuori.length < 2) return [];
-  return fuori.sort((a, b) => a.ordine - b.ordine);
+  return fuori
+    .map((o) => {
+      if (!o.tele) return o;
+      const noto = fattoreTeleSalvato(o.deviceId);
+      return noto ? { ...o, segno: `${String(noto).replace('.', ',')}×` } : o;
+    })
+    .sort((a, b) => a.ordine - b.ordine);
 }
 
 /**
@@ -323,6 +379,8 @@ function Fotocamera({
   const [scattando, setScattando] = useState(false);
   const [obiettivi, setObiettivi] = useState<Obiettivo[]>([]);
   const [attivo, setAttivo] = useState<string | null>(null);
+  /** il teleobiettivo di cui non si sa ancora l'ingrandimento */
+  const [chiediTele, setChiediTele] = useState<string | null>(null);
   const galleria = useRef<HTMLInputElement>(null);
 
   const mostraMisura = (s: MediaStream) => {
@@ -346,7 +404,22 @@ function Fotocamera({
     // e solo adesso, con la preview già in piedi, si chiede la definizione
     // piena: chiederla all'accensione fa cadere la scheda su iPhone
     await allaMassimaDefinizione(s);
-    if (flusso.current === s) mostraMisura(s);
+    if (flusso.current !== s) return;
+    mostraMisura(s);
+    // IL FATTORE DEL TELEOBIETTIVO: prima si guarda se il sistema lo dichiara,
+    // e allora è verità; se non lo dichiara e non lo si è già saputo, lo si
+    // chiede una volta a chi il telefono ce l'ha in mano
+    const id = s.getVideoTracks()[0]?.getSettings().deviceId;
+    const suo = obiettivi.find((o) => o.deviceId === id) ?? (await obiettiviPosteriori()).find((o) => o.deviceId === id);
+    if (id && suo?.tele && !fattoreTeleSalvato(id)) {
+      const dichiarato = fattoreDichiarato(s);
+      if (dichiarato) {
+        salvaFattoreTele(id, Math.round(dichiarato * 10) / 10);
+        setObiettivi(await obiettiviPosteriori());
+      } else {
+        setChiediTele(id);
+      }
+    }
   };
 
   /**
@@ -472,6 +545,28 @@ function Fotocamera({
                 {o.segno}
               </button>
             ))}
+          </div>
+        )}
+        {chiediTele && (
+          <div className="pano-chiedi">
+            <p>Quanto ingrandisce questo obiettivo?</p>
+            <div className="pano-chiedi-scelte">
+              {[2, 2.5, 3, 5, 10].map((k) => (
+                <button
+                  key={k}
+                  onClick={async () => {
+                    salvaFattoreTele(chiediTele, k);
+                    setChiediTele(null);
+                    setObiettivi(await obiettiviPosteriori());
+                  }}
+                >
+                  {String(k).replace('.', ',')}×
+                </button>
+              ))}
+            </div>
+            <button className="pano-chiedi-salta" onClick={() => setChiediTele(null)}>
+              Non lo so
+            </button>
           </div>
         )}
         {obiettivi.length > 1 && prese.length > 0 && (

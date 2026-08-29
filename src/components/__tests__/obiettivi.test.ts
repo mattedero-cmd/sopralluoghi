@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { scegliObiettivi } from '../Panoramica';
+import { fattoreTeleSalvato, salvaFattoreTele, scegliObiettivi } from '../Panoramica';
+
+/** una memoria locale finta: le prove girano senza browser */
+const memoria = new Map<string, string>();
+globalThis.localStorage = {
+  getItem: (k: string) => memoria.get(k) ?? null,
+  setItem: (k: string, v: string) => void memoria.set(k, v),
+  removeItem: (k: string) => void memoria.delete(k),
+  clear: () => memoria.clear(),
+  key: (i: number) => [...memoria.keys()][i] ?? null,
+  get length() {
+    return memoria.size;
+  }
+} as Storage;
 
 /**
  * Le voci che iOS elenca davvero su un iPhone Pro: le tre fotocamere fisiche
@@ -47,9 +60,31 @@ describe('la fila degli obiettivi', () => {
     expect(o.find((x) => x.segno === 'Tele')?.deviceId).toBe('5');
   });
 
-  it('il teleobiettivo non si spaccia per 2×: il fattore cambia da modello a modello', () => {
+  it('il teleobiettivo non si spaccia per un numero finché non lo si sa', () => {
+    // sul 16 Pro è 5×, su altri 2× o 3×: il sistema non lo dice, e stampare
+    // un numero a caso è peggio che non stamparne nessuno — chi misura si
+    // fida dei numeri che l'app scrive
     const o = scegliObiettivi(iPhonePro);
     expect(o.find((x) => /tele/i.test(x.etichetta))?.segno).toBe('Tele');
+    expect(o.find((x) => /tele/i.test(x.etichetta))?.tele).toBe(true);
+  });
+
+  it('e quando lo si sa, lo scrive — e non lo chiede più', () => {
+    salvaFattoreTele('g', 5);
+    expect(fattoreTeleSalvato('g')).toBe(5);
+    const o = scegliObiettivi(iPhonePro);
+    expect(o.map((x) => x.segno)).toEqual(['0,5×', '1×', '5×']);
+  });
+
+  it('i fattori con la virgola si scrivono all’italiana', () => {
+    salvaFattoreTele('g', 2.5);
+    expect(scegliObiettivi(iPhonePro).find((x) => x.tele)?.segno).toBe('2,5×');
+  });
+
+  it('un fattore assurdo non viene creduto', () => {
+    salvaFattoreTele('g', 0.2);
+    expect(fattoreTeleSalvato('g')).toBeNull();
+    expect(scegliObiettivi(iPhonePro).find((x) => x.tele)?.segno).toBe('Tele');
   });
 
   it('un telefono con una fotocamera sola non mostra nessuna fila', () => {
