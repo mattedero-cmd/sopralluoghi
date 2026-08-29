@@ -22,7 +22,7 @@
 
 import type { PianoProspettiva, Punto } from '../db/types';
 import { applicaOmografia, invertiOmografia, omografiaPiano } from './omografia';
-import { spigoliDellaFoto, spigoliSuiVertici } from './spigolo';
+import { spigoliDellaFoto, spigoliSuiVertici, type SpigoloFraDue } from './spigolo';
 
 /** i quattro lati del riquadro, nell'ordine dei vertici */
 export type LatoPiano = 0 | 1 | 2 | 3; // alto, destro, basso, sinistro
@@ -117,7 +117,7 @@ export function pianoConLato(
   const altezza = y1 - y0;
   if (!(larghezza > 0) || !(altezza > 0)) return null;
   // e non può gonfiarsi senza ritegno: venti volte è già tutta la facciata
-  if (larghezza > L * 20 || altezza > A * 20) return null;
+  if (larghezza > L * 5 || altezza > A * 5) return null;
 
   const angoli = [
     { x: x0, y: y0 },
@@ -204,12 +204,20 @@ export function pianoAgganciato(
   let x1 = L;
   let y1 = A;
 
-  // UN AGGANCIO È UN RITOCCO, non uno stiramento: se per arrivare allo
-  // spigolo il bordo dovesse fare più di mezzo riquadro, quelle due pareti
-  // non si toccano in questa foto — una sta dietro l'altra, o l'angolo cade
-  // lontano — e si lascia perdere
+  // FIN DOVE PUÒ ARRIVARE UN BORDO per andare a prendere il suo spigolo.
+  //
+  // Il riquadro di una parete non è la parete: è quel tanto che tengono
+  // dentro le forme quotate — due finestre, una porta — e da lì al pavimento
+  // e al soffitto ce ne corre. In un bagno le due finestrelle stanno in mezzo
+  // al muro e il riquadro che le contiene è alto un terzo della parete vera:
+  // col vecchio limite di mezzo riquadro il bordo non arrivava mai a terra, e
+  // il muro restava sospeso mentre il pavimento gli stava sotto senza
+  // toccarlo. Il limite serve lo stesso — uno spigolo che cade vicino
+  // all'orizzonte del piano manderebbe il bordo a chilometri — ma va misurato
+  // su quanto può crescere una parete, non su quanto è grande il riquadro:
+  // un muro alto il triplo delle sue finestre è la norma, alto venti volte no.
   const ritocco = (vecchio: number, nuovo: number, misura: number) =>
-    Math.abs(nuovo - vecchio) <= misura * 0.5;
+    Math.abs(nuovo - vecchio) <= misura * 2;
 
   // ALLUNGARSI LUNGO LO SPIGOLO è un'altra cosa che avvicinarsi ad esso: non
   // si sta stirando una parete verso un muro lontano, si sta coprendo lo
@@ -221,13 +229,19 @@ export function pianoAgganciato(
   const allungo = (vecchio: number, nuovo: number, misura: number) =>
     Math.abs(nuovo - vecchio) <= misura * 8;
 
-  for (const spigolo of spigoli) {
-    const a = applicaOmografia(H, spigolo.p1);
-    const b = applicaOmografia(H, spigolo.p2);
-    if (![a.x, a.y, b.x, b.y].every(Number.isFinite)) continue;
-    const dx = Math.abs(b.x - a.x);
-    const dy = Math.abs(b.y - a.y);
-    if (dx <= dy) {
+  // ogni spigolo si legge nelle coordinate del muro e si mette da una parte:
+  // quello verticale fa da fianco, quello orizzontale da cielo o da terra
+  const letti = spigoli
+    .map((spigolo) => {
+      const a = applicaOmografia(H, spigolo.p1);
+      const b = applicaOmografia(H, spigolo.p2);
+      if (![a.x, a.y, b.x, b.y].every(Number.isFinite)) return null;
+      return { a, b, verticale: Math.abs(b.x - a.x) <= Math.abs(b.y - a.y) };
+    })
+    .filter((v): v is { a: Punto; b: Punto; verticale: boolean } => v !== null);
+
+  for (const { a, b, verticale } of letti) {
+    if (verticale) {
       // spigolo VERTICALE sul muro: fa da bordo destro o sinistro
       const cx = (a.x + b.x) / 2;
       const centro = (x0 + x1) / 2;
@@ -236,15 +250,6 @@ export function pianoAgganciato(
       } else if (ritocco(x1, cx, L)) {
         x1 = Math.max(cx, x0 + L * 0.1);
       }
-      // …e il riquadro si allunga fino a coprire tutto il filo dello
-      // spigolo: al vero angolo di fabbricato le due pareti finiscono in
-      // alto e in basso nello stesso punto, ed è quello il vertice di
-      // giunzione. Senza questo i due angoli restano a decine di pixel
-      // l'uno dall'altro e le pareti non si uniscono mai.
-      const su = Math.min(a.y, b.y);
-      const giu = Math.max(a.y, b.y);
-      if (su < y0 && allungo(y0, su, A)) y0 = su;
-      if (giu > y1 && allungo(y1, giu, A)) y1 = giu;
     } else {
       // spigolo ORIZZONTALE: il muro col soffitto, o col pavimento
       const cy = (a.y + b.y) / 2;
@@ -254,6 +259,33 @@ export function pianoAgganciato(
       } else if (ritocco(y1, cy, A)) {
         y1 = Math.max(cy, y0 + A * 0.1);
       }
+    }
+  }
+
+  // …E FIN DOVE ARRIVA IL MURO NELL'ALTRO VERSO.
+  //
+  // Qui stava lo squilibrio della stanza intera. Con due sole pareti nessuno
+  // dice dove finiscono in alto e in basso: per far combaciare i due vertici
+  // di giunzione si allungava il riquadro lungo il filo dello spigolo, a
+  // tentoni, fino a otto volte la parete. Con tre pareti, il pavimento e il
+  // soffitto quel tentativo non serve più ed è anzi il guaio: ogni parete ha
+  // già lo spigolo che le dice dove finisce di sopra e quello che le dice
+  // dove finisce di sotto, e il vertice della stanza è semplicemente il punto
+  // dove le due righe si incrociano — lo stesso punto per tutt'e due i muri,
+  // perché la riga è la stessa e la leggono entrambi.
+  //
+  // Perciò ci si allunga SOLO nel verso in cui non c'è nessuno spigolo a dire
+  // niente: la parete isolata in alto e in basso resta com'era, la parete di
+  // una stanza si chiude da sé.
+  const haVerticali = letti.some((v) => v.verticale);
+  const haOrizzontali = letti.some((v) => !v.verticale);
+  for (const { a, b, verticale } of letti) {
+    if (verticale && !haOrizzontali) {
+      const su = Math.min(a.y, b.y);
+      const giu = Math.max(a.y, b.y);
+      if (su < y0 && allungo(y0, su, A)) y0 = su;
+      if (giu > y1 && allungo(y1, giu, A)) y1 = giu;
+    } else if (!verticale && !haVerticali) {
       const sx = Math.min(a.x, b.x);
       const dxx = Math.max(a.x, b.x);
       if (sx < x0 && allungo(x0, sx, L)) x0 = sx;
@@ -264,7 +296,7 @@ export function pianoAgganciato(
   const larghezza = x1 - x0;
   const altezza = y1 - y0;
   if (!(larghezza > 0) || !(altezza > 0)) return null;
-  if (larghezza > L * 20 || altezza > A * 20) return null;
+  if (larghezza > L * 5 || altezza > A * 5) return null;
   if (Math.abs(x0) < 1e-6 && Math.abs(y0) < 1e-6 && Math.abs(larghezza - L) < 1e-6 && Math.abs(altezza - A) < 1e-6) {
     return null; // già agganciato: non c'è niente da cambiare
   }
@@ -346,7 +378,7 @@ export function pianiAgganciati(
  * basso. Agganciandosi a quel tratto tutte e due, i loro angoli finiscono
  * nello stesso posto — ed è lì che nasce il vertice di giunzione.
  */
-function trattoCondiviso(
+export function trattoCondiviso(
   A: PianoProspettiva,
   B: PianoProspettiva,
   s: { p1: Punto; p2: Punto }
@@ -370,6 +402,35 @@ function trattoCondiviso(
     p1: { x: s.p1.x + dx * su, y: s.p1.y + dy * su },
     p2: { x: s.p1.x + dx * giu, y: s.p1.y + dy * giu }
   };
+}
+
+/**
+ * GLI SPIGOLI TAGLIATI AL TRATTO CHE ESISTE DAVVERO.
+ *
+ * Uno spigolo è una RETTA, e una retta non finisce mai: presa così, la riga
+ * fra il pavimento e la parete di sinistra continua oltre l'angolo della
+ * stanza e va a tagliare in due la parete di fondo, e quella fra il pavimento
+ * e la parete di destra fa lo stesso dall'altra parte. Con due sole pareti
+ * non si notava — lo spigolo verticale attraversava la foto da cima a fondo
+ * ed era giusto così. In una stanza intera diventa una ragnatela di righe
+ * verdi che si incrociano dove non c'è nessuno spigolo.
+ *
+ * Il tratto vero è quello in cui i due riquadri si affacciano l'uno
+ * sull'altro: lo stesso che si usa per agganciarli. Fuori di lì la retta
+ * esiste per il conto, non per l'occhio, e non si disegna.
+ */
+export function spigoliRitagliati(
+  spigoli: SpigoloFraDue[],
+  piani: PianoProspettiva[]
+): SpigoloFraDue[] {
+  return spigoli.map((s) => {
+    const A = piani[s.a];
+    const B = piani[s.b];
+    if (!A || !B) return s;
+    const tratto = trattoCondiviso(A, B, s.spigolo);
+    if (![tratto.p1.x, tratto.p1.y, tratto.p2.x, tratto.p2.y].every(Number.isFinite)) return s;
+    return { ...s, spigolo: { ...s.spigolo, p1: tratto.p1, p2: tratto.p2 } };
+  });
 }
 
 /**

@@ -301,7 +301,7 @@ export function adattaPiano(riferimenti: RiferimentoPiano[]): EsitoPiano | null 
  * centimetro per le forme piccole. Sopra, la forma sta su un'altra parete:
  * lo scarto di una parete diversa non è di millimetri, è di decine.
  */
-function tolleranza(r: RiferimentoPiano): number {
+function latoMedio(r: RiferimentoPiano): number {
   let lato = 0;
   for (let i = 0; i < 4; i++) {
     lato +=
@@ -310,7 +310,71 @@ function tolleranza(r: RiferimentoPiano): number {
         r.reale[(i + 1) % 4].y - r.reale[i].y
       ) / 4;
   }
-  return Math.max(10, lato * 0.02);
+  return lato;
+}
+
+function tolleranza(r: RiferimentoPiano): number {
+  return Math.max(10, latoMedio(r) * 0.02);
+}
+
+/**
+ * QUANTO PUÒ SBAGLIARE UNA FORMA CHE BUSSA ALLA PORTA di un gruppo.
+ *
+ * È un'altra cosa dalla tolleranza di sopra, e va detto perché. Lì si misura
+ * un piano FINITO sulle forme che l'hanno fatto: quelle stanno dentro il
+ * conto, e due centesimi di lato sono il tremito del dito. Qui invece il
+ * piano è quello del gruppo COM'È ADESSO, e la forma che chiede di entrare
+ * sta da un'altra parte della foto: la si sta misurando per estrapolazione,
+ * fuori dal riquadro che ha generato l'omografia. Mezzo pixel su un angolo
+ * del pavimento, che si vede di taglio, là in fondo vale già centimetri.
+ *
+ * Perciò la porta è più larga: chi entra viene comunque rimesso in conto
+ * subito dopo, e se il piano rifatto rovina le forme che c'erano già, il
+ * gruppo lo rifiuta lo stesso con la tolleranza stretta.
+ *
+ * E la porta si guarda DALLE DUE PARTI. Non basta che il gruppo riconosca la
+ * forma nuova: deve riconoscerlo anche lei, cioè il piano che si ricava dalla
+ * sola forma nuova deve ritrovare le misure di chi c'è già. Una finestra
+ * piccola, vista di sbieco su un altro muro, capita che caschi per un pelo
+ * dentro la tolleranza del muro grande — il contrario non capita mai, perché
+ * il muro grande visto dal piano di quella finestrella sbaglia di metri.
+ */
+function tolleranzaDiIngresso(r: RiferimentoPiano): number {
+  return Math.max(25, latoMedio(r) * 0.08);
+}
+
+/** area con segno di un quadrilatero: il verso in cui gira */
+function areaConSegno(q: Punto[]): number {
+  let s = 0;
+  for (let i = 0; i < q.length; i++) {
+    const a = q[i];
+    const b = q[(i + 1) % q.length];
+    s += a.x * b.y - b.x * a.y;
+  }
+  return s / 2;
+}
+
+/**
+ * LA FORMA GIRA NEL VERSO GIUSTO su questo piano?
+ *
+ * Serve per il caso che nessuna misura di lunghezza saprà mai distinguere:
+ * DUE PARETI OPPOSTE. La parete di sinistra e quella di destra sono parallele
+ * e — se si sta più o meno in mezzo alla stanza, come si sta in un bagno —
+ * alla stessa distanza dall'obiettivo. Una piastrella di destra, letta con
+ * l'omografia di sinistra, viene fuori delle misure ESATTE: il raggio che la
+ * tocca, prolungato all'indietro oltre l'obiettivo, cade sulla parete di
+ * sinistra nel punto simmetrico, e la simmetria rispetto a un punto non
+ * cambia le lunghezze di niente. Stessa storia per pavimento e soffitto.
+ *
+ * Non le cambia, ma ROVESCIA IL VERSO: quello che sulla parete vera gira in
+ * senso orario, sul piano specchiato gira antiorario. Quel segno è tutta la
+ * differenza fra le due pareti, e non costa niente leggerlo.
+ */
+function versoConcorde(H: Omografia, r: RiferimentoPiano): boolean {
+  const vista = areaConSegno(r.immagine.map((p) => applicaOmografia(H, p)));
+  const vera = areaConSegno(r.reale);
+  if (!Number.isFinite(vista) || vera === 0) return false;
+  return vista * vera > 0;
 }
 
 /**
@@ -334,14 +398,32 @@ export function gruppiDiPiano(riferimenti: RiferimentoPiano[]): RiferimentoPiano
     let gruppo = [restanti[0]];
     let fuori = restanti.slice(1);
     for (;;) {
+      // il piano del gruppo COM'È ADESSO: è lui che deve riconoscere la forma
+      // nuova. Rifarlo con dentro la candidata non direbbe niente — quattro
+      // angoli in più sono otto lati in più e un'omografia ha otto gradi di
+      // libertà: con due sole forme il conto torna sempre, anche se le due
+      // forme stanno su due muri diversi.
+      const suo = adattaPiano(gruppo);
+      if (!suo) break;
       let scelta: { r: RiferimentoPiano; scarto: number } | null = null;
       for (const r of fuori) {
+        if (!versoConcorde(suo.H, r)) continue;
+        const scarto = scartoDelPiano(suo.H, r).medio;
+        if (scarto > tolleranzaDiIngresso(r)) continue;
+        // …e la stessa domanda al contrario
+        const dalei = adattaPiano([r]);
+        if (!dalei) continue;
+        if (
+          gruppo.some(
+            (g) => scartoDelPiano(dalei.H, g).medio > tolleranzaDiIngresso(g)
+          )
+        )
+          continue;
         const esito = adattaPiano([...gruppo, r]);
         if (!esito) continue;
-        const scarto = scartoDelPiano(esito.H, r).medio;
-        // e non deve rovinare quelle che c'erano già
+        // e il piano rifatto non deve rovinare quelle che c'erano già
         const rovina = gruppo.some((g) => scartoDelPiano(esito.H, g).medio > tolleranza(g));
-        if (rovina || scarto > tolleranza(r)) continue;
+        if (rovina) continue;
         if (!scelta || scarto < scelta.scarto) scelta = { r, scarto };
       }
       if (!scelta) break;

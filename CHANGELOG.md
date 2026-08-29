@@ -10,6 +10,53 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.52.0 — La stanza intera: tre pareti, il pavimento e il soffitto
+
+- **Cinque piani nella stessa foto, e stanno insieme.** Fino a ieri il modello
+  reggeva le pareti; appena si aggiungeva il pavimento andava fuori equilibrio
+  — muri che si allungavano a dismisura, spigoli dove non c'erano, righe verdi
+  che tagliavano la foto in diagonale. Adesso un bagno, un corridoio, un
+  ripostiglio si quotano per intero: tre pareti più pavimento e soffitto.
+
+- **Le pareti opposte non si confondono più.** Era il guaio grosso, ed era
+  geometria, non distrazione: la parete di destra e quella di sinistra sono
+  parallele e — se si sta più o meno in mezzo alla stanza, come si sta in un
+  bagno — alla stessa distanza dall'obiettivo. Una piastrella di destra, letta
+  con la prospettiva di sinistra, viene fuori con le misure ESATTE: il raggio
+  che la tocca, prolungato oltre l'obiettivo, cade sulla parete di sinistra nel
+  punto simmetrico, e la simmetria rispetto a un punto non cambia le lunghezze
+  di niente. Nessuna misura di lunghezza potrà mai distinguerle. Quello che
+  cambia è il VERSO: sul piano specchiato la forma gira al contrario. Adesso
+  l'app guarda quel segno, e con quello le due pareti restano due. Lo stesso
+  vale per pavimento e soffitto.
+
+- **La forma nuova bussa, e la porta si guarda dalle due parti.** Per decidere
+  se una forma quotata sta sulla stessa parete delle altre non si rifà più il
+  conto con lei dentro: quattro angoli in più sono otto lati in più, e
+  un'omografia ha otto gradi di libertà — con due sole forme il conto torna
+  sempre, anche se le due forme stanno su due muri diversi. Adesso è il piano
+  del gruppo com'è a doverla riconoscere, e lei a dover riconoscere il gruppo.
+
+- **Le pareti arrivano da terra al soffitto.** Il riquadro verde non è più
+  quel poco che tengono dentro le due finestre: col pavimento sotto e il
+  soffitto sopra si estende fino a dove finisce il muro davvero, perché adesso
+  c'è qualcosa che glielo dice. Nella prova su una stanza di 2400 × 2400 × 2500
+  le tre pareti vengono alte 2509, 2524 e 2511 mm — meno dell'1% di scarto,
+  ricavato dalle sole forme quotate. E dove finisce non si tira più a indovinare
+  allungandosi lungo lo spigolo: quel tentativo serviva quando non c'era nessuno
+  a dirlo, ed era proprio lui a far partire i muri.
+
+- **Il vertice di giunzione si forma in tutti gli angoli della stanza.** Anche
+  dove si incontrano in tre — parete di fondo, parete di sinistra e pavimento:
+  una maniglia sola, condivisa, che si tira una volta per tutti.
+
+- **Le righe degli spigoli si disegnano solo dove lo spigolo c'è.** Uno spigolo
+  è una retta, e una retta non finisce mai: la riga fra il pavimento e la
+  parete di sinistra continuava oltre l'angolo della stanza e andava a tagliare
+  in due la parete di fondo. Con due pareti non si notava; in una stanza intera
+  diventava una ragnatela. Adesso ogni riga si ferma dove i due riquadri si
+  affacciano davvero, e la foto torna leggibile.
+
 ## 1.51.0 — Torna la proiezione in griglia, e adesso vale per ogni piano
 
 - **«Proietta in griglia» è tornata, dentro la scheda della parete**: 1×1 ·

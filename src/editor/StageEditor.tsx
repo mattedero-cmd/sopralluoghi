@@ -58,6 +58,7 @@ import {
   maniglieDeiLati,
   pianoConLato,
   pianoConVertice,
+  spigoliRitagliati,
   verticiGemelli
 } from '../geometry/pianoModifica';
 
@@ -1252,11 +1253,17 @@ export function StageEditor(p: Props) {
     () =>
       // la riga passa per i vertici in comune, quando le pareti sono unite:
       // il taglio dei riquadri e la riga disegnata dicono così la stessa cosa
-      spigoliSuiVertici(
-        spigoliDellaFoto(pianiFoto, p.foto.larghezzaPx, p.foto.altezzaPx),
-        pianiFoto,
-        p.foto.larghezzaPx,
-        p.foto.altezzaPx
+      // …e si disegna solo dove le due pareti si affacciano davvero: la retta
+      // dello spigolo, tirata per tutta la foto, in una stanza intera
+      // taglierebbe le pareti che non c'entrano niente
+      spigoliRitagliati(
+        spigoliSuiVertici(
+          spigoliDellaFoto(pianiFoto, p.foto.larghezzaPx, p.foto.altezzaPx),
+          pianiFoto,
+          p.foto.larghezzaPx,
+          p.foto.altezzaPx
+        ),
+        pianiFoto
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [p.foto.piano, p.foto.piani, p.foto.larghezzaPx, p.foto.altezzaPx]
