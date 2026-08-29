@@ -3805,12 +3805,19 @@ a {
 .pano-errore {
   position: absolute;
   inset: 0;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   padding: 24px;
   text-align: center;
   color: var(--testo-2);
   font-size: 15px;
+  line-height: 1.5;
+}
+.pano-errore p {
+  margin: 0;
+  max-width: 34em;
 }
 .pano-lampo {
   position: absolute;

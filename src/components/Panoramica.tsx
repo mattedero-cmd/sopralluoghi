@@ -23,10 +23,57 @@ interface Presa {
 
 type Fase = 'camera' | 'scelta' | 'lavoro' | 'ritaglio';
 
+/**
+ * ACCENDE LA FOTOCAMERA, e va chiamata DENTRO il gesto del dito.
+ *
+ * Su iPhone il permesso si chiede solo mentre l'attivazione dell'utente è
+ * ancora valida: partendo da un effetto di React — che gira dopo che la
+ * schermata è stata disegnata — il permesso risulta negato senza che nessuno
+ * abbia chiesto niente. Per questo la richiesta parte dal `onClick` del
+ * pulsante e la promessa viene passata di qua.
+ */
+export function chiediFotocamera(): Promise<MediaStream> {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    return Promise.reject(new Error('senza-fotocamera'));
+  }
+  // si chiede il massimo che la fotocamera sa dare: una panoramica serve a
+  // vedere PIÙ dettaglio, non meno, e partire da un video sgranato
+  // vanificherebbe tutto
+  return navigator.mediaDevices.getUserMedia({
+    video: {
+      facingMode: { ideal: 'environment' },
+      width: { ideal: 4096 },
+      height: { ideal: 3072 }
+    },
+    audio: false
+  });
+}
+
+/** Il perché di un rifiuto, detto in modo che si possa rimediare. */
+export function perchéNiente(e: unknown): string {
+  const nome = e instanceof DOMException ? e.name : e instanceof Error ? e.message : '';
+  if (nome === 'senza-fotocamera') {
+    return 'Questo browser non dà accesso alla fotocamera. Serve una connessione sicura (https) e un browser recente.';
+  }
+  if (nome === 'NotAllowedError' || nome === 'SecurityError') {
+    return 'Permesso della fotocamera negato. Su iPhone: tocca «aA» nella barra dell’indirizzo → Impostazioni sito web → Fotocamera → Consenti. Se hai aggiunto l’app alla schermata Home, il permesso si chiede una volta sola: togli l’icona e riaggiungila.';
+  }
+  if (nome === 'NotFoundError' || nome === 'OverconstrainedError') {
+    return 'Nessuna fotocamera trovata su questo dispositivo.';
+  }
+  if (nome === 'NotReadableError' || nome === 'AbortError') {
+    return 'La fotocamera è occupata da un’altra app: chiudila e riprova.';
+  }
+  return 'Fotocamera non disponibile.';
+}
+
 export function Panoramica({
+  richiesta,
   onFatta,
   onChiudi
 }: {
+  /** la fotocamera già chiesta nel gesto del dito, se si è potuto */
+  richiesta: Promise<MediaStream> | null;
   /** la panoramica finita: si salva fuori di qui */
   onFatta: (blob: Blob, scatti: number, larghezza: number, altezza: number) => Promise<void>;
   onChiudi: () => void;
@@ -91,6 +138,7 @@ export function Panoramica({
     <div className="pano-schermo">
       {fase === 'camera' && (
         <Fotocamera
+          richiesta={richiesta}
           prese={prese}
           onScatto={(p) => setPrese((v) => [...v, p])}
           onFine={() => setFase(prese.length >= 2 ? 'scelta' : 'camera')}
@@ -142,11 +190,13 @@ export function Panoramica({
 // ---------------------------------------------------------------------------
 
 function Fotocamera({
+  richiesta,
   prese,
   onScatto,
   onFine,
   onAnnulla
 }: {
+  richiesta: Promise<MediaStream> | null;
   prese: Presa[];
   onScatto: (p: Presa) => void;
   onFine: () => void;
@@ -158,50 +208,52 @@ function Fotocamera({
   const [errore, setErrore] = useState<string | null>(null);
   const [misura, setMisura] = useState<string>('');
   const [scattando, setScattando] = useState(false);
+  const galleria = useRef<HTMLInputElement>(null);
+
+  const attacca = async (s: MediaStream) => {
+    flusso.current = s;
+    if (video.current) {
+      video.current.srcObject = s;
+      await video.current.play().catch(() => {});
+    }
+    const g = s.getVideoTracks()[0]?.getSettings();
+    if (g?.width && g?.height) setMisura(`${g.width}×${g.height}`);
+    setErrore(null);
+    setPronta(true);
+  };
 
   useEffect(() => {
     let vivo = true;
-    (async () => {
-      try {
-        // si chiede il massimo che la fotocamera sa dare: una panoramica serve
-        // a vedere PIÙ dettaglio, non meno, e partire da un video sgranato
-        // vanificherebbe tutto
-        const s = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: 'environment' },
-            width: { ideal: 4096 },
-            height: { ideal: 3072 }
-          },
-          audio: false
-        });
+    if (!richiesta) {
+      setErrore(perchéNiente(new Error('senza-fotocamera')));
+      return;
+    }
+    richiesta
+      .then((s) => {
         if (!vivo) {
           for (const t of s.getTracks()) t.stop();
           return;
         }
-        flusso.current = s;
-        if (video.current) {
-          video.current.srcObject = s;
-          await video.current.play().catch(() => {});
-        }
-        const t = s.getVideoTracks()[0];
-        const g = t?.getSettings();
-        if (g?.width && g?.height) {
-          setMisura(`${g.width}×${g.height}`);
-        }
-        setPronta(true);
-      } catch (e) {
-        setErrore(
-          e instanceof DOMException && e.name === 'NotAllowedError'
-            ? 'Permesso della fotocamera negato: consentilo dalle impostazioni del browser.'
-            : 'Fotocamera non disponibile su questo dispositivo.'
-        );
-      }
-    })();
+        void attacca(s);
+      })
+      .catch((e) => {
+        if (vivo) setErrore(perchéNiente(e));
+      });
     return () => {
       vivo = false;
       for (const t of flusso.current?.getTracks() ?? []) t.stop();
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [richiesta]);
+
+  /** RIPROVA, questa volta con il dito ancora sul vetro: è ciò che iOS vuole */
+  const riprova = async () => {
+    try {
+      await attacca(await chiediFotocamera());
+    } catch (e) {
+      setErrore(perchéNiente(e));
+    }
+  };
 
   const scatta = async () => {
     const v = video.current;
@@ -228,14 +280,57 @@ function Fotocamera({
     }
   };
 
+  /** DALLA GALLERIA: se la fotocamera non si apre, la panoramica si fa lo
+   *  stesso con gli scatti fatti dall'app fotocamera del telefono. */
+  const daGalleria = async (files: File[]) => {
+    for (const f of files) {
+      const bitmap = await createImageBitmap(f).catch(() => null);
+      onScatto({
+        blob: f,
+        url: URL.createObjectURL(f),
+        larghezza: bitmap?.width ?? 0,
+        altezza: bitmap?.height ?? 0,
+        tenuta: true
+      });
+      bitmap?.close?.();
+    }
+  };
+
   return (
     <>
       <div className="pano-mirino">
         <video ref={video} playsInline muted autoPlay />
-        {errore && <div className="pano-errore">{errore}</div>}
+        {errore && (
+          <div className="pano-errore">
+            <p>{errore}</p>
+            <div className="riga-pulsanti" style={{ justifyContent: 'center', marginTop: 14 }}>
+              <button className="btn primario" onClick={() => void riprova()}>
+                <Icona nome="fotocamera" dimensione={18} /> Riprova
+              </button>
+              <button className="btn" onClick={() => galleria.current?.click()}>
+                <Icona nome="immagine" dimensione={18} /> Dalla galleria
+              </button>
+            </div>
+          </div>
+        )}
         {!errore && !pronta && <div className="pano-errore">Accendo la fotocamera…</div>}
         {scattando && <div className="pano-lampo" />}
       </div>
+
+      <input
+        ref={galleria}
+        type="file"
+        accept="image/*"
+        multiple
+        hidden
+        onChange={(e) => {
+          // i file si copiano PRIMA di azzerare il campo: svuotarlo svuota
+          // anche la FileList, e la funzione asincrona non troverebbe niente
+          const scelti = Array.from(e.target.files ?? []);
+          e.target.value = '';
+          void daGalleria(scelti);
+        }}
+      />
 
       <div className="pano-striscia">
         {prese.length === 0 ? (

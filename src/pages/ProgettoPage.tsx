@@ -25,7 +25,7 @@ import type { Sezione } from '../db/types';
 import type { OpzioniReport } from '../pdf/report';
 import { SelettoreCliente } from './ClientiPage';
 import { fotoIllegibile, importaFoto } from '../utils/image';
-import { Panoramica } from '../components/Panoramica';
+import { chiediFotocamera, Panoramica } from '../components/Panoramica';
 import { naviga } from '../router';
 import {
   ConfermaDialog,
@@ -121,8 +121,17 @@ export function ProgettoPage({ id }: { id: string }) {
   const inputCamera = useRef<HTMLInputElement>(null);
   const inputGalleria = useRef<HTMLInputElement>(null);
   /** avanzamento del cucito: null = nessuna panoramica in corso */
-  /** true mentre è aperto l'ambiente della panoramica */
-  const [panoramicaAperta, setPanoramicaAperta] = useState(false);
+  /**
+   * L'ambiente della panoramica, con la fotocamera GIÀ CHIESTA.
+   *
+   * La richiesta parte da qui, dentro il tocco sul pulsante: su iPhone il
+   * permesso si concede solo finché l'attivazione dell'utente è viva, e
+   * chiederlo da un effetto di React — dopo che la schermata è comparsa —
+   * lo fa risultare negato senza che nessuno abbia chiesto niente.
+   */
+  const [panoramicaAperta, setPanoramicaAperta] = useState<{
+    richiesta: Promise<MediaStream> | null;
+  } | null>(null);
   /** sezione di destinazione delle prossime foto importate (null = nessuna) */
   const sezioneTarget = useRef<string | null>(null);
 
@@ -672,7 +681,11 @@ export function ProgettoPage({ id }: { id: string }) {
             disabled={importInCorso}
             onClick={() => {
               sezioneTarget.current = null;
-              setPanoramicaAperta(true);
+              const richiesta = chiediFotocamera();
+              // il rifiuto lo racconta l'ambiente: qui si evita solo che
+              // diventi un errore non gestito
+              richiesta.catch(() => {});
+              setPanoramicaAperta({ richiesta });
             }}
           >
             <Icona nome="immagine" dimensione={20} /> Panoramica
@@ -733,10 +746,11 @@ export function ProgettoPage({ id }: { id: string }) {
         />
         {panoramicaAperta && (
           <Panoramica
+            richiesta={panoramicaAperta.richiesta}
             onFatta={async (blob, scatti) => {
               await salvaPanoramica(blob, scatti);
             }}
-            onChiudi={() => setPanoramicaAperta(false)}
+            onChiudi={() => setPanoramicaAperta(null)}
           />
         )}
 

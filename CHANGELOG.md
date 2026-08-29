@@ -10,6 +10,29 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.48.1 — La fotocamera si chiede mentre il dito è ancora sul vetro
+
+- **Su iPhone il permesso risultava negato senza che nessuno avesse chiesto
+  niente.** Su iOS il permesso della fotocamera si può chiedere solo finché
+  l'attivazione dell'utente è viva — cioè dentro il tocco. La mia richiesta
+  partiva da un effetto di React, che gira DOPO che la schermata è stata
+  disegnata: a quel punto l'attivazione è scaduta e il sistema rifiuta in
+  silenzio. Adesso la richiesta parte dal tocco sul pulsante «Panoramica».
+- **E se il permesso è già stato negato una volta, c'è come rimediare.** Il
+  messaggio dice esattamente dove: su iPhone «aA» nella barra dell'indirizzo →
+  Impostazioni sito web → Fotocamera → Consenti; e se l'app è sulla schermata
+  Home, dove il permesso si chiede una volta sola, togliere l'icona e
+  riaggiungerla. C'è anche il pulsante **Riprova**, che questa volta parte da
+  un tocco vero.
+- **Una via d'uscita che funziona comunque: «Dalla galleria».** Se la
+  fotocamera non si apre — permesso negato, dispositivo senza fotocamera,
+  fotocamera occupata da un'altra app — si scelgono gli scatti fatti con
+  l'app fotocamera del telefono e la panoramica si fa lo stesso, con lo stesso
+  ambiente di scelta e lo stesso ritaglio.
+- Il messaggio distingue i casi: permesso negato, nessuna fotocamera,
+  fotocamera occupata, connessione non sicura. Dire «non disponibile» e basta
+  non aiuta nessuno.
+
 ## 1.48.0 — La panoramica si fa dalla fotocamera, e si ritaglia
 
 - **Niente più galleria.** «Panoramica» apre la fotocamera dentro l'app: si
