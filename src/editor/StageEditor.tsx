@@ -630,15 +630,18 @@ export function StageEditor(p: Props) {
 
     if (p.strumento === 'seleziona') {
       if (e.target === stage || e.target.name() === 'sfondo-foto') {
-        // COL RETICOLO ACCESO il tocco sceglie la parete: con più muri nella
-        // stessa foto è così che si prende in mano quello da aggiustare
+        // COL RETICOLO ACCESO il tocco PRENDE IN MANO la parete: è così che
+        // si apre il suo ambiente — misure, nome, cestino — e con più muri
+        // nella stessa foto è così che si sceglie quale. Toccando fuori da
+        // tutte, si molla: le maniglie spariscono e i comandi con loro.
         if (p.mostraGriglia && pianiFoto.length > 0) {
           const dentro = pianiFoto.findIndex((piano, i) => {
             const contorno = ritagliaPoligono(piano.punti, vincoliDelPiano(spigoliPiani, i));
             return contorno.length >= 3 && dentroPoligono(contorno, pos);
           });
-          if (dentro >= 0 && dentro !== p.pianoAttivo) {
-            p.onPianoAttivo?.(dentro);
+          if (dentro !== p.pianoAttivo) p.onPianoAttivo?.(dentro >= 0 ? dentro : null);
+          if (dentro >= 0) {
+            p.onSeleziona(null);
             return;
           }
         }

@@ -284,13 +284,6 @@ const GRUPPI_STRUMENTI_QUOTATURE: GruppoStrumenti[] = [
       {
         s: 'seleziona',
         icona: 'cestino',
-        testo: 'Togli il piano',
-        comando: 'togliPiano',
-        seCe: 'piano'
-      },
-      {
-        s: 'seleziona',
-        icona: 'cestino',
         testo: 'Togli la scala',
         comando: 'togliScala',
         seCe: 'scala'
@@ -665,7 +658,13 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   /** griglia di verifica sul piano calibrato (controllo visivo della scala) */
   const [mostraGriglia, setMostraGriglia] = useState(false);
   /** la parete che si sta aggiustando a mano, fra quelle della foto */
-  const [pianoAttivo, setPianoAttivo] = useState<number | null>(0);
+  /**
+   * LA PARETE IN MANO: null = nessuna. Si prende toccandola sulla foto, e da
+   * lì si apre il suo ambiente — le sue misure, il suo nome, il suo cestino.
+   */
+  const [pianoAttivo, setPianoAttivo] = useState<number | null>(null);
+  /** true mentre è aperta la scheda della parete selezionata */
+  const [schedaParete, setSchedaParete] = useState(false);
   /**
    * La parete mentre la si trascina: sta qui e non nel database, così il dito
    * scorre liscio. Al rilascio si salva e le misure automatiche si rifanno.
@@ -1009,6 +1008,62 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     setMostraGriglia(false);
     setPianoAttivo(null);
     mostraToast('successo', 'Piano prospettico rimosso.');
+  };
+
+  /** le pareti della foto, nell'ordine in cui stanno nei dati */
+  const pareti = (): PianoProspettiva[] =>
+    foto ? [foto.piano, ...(foto.piani ?? [])].filter((x): x is PianoProspettiva => !!x) : [];
+
+  /** la parete che si ha in mano, se ce n'è una */
+  const pareteInMano = (): PianoProspettiva | null => {
+    const tutte = pareti();
+    return pianoAttivo != null ? (tutte[pianoAttivo] ?? null) : null;
+  };
+
+  /** Scrive le pareti tornando alla forma in cui stanno nel database. */
+  const scriviPareti = async (tutte: PianoProspettiva[]) => {
+    if (!foto) return;
+    const [primo, ...altri] = tutte;
+    await aggiornaFoto(foto.id, { piano: primo ?? null, piani: altri });
+    ricalcolaConCalibrazione({ scala: foto.scala, piano: primo ?? null, piani: altri });
+  };
+
+  /**
+   * TOGLIE LA PARETE CHE SI HA IN MANO — quella e basta.
+   *
+   * Con più muri nella stessa foto, buttarli tutti perché uno era sbagliato
+   * sarebbe una punizione: si toglie il suo, e gli altri restano a misurare.
+   */
+  const eliminaPianoAttivo = async () => {
+    const tutte = pareti();
+    if (pianoAttivo == null || !tutte[pianoAttivo]) return;
+    const rimaste = tutte.filter((_, i) => i !== pianoAttivo);
+    await scriviPareti(rimaste);
+    setPianoAttivo(null);
+    setSchedaParete(false);
+    if (rimaste.length === 0) setMostraGriglia(false);
+    mostraToast(
+      'successo',
+      rimaste.length === 0
+        ? 'Piano prospettico rimosso.'
+        : `Parete rimossa: ne restano ${rimaste.length}.`
+    );
+  };
+
+  /** Salva le impostazioni della parete in mano (nome, misure, griglia). */
+  const salvaSchedaPiano = async (modifiche: Partial<PianoProspettiva>) => {
+    const tutte = pareti();
+    if (pianoAttivo == null || !tutte[pianoAttivo]) return;
+    const nuovo = { ...tutte[pianoAttivo], ...modifiche };
+    try {
+      omografiaPiano(nuovo);
+    } catch (e) {
+      mostraToast('errore', e instanceof Error ? e.message : 'Misure del piano non valide.');
+      return;
+    }
+    await scriviPareti(tutte.map((p, i) => (i === pianoAttivo ? nuovo : p)));
+    setSchedaParete(false);
+    mostraToast('successo', 'Parete aggiornata: le misure calcolate la seguono.');
   };
 
   /** Toglie la scala (il segmento di misura nota). */
@@ -2838,7 +2893,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     }
     await aggiornaFoto(foto.id, { piano });
     ricalcolaConCalibrazione({ scala: foto.scala, piano });
-    setMostraGriglia(true); // mostra subito la griglia per verificare la scala
+    // griglia accesa per verificare subito la scala, e la parete già in mano:
+    // i suoi comandi — misure, nome, cestino — devono essere lì da subito
+    setMostraGriglia(true);
+    setPianoAttivo(0);
     mostraToast(
       'successo',
       'Piano attivo: la griglia di verifica mostra la scala reale. Le misure su quel piano correggono la prospettiva.'
@@ -2968,6 +3026,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     await aggiornaFoto(foto.id, { piano: primo, piani: altri });
     ricalcolaConCalibrazione({ scala: foto.scala, piano: primo, piani: altri });
     setMostraGriglia(true);
+    setPianoAttivo(0);
     mostraToast(
       'successo',
       altri.length > 0
@@ -3519,7 +3578,19 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             className={`btn icona${mostraGriglia ? ' attivo' : ''}`}
             aria-label="Griglia di verifica del piano"
             title="Griglia di verifica del piano"
-            onClick={() => setMostraGriglia((g) => !g)}
+            onClick={() =>
+              setMostraGriglia((g) => {
+                // ACCENDERE LA GRIGLIA È ENTRARE NELL'AMBIENTE DEL PIANO: si
+                // prende in mano la prima parete, così i suoi comandi ci sono
+                // subito. Su un muro coperto di forme non ci sarebbe dove
+                // toccare per prenderla — il tocco prenderebbe la forma, ed è
+                // giusto che lo faccia. Con più pareti, toccandone un'altra si
+                // cambia; spegnendo la griglia si molla tutto.
+                setPianoAttivo(g ? null : 0);
+                setSchedaParete(false);
+                return !g;
+              })
+            }
           >
             <Icona nome="griglia" />
           </button>
@@ -4358,6 +4429,30 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           );
         })()}
 
+      {/* PARETE SELEZIONATA: il suo ambiente. Toccandola sulla foto si prende
+          in mano, e da lì escono i due soli comandi che le servono — le sue
+          impostazioni e il cestino. È dove uno li cerca: sull'oggetto. */}
+      {!proposta && strumento === 'seleziona' && pareteInMano() && (
+        <div className="azioni-flottanti" role="group" aria-label="Azioni della parete">
+          <button
+            className="azione-flottante modifica"
+            aria-label="Impostazioni della parete"
+            title="Nome, misure reali e griglia di questa parete"
+            onClick={() => setSchedaParete(true)}
+          >
+            <Icona nome="righello" dimensione={20} />
+          </button>
+          <button
+            className="azione-flottante elimina"
+            aria-label="Elimina la parete"
+            title="Toglie questa parete: le altre restano"
+            onClick={() => void eliminaPianoAttivo()}
+          >
+            <Icona nome="cestino" dimensione={20} />
+          </button>
+        </div>
+      )}
+
       {/* OGGETTO dello schizzo selezionato: azioni proprie (entità a sé stante) */}
       {!proposta &&
         !duplicaMaster &&
@@ -4803,7 +4898,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               ? GRUPPI_STRUMENTI_DISEGNO
               : GRUPPI_STRUMENTI_QUOTATURE
             ).map((g) => {
-              const voceAtt = g.voci.find((v) => v.s === strumento);
+              // le voci-COMANDO non sono strumenti: non devono mai
+              // prendersi l'icona del gruppo
+              const voceAtt = g.voci.find((v) => !v.comando && v.s === strumento);
               return (
                 <BtnStrumento
                   key={g.id}
@@ -5106,6 +5203,20 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             void salvaPiano(schedaPiano.punti, larghezza, altezza, unita);
             setSchedaPiano(null);
           }}
+        />
+      )}
+      {schedaParete && pareteInMano() && (
+        <SchedaParete
+          // cambiando parete la scheda RIPARTE: i campi devono mostrare le
+          // misure di quella nuova, non quelle rimaste in mano
+          key={pianoAttivo ?? 'nessuna'}
+          piano={pareteInMano()!}
+          quante={pareti().length}
+          indice={pianoAttivo ?? 0}
+          onChiudi={() => setSchedaParete(false)}
+          onSalva={(m) => void salvaSchedaPiano(m)}
+          onElimina={() => void eliminaPianoAttivo()}
+          onAltraParete={(i) => setPianoAttivo(i)}
         />
       )}
       {schedaFormatoPers && (
@@ -9591,5 +9702,162 @@ function EditorCallout({
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * L'AMBIENTE DELLA PARETE: quello che si apre prendendola in mano.
+ *
+ * Una parete non è solo quattro angoli sulla foto: ha un nome — «fronte»,
+ * «fianco» — che nelle foto con più muri è l'unico modo per capire di quale
+ * si sta parlando; ha le sue misure reali, che sono la calibrazione; e ha la
+ * griglia di verifica, che dice a colpo d'occhio se la calibrazione tiene.
+ * Stanno tutte qui, insieme al cestino, perché è qui che uno le cerca.
+ */
+function SchedaParete({
+  piano,
+  quante,
+  indice,
+  onChiudi,
+  onSalva,
+  onElimina,
+  onAltraParete
+}: {
+  piano: PianoProspettiva;
+  quante: number;
+  indice: number;
+  onChiudi: () => void;
+  onSalva: (modifiche: Partial<PianoProspettiva>) => void;
+  onElimina: () => void;
+  /** passa a un'altra parete: su un muro coperto di forme non ci sarebbe
+   *  dove toccare per prenderla, e da qui si arriva a tutte */
+  onAltraParete: (indice: number) => void;
+}) {
+  const [nome, setNome] = useState(piano.nome ?? '');
+  /** le misure si scrivono come si leggono: un decimale, non quindici */
+  const scritta = (v: number) => String(Math.round(v * 10) / 10).replace('.', ',');
+  const [testoL, setTestoL] = useState(scritta(piano.larghezzaReale));
+  const [testoA, setTestoA] = useState(scritta(piano.altezzaReale));
+  const [unita, setUnita] = useState<Unita>(piano.unita);
+  const [celle, setCelle] = useState(piano.celle ?? 1);
+  const larghezza = analizzaMisura(testoL);
+  const altezza = analizzaMisura(testoA);
+  const valido = larghezza !== null && larghezza > 0 && altezza !== null && altezza > 0;
+
+  return (
+    <Modale
+      titolo={quante > 1 ? `Parete ${indice + 1} di ${quante}` : 'Piano prospettico'}
+      onChiudi={onChiudi}
+      centro
+    >
+      {quante > 1 && (
+        <div
+          style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '0 0 14px' }}
+        >
+          <button
+            className="btn"
+            aria-label="Parete precedente"
+            disabled={indice === 0}
+            onClick={() => onAltraParete(indice - 1)}
+          >
+            ‹
+          </button>
+          <span style={{ flex: 1, textAlign: 'center', color: 'var(--testo-2)' }}>
+            {piano.nome || `parete ${indice + 1}`}
+          </span>
+          <button
+            className="btn"
+            aria-label="Parete successiva"
+            disabled={indice >= quante - 1}
+            onClick={() => onAltraParete(indice + 1)}
+          >
+            ›
+          </button>
+        </div>
+      )}
+
+      {quante > 1 && (
+        <div className="campo">
+          <label>Nome della parete (compare negli elenchi e nel report)</label>
+          <input
+            value={nome}
+            placeholder={`parete ${indice + 1}`}
+            onChange={(e) => setNome(e.target.value)}
+          />
+        </div>
+      )}
+
+      <div className="campo">
+        <label>Misure reali del riquadro</label>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input
+            inputMode="decimal"
+            value={testoL}
+            onChange={(e) => setTestoL(e.target.value)}
+            aria-label="Larghezza reale"
+            style={{ flex: 1, minWidth: 0 }}
+          />
+          <span style={{ color: 'var(--testo-2)' }}>×</span>
+          <input
+            inputMode="decimal"
+            value={testoA}
+            onChange={(e) => setTestoA(e.target.value)}
+            aria-label="Altezza reale"
+            style={{ flex: 1, minWidth: 0 }}
+          />
+          <select
+            value={unita}
+            onChange={(e) => setUnita(e.target.value as Unita)}
+            aria-label="Unità"
+            style={{ width: 84 }}
+          >
+            <option value="mm">mm</option>
+            <option value="cm">cm</option>
+            <option value="m">m</option>
+          </select>
+        </div>
+        <p className="aiuto">
+          Sono le misure del rettangolo verde sulla foto: cambiandole cambia la scala di tutte le
+          misure calcolate su questa parete. Le quote scritte a mano restano quelle.
+        </p>
+      </div>
+
+      <div className="campo">
+        <label>Suddivisioni della griglia di verifica: {celle}</label>
+        <input
+          type="range"
+          min={1}
+          max={12}
+          step={1}
+          value={celle}
+          onChange={(e) => setCelle(Number(e.target.value))}
+        />
+        <p className="aiuto">
+          Più fitta è la griglia, più è facile vedere se la prospettiva segue davvero il muro.
+        </p>
+      </div>
+
+      <div className="riga-pulsanti">
+        <button
+          className="btn primario"
+          disabled={!valido}
+          onClick={() =>
+            onSalva({
+              nome: nome.trim() || undefined,
+              larghezzaReale: larghezza!,
+              altezzaReale: altezza!,
+              unita,
+              celle
+            })
+          }
+        >
+          Salva
+        </button>
+        <button className="btn pericolo" onClick={onElimina}>
+          <Icona nome="cestino" dimensione={18} />{' '}
+          {quante > 1 ? 'Togli questa parete' : 'Togli il piano'}
+        </button>
+      </div>
+    </Modale>
   );
 }

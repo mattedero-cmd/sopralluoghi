@@ -10,6 +10,29 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.50.0 — La parete si prende in mano, e da lì si fa tutto
+
+- **Via il pulsante dal menu.** Toccando una parete sulla foto la si prende in
+  mano, e sotto compaiono i due soli comandi che le servono: le sue
+  **impostazioni** e il **cestino**. È dove uno li cerca — sull'oggetto — non
+  in un menu.
+- **La scheda della parete** ha il suo nome (con più muri è l'unico modo per
+  capire di quale si parla), le sue misure reali — cioè la calibrazione, che
+  da qui si corregge senza rifare il piano — e le suddivisioni della griglia
+  di verifica. Con più pareti si passa dall'una all'altra con le frecce, senza
+  doverle cercare sulla foto.
+- **Si toglie UNA parete per volta.** Prima l'unico comando buttava tutti i
+  piani insieme: con quattro muri in una foto, sbagliarne uno voleva dire
+  rifarli tutti. Adesso se ne toglie uno e gli altri restano a misurare.
+- **Accendere la griglia è entrare nell'ambiente del piano**: la prima parete
+  è già in mano e i suoi comandi ci sono subito. Serve perché su un muro
+  coperto di forme non ci sarebbe dove toccare per prenderlo — il tocco
+  prenderebbe la forma, ed è giusto che lo faccia. Spegnendo la griglia si
+  molla tutto.
+- Corretto anche un difetto che avevo appena introdotto: il pulsante del
+  gruppo «Scala e piano» prendeva l'icona del cestino, perché la voce-comando
+  fingeva di essere lo strumento «seleziona».
+
 ## 1.49.4 — Il piano si toglie da dove si mette, e l'oscuramento si spiega
 
 - **«Togli il piano» adesso è nel menu «Scala e piano».** C'era già un modo per
