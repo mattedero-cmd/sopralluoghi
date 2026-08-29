@@ -10,6 +10,31 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.49.0 — Scegli l'obiettivo, e sposta i lati del ritaglio
+
+- **La fila degli obiettivi sul mirino**, come sull'app fotocamera del
+  telefono: 0,5× · 1× · 2×. L'app chiede al sistema quali fotocamere
+  posteriori ci sono, le riconosce dai nomi (ultra-grandangolo, grandangolo,
+  teleobiettivo) e le mette in fila dalla più larga alla più stretta. Se il
+  dispositivo ne espone una sola, la fila non compare: non ci sarebbe niente
+  da scegliere.
+- **L'obiettivo si sceglie PRIMA del primo scatto, e poi si blocca.** Mescolare
+  un ultra-grandangolo e un teleobiettivo nella stessa panoramica si cucirebbe
+  lo stesso — le due viste restano legate da un'omografia — ma un pezzo di
+  foto verrebbe da un decimo dei pixel dell'altro, e in quel pezzo le misure
+  varrebbero un decimo. Meglio impedirlo che spiegarlo dopo.
+- **Nel ritaglio adesso ci sono due gesti diversi, e si vedono diversi.**
+  I quattro **angoli** (tondi, blu) mettono la prospettiva: portali sugli
+  spigoli del muro e quel muro lo vedi di fronte. I quattro **lati** (verdi,
+  schiacciati nel verso in cui si muovono) non la toccano: allargano o
+  stringono l'inquadratura.
+- Un lato non si sposta trascinandone i due vertici: il quadrilatero è
+  l'immagine di un rettangolo, il dito si legge NELLE COORDINATE di quel
+  rettangolo, là si sposta il bordo e si torna indietro. Così il lato scivola
+  **seguendo la fuga** — resta parallelo in prospettiva, non sullo schermo — e
+  gli altri tre restano esattamente sulle rette di prima. C'è una prova che lo
+  verifica anche sui punti di fuga: non si spostano di mezzo pixel.
+
 ## 1.48.1 — La fotocamera si chiede mentre il dito è ancora sul vetro
 
 - **Su iPhone il permesso risultava negato senza che nessuno avesse chiesto

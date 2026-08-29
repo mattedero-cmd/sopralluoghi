@@ -11,6 +11,13 @@ import { useEffect, useRef, useState } from 'react';
 import { Icona } from './Icona';
 import { cuciPanoramica, CucituraFallita, raddrizza, riquadroPieno } from '../utils/cucitura';
 import type { Punto } from '../db/types';
+import {
+  maniglieDeiLatiQuad,
+  quadConLato,
+  quadConVertice,
+  type Lato,
+  type Quad
+} from '../geometry/ritaglio';
 import { mostraToast } from '../state/toast';
 
 interface Presa {
@@ -32,7 +39,49 @@ type Fase = 'camera' | 'scelta' | 'lavoro' | 'ritaglio';
  * abbia chiesto niente. Per questo la richiesta parte dal `onClick` del
  * pulsante e la promessa viene passata di qua.
  */
-export function chiediFotocamera(): Promise<MediaStream> {
+export interface Obiettivo {
+  deviceId: string;
+  /** come si chiama sul telefono */
+  etichetta: string;
+  /** il numerino da mostrare: 0.5×, 1×, 2×… */
+  segno: string;
+  /** per metterli in ordine dal più largo al più stretto */
+  ordine: number;
+}
+
+/**
+ * GLI OBIETTIVI POSTERIORI del telefono, con il loro numerino.
+ *
+ * Le etichette le scrive il sistema, nella lingua del telefono: si riconosce
+ * l'ultra-grandangolo e il teleobiettivo dalle parole, e tutto il resto è il
+ * grandangolo normale. Se il sistema non dà nomi — capita finché non si è
+ * concesso il permesso — non c'è niente da scegliere e non si mostra nulla.
+ */
+export async function obiettiviPosteriori(): Promise<Obiettivo[]> {
+  if (!navigator.mediaDevices?.enumerateDevices) return [];
+  const tutti = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+  const video = tutti.filter((d) => d.kind === 'videoinput' && d.label);
+  const davanti = /front|frontale|anteriore|face|selfie/i;
+  const dietro = video.filter((d) => !davanti.test(d.label));
+  const scelti = (dietro.length > 0 ? dietro : video).map((d) => {
+    const l = d.label.toLowerCase();
+    if (/ultra/.test(l)) return { d, segno: '0,5×', ordine: 0 };
+    if (/tele/.test(l)) return { d, segno: '2×', ordine: 2 };
+    return { d, segno: '1×', ordine: 1 };
+  });
+  // un solo obiettivo non è una scelta: non si mostra la fila
+  if (scelti.length < 2) return [];
+  return scelti
+    .sort((a, b) => a.ordine - b.ordine)
+    .map((x) => ({
+      deviceId: x.d.deviceId,
+      etichetta: x.d.label,
+      segno: x.segno,
+      ordine: x.ordine
+    }));
+}
+
+export function chiediFotocamera(deviceId?: string): Promise<MediaStream> {
   if (!navigator.mediaDevices?.getUserMedia) {
     return Promise.reject(new Error('senza-fotocamera'));
   }
@@ -40,11 +89,13 @@ export function chiediFotocamera(): Promise<MediaStream> {
   // vedere PIÙ dettaglio, non meno, e partire da un video sgranato
   // vanificherebbe tutto
   return navigator.mediaDevices.getUserMedia({
-    video: {
-      facingMode: { ideal: 'environment' },
-      width: { ideal: 4096 },
-      height: { ideal: 3072 }
-    },
+    video: deviceId
+      ? { deviceId: { exact: deviceId }, width: { ideal: 4096 }, height: { ideal: 3072 } }
+      : {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 4096 },
+          height: { ideal: 3072 }
+        },
     audio: false
   });
 }
@@ -208,18 +259,42 @@ function Fotocamera({
   const [errore, setErrore] = useState<string | null>(null);
   const [misura, setMisura] = useState<string>('');
   const [scattando, setScattando] = useState(false);
+  const [obiettivi, setObiettivi] = useState<Obiettivo[]>([]);
+  const [attivo, setAttivo] = useState<string | null>(null);
   const galleria = useRef<HTMLInputElement>(null);
 
   const attacca = async (s: MediaStream) => {
+    for (const t of flusso.current?.getTracks() ?? []) t.stop();
     flusso.current = s;
     if (video.current) {
       video.current.srcObject = s;
       await video.current.play().catch(() => {});
     }
-    const g = s.getVideoTracks()[0]?.getSettings();
+    const t = s.getVideoTracks()[0];
+    const g = t?.getSettings();
     if (g?.width && g?.height) setMisura(`${g.width}×${g.height}`);
+    if (g?.deviceId) setAttivo(g.deviceId);
     setErrore(null);
     setPronta(true);
+    // i nomi degli obiettivi il sistema li dà solo dopo il permesso
+    setObiettivi(await obiettiviPosteriori());
+  };
+
+  /**
+   * CAMBIA OBIETTIVO. Si può solo PRIMA del primo scatto: mescolare un
+   * ultra-grandangolo e un teleobiettivo nella stessa panoramica si può
+   * cucire — le due viste restano legate da un'omografia — ma un pezzo
+   * verrebbe da un decimo dei pixel dell'altro, e in quel pezzo le misure
+   * varrebbero un decimo. Meglio impedirlo che spiegarlo dopo.
+   */
+  const cambiaObiettivo = async (deviceId: string) => {
+    if (prese.length > 0 || deviceId === attivo) return;
+    setPronta(false);
+    try {
+      await attacca(await chiediFotocamera(deviceId));
+    } catch (e) {
+      setErrore(perchéNiente(e));
+    }
   };
 
   useEffect(() => {
@@ -315,6 +390,26 @@ function Fotocamera({
         )}
         {!errore && !pronta && <div className="pano-errore">Accendo la fotocamera…</div>}
         {scattando && <div className="pano-lampo" />}
+        {obiettivi.length > 1 && !errore && (
+          <div className="pano-obiettivi">
+            {obiettivi.map((o) => (
+              <button
+                key={o.deviceId}
+                className={`pano-obiettivo${o.deviceId === attivo ? ' attivo' : ''}`}
+                title={o.etichetta}
+                disabled={prese.length > 0}
+                onClick={() => void cambiaObiettivo(o.deviceId)}
+              >
+                {o.segno}
+              </button>
+            ))}
+          </div>
+        )}
+        {obiettivi.length > 1 && prese.length > 0 && (
+          <div className="pano-obiettivi-bloccati">
+            L’obiettivo si sceglie prima del primo scatto
+          </div>
+        )}
       </div>
 
       <input
@@ -446,10 +541,11 @@ function Ritaglio({
 }) {
   const box = useRef<HTMLDivElement>(null);
   const immagine = useRef<HTMLImageElement | null>(null);
-  const [quad, setQuad] = useState<[Punto, Punto, Punto, Punto] | null>(null);
+  const [quad, setQuad] = useState<Quad | null>(null);
+  /** cosa si sta trascinando: un angolo o un lato */
+  const [preso, setPreso] = useState<{ cosa: 'angolo' | 'lato'; i: number } | null>(null);
   const [inCorso, setInCorso] = useState(false);
   const [vista, setVista] = useState({ scala: 1, x: 0, y: 0 });
-  const [preso, setPreso] = useState<number | null>(null);
 
   // il punto di partenza: il rettangolo più grande dentro la parte coperta
   useEffect(() => {
@@ -514,7 +610,7 @@ function Ritaglio({
     if (!immagine.current || !quad) return;
     setInCorso(true);
     try {
-      const scelto: [Punto, Punto, Punto, Punto] = tuttoIntero
+      const scelto: Quad = tuttoIntero
         ? [
             { x: 0, y: 0 },
             { x: larghezza, y: 0 },
@@ -535,18 +631,23 @@ function Ritaglio({
       <div className="pano-testa">
         <h2>Ritaglia e raddrizza</h2>
         <p className="aiuto">
-          Porta i quattro angoli sugli spigoli del muro: quello che c’è dentro diventa il
-          rettangolo della foto. Lasciandoli dove sono è un semplice ritaglio. Le misure restano
-          valide in tutti e due i casi.
+          <strong>Gli angoli</strong> mettono la prospettiva: portali sugli spigoli del muro e
+          quel muro lo vedrai di fronte. <strong>I lati</strong> invece non la toccano: allargano
+          o stringono l’inquadratura seguendo la fuga. Le misure restano valide comunque.
         </p>
       </div>
       <div
         className="pano-tela"
         ref={box}
         onPointerMove={(e) => {
-          if (preso === null || !quad) return;
+          if (!preso || !quad) return;
           const p = daSchermo(e);
-          setQuad(quad.map((q, i) => (i === preso ? p : q)) as [Punto, Punto, Punto, Punto]);
+          if (preso.cosa === 'angolo') setQuad(quadConVertice(quad, preso.i, p));
+          else {
+            // il lato scivola seguendo la fuga: la prospettiva non si tocca
+            const nuovo = quadConLato(quad, preso.i as Lato, p);
+            if (nuovo) setQuad(nuovo);
+          }
         }}
         onPointerUp={() => setPreso(null)}
         onPointerCancel={() => setPreso(null)}
@@ -579,15 +680,33 @@ function Ritaglio({
             </svg>
             {quad.map((p, i) => (
               <div
-                key={i}
-                className={`pano-maniglia${preso === i ? ' presa' : ''}`}
+                key={`a${i}`}
+                className={`pano-maniglia${
+                  preso?.cosa === 'angolo' && preso.i === i ? ' presa' : ''
+                }`}
                 style={{
                   left: p.x * vista.scala + vista.x,
                   top: p.y * vista.scala + vista.y
                 }}
                 onPointerDown={(e) => {
                   (e.target as HTMLElement).setPointerCapture(e.pointerId);
-                  setPreso(i);
+                  setPreso({ cosa: 'angolo', i });
+                }}
+              />
+            ))}
+            {(maniglieDeiLatiQuad(quad) ?? []).map((p, i) => (
+              <div
+                key={`l${i}`}
+                className={`pano-maniglia lato${i % 2 === 0 ? ' orizzontale' : ' verticale'}${
+                  preso?.cosa === 'lato' && preso.i === i ? ' presa' : ''
+                }`}
+                style={{
+                  left: p.x * vista.scala + vista.x,
+                  top: p.y * vista.scala + vista.y
+                }}
+                onPointerDown={(e) => {
+                  (e.target as HTMLElement).setPointerCapture(e.pointerId);
+                  setPreso({ cosa: 'lato', i });
                 }}
               />
             ))}

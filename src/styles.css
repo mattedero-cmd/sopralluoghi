@@ -3990,3 +3990,65 @@ a {
   background: rgba(47, 129, 247, 0.65);
   cursor: grabbing;
 }
+
+/* le maniglie dei LATI: schiacciate nel verso in cui si muovono, così si
+   distinguono a colpo d'occhio da quelle degli angoli — che sono le uniche a
+   cambiare la prospettiva */
+.pano-maniglia.lato {
+  border-radius: 999px;
+  border-color: var(--ok);
+  background: rgba(52, 199, 89, 0.3);
+}
+.pano-maniglia.lato.presa { background: rgba(52, 199, 89, 0.65); }
+.pano-maniglia.lato.orizzontale {
+  width: 54px;
+  height: 26px;
+  margin: -13px 0 0 -27px;
+}
+.pano-maniglia.lato.verticale {
+  width: 26px;
+  height: 54px;
+  margin: -27px 0 0 -13px;
+}
+
+/* la fila degli obiettivi, come sull'app fotocamera del telefono */
+.pano-obiettivi {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  padding: 5px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+}
+.pano-obiettivo {
+  min-width: 44px;
+  height: 40px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.pano-obiettivo.attivo {
+  background: rgba(255, 255, 255, 0.92);
+  color: #111;
+}
+.pano-obiettivo:disabled { opacity: 0.45; }
+.pano-obiettivi-bloccati {
+  position: absolute;
+  left: 50%;
+  bottom: 62px;
+  transform: translateX(-50%);
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.75);
+  background: rgba(0, 0, 0, 0.5);
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
