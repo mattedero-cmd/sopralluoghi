@@ -205,7 +205,19 @@ type GruppoStrumenti = {
   id: string;
   icona: NomeIcona;
   testo: string;
-  voci: Array<{ s: Strumento; icona: NomeIcona; testo: string }>;
+  voci: Array<{
+    s: Strumento;
+    icona: NomeIcona;
+    testo: string;
+    /**
+     * Non uno strumento da posare ma un COMANDO da eseguire. La calibrazione
+     * si toglie da dove si mette: cercarla altrove non viene in mente a
+     * nessuno, e infatti stava sepolta nelle note della foto.
+     */
+    comando?: 'togliPiano' | 'togliScala';
+    /** la voce si mostra solo se questa condizione è vera */
+    seCe?: 'piano' | 'scala';
+  }>;
 };
 
 /**
@@ -268,7 +280,21 @@ const GRUPPI_STRUMENTI_QUOTATURE: GruppoStrumenti[] = [
       { s: 'riferimento', icona: 'riferimento', testo: 'Riferimento auto' },
       { s: 'calibra', icona: 'righello', testo: 'Scala (segmento)' },
       { s: 'piano', icona: 'piano', testo: 'Piano (prospettiva)' },
-      { s: 'pianoForme', icona: 'auto', testo: 'Piano dalle forme' }
+      { s: 'pianoForme', icona: 'auto', testo: 'Piano dalle forme' },
+      {
+        s: 'seleziona',
+        icona: 'cestino',
+        testo: 'Togli il piano',
+        comando: 'togliPiano',
+        seCe: 'piano'
+      },
+      {
+        s: 'seleziona',
+        icona: 'cestino',
+        testo: 'Togli la scala',
+        comando: 'togliScala',
+        seCe: 'scala'
+      }
     ]
   }
 ];
@@ -966,6 +992,31 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const rimuoviCensura = (idCensura: string) => {
     if (!foto) return;
     void salvaCensure((foto.censure ?? []).filter((c) => c.id !== idCensura));
+  };
+
+  /**
+   * TOGLIE IL PIANO PROSPETTICO, e con lui tutte le pareti: stanno insieme.
+   *
+   * Le misure calcolate dal piano tornano a essere quello che erano prima —
+   * senza calibrazione non c'è niente da calcolare — mentre le quote scritte
+   * a mano restano quelle. Sta nel menu dove il piano si crea: cercare il
+   * modo di toglierlo altrove non viene in mente a nessuno.
+   */
+  const togliPiano = async () => {
+    if (!foto?.piano) return;
+    await aggiornaFoto(foto.id, { piano: null, piani: [] });
+    ricalcolaConCalibrazione({ scala: foto.scala, piano: null, piani: [] });
+    setMostraGriglia(false);
+    setPianoAttivo(null);
+    mostraToast('successo', 'Piano prospettico rimosso.');
+  };
+
+  /** Toglie la scala (il segmento di misura nota). */
+  const togliScala = async () => {
+    if (!foto?.scala) return;
+    await aggiornaFoto(foto.id, { scala: null });
+    ricalcolaConCalibrazione({ scala: null, piano: foto.piano, piani: foto.piani });
+    mostraToast('successo', 'Scala rimossa.');
   };
 
   /** (ri)cerca i volti sulla foto corrente, conservando i riquadri manuali */
@@ -4660,12 +4711,28 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             if (!g) return null;
             return (
               <div className="pannello-strumenti" role="menu" aria-label={g.testo}>
-                {g.voci.map((v) => (
+                {g.voci
+                  .filter(
+                    (v) =>
+                      !v.seCe ||
+                      (v.seCe === 'piano' ? !!foto.piano : !!foto.scala)
+                  )
+                  .map((v) => (
                   <button
-                    key={v.s}
-                    className={`btn-strumento-grande${strumento === v.s ? ' attivo' : ''}`}
+                    key={v.comando ?? v.s}
+                    className={`btn-strumento-grande${
+                      !v.comando && strumento === v.s ? ' attivo' : ''
+                    }`}
                     onClick={() => {
                       setMenuAperto(null);
+                      if (v.comando === 'togliPiano') {
+                        void togliPiano();
+                        return;
+                      }
+                      if (v.comando === 'togliScala') {
+                        void togliScala();
+                        return;
+                      }
                       if (STRUMENTI_POSA_TECNICA.has(v.s)) {
                         // posa guidata sulla foto (no modale)
                         setPuntiTecnici([]);

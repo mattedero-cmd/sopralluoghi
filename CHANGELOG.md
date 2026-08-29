@@ -10,6 +10,23 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.49.4 — Il piano si toglie da dove si mette, e l'oscuramento si spiega
+
+- **«Togli il piano» adesso è nel menu «Scala e piano».** C'era già un modo per
+  rimuoverlo, ma stava sepolto nella scheda delle NOTE della foto: nessuno
+  cerca lì il modo di togliere una prospettiva, e infatti non si trovava. Ora
+  sta accanto ai comandi che il piano lo creano, e compare solo se un piano
+  c'è. Stesso trattamento per «Togli la scala».
+- **L'area sfumata era l'oscuramento automatico dei volti**, e l'app non lo
+  diceva. È una funzione di privacy accesa di serie: cerca i volti nelle foto
+  importate e li sfuma, e ogni tanto prende un abbaglio — in un bagno può
+  scambiare per faccia un sanitario. Adesso, quando succede, lo scrive:
+  «un'area è stata oscurata per privacy, toglila dall'editor col pulsante 👤».
+  Vale per le foto importate e per le panoramiche.
+- Il pulsante 👤 in alto (con il pallino verde quando ci sono aree oscurate)
+  apre la modalità Volti: da lì i riquadri si tolgono e si aggiungono. Chi non
+  vuole l'oscuramento automatico lo spegne in Impostazioni → Foto.
+
 ## 1.49.3 — Si aggancia molto più giù: dal 62% al 39% di sovrapposizione
 
 - **«Lo scatto 3 non si aggancia al 2» era un limite mio, non un errore tuo.**

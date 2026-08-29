@@ -228,7 +228,15 @@ export function ProgettoPage({ id }: { id: string }) {
       scala: null,
       sezioneId: sezioneTarget.current ?? undefined
     });
-    mostraToast('successo', 'Panoramica salvata nel progetto.');
+    const oscurati = dati.censure?.length ?? 0;
+    mostraToast(
+      'successo',
+      'Panoramica salvata nel progetto.' +
+        (oscurati > 0
+          ? ` ${oscurati === 1 ? 'Un’area è stata oscurata' : `${oscurati} aree sono state oscurate`}` +
+            ' per privacy: togli l’oscuramento dall’editor, col pulsante 👤.'
+          : '')
+    );
   };
 
   const acquisisci = async (files: FileList | null) => {
@@ -238,6 +246,9 @@ export function ProgettoPage({ id }: { id: string }) {
     // foto entrate SENZA che il rilevamento dei volti sia riuscito: vanno
     // segnalate, altrimenti si crederebbe che siano già a posto
     let senzaRilevamento = 0;
+    // quanti riquadri di oscuramento sono stati messi automaticamente: se non
+    // lo si dice, chi apre la foto trova una zona sfumata e non sa perché
+    let oscurati = 0;
     try {
       const { fotoLatoMax, censuraVoltiAuto, censuraVoltiPermanente } = await leggiImpostazioni();
       for (const file of Array.from(files)) {
@@ -254,6 +265,7 @@ export function ProgettoPage({ id }: { id: string }) {
             sezioneId: sezioneTarget.current ?? undefined
           });
           importate++;
+          oscurati += dati.censure?.length ?? 0;
           if (censuraVoltiAuto !== false && !dati.voltiCercati) senzaRilevamento++;
         } catch (e) {
           mostraToast(
@@ -264,6 +276,15 @@ export function ProgettoPage({ id }: { id: string }) {
       }
       if (importate > 0) {
         mostraToast('successo', importate === 1 ? 'Foto salvata.' : `${importate} foto salvate.`);
+      }
+      if (oscurati > 0) {
+        mostraToast(
+          'info',
+          (oscurati === 1
+            ? 'Un’area è stata oscurata automaticamente (privacy: possibile volto). '
+            : `${oscurati} aree sono state oscurate automaticamente (privacy: possibili volti). `) +
+            'Nell’editor, con il pulsante 👤, puoi toglierle o aggiungerne.'
+        );
       }
       if (senzaRilevamento > 0) {
         mostraToast(
