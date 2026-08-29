@@ -198,8 +198,8 @@ describe('due scatti si ricuciono', () => {
 
   it('con una rotazione di 12° il ricucito cade entro il pixel', () => {
     const { A, B, vera } = coppia(12);
-    const ca = caratteristiche(A, 700);
-    const cb = caratteristiche(B, 700);
+    const ca = caratteristiche(A);
+    const cb = caratteristiche(B);
     const coppie = abbina(ca, cb);
     const all = omografiaFraScatti(coppie);
     expect(all).toBeTruthy();
@@ -214,7 +214,7 @@ describe('due scatti si ricuciono', () => {
 
   it('regge anche con la macchina inclinata, non solo girata', () => {
     const { A, B, vera } = coppia(10, 6);
-    const all = omografiaFraScatti(abbina(caratteristiche(A, 700), caratteristiche(B, 700)));
+    const all = omografiaFraScatti(abbina(caratteristiche(A), caratteristiche(B)));
     expect(all).toBeTruthy();
     const s = scartoPixel(all!.H, vera);
     console.log(`10°+6°: scarto ${s.medio.toFixed(2)}/${s.massimo.toFixed(2)} px`);
@@ -227,7 +227,7 @@ describe('due scatti si ricuciono', () => {
     // non inventare una panoramica sfalsata di un mattone
     const A = rendi(scatto(0), scenaRipetitiva);
     const B = rendi(scatto((12 * Math.PI) / 180), scenaRipetitiva);
-    const all = omografiaFraScatti(abbina(caratteristiche(A, 700), caratteristiche(B, 700)));
+    const all = omografiaFraScatti(abbina(caratteristiche(A), caratteristiche(B)));
     const vera = veraFraScatti(scatto(0), scatto((12 * Math.PI) / 180));
     const buono = all !== null && allineamentoCredibile(all, W, H);
     if (buono) {
@@ -238,11 +238,42 @@ describe('due scatti si ricuciono', () => {
     console.log(`muro ripetitivo: ${buono ? 'cucito' : 'rifiutato'}`);
   });
 
+  /**
+   * FIN DOVE REGGE. Con f=500 su 640 px, ruotare di g gradi sposta l'immagine
+   * di f·tan(g): la sovrapposizione è 1 − f·tan(g)/640. Questa prova fissa il
+   * confine, che è stato conquistato a fatica: con 900 angoli e soglia 18 si
+   * cuciva fino al 62%, e al 51% usciva un'omografia sbagliata di 8,8 px.
+   */
+  const provaSovrapposizione = (gradi: number) => {
+    const { A, B, vera } = coppia(gradi);
+    const all = omografiaFraScatti(abbina(caratteristiche(A), caratteristiche(B)));
+    const ok = all !== null && allineamentoCredibile(all, W, H);
+    return { ok, scarto: all ? scartoPixel(all.H, vera).medio : Infinity };
+  };
+
+  it('cuce fino al 39% di sovrapposizione, e ci azzecca', () => {
+    for (const [gradi, sovrapposizione] of [
+      [8, '89%'],
+      [20, '72%'],
+      [32, '51%'],
+      [38, '39%']
+    ] as Array<[number, string]>) {
+      const r = provaSovrapposizione(gradi);
+      expect(r.ok, `sovrapposizione ${sovrapposizione}`).toBe(true);
+      expect(r.scarto, `sovrapposizione ${sovrapposizione}`).toBeLessThan(5);
+    }
+  });
+
+  it('sotto quel confine si rifiuta invece di cucire storto', () => {
+    // al 25% l'omografia esce sbagliata di dieci pixel: meglio dirlo
+    expect(provaSovrapposizione(44).ok).toBe(false);
+  });
+
   it('due scatti che non c’entrano niente NON vengono cuciti', () => {
     const A = rendi(scatto(0));
     // stessa facciata ma ruotata di 60°: non si sovrappongono più
     const B = rendi(scatto((60 * Math.PI) / 180));
-    const all = omografiaFraScatti(abbina(caratteristiche(A, 700), caratteristiche(B, 700)));
+    const all = omografiaFraScatti(abbina(caratteristiche(A), caratteristiche(B)));
     const buono = all !== null && allineamentoCredibile(all, W, H);
     console.log(`60°: ${all ? `${all.buone.length} coppie buone` : 'nessuna omografia'} → ${buono}`);
     expect(buono).toBe(false);
@@ -258,7 +289,7 @@ describe('una fila di scatti diventa una tela sola', () => {
   it('tre scatti si incatenano e i punti in comune cadono nello stesso posto', () => {
     const G = [scatto(gradi(-12)), scatto(0), scatto(gradi(12))];
     const immagini = G.map((g) => rendi(g));
-    const catena = catenaDiScatti(immagini, 900);
+    const catena = catenaDiScatti(immagini);
     expect(catena.rotturaA).toBeNull();
     expect(catena.legami).toHaveLength(2);
     const disp = disposizione(
@@ -294,7 +325,7 @@ describe('una fila di scatti diventa una tela sola', () => {
   it('la tela contiene tutti gli scatti, e comincia da zero', () => {
     const G = [scatto(gradi(-10)), scatto(0), scatto(gradi(10))];
     const immagini = G.map((g) => rendi(g));
-    const catena = catenaDiScatti(immagini, 900);
+    const catena = catenaDiScatti(immagini);
     const scatti = immagini.map((i) => ({ larghezza: i.w, altezza: i.h }));
     const disp = disposizione(scatti, catena.legami)!;
     let minX = Infinity;
@@ -326,7 +357,7 @@ describe('una fila di scatti diventa una tela sola', () => {
   it('lo scatto di mezzo resta quello non deformato', () => {
     const G = [scatto(gradi(-12)), scatto(0), scatto(gradi(12))];
     const immagini = G.map((g) => rendi(g));
-    const catena = catenaDiScatti(immagini, 900);
+    const catena = catenaDiScatti(immagini);
     const disp = disposizione(
       immagini.map((i) => ({ larghezza: i.w, altezza: i.h })),
       catena.legami
@@ -340,7 +371,7 @@ describe('una fila di scatti diventa una tela sola', () => {
 
   it('se due scatti non si agganciano lo dice, invece di inventare', () => {
     const immagini = [scatto(0), scatto(gradi(55))].map((g) => rendi(g));
-    const catena = catenaDiScatti(immagini, 700);
+    const catena = catenaDiScatti(immagini);
     expect(catena.rotturaA).toBe(1);
     expect(disposizione(immagini.map((i) => ({ larghezza: i.w, altezza: i.h })), catena.legami)).toBeNull();
   });

@@ -284,8 +284,24 @@ export function descrittore(img: Grigia, x: number, y: number, angolo: number): 
   return firma;
 }
 
+/**
+ * QUANTI ANGOLI CERCARE, e con che soglia.
+ *
+ * Non sono numeri di gusto: sono misurati. Con 900 angoli e soglia 18, due
+ * scatti sovrapposti al 51% davano un'omografia sbagliata di 8,8 px e al 39%
+ * di 35 px — cioè inservibili. Con 2000 angoli e soglia 10 gli stessi due
+ * scatti danno 2,8 px e 4,4 px. Non era la ricerca a essere debole: era che
+ * le davo pochi punti su cui lavorare.
+ */
+const ANGOLI = 2000;
+const SOGLIA_ANGOLI = 10;
+
 /** Angoli scelti, orientati e descritti: tutto quello che serve per abbinare. */
-export function caratteristiche(img: Grigia, quante = 900, soglia = 18): Caratteristica[] {
+export function caratteristiche(
+  img: Grigia,
+  quante = ANGOLI,
+  soglia = SOGLIA_ANGOLI
+): Caratteristica[] {
   const morbida = ammorbidita(img);
   const angoli = selezionati(angoliFast(morbida, soglia), img.w, img.h, quante);
   return angoli.map((a) => {
@@ -324,29 +340,20 @@ export function abbina(
   distanzaMax = 90
 ): Coppia[] {
   if (A.length === 0 || B.length === 0) return [];
-  const migliorePerB = new Int32Array(B.length).fill(-1);
-  const distanzaPerB = new Int32Array(B.length).fill(999);
-  B.forEach((_, j) => {
-    let primo = 999;
-    let quale = -1;
-    A.forEach((a, i) => {
-      const d = distanzaHamming(a.firma, B[j].firma);
-      if (d < primo) {
-        primo = d;
-        quale = i;
-      }
-    });
-    migliorePerB[j] = quale;
-    distanzaPerB[j] = primo;
-  });
-
+  // UNA PASSATA SOLA. Confrontare tutti con tutti costa nA×nB, ed è il conto
+  // più pesante di tutto il cucito: farlo due volte — una per trovare il
+  // migliore di A, una per quello di B — vuol dire pagarlo doppio. Si tiene
+  // invece traccia di tutti e due mentre si scorre.
+  const primoB = new Int32Array(B.length).fill(999);
+  const qualeB = new Int32Array(B.length).fill(-1);
   const coppie: Coppia[] = [];
+  const grezze: Array<{ i: number; j: number; d: number }> = [];
   A.forEach((a, i) => {
     let primo = 999;
     let secondo = 999;
     let quale = -1;
-    B.forEach((b, j) => {
-      const d = distanzaHamming(a.firma, b.firma);
+    for (let j = 0; j < B.length; j++) {
+      const d = distanzaHamming(a.firma, B[j].firma);
       if (d < primo) {
         secondo = primo;
         primo = d;
@@ -354,12 +361,27 @@ export function abbina(
       } else if (d < secondo) {
         secondo = d;
       }
-    });
+      if (d < primoB[j]) {
+        primoB[j] = d;
+        qualeB[j] = i;
+      }
+    }
     if (quale < 0 || primo > distanzaMax) return;
-    if (primo > rapporto * secondo) return; // troppo simile al secondo: si scarta
-    if (migliorePerB[quale] !== i) return; // l'accordo dev'essere reciproco
-    coppie.push({ a: { x: a.x, y: a.y }, b: { x: B[quale].x, y: B[quale].y }, distanza: primo });
+    // PROVA DEL RAPPORTO: su un muro di mattoni tutti gli angoli si
+    // somigliano, e un abbinamento «per un pelo» è quasi sempre sbagliato
+    if (primo > rapporto * secondo) return;
+    grezze.push({ i, j: quale, d: primo });
   });
+  for (const g of grezze) {
+    // e l'accordo dev'essere reciproco: il migliore di A deve avere come
+    // migliore proprio A
+    if (qualeB[g.j] !== g.i) continue;
+    coppie.push({
+      a: { x: A[g.i].x, y: A[g.i].y },
+      b: { x: B[g.j].x, y: B[g.j].y },
+      distanza: g.d
+    });
+  }
   return coppie;
 }
 
@@ -376,6 +398,41 @@ export interface Allineamento {
   proposte: number;
   /** errore medio di riproiezione sulle coppie buone, in pixel */
   errore: number;
+}
+
+/**
+ * UNA SIMILITUDINE DA DUE SOLE COPPIE: spostamento, rotazione e ingrandimento.
+ *
+ * Non è la trasformazione giusta fra due scatti — quella è un'omografia, che
+ * di gradi di libertà ne ha otto — ma è quella che serve per COMINCIARE, e il
+ * perché è aritmetica. RANSAC pesca a caso e spera che il campione sia tutto
+ * buono: se una coppia su otto è giusta, pescarne quattro giuste capita una
+ * volta su diecimila, e in duemila tentativi non capita mai. Pescarne DUE
+ * giuste capita una volta su settanta: in duemila tentativi capita trenta
+ * volte. Ecco perché sotto il 50% di sovrapposizione non trovava più niente.
+ *
+ * Trovato il primo accordo con due punti, i superstiti sono abbastanza per
+ * risolvere l'omografia vera.
+ */
+function similitudine(a: Coppia, b: Coppia): Omografia | null {
+  const dx = b.b.x - a.b.x;
+  const dy = b.b.y - a.b.y;
+  const Dx = b.a.x - a.a.x;
+  const Dy = b.a.y - a.a.y;
+  const den = dx * dx + dy * dy;
+  if (!(den > 1e-9)) return null;
+  // il numero complesso che porta il segmento sull'altro segmento
+  const c = (Dx * dx + Dy * dy) / den;
+  const s = (Dy * dx - Dx * dy) / den;
+  if (!Number.isFinite(c) || !Number.isFinite(s)) return null;
+  const scala = Math.hypot(c, s);
+  // un ingrandimento assurdo vuol dire che il campione era sbagliato
+  if (!(scala > 0.2) || !(scala < 5)) return null;
+  return [
+    c, -s, a.a.x - (c * a.b.x - s * a.b.y),
+    s, c, a.a.y - (s * a.b.x + c * a.b.y),
+    0, 0, 1
+  ];
 }
 
 /**
@@ -400,13 +457,37 @@ export function omografiaFraScatti(
   };
   let migliori: Coppia[] = [];
   const r = caso(7919);
-  for (let t = 0; t < tentativi; t++) {
+  const pesca = (quante: number): Coppia[] => {
     const scelte: Coppia[] = [];
     let guardia = 0;
-    while (scelte.length < 4 && guardia++ < 60) {
+    while (scelte.length < quante && guardia++ < 60) {
       const c = coppie[Math.floor(r() * coppie.length)];
       if (!scelte.includes(c)) scelte.push(c);
     }
+    return scelte;
+  };
+
+  // PRIMO GIRO, con la similitudine a due punti e la soglia larga: qui non si
+  // cerca la trasformazione giusta, si cerca QUALI COPPIE sono buone
+  const largo = soglia * 3;
+  // due punti bastano a beccare un campione buono molto prima di quattro: un
+  // terzo dei tentativi è già abbondante
+  for (let t = 0; t < tentativi / 3; t++) {
+    const scelte = pesca(2);
+    if (scelte.length < 2) continue;
+    const S = similitudine(scelte[0], scelte[1]);
+    if (!S) continue;
+    const buone = coppie.filter((c) => {
+      const p = applicaOmografia(S, c.b);
+      return Math.hypot(p.x - c.a.x, p.y - c.a.y) <= largo;
+    });
+    if (buone.length > migliori.length) migliori = buone;
+  }
+
+  // SECONDO GIRO, con l'omografia a quattro punti: se i due scatti sono in
+  // buona sovrapposizione trova di più e meglio della similitudine
+  for (let t = 0; t < tentativi; t++) {
+    const scelte = pesca(4);
     if (scelte.length < 4) continue;
     let H: Omografia;
     try {
@@ -425,7 +506,7 @@ export function omografiaFraScatti(
       if (migliori.length > coppie.length * 0.85) break;
     }
   }
-  if (migliori.length < 12) return null;
+  if (migliori.length < 8) return null;
 
   // raffinamento su tutti i superstiti, e una seconda passata con la soglia
   // stretta: la prima omografia ne recupera altri che stavano appena fuori
@@ -434,9 +515,9 @@ export function omografiaFraScatti(
     migliori.map((c) => c.a)
   );
   if (!H) return null;
-  for (let giro = 0; giro < 2; giro++) {
+  for (let giro = 0; giro < 4; giro++) {
     const dentroOra = coppie.filter((c) => dentro(H!, c));
-    if (dentroOra.length < 12) break;
+    if (dentroOra.length < 8) break;
     const rifatta = omografiaAiMinimiQuadrati(
       dentroOra.map((c) => c.b),
       dentroOra.map((c) => c.a)
@@ -474,6 +555,16 @@ export function allineamentoCredibile(
   if (a.buone.length < 20) return false;
   if (a.buone.length < a.proposte * 0.12) return false;
   if (!(a.errore < 4)) return false;
+  // E DEVONO ESSERE SPARSI. Venti punti tutti in un angolo si spiegano con
+  // mille omografie diverse: quella che si sceglie è giusta là e sbagliata
+  // dappertutto altrove, e l'errore di riproiezione — misurato su quei venti
+  // punti — resta piccolo e non lo dice.
+  const cx = a.buone.reduce((s, c) => s + c.b.x, 0) / a.buone.length;
+  const cy = a.buone.reduce((s, c) => s + c.b.y, 0) / a.buone.length;
+  const sparsi = Math.sqrt(
+    a.buone.reduce((s, c) => s + (c.b.x - cx) ** 2 + (c.b.y - cy) ** 2, 0) / a.buone.length
+  );
+  if (sparsi < 0.08 * Math.hypot(larghezzaB, altezzaB)) return false;
   const riquadro = [
     { x: 0, y: 0 },
     { x: larghezzaB, y: 0 },
@@ -621,10 +712,11 @@ export interface EsitoCatena {
   rotturaA: number | null;
 }
 
+
 export function catenaDiScatti(
   immagini: Grigia[],
-  quante = 1200,
-  soglia = 18
+  quante = ANGOLI,
+  soglia = SOGLIA_ANGOLI
 ): EsitoCatena {
   const legami: Omografia[] = [];
   const allineamenti: Allineamento[] = [];

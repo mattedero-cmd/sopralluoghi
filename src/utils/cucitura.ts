@@ -501,9 +501,11 @@ export async function cuciPanoramica(
     const catena = catenaDiScatti(ridotte.map((r) => r.grigia));
     if (catena.rotturaA !== null) {
       throw new CucituraFallita(
-        `Lo scatto ${catena.rotturaA + 1} non si aggancia al precedente: ` +
-          'serve almeno un terzo di sovrapposizione fra uno scatto e il successivo, ' +
-          'ripresi girando sul posto senza spostarsi.'
+        `Lo scatto ${catena.rotturaA + 1} non si aggancia al ${catena.rotturaA}. ` +
+          `Con «Ancora» fai uno scatto a metà strada fra i due, poi rimettilo in fila. ` +
+          'Serve più di un terzo di sovrapposizione, e bisogna girare sul posto: ' +
+          'spostandosi di lato le cose vicine e quelle lontane scorrono in modo diverso, ' +
+          'e nessuna prospettiva può rimetterle d’accordo.'
       );
     }
 

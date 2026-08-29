@@ -10,6 +10,35 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.49.3 — Si aggancia molto più giù: dal 62% al 39% di sovrapposizione
+
+- **«Lo scatto 3 non si aggancia al 2» era un limite mio, non un errore tuo.**
+  Misurato al calare della sovrapposizione fra due scatti: si cuciva fino al
+  62%, e sotto no. Al 51% l'app trovava un'omografia sbagliata di 8,8 px e la
+  rifiutava (giustamente); al 39% sbagliava di 35 px.
+- **La causa non era l'algoritmo: gli davo pochi punti.** Portando gli angoli
+  cercati da 900 a 2000 e abbassando la soglia da 18 a 10, gli stessi due
+  scatti al 51% passano a 2,8 px e al 39% a 4,4. Adesso si cuce **fino al 39%
+  di sovrapposizione**, e al 25% si rifiuta ancora — perché lì l'omografia
+  esce davvero sbagliata di dieci pixel, e cucire storto è peggio che non
+  cucire.
+- E non costa di più: l'abbinamento confronta tutti con tutti, ed è il conto
+  più pesante del cucito. Lo facevo **due volte** — una per trovare il
+  migliore di qua, una per quello di là. Adesso una volta sola, e i punti in
+  più stanno nel tempo che c'era.
+- **Una ricerca a due punti prima di quella a quattro.** RANSAC pesca a caso e
+  spera che il campione sia tutto buono: con una coppia giusta su otto,
+  pescarne quattro giuste capita una volta su diecimila. Pescarne due, una su
+  settanta. Si comincia allora con una similitudine da due sole coppie, che
+  serve solo a capire QUALI coppie sono buone, e sui superstiti si risolve
+  l'omografia vera.
+- **E si controlla che i punti d'accordo siano sparsi.** Venti punti tutti in
+  un angolo si spiegano con mille omografie diverse: quella scelta è giusta lì
+  e sbagliata dappertutto altrove, e l'errore di riproiezione — misurato su
+  quei venti punti — resta piccolo e non lo dice.
+- Quando una giunzione non si aggancia, adesso l'app dice anche cosa fare:
+  scattare a metà strada fra i due e rimetterlo in fila.
+
 ## 1.49.2 — Il teleobiettivo dice il suo ingrandimento vero
 
 - **«2×» era una bugia.** Sul 16 Pro il teleobiettivo è 5×, su altri modelli
