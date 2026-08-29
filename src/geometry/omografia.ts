@@ -182,8 +182,8 @@ function normalizzaPunti(
   };
 }
 
-/** prodotto di due matrici 3×3 in ordine di riga */
-function prodotto(A: number[], B: number[]): number[] {
+/** prodotto di due matrici 3×3 in ordine di riga: incatena due omografie */
+export function prodotto(A: number[], B: number[]): number[] {
   const C = new Array(9).fill(0);
   for (let r = 0; r < 3; r++) {
     for (let c = 0; c < 3; c++) {

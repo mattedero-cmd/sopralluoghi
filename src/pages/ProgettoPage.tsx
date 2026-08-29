@@ -25,6 +25,7 @@ import type { Sezione } from '../db/types';
 import type { OpzioniReport } from '../pdf/report';
 import { SelettoreCliente } from './ClientiPage';
 import { fotoIllegibile, importaFoto } from '../utils/image';
+import { cuciPanoramica, CucituraFallita } from '../utils/cucitura';
 import { naviga } from '../router';
 import {
   ConfermaDialog,
@@ -119,6 +120,11 @@ export function ProgettoPage({ id }: { id: string }) {
   const [assegnaFoto, setAssegnaFoto] = useState<Foto | null>(null);
   const inputCamera = useRef<HTMLInputElement>(null);
   const inputGalleria = useRef<HTMLInputElement>(null);
+  const inputPanoramica = useRef<HTMLInputElement>(null);
+  /** avanzamento del cucito: null = nessuna panoramica in corso */
+  const [panoramica, setPanoramica] = useState<{ quota: number; cosa: string } | null>(null);
+  /** scheda con le istruzioni di ripresa, prima di scegliere gli scatti */
+  const [spiegaPanoramica, setSpiegaPanoramica] = useState(false);
   /** sezione di destinazione delle prossime foto importate (null = nessuna) */
   const sezioneTarget = useRef<string | null>(null);
 
@@ -137,6 +143,61 @@ export function ProgettoPage({ id }: { id: string }) {
       </div>
     );
   }
+
+  /**
+   * PANORAMICA DA PIÙ SCATTI.
+   *
+   * Gli scatti vanno scelti IN ORDINE, da un capo all'altro, e ripresi girando
+   * sul posto: è l'unico modo in cui una sola prospettiva può tenerli insieme.
+   * Il cucito è piano, non cilindrico, così la foto che ne esce si misura
+   * esattamente come una foto normale.
+   */
+  const cuci = async (files: FileList | null) => {
+    if (!files || files.length < 2) {
+      mostraToast('info', 'Scegli almeno due scatti, in ordine da un capo all’altro.');
+      return;
+    }
+    setPanoramica({ quota: 0, cosa: 'Apro gli scatti' });
+    try {
+      const { fotoLatoMax, censuraVoltiAuto, censuraVoltiPermanente } = await leggiImpostazioni();
+      const esito = await cuciPanoramica(Array.from(files), {
+        // una panoramica ha senso se è più definita di uno scatto solo: il
+        // limite delle foto normali qui si può raddoppiare
+        latoMax: Math.min(6000, fotoLatoMax * 2),
+        avanzamento: (quota, cosa) => setPanoramica({ quota, cosa })
+      });
+      setPanoramica({ quota: 0.98, cosa: 'Salvo' });
+      const dati = await importaFoto(esito.blob, Math.min(6000, fotoLatoMax * 2), {
+        censuraVolti: censuraVoltiAuto !== false,
+        incorporaCensure: censuraVoltiAuto !== false && censuraVoltiPermanente === true
+      });
+      await aggiungiFoto(id, {
+        ...dati,
+        didascalia: `Panoramica di ${esito.scatti} scatti`,
+        noteDato: '',
+        scala: null,
+        sezioneId: sezioneTarget.current ?? undefined
+      });
+      const peggiore = Math.max(...esito.errori);
+      mostraToast(
+        'successo',
+        `Panoramica di ${esito.scatti} scatti, ${esito.larghezza}×${esito.altezza} px. ` +
+          `Giunzioni entro ${peggiore.toFixed(1)} px.`
+      );
+    } catch (e) {
+      mostraToast(
+        'errore',
+        e instanceof CucituraFallita
+          ? e.message
+          : e instanceof Error
+            ? e.message
+            : 'Panoramica non riuscita.'
+      );
+    } finally {
+      setPanoramica(null);
+      if (inputPanoramica.current) inputPanoramica.current.value = '';
+    }
+  };
 
   const acquisisci = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -642,6 +703,16 @@ export function ProgettoPage({ id }: { id: string }) {
           <button className="btn" disabled={importInCorso} onClick={() => aggiungiA(null, 'galleria')}>
             <Icona nome="immagine" dimensione={20} /> Galleria
           </button>
+          <button
+            className="btn"
+            disabled={panoramica !== null || importInCorso}
+            onClick={() => {
+              sezioneTarget.current = null;
+              setSpiegaPanoramica(true);
+            }}
+          >
+            <Icona nome="immagine" dimensione={20} /> Panoramica
+          </button>
           <button className="btn" onClick={() => setSezioneInModifica('nuova')}>
             <Icona nome="cartella-piu" dimensione={20} /> Nuova sezione
           </button>
@@ -696,6 +767,82 @@ export function ProgettoPage({ id }: { id: string }) {
           hidden
           onChange={(e) => void acquisisci(e.target.files)}
         />
+        <input
+          ref={inputPanoramica}
+          type="file"
+          accept="image/*"
+          multiple
+          hidden
+          onChange={(e) => void cuci(e.target.files)}
+        />
+
+        {spiegaPanoramica && (
+          <div className="velo centro" onClick={() => setSpiegaPanoramica(false)}>
+            <div className="modale" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+              <h2>Panoramica da più scatti</h2>
+              <p className="aiuto">
+                Una vetrina lunga non ci sta in uno scatto: o si va lontano — e allora il
+                serramento è quattro pixel e le misure non si prendono più — o si fanno più
+                scatti e si rimettono insieme. La panoramica che ne esce si misura come una
+                foto normale: quote, piano prospettico, pannellizzazione, tutto.
+              </p>
+              <h3 style={{ margin: '14px 0 6px', fontSize: 15 }}>Come scattare</h3>
+              <ul className="aiuto" style={{ paddingLeft: 18, margin: 0, lineHeight: 1.6 }}>
+                <li>
+                  <strong>Gira sui piedi, non camminare.</strong> Il telefono deve ruotare
+                  restando fermo nello stesso punto: se ti sposti di lato, quello che è vicino e
+                  quello che è lontano scorrono in modo diverso e le giunzioni sdoppiano.
+                </li>
+                <li>
+                  <strong>Sovrapponi almeno un terzo</strong> fra uno scatto e il successivo.
+                </li>
+                <li>
+                  <strong>Scegli gli scatti in ordine</strong>, da un capo all’altro. Da due a
+                  otto.
+                </li>
+                <li>
+                  <strong>Non usare la modalità panorama del telefono.</strong> Quella proietta
+                  su un cilindro: le righe dritte si incurvano ed è bellissima da vedere, ma su
+                  un’immagine così non esiste nessuna prospettiva che riporti il muro in piano —
+                  e le misure verrebbero sbagliate senza dirlo.
+                </li>
+              </ul>
+              <div className="riga-pulsanti" style={{ marginTop: 16 }}>
+                <button
+                  className="btn primario"
+                  onClick={() => {
+                    setSpiegaPanoramica(false);
+                    inputPanoramica.current?.click();
+                  }}
+                >
+                  <Icona nome="immagine" dimensione={18} /> Scegli gli scatti
+                </button>
+                <button className="btn" onClick={() => setSpiegaPanoramica(false)}>
+                  Annulla
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {panoramica && (
+          <div className="velo centro">
+            <div className="modale" style={{ maxWidth: 420 }}>
+              <h2>Cucio la panoramica</h2>
+              <p className="aiuto">{panoramica.cosa}…</p>
+              <div className="barra-avanzamento">
+                <div
+                  className="riempimento"
+                  style={{ width: `${Math.round(panoramica.quota * 100)}%` }}
+                />
+              </div>
+              <p className="aiuto">
+                Gli scatti vengono riproiettati sul piano di uno di essi: le righe restano dritte
+                e la panoramica si misura come una foto normale.
+              </p>
+            </div>
+          </div>
+        )}
 
         <h2>Foto ({fotoReali.length})</h2>
         {fotoReali.length === 0 && sezioni.length === 0 ? (

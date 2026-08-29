@@ -10,6 +10,38 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.47.0 — Panoramiche da più scatti
+
+- **Una vetrina lunga adesso ci sta in una foto sola.** «Panoramica» nel
+  progetto: si scelgono da due a otto scatti in ordine, e l'app li rimette
+  insieme. Il serramento resta grande sullo schermo, e le misure si prendono
+  come sempre.
+- **Il cucito è PIANO, non cilindrico, ed è la ragione per cui esiste.** La
+  modalità panorama del telefono proietta su un cilindro: le righe dritte si
+  incurvano, è bellissima da guardare e inutilizzabile per misurare, perché su
+  un'immagine così non esiste nessuna prospettiva che riporti il muro in piano
+  — e tutta la calibrazione dell'app si regge su quella. Qui invece ogni scatto
+  viene riproiettato sul piano di uno di essi: il risultato è ancora l'immagine
+  che avrebbe fatto una macchina fotografica sola, con un sensore più largo.
+  Quote, piano prospettico, spigoli fra pareti, pannellizzazione: tutto
+  funziona sulla panoramica come su una foto normale.
+- **Come lavora.** Cerca gli angoli marcati in ogni scatto (FAST), li descrive
+  con 256 confronti di luminosità girati secondo l'orientamento del punto,
+  abbina quelli che si somigliano scartando gli abbinamenti dubbi, e trova a
+  tentativi la prospettiva che ne mette d'accordo il maggior numero. Misurato
+  su una facciata di prova: giunzioni entro **0,6 px** su una panoramica di
+  2319×1287 da tre scatti, cucita in 15 secondi.
+- **Le differenze di luce si fondono.** Il telefono cambia esposizione fra uno
+  scatto e l'altro; i bordi che si toccano vengono sfumati, e il gradino
+  sparisce (provato con 12% di differenza fra gli scatti).
+- **Se non riesce, lo dice.** Due scatti che non si sovrappongono abbastanza
+  non vengono cuciti a caso: l'app dice quale scatto non si aggancia. Un muro
+  perfettamente ripetitivo — mattoni tutti uguali, senza grana — viene
+  rifiutato invece di produrre una panoramica sfalsata di un mattone.
+- **Va scattata girando sui piedi**, senza spostarsi di lato, con almeno un
+  terzo di sovrapposizione: la scheda che si apre prima di scegliere gli scatti
+  lo spiega, e spiega anche perché.
+
 ## 1.46.1 — Nella lente solo la croce, non la freccia
 
 - **La misura che stai puntando non si disegna più dentro la lente.** La sua
