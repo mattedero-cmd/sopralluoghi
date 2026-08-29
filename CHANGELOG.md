@@ -10,6 +10,26 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.51.0 — Torna la proiezione in griglia, e adesso vale per ogni piano
+
+- **«Proietta in griglia» è tornata, dentro la scheda della parete**: 1×1 ·
+  3×3 · 5×5 · 7×7 · 9×9. Il piano si estende ATTORNO al riferimento tenendo la
+  stessa identica prospettiva — la cella di partenza resta il metro di tutto —
+  e la vista si allarga da sola sulla griglia intera.
+- **Serve a due cose, tutte e due importanti.** Su un muro piastrellato o a
+  corsi di mattoni si vede subito se le celle continuano a cadere sui giunti:
+  se dopo tre file scappano, la prospettiva è sbagliata, e lo si vede a occhio
+  senza misurare niente. E gli angoli del piano proiettato sono LONTANI dal
+  riferimento, dove un grado di errore vale centimetri: tirandoli si aggiusta
+  la prospettiva molto più fine che con i quattro angoli del riferimento,
+  tutti vicini fra loro.
+- **Prima si poteva fare solo dentro la procedura del «Riferimento auto»**, e
+  solo prima di salvare il piano: da un piano già creato — a mano, o ricavato
+  dalle forme — non ci si arrivava più. Adesso si proietta qualunque piano, in
+  qualunque momento, e si torna a 1×1 quando si vuole.
+- La proiezione non tocca la prospettiva: c'è una prova che misura le stesse
+  due distanze prima e dopo, a 3×3, 5×5 e 7×7, e le vuole identiche.
+
 ## 1.50.0 — La parete si prende in mano, e da lì si fa tutto
 
 - **Via il pulsante dal menu.** Toccando una parete sulla foto la si prende in

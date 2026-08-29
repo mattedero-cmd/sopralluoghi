@@ -63,7 +63,7 @@ import {
   pannelliDellaForma
 } from '../geometry/formaQuadrilatera';
 import { normalizzaPannellizzazione } from '../geometry/pannelli';
-import { pianiAgganciati } from '../geometry/pianoModifica';
+import { pianiAgganciati, pianoProiettato } from '../geometry/pianoModifica';
 import { calcolaCatene, sommaCatenaInUnita } from '../geometry/catene';
 import {
   angoloGradi,
@@ -1047,6 +1047,36 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       rimaste.length === 0
         ? 'Piano prospettico rimosso.'
         : `Parete rimossa: ne restano ${rimaste.length}.`
+    );
+  };
+
+  /**
+   * PROIETTA LA PARETE IN UNA GRIGLIA N×N attorno al riferimento.
+   *
+   * Non cambia la prospettiva: cambia quanto piano si guarda. Serve a vedere
+   * se il pattern del muro continua a tornare cella dopo cella, e a poter
+   * tirare angoli LONTANI — dove un grado di errore vale centimetri, e quindi
+   * si corregge fine.
+   */
+  const proiettaParete = async (n: number) => {
+    const tutte = pareti();
+    if (pianoAttivo == null || !tutte[pianoAttivo]) return;
+    const nuovo = pianoProiettato(tutte[pianoAttivo], n);
+    if (!nuovo) {
+      mostraToast('errore', 'Questo piano non si può proiettare.');
+      return;
+    }
+    await scriviPareti(tutte.map((p, i) => (i === pianoAttivo ? nuovo : p)));
+    setMostraGriglia(true);
+    // la scheda si chiude e la vista si allarga sulla griglia: gli angoli da
+    // tirare sono i suoi, e servono a poco se restano fuori dallo schermo
+    setSchedaParete(false);
+    setInquadraCalib(boxDiPunti(nuovo.punti));
+    mostraToast(
+      'info',
+      n === 1
+        ? 'Piano riportato al riferimento.'
+        : `Piano proiettato ${n}×${n}: controlla che le celle cadano sui giunti, e tira gli angoli lontani per aggiustare la prospettiva.`
     );
   };
 
@@ -5217,6 +5247,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           onSalva={(m) => void salvaSchedaPiano(m)}
           onElimina={() => void eliminaPianoAttivo()}
           onAltraParete={(i) => setPianoAttivo(i)}
+          onProietta={(n) => void proiettaParete(n)}
         />
       )}
       {schedaFormatoPers && (
@@ -9721,7 +9752,8 @@ function SchedaParete({
   onChiudi,
   onSalva,
   onElimina,
-  onAltraParete
+  onAltraParete,
+  onProietta
 }: {
   piano: PianoProspettiva;
   quante: number;
@@ -9732,6 +9764,8 @@ function SchedaParete({
   /** passa a un'altra parete: su un muro coperto di forme non ci sarebbe
    *  dove toccare per prenderla, e da qui si arriva a tutte */
   onAltraParete: (indice: number) => void;
+  /** proietta il piano in una griglia N×N attorno al riferimento */
+  onProietta: (celle: number) => void;
 }) {
   const [nome, setNome] = useState(piano.nome ?? '');
   /** le misure si scrivono come si leggono: un decimale, non quindici */
@@ -9739,7 +9773,7 @@ function SchedaParete({
   const [testoL, setTestoL] = useState(scritta(piano.larghezzaReale));
   const [testoA, setTestoA] = useState(scritta(piano.altezzaReale));
   const [unita, setUnita] = useState<Unita>(piano.unita);
-  const [celle, setCelle] = useState(piano.celle ?? 1);
+  const celle = piano.celle ?? 1;
   const larghezza = analizzaMisura(testoL);
   const altezza = analizzaMisura(testoA);
   const valido = larghezza !== null && larghezza > 0 && altezza !== null && altezza > 0;
@@ -9823,17 +9857,28 @@ function SchedaParete({
       </div>
 
       <div className="campo">
-        <label>Suddivisioni della griglia di verifica: {celle}</label>
-        <input
-          type="range"
-          min={1}
-          max={12}
-          step={1}
-          value={celle}
-          onChange={(e) => setCelle(Number(e.target.value))}
-        />
+        <label>Proietta in griglia attorno al riferimento</label>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {[1, 3, 5, 7, 9].map((n) => (
+            <button
+              key={n}
+              className={`btn${n === celle ? ' primario' : ''}`}
+              onClick={() => onProietta(n)}
+            >
+              {n === 1 ? '1×1' : `${n}×${n}`}
+            </button>
+          ))}
+        </div>
         <p className="aiuto">
-          Più fitta è la griglia, più è facile vedere se la prospettiva segue davvero il muro.
+          Estende il piano attorno al riferimento tenendo la stessa prospettiva. Su un muro
+          piastrellato o a corsi di mattoni si vede subito se le celle continuano a cadere sui
+          giunti: se dopo tre file scappano, la prospettiva è sbagliata. E gli angoli del piano
+          proiettato sono lontani, dove un grado di errore vale centimetri: tirandoli si aggiusta
+          la prospettiva molto più fine che con i quattro angoli del riferimento, tutti vicini.
+        </p>
+        <p className="aiuto">
+          Cella: {formattaNumero(larghezza && celle ? larghezza / celle : 0)} ×{' '}
+          {formattaNumero(altezza && celle ? altezza / celle : 0)} {unita}
         </p>
       </div>
 
@@ -9846,8 +9891,7 @@ function SchedaParete({
               nome: nome.trim() || undefined,
               larghezzaReale: larghezza!,
               altezzaReale: altezza!,
-              unita,
-              celle
+              unita
             })
           }
         >

@@ -373,6 +373,62 @@ function trattoCondiviso(
 }
 
 /**
+ * IL PIANO PROIETTATO IN UNA GRIGLIA N×N ATTORNO A SÉ.
+ *
+ * Un piano nasce da un riferimento piccolo: una piastrella, un foglio A4, un
+ * pannello. Su quel riquadro la prospettiva è quella che è — e un errore di
+ * mezzo grado, lì dentro, non si vede. Lo si vede LONTANO: proiettando il
+ * riferimento in una griglia di tre, cinque, sette celle per lato si copre
+ * mezza parete, e allora due cose diventano evidenti insieme.
+ *
+ * La prima: se il muro è piastrellato o a corsi di mattoni, le celle della
+ * griglia devono cadere sui giunti veri. Se dopo tre file scappano, la
+ * prospettiva è sbagliata, e si vede a occhio senza misurare niente.
+ *
+ * La seconda: gli angoli del piano proiettato sono LONTANI dal riferimento, e
+ * un grado di errore là si traduce in centimetri di scarto. Tirarli è il modo
+ * più fine che ci sia per aggiustare la prospettiva: si corregge molto con un
+ * movimento piccolo, invece di litigare con quattro angoli tutti vicini.
+ *
+ * La proiezione NON tocca la prospettiva: cambia solo quanto piano si guarda.
+ * La cella di partenza resta quella, e resta il metro di tutto.
+ */
+export function pianoProiettato(piano: PianoProspettiva, celle: number): PianoProspettiva | null {
+  const n = Math.max(1, Math.round(celle));
+  const c = Math.max(1, Math.round(piano.celle ?? 1));
+  if (!(piano.larghezzaReale > 0) || !(piano.altezzaReale > 0)) return null;
+  const cellaL = piano.larghezzaReale / c;
+  const cellaA = piano.altezzaReale / c;
+  let H;
+  try {
+    H = omografiaPiano(piano);
+  } catch {
+    return null;
+  }
+  const Hinv = invertiOmografia(H);
+  if (!Hinv) return null;
+  // la griglia cresce ATTORNO al riferimento, restando centrata dov'era
+  const x0 = piano.larghezzaReale / 2 - (n * cellaL) / 2;
+  const y0 = piano.altezzaReale / 2 - (n * cellaA) / 2;
+  const x1 = x0 + n * cellaL;
+  const y1 = y0 + n * cellaA;
+  const angoli = [
+    { x: x0, y: y0 },
+    { x: x1, y: y0 },
+    { x: x1, y: y1 },
+    { x: x0, y: y1 }
+  ].map((q) => applicaOmografia(Hinv, q));
+  if (angoli.some((q) => !Number.isFinite(q.x) || !Number.isFinite(q.y))) return null;
+  return {
+    ...piano,
+    punti: angoli as [Punto, Punto, Punto, Punto],
+    larghezzaReale: n * cellaL,
+    altezzaReale: n * cellaA,
+    celle: n
+  };
+}
+
+/**
  * I VERTICI DI GIUNZIONE: gli angoli che due pareti hanno in comune.
  *
  * Dopo l'aggancio i riquadri si toccano sullo spigolo, e là due angoli — uno
