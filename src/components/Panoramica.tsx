@@ -60,44 +60,106 @@ export interface Obiettivo {
 export async function obiettiviPosteriori(): Promise<Obiettivo[]> {
   if (!navigator.mediaDevices?.enumerateDevices) return [];
   const tutti = await navigator.mediaDevices.enumerateDevices().catch(() => []);
-  const video = tutti.filter((d) => d.kind === 'videoinput' && d.label);
-  const davanti = /front|frontale|anteriore|face|selfie/i;
-  const dietro = video.filter((d) => !davanti.test(d.label));
-  const scelti = (dietro.length > 0 ? dietro : video).map((d) => {
-    const l = d.label.toLowerCase();
-    if (/ultra/.test(l)) return { d, segno: '0,5×', ordine: 0 };
-    if (/tele/.test(l)) return { d, segno: '2×', ordine: 2 };
-    return { d, segno: '1×', ordine: 1 };
-  });
-  // un solo obiettivo non è una scelta: non si mostra la fila
-  if (scelti.length < 2) return [];
-  return scelti
-    .sort((a, b) => a.ordine - b.ordine)
-    .map((x) => ({
-      deviceId: x.d.deviceId,
-      etichetta: x.d.label,
-      segno: x.segno,
-      ordine: x.ordine
-    }));
+  return scegliObiettivi(tutti.filter((d) => d.kind === 'videoinput' && d.label));
 }
+
+/**
+ * UNO PER OBIETTIVO VERO, non uno per voce dell'elenco.
+ *
+ * Il telefono non elenca le sue tre fotocamere: elenca anche le fotocamere
+ * FINTE che le combinano — «posteriore», «posteriore doppia», «posteriore
+ * tripla» — e sono tutte grandangolo. Prenderle per buone riempie la fila di
+ * 1× identici e inutili (visto: 0,5× 1× 1× 1× 1× 2×). Si raggruppa allora per
+ * ruolo, e di ogni ruolo si tiene UNA voce sola, preferendo l'obiettivo
+ * fisico a quello composito.
+ *
+ * E il numerino del teleobiettivo non si inventa: sul 16 Pro è 5×, su altri
+ * 2× o 3×, e il sistema non lo dice. Scriverci «2×» sarebbe una bugia
+ * comoda — si scrive «Tele».
+ */
+export function scegliObiettivi(
+  dispositivi: Array<{ deviceId: string; label: string }>
+): Obiettivo[] {
+  const davanti = /front|frontale|anteriore|face|selfie/i;
+  const dietro = dispositivi.filter((d) => !davanti.test(d.label));
+  const lista = dietro.length > 0 ? dietro : dispositivi;
+  /** le fotocamere finte che ne combinano due o tre */
+  const composita = /dual|triple|doppia|tripla|dual wide/i;
+
+  const ruoli: Array<{ segno: string; ordine: number; quale: RegExp }> = [
+    { segno: '0,5×', ordine: 0, quale: /ultra/i },
+    { segno: 'Tele', ordine: 2, quale: /tele/i }
+  ];
+  const fuori: Obiettivo[] = [];
+  const presi = new Set<string>();
+  for (const r of ruoli) {
+    const candidati = lista.filter((d) => r.quale.test(d.label));
+    if (candidati.length === 0) continue;
+    const scelto = candidati.find((d) => !composita.test(d.label)) ?? candidati[0];
+    presi.add(scelto.deviceId);
+    fuori.push({ deviceId: scelto.deviceId, etichetta: scelto.label, segno: r.segno, ordine: r.ordine });
+  }
+  // IL GRANDANGOLO: tutto quello che resta, e qui la scelta conta. La voce
+  // generica («Fotocamera posteriore», «Back Camera») è la fotocamera VIRTUALE
+  // che cambia obiettivo da sola secondo la luce e la distanza: in una
+  // panoramica cambierebbe focale fra uno scatto e l'altro senza dire niente.
+  // Si preferisce quindi il grandangolo dichiarato, poi qualunque voce non
+  // composita, e solo per ultimo la generica.
+  const resto = lista.filter((d) => !presi.has(d.deviceId) && !/ultra|tele/i.test(d.label));
+  const voto = (d: { label: string }) => {
+    const fisico = /grandangolo|wide/i.test(d.label) && !composita.test(d.label);
+    if (fisico) return 0;
+    return composita.test(d.label) ? 2 : 1;
+  };
+  const grande = [...resto].sort((a, b) => voto(a) - voto(b))[0];
+  if (grande) {
+    fuori.push({ deviceId: grande.deviceId, etichetta: grande.label, segno: '1×', ordine: 1 });
+  }
+  // un obiettivo solo non è una scelta: non si mostra la fila
+  if (fuori.length < 2) return [];
+  return fuori.sort((a, b) => a.ordine - b.ordine);
+}
+
+/**
+ * La definizione con cui si APRE la fotocamera. Non è il massimo apposta:
+ * chiedere dodici megapixel nell'istante in cui la fotocamera si accende è
+ * il momento peggiore per farlo, e su iPhone la scheda si chiude. Il massimo
+ * si chiede DOPO, a flusso avviato, con `allaMassimaDefinizione`.
+ */
+const APERTURA = 1920;
+/** e questo è il massimo che si prova a ottenere, a preview già in piedi */
+const MASSIMO = 4096;
 
 export function chiediFotocamera(deviceId?: string): Promise<MediaStream> {
   if (!navigator.mediaDevices?.getUserMedia) {
     return Promise.reject(new Error('senza-fotocamera'));
   }
-  // si chiede il massimo che la fotocamera sa dare: una panoramica serve a
-  // vedere PIÙ dettaglio, non meno, e partire da un video sgranato
-  // vanificherebbe tutto
+  const misura = { width: { ideal: APERTURA }, height: { ideal: APERTURA } };
   return navigator.mediaDevices.getUserMedia({
     video: deviceId
-      ? { deviceId: { exact: deviceId }, width: { ideal: 4096 }, height: { ideal: 3072 } }
-      : {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 4096 },
-          height: { ideal: 3072 }
-        },
+      ? { deviceId: { exact: deviceId }, ...misura }
+      : { facingMode: { ideal: 'environment' }, ...misura },
     audio: false
   });
+}
+
+/**
+ * ALZA LA DEFINIZIONE a flusso già avviato.
+ *
+ * Una panoramica serve a vedere PIÙ dettaglio, non meno: la definizione piena
+ * la vogliamo. Ma chiederla all'accensione fa cadere Safari, quindi si accende
+ * piano e si alza dopo, quando la preview è già in piedi. Se il telefono non
+ * la dà, si resta con quella d'apertura e si scrive quanto si è ottenuto: è
+ * un numero che chi misura ha il diritto di sapere.
+ */
+export async function allaMassimaDefinizione(flusso: MediaStream): Promise<void> {
+  const t = flusso.getVideoTracks()[0];
+  if (!t?.applyConstraints) return;
+  try {
+    await t.applyConstraints({ width: { ideal: MASSIMO }, height: { ideal: MASSIMO } });
+  } catch {
+    // il telefono non sale più di così: va benissimo lo stesso
+  }
 }
 
 /** Il perché di un rifiuto, detto in modo che si possa rimediare. */
@@ -263,6 +325,12 @@ function Fotocamera({
   const [attivo, setAttivo] = useState<string | null>(null);
   const galleria = useRef<HTMLInputElement>(null);
 
+  const mostraMisura = (s: MediaStream) => {
+    const g = s.getVideoTracks()[0]?.getSettings();
+    if (g?.width && g?.height) setMisura(`${g.width}×${g.height}`);
+    if (g?.deviceId) setAttivo(g.deviceId);
+  };
+
   const attacca = async (s: MediaStream) => {
     for (const t of flusso.current?.getTracks() ?? []) t.stop();
     flusso.current = s;
@@ -270,14 +338,15 @@ function Fotocamera({
       video.current.srcObject = s;
       await video.current.play().catch(() => {});
     }
-    const t = s.getVideoTracks()[0];
-    const g = t?.getSettings();
-    if (g?.width && g?.height) setMisura(`${g.width}×${g.height}`);
-    if (g?.deviceId) setAttivo(g.deviceId);
+    mostraMisura(s);
     setErrore(null);
     setPronta(true);
     // i nomi degli obiettivi il sistema li dà solo dopo il permesso
     setObiettivi(await obiettiviPosteriori());
+    // e solo adesso, con la preview già in piedi, si chiede la definizione
+    // piena: chiederla all'accensione fa cadere la scheda su iPhone
+    await allaMassimaDefinizione(s);
+    if (flusso.current === s) mostraMisura(s);
   };
 
   /**

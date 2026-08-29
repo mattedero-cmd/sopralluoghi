@@ -46,6 +46,13 @@ import { condividiSelezione, type Selezionato } from '../utils/condivisione';
 import { formattaData } from '../utils/format';
 import { PannelloOpzioniPdf } from '../components/OpzioniPdf';
 
+/**
+ * Il segno che l'ambiente della panoramica era aperto quando la pagina è
+ * ripartita. Sta in `sessionStorage` e non nel database apposta: vale per
+ * questa sessione e basta, e non deve sopravvivere alla chiusura dell'app.
+ */
+const SEGNO_PANORAMICA = 'panoramica-aperta-su';
+
 export function ProgettoPage({ id }: { id: string }) {
   const progetto = useLiveQuery(() => db.progetti.get(id), [id]);
   const foto = useLiveQuery(
@@ -135,6 +142,26 @@ export function ProgettoPage({ id }: { id: string }) {
   /** sezione di destinazione delle prossime foto importate (null = nessuna) */
   const sezioneTarget = useRef<string | null>(null);
 
+  /** ripartiti dopo un ricaricamento: si riapre da soli, una volta sola */
+  useEffect(() => {
+    let segno: string | null = null;
+    try {
+      segno = sessionStorage.getItem(SEGNO_PANORAMICA);
+      // si toglie subito: se anche la riapertura facesse ricaricare, la
+      // seconda volta non si riprova e non si entra in un ciclo
+      if (segno) sessionStorage.removeItem(SEGNO_PANORAMICA);
+    } catch {
+      segno = null;
+    }
+    if (segno === id) {
+      const richiesta = chiediFotocamera();
+      richiesta.catch(() => {});
+      setPanoramicaAperta({ richiesta });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+
   if (progetto === undefined || foto === undefined) {
     return <div className="app" />;
   }
@@ -156,6 +183,38 @@ export function ProgettoPage({ id }: { id: string }) {
    * degli scatti, cucito, ritaglio — e qui non resta che salvarla. Gli scatti
    * scartati non passano mai da questa pagina: non entrano nell'archivio.
    */
+  /**
+   * APRE L'AMBIENTE DELLA PANORAMICA, e lascia detto che era aperto.
+   *
+   * La prima volta che si concede il permesso della fotocamera, iOS può
+   * ricaricare la pagina: in un'app aggiunta alla schermata Home sembra che
+   * sia andata in crash, e ci si ritrova sull'elenco delle foto. Non si può
+   * impedire, ma si può fare in modo che non costi niente: si lascia un
+   * segno, e alla ripartenza l'ambiente si riapre da solo. Una volta sola —
+   * se si ripartisse in continuazione sarebbe un ciclo, e sarebbe peggio.
+   */
+  const apriPanoramica = () => {
+    try {
+      sessionStorage.setItem(SEGNO_PANORAMICA, id);
+    } catch {
+      // niente sessionStorage (navigazione privata): pazienza, si va avanti
+    }
+    const richiesta = chiediFotocamera();
+    // il rifiuto lo racconta l'ambiente: qui si evita solo che diventi un
+    // errore non gestito
+    richiesta.catch(() => {});
+    setPanoramicaAperta({ richiesta });
+  };
+
+  const chiudiPanoramica = () => {
+    try {
+      sessionStorage.removeItem(SEGNO_PANORAMICA);
+    } catch {
+      /* vedi sopra */
+    }
+    setPanoramicaAperta(null);
+  };
+
   const salvaPanoramica = async (blob: Blob, scatti: number) => {
     const { fotoLatoMax, censuraVoltiAuto, censuraVoltiPermanente } = await leggiImpostazioni();
     const dati = await importaFoto(blob, Math.min(6000, fotoLatoMax * 2), {
@@ -681,11 +740,7 @@ export function ProgettoPage({ id }: { id: string }) {
             disabled={importInCorso}
             onClick={() => {
               sezioneTarget.current = null;
-              const richiesta = chiediFotocamera();
-              // il rifiuto lo racconta l'ambiente: qui si evita solo che
-              // diventi un errore non gestito
-              richiesta.catch(() => {});
-              setPanoramicaAperta({ richiesta });
+              apriPanoramica();
             }}
           >
             <Icona nome="immagine" dimensione={20} /> Panoramica
@@ -750,7 +805,7 @@ export function ProgettoPage({ id }: { id: string }) {
             onFatta={async (blob, scatti) => {
               await salvaPanoramica(blob, scatti);
             }}
-            onChiudi={() => setPanoramicaAperta(null)}
+            onChiudi={chiudiPanoramica}
           />
         )}
 

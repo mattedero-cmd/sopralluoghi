@@ -10,6 +10,32 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.49.1 — Un obiettivo per obiettivo, e la fotocamera si accende piano
+
+- **Basta 1× ripetuti.** Il telefono non elenca le sue tre fotocamere: elenca
+  anche quelle FINTE che le combinano — «posteriore», «posteriore doppia»,
+  «posteriore tripla» — e sono tutte grandangolo. Prenderle per buone riempiva
+  la fila di numeri identici e inutili: 0,5× 1× 1× 1× 1× 2×. Adesso si
+  raggruppa per ruolo e di ogni ruolo resta una voce sola: **0,5× · 1× ·
+  Tele**.
+- **E per il 1× si prende l'obiettivo FISICO, non la fotocamera automatica.**
+  La voce generica («Fotocamera posteriore») è la fotocamera virtuale che
+  cambia obiettivo da sola secondo luce e distanza: in una panoramica
+  cambierebbe focale fra uno scatto e l'altro senza dire niente, e i pezzi non
+  avrebbero più la stessa scala.
+- **Il teleobiettivo si chiama «Tele», non «2×».** Sul 16 Pro è 5×, su altri
+  modelli 2× o 3×, e il sistema non lo dice: scriverci un numero sarebbe una
+  bugia comoda.
+- **La fotocamera si accende a definizione moderata e sale dopo.** Chiedere
+  dodici megapixel nell'istante in cui la fotocamera si accende è il momento
+  peggiore per farlo. Adesso si apre a 1920, e appena la preview è in piedi si
+  chiede il massimo: la definizione finale resta scritta in basso.
+- **E se la pagina riparte, l'ambiente si riapre da solo.** La prima volta che
+  si concede il permesso, iOS può ricaricare la pagina — in un'app sulla
+  schermata Home sembra un crash. Non si può impedire, ma adesso non costa il
+  gesto: alla ripartenza la panoramica si riapre. Una volta sola, per non
+  rischiare un ciclo.
+
 ## 1.49.0 — Scegli l'obiettivo, e sposta i lati del ritaglio
 
 - **La fila degli obiettivi sul mirino**, come sull'app fotocamera del
