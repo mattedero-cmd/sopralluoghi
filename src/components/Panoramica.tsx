@@ -9,7 +9,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Icona } from './Icona';
-import { cuciPanoramica, CucituraFallita, raddrizza, riquadroPieno } from '../utils/cucitura';
+import { sovrapposizioneFra, cuciPanoramica, CucituraFallita, raddrizza, riquadroPieno } from '../utils/cucitura';
 import type { Punto } from '../db/types';
 import {
   maniglieDeiLatiQuad,
@@ -19,6 +19,15 @@ import {
   type Quad
 } from '../geometry/ritaglio';
 import { mostraToast } from '../state/toast';
+
+/** il colore dell'avviso: verde se si sta larghi, rosso se non si aggancia */
+function classeDellaPresa(p: { quanta: number | null; attesa: boolean }): string {
+  if (p.attesa) return 'attesa';
+  if (p.quanta === null) return 'male';
+  if (p.quanta < 0.45) return 'male';
+  if (p.quanta < 0.6) return 'cosi';
+  return 'bene';
+}
 
 interface Presa {
   blob: Blob;
@@ -382,6 +391,8 @@ function Fotocamera({
   /** il teleobiettivo di cui non si sa ancora l'ingrandimento */
   const [chiediTele, setChiediTele] = useState<string | null>(null);
   const galleria = useRef<HTMLInputElement>(null);
+  /** quanto l'ultimo scatto si sovrappone al precedente: si guarda subito */
+  const [presa, setPresa] = useState<{ quanta: number | null; attesa: boolean } | null>(null);
 
   const mostraMisura = (s: MediaStream) => {
     const g = s.getVideoTracks()[0]?.getSettings();
@@ -485,6 +496,7 @@ function Fotocamera({
       ctx.drawImage(v, 0, 0);
       const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/jpeg', 0.94));
       if (!blob) return;
+      const prima = prese[prese.length - 1];
       onScatto({
         blob,
         url: URL.createObjectURL(blob),
@@ -492,6 +504,15 @@ function Fotocamera({
         altezza: canvas.height,
         tenuta: true
       });
+      // SI GUARDA SUBITO se questo scatto si aggancia al precedente, e quanto.
+      // Dopo, a casa, non si può più rimediare: qui basta rifarlo mezzo passo
+      // indietro. Il conto gira per conto suo e non blocca l'otturatore.
+      if (prima) {
+        setPresa({ quanta: null, attesa: true });
+        void sovrapposizioneFra(prima.blob, blob)
+          .then((q) => setPresa({ quanta: q, attesa: false }))
+          .catch(() => setPresa(null));
+      }
     } finally {
       setTimeout(() => setScattando(false), 250);
     }
@@ -574,6 +595,19 @@ function Fotocamera({
             L’obiettivo si sceglie prima del primo scatto
           </div>
         )}
+        {presa && (
+          <div className={`pano-presa ${classeDellaPresa(presa)}`}>
+            {presa.attesa
+              ? 'Controllo la sovrapposizione…'
+              : presa.quanta === null
+                ? 'Questo scatto NON si aggancia al precedente: rifallo più vicino.'
+                : presa.quanta < 0.45
+                  ? `Poca sovrapposizione (${Math.round(presa.quanta * 100)}%): torna indietro di mezzo passo.`
+                  : presa.quanta < 0.6
+                    ? `Sovrapposizione ${Math.round(presa.quanta * 100)}%: stringi il passo, su una fila lunga si vede.`
+                    : `Buona sovrapposizione (${Math.round(presa.quanta * 100)}%).`}
+          </div>
+        )}
       </div>
 
       <input
@@ -594,8 +628,9 @@ function Fotocamera({
       <div className="pano-striscia">
         {prese.length === 0 ? (
           <span className="aiuto">
-            Gira sui piedi senza spostarti, sovrapponendo almeno un terzo fra uno scatto e il
-            successivo.
+            Sovrapponi almeno DUE TERZI fra uno scatto e il successivo: è quello che tiene
+            dritta una fila lunga. Davanti a una facciata piatta puoi camminare di lato; se
+            invece inquadri roba vicina e roba lontana insieme, gira sui piedi senza spostarti.
           </span>
         ) : (
           prese.map((p, i) => (

@@ -22,15 +22,29 @@ import {
 } from '../geometry/omografia';
 import type { Punto } from '../db/types';
 import {
-  catenaDiScatti,
-  disposizione,
+  abbina,
+  allineamentoCredibile,
+  caratteristiche,
   inGrigio,
+  omografiaFraScatti,
+  reteDiScatti,
+  telaDaVerso,
+  versoDallaRete,
   type Grigia,
   type Scatto
 } from '../geometry/panoramica';
 
 /** lato massimo su cui si cercano gli angoli: oltre è tempo buttato */
 const LATO_RICERCA = 1400;
+/**
+ * QUANTI SCATTI PER UNA PANORAMICA.
+ *
+ * Erano otto, e il numero non veniva dalla geometria: veniva dalla memoria,
+ * perché si tenevano tutte le foto aperte insieme. Adesso se ne apre una per
+ * volta, e il tetto lo mette il tempo — ogni scatto in più costa due
+ * abbinamenti — non il telefono che chiude la scheda.
+ */
+const SCATTI_MAX = 24;
 /** quanti pixel può avere al massimo la tela finale */
 const PIXEL_MAX = 20_000_000;
 /** la griglia parte di qui e si infittisce finché serve */
@@ -479,83 +493,167 @@ export interface OpzioniCucitura {
  * destra: basta che siano in fila), e ogni scatto deve sovrapporsi al
  * precedente di almeno un terzo.
  */
+/**
+ * QUANTO SI SOVRAPPONGONO DUE SCATTI, subito dopo averli fatti.
+ *
+ * La misura sul banco è netta: con venti scatti sovrapposti a metà la
+ * panoramica deriva di ottanta pixel all'estremità, sovrapposti a due terzi
+ * di quindici, a quattro quinti di pochissimo. La sovrapposizione è la leva
+ * che conta, molto più di qualunque raffinamento del conto — e l'unico
+ * momento in cui si può ancora fare qualcosa è mentre si è ancora lì, con il
+ * telefono in mano.
+ *
+ * Perciò si guarda subito, appena scattato. Si lavora su copie piccole e con
+ * pochi angoli: non serve l'omografia buona, serve sapere se c'è abbastanza
+ * roba in comune, e questo si vede anche in fretta.
+ *
+ * Torna quanta parte della LARGHEZZA dello scatto precedente si rivede in
+ * quello nuovo — che è poi la sovrapposizione, quella che si governa col
+ * passo. Non l'area: il cielo e l'asfalto non danno punti, e su una facciata
+ * bassa e larga l'area direbbe «poca» anche quando si sta larghissimi.
+ *
+ * Le soglie vengono dal banco, non a occhio: dodici scatti sovrapposti al 55%
+ * derivano di 41 px, al 67% di 10, all'81% di meno di 2.
+ */
+export async function sovrapposizioneFra(
+  precedente: Blob,
+  nuovo: Blob
+): Promise<number | null> {
+  const apri = async (b: Blob) => {
+    const bmp = await createImageBitmap(b);
+    try {
+      const f = Math.min(1, 760 / Math.max(bmp.width, bmp.height));
+      const w = Math.max(1, Math.round(bmp.width * f));
+      const h = Math.max(1, Math.round(bmp.height * f));
+      const c = document.createElement('canvas');
+      c.width = w;
+      c.height = h;
+      const g = c.getContext('2d', { willReadFrequently: true });
+      if (!g) return null;
+      g.drawImage(bmp, 0, 0, w, h);
+      return inGrigio(g.getImageData(0, 0, w, h).data, w, h);
+    } finally {
+      bmp.close?.();
+    }
+  };
+  const a = await apri(precedente);
+  const b = await apri(nuovo);
+  if (!a || !b) return null;
+  const fa = caratteristiche(a, 500, 12);
+  const fb = caratteristiche(b, 500, 12);
+  const all = omografiaFraScatti(abbina(fa, fb));
+  if (!all || !allineamentoCredibile(all, b.w, b.h)) return null;
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  for (const c of all.buone) {
+    x0 = Math.min(x0, c.a.x);
+    x1 = Math.max(x1, c.a.x);
+  }
+  return Math.max(0, Math.min(1, (x1 - x0) / a.w));
+}
+
 export async function cuciPanoramica(
   file: Array<File | Blob>,
   opzioni: OpzioniCucitura = {}
 ): Promise<EsitoCucitura> {
   const avanti = opzioni.avanzamento ?? (() => {});
   if (file.length < 2) throw new CucituraFallita('Servono almeno due scatti.');
-  if (file.length > 8) throw new CucituraFallita('Al massimo otto scatti per panoramica.');
+  if (file.length > SCATTI_MAX)
+    throw new CucituraFallita(`Al massimo ${SCATTI_MAX} scatti per panoramica.`);
 
+  const apri = (f: File | Blob) => createImageBitmap(f instanceof Blob ? f : new Blob([f]));
+
+  // PRIMA PASSATA: uno scatto per volta.
+  //
+  // Prima si aprivano tutte le foto insieme e si tenevano aperte fino alla
+  // fine. Con otto scatti da dodici megapixel sono già trecento megabyte di
+  // memoria viva, e il telefono chiude la scheda senza dire niente: era quello
+  // il vero motivo del tetto di otto, non l'algoritmo. Qui ogni scatto si
+  // apre, lascia la sua copia RIDOTTA per la ricerca — un millesimo del peso —
+  // e si richiude subito. Alla cucitura si riapre uno per volta.
   avanti(0.05, 'Apro gli scatti');
-  const bitmap: ImageBitmap[] = [];
-  try {
-    for (const f of file) {
-      bitmap.push(await createImageBitmap(f instanceof Blob ? f : new Blob([f])));
+  const ridotte: Array<{ grigia: Grigia; fattore: number }> = [];
+  const scatti: Array<{ larghezza: number; altezza: number }> = [];
+  for (let i = 0; i < file.length; i++) {
+    const b = await apri(file[i]);
+    try {
+      scatti.push({ larghezza: b.width, altezza: b.height });
+      ridotte.push(perLaRicerca(b));
+    } finally {
+      b.close?.();
     }
-    const larghezze = bitmap.map((b) => b.width);
-    const altezze = bitmap.map((b) => b.height);
-
-    avanti(0.15, 'Cerco i punti in comune');
-    const ridotte = bitmap.map(perLaRicerca);
-    const catena = catenaDiScatti(ridotte.map((r) => r.grigia));
-    if (catena.rotturaA !== null) {
-      throw new CucituraFallita(
-        `Lo scatto ${catena.rotturaA + 1} non si aggancia al ${catena.rotturaA}. ` +
-          `Con «Ancora» fai uno scatto a metà strada fra i due, poi rimettilo in fila. ` +
-          'Serve più di un terzo di sovrapposizione, e bisogna girare sul posto: ' +
-          'spostandosi di lato le cose vicine e quelle lontane scorrono in modo diverso, ' +
-          'e nessuna prospettiva può rimetterle d’accordo.'
-      );
-    }
-
-    avanti(0.5, 'Metto in fila gli scatti');
-    // i legami sono stati trovati sulle immagini ridotte: si riportano alla
-    // scala piena prima di comporre la tela
-    // legami[i] porta lo scatto i+1 su quello i: sorgente i+1, destinazione i
-    const legami = catena.legami.map((H, i) =>
-      inScalaPiena(H, ridotte[i + 1].fattore, ridotte[i].fattore)
-    );
-    const scatti = bitmap.map((b) => ({ larghezza: b.width, altezza: b.height }));
-    const latoMax = opzioni.latoMax ?? 6000;
-    const disp = disposizione(scatti, legami, latoMax);
-    if (!disp) throw new CucituraFallita('Gli scatti non compongono una panoramica sensata.');
-    if (disp.larghezza * disp.altezza > PIXEL_MAX) {
-      const k = Math.sqrt(PIXEL_MAX / (disp.larghezza * disp.altezza));
-      const ridotto = disposizione(scatti, legami, Math.floor(latoMax * k));
-      if (!ridotto) throw new CucituraFallita('Panoramica troppo grande per questo dispositivo.');
-      Object.assign(disp, ridotto);
-    }
-
-    avanti(0.6, 'Cucio');
-    const tela = document.createElement('canvas');
-    tela.width = disp.larghezza;
-    tela.height = disp.altezza;
-    const ctx = tela.getContext('2d');
-    if (!ctx) throw new CucituraFallita('Il dispositivo non permette di elaborare le immagini.');
-    ctx.fillStyle = '#0b0d10';
-    ctx.fillRect(0, 0, tela.width, tela.height);
-    ctx.imageSmoothingQuality = 'high';
-    for (let i = 0; i < bitmap.length; i++) {
-      const sfumato = conBordoSfumato(bitmap[i], i > 0, i < bitmap.length - 1);
-      disegnaDeformata(ctx, sfumato, larghezze[i], altezze[i], disp.verso[i]);
-      avanti(0.6 + (0.35 * (i + 1)) / bitmap.length, 'Cucio');
-    }
-
-    avanti(0.97, 'Salvo');
-    const blob = await new Promise<Blob | null>((res) =>
-      tela.toBlob(res, 'image/jpeg', opzioni.qualita ?? 0.9)
-    );
-    if (!blob) throw new CucituraFallita('Non è stato possibile salvare la panoramica.');
-    return {
-      blob,
-      larghezza: tela.width,
-      altezza: tela.height,
-      copertura: mascheraCopertura(scatti, disp.verso, tela.width, tela.height),
-      errori: catena.allineamenti.map((a) => a.errore),
-      scatti: bitmap.length
-    };
-  } finally {
-    for (const b of bitmap) b.close?.();
+    avanti(0.05 + (0.1 * (i + 1)) / file.length, 'Apro gli scatti');
   }
+
+  avanti(0.15, 'Cerco i punti in comune');
+  const rete = reteDiScatti(ridotte.map((r) => r.grigia));
+  if (rete.rotturaA !== null) {
+    throw new CucituraFallita(
+      `Lo scatto ${rete.rotturaA + 1} non si aggancia a nessuno di quelli prima. ` +
+        `Con «Ancora» fai uno scatto a metà strada, poi rimettilo in fila. ` +
+        'Serve più di un terzo di sovrapposizione con lo scatto precedente. ' +
+        'Davanti a una facciata piatta ci si può spostare di lato camminando; ' +
+        'se invece nell’inquadratura c’è roba vicina e roba lontana insieme, ' +
+        'bisogna girare sul posto, perché spostandosi scorrono in modo diverso ' +
+        'e nessuna prospettiva può rimetterle d’accordo.'
+    );
+  }
+
+  avanti(0.45, 'Metto in fila gli scatti');
+  // la rete si risolve nelle coordinate RIDOTTE, dove stanno i punti trovati;
+  // poi ogni omografia si riporta alla scala piena del suo scatto
+  const versoRidotto = versoDallaRete(file.length, rete);
+  if (!versoRidotto) throw new CucituraFallita('Gli scatti non compongono una panoramica sensata.');
+  const verso = versoRidotto.map((h: Omografia, i: number) => {
+    const f = ridotte[i].fattore;
+    return prodotto(h, [f, 0, 0, 0, f, 0, 0, 0, 1]) as Omografia;
+  });
+
+  // una fila lunga merita una tela più lunga: con venti scatti su seimila
+  // pixel resterebbero trecento pixel di roba nuova per scatto, e su quelli
+  // non si misura niente. Il tetto vero resta quello dei pixel totali.
+  const latoMax = opzioni.latoMax ?? Math.min(16000, 4000 + 1000 * file.length);
+  const disp = telaDaVerso(scatti, verso, latoMax);
+  if (!disp) throw new CucituraFallita('Gli scatti non compongono una panoramica sensata.');
+  if (disp.larghezza * disp.altezza > PIXEL_MAX) {
+    const k = Math.sqrt(PIXEL_MAX / (disp.larghezza * disp.altezza));
+    const ridotto = telaDaVerso(scatti, verso, Math.floor(latoMax * k));
+    if (!ridotto) throw new CucituraFallita('Panoramica troppo grande per questo dispositivo.');
+    Object.assign(disp, ridotto);
+  }
+
+  avanti(0.5, 'Cucio');
+  const tela = document.createElement('canvas');
+  tela.width = disp.larghezza;
+  tela.height = disp.altezza;
+  const ctx = tela.getContext('2d');
+  if (!ctx) throw new CucituraFallita('Il dispositivo non permette di elaborare le immagini.');
+  ctx.fillStyle = '#0b0d10';
+  ctx.fillRect(0, 0, tela.width, tela.height);
+  ctx.imageSmoothingQuality = 'high';
+  // SECONDA PASSATA: si riapre uno scatto per volta, si disegna, si richiude
+  for (let i = 0; i < file.length; i++) {
+    const b = await apri(file[i]);
+    try {
+      const sfumato = conBordoSfumato(b, i > 0, i < file.length - 1);
+      disegnaDeformata(ctx, sfumato, b.width, b.height, disp.verso[i]);
+    } finally {
+      b.close?.();
+    }
+    avanti(0.5 + (0.45 * (i + 1)) / file.length, 'Cucio');
+  }
+
+  avanti(0.97, 'Salvo');
+  const blob = await new Promise<Blob | null>((res) =>
+    tela.toBlob(res, 'image/jpeg', opzioni.qualita ?? 0.9)
+  );
+  if (!blob) throw new CucituraFallita('Non è stato possibile salvare la panoramica.');
+  return {
+    blob,
+    larghezza: tela.width,
+    altezza: tela.height,
+    copertura: mascheraCopertura(scatti, disp.verso, tela.width, tela.height),
+    errori: rete.legami.map((l: { errore: number }) => l.errore),
+    scatti: file.length
+  };
 }

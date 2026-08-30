@@ -10,6 +10,54 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.53.0 — Panoramiche lunghe: fino a 24 scatti, e la sovrapposizione si controlla mentre si scatta
+
+- **Il tetto passa da 8 a 24 scatti.** Il numero non veniva dalla geometria:
+  veniva dalla memoria, perché si aprivano tutte le foto insieme e ci si
+  restava dentro fino alla fine — con otto scatti da dodici megapixel sono già
+  trecento megabyte, e il telefono chiude la scheda senza dire niente. Adesso
+  si apre uno scatto per volta: entra, lascia la sua copia ridotta per la
+  ricerca, e si richiude. Alla cucitura si riapre uno alla volta.
+
+- **E la tela si allunga con la fila.** Con venti scatti su seimila pixel
+  restavano trecento pixel di roba nuova per scatto, e su quelli non si misura
+  niente: il lato massimo adesso cresce col numero di scatti.
+
+- **SI PUÒ CAMMINARE davanti a una facciata piatta.** L'app diceva di girare
+  sui piedi senza spostarsi, ed era una mezza verità: vale quando
+  nell'inquadratura c'è roba vicina e roba lontana insieme. Davanti a un muro
+  PIATTO lo spostamento laterale è esatto, e le omografie si rimettono
+  d'accordo perfettamente. È il caso del capannone lungo ripreso da un cortile
+  stretto, dove indietro non si può andare e girando sui piedi si finirebbe a
+  inquadrare il muro di sbieco.
+
+- **La sovrapposizione si misura appena scattato, non a cucitura finita.** È
+  la cosa che conta di più, e la prova lo dice senza appello: dodici scatti
+  sovrapposti a metà derivano di 41 px all'estremità, gli stessi dodici
+  sovrapposti a due terzi di 10, a quattro quinti di meno di 2. Adesso dopo
+  ogni scatto compare un avviso — «Buona sovrapposizione (72%)», «60%: stringi
+  il passo», «40%: torna indietro di mezzo passo» — mentre si è ancora lì col
+  telefono in mano, che è l'unico momento in cui si può rimediare.
+
+- **Gli scatti si legano in rete, non più solo in catena.** Una catena non ha
+  ridondanza: ogni anello si fida solo del precedente, e il piccolo errore del
+  primo fa da leva su tutti quelli dopo — nella prova ogni anello sbagliava
+  meno di mezzo pixel e la fila arrivava lo stesso a 41. Adesso, quando la
+  sovrapposizione è larga, si aggancia anche lo scatto di DUE posti indietro:
+  quel legame chiude un triangolo, e un triangolo non si deforma senza che
+  qualcuno protesti. Poi tutte le omografie si rimettono d'accordo fra loro
+  invece di accodarsi.
+
+- **Ma un controvento si tiene solo se ha la presa larga**, ed è una cosa
+  imparata sbagliando: i legami fra scatti lontani hanno l'errore di
+  riproiezione più BASSO dei vicini — meno punti e più sparsi da accontentare —
+  eppure coprono un quinto di fotogramma invece di metà, e pesati su
+  quell'errore peggioravano la panoramica invece di raddrizzarla. Adesso
+  contano per quanto fotogramma tengono, e sotto un terzo non entrano. Il
+  tentativo stesso si fa solo dove può riuscire: abbinare due scatti è il
+  conto più caro di tutto il cucito, e pagarlo per un legame che non c'è
+  raddoppierebbe il tempo per niente.
+
 ## 1.52.0 — La stanza intera: tre pareti, il pavimento e il soffitto
 
 - **Cinque piani nella stessa foto, e stanno insieme.** Fino a ieri il modello

@@ -19,12 +19,21 @@
  * le righe restano dritte, i rapporti incrociati si conservano, e la foto
  * cucita si misura esattamente come una foto normale.
  *
- * IL PREZZO, che va detto: l'omografia lega due scatti solo se la macchina ha
- * RUOTATO sul posto. Se ci si sposta di lato, gli oggetti vicini e quelli
- * lontani scorrono in modo diverso (parallasse) e nessuna omografia può
- * rimetterli d'accordo: le giunzioni sdoppiano. E oltre i ~120° di campo
- * totale i bordi si stirano fino a diventare inservibili. Per una facciata
- * ripresa da fermo, girando sui piedi, è esattamente il caso buono.
+ * IL PREZZO, che va detto: l'omografia lega due scatti solo se quello che si
+ * inquadra sta su UN PIANO, oppure se la macchina ha soltanto ruotato sul
+ * posto. Sono due casi buoni, non uno — e il primo è quello del sopralluogo.
+ * Davanti a una facciata piatta ci si può SPOSTARE camminando, e le omografie
+ * restano esatte: è così che si riprende un capannone lungo da un cortile
+ * stretto, dove indietro non si può andare e girando sui piedi si finirebbe a
+ * inquadrare il muro di sbieco. Se invece nel campo c'è roba vicina e roba
+ * lontana insieme, spostandosi scorrono in modo diverso (parallasse) e le
+ * giunzioni sdoppiano: là bisogna girare sul posto, e oltre i ~120° di campo
+ * totale i bordi si stirano fino a diventare inservibili.
+ *
+ * L'ALTRO PREZZO, misurato: gli scatti si legano a due a due, e su una fila
+ * lunga i piccoli errori si sommano. La cura non è raffinare il conto — è
+ * SOVRAPPORSI DI PIÙ. Sul banco, dodici scatti sovrapposti a metà derivano di
+ * 41 px all'estremità; gli stessi dodici sovrapposti a due terzi, di 10.
  */
 
 import type { Punto } from '../db/types';
@@ -294,6 +303,16 @@ export function descrittore(img: Grigia, x: number, y: number, angolo: number): 
  * le davo pochi punti su cui lavorare.
  */
 const ANGOLI = 2000;
+/**
+ * QUANTO FOTOGRAMMA deve tenere un legame per fare da controvento.
+ *
+ * Sotto un terzo non serve: la sua omografia è ricavata da una fascia sottile
+ * e fuori di lì non regge. La misura sul banco lo dice chiaro — i legami fra
+ * scatti a due posti di distanza coprivano il 17-26% del fotogramma contro il
+ * 44-54% dei vicini, e messi nel conto con lo stesso peso peggioravano la
+ * panoramica invece di raddrizzarla.
+ */
+const SOGLIA_CONTROVENTO = 0.33;
 const SOGLIA_ANGOLI = 10;
 
 /** Angoli scelti, orientati e descritti: tutto quello che serve per abbinare. */
@@ -657,8 +676,24 @@ export function disposizione(
   for (let i = rif + 1; i < n; i++) {
     verso[i] = componiOmografie(verso[i - 1], legami[i - 1]);
   }
+  return telaDaVerso(scatti, verso, latoMax);
+}
 
-  // il riquadro che tiene tutto
+/**
+ * LA TELA CHE TIENE TUTTI GLI SCATTI, date le loro omografie.
+ *
+ * Si misura dove vanno a finire i quattro angoli di ognuno, si trasla perché
+ * la tela cominci da zero, e se il risultato sfora il limite si riduce tutto
+ * insieme. Da qui passano sia la catena che la rete: il modo di trovare le
+ * omografie cambia, il modo di posarle sulla tela no.
+ */
+export function telaDaVerso(
+  scatti: Scatto[],
+  verso: Omografia[],
+  latoMax = 8000
+): Disposizione | null {
+  const n = scatti.length;
+  if (n === 0 || verso.length !== n) return null;
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -730,4 +765,239 @@ export function catenaDiScatti(
     allineamenti.push(all);
   }
   return { legami, allineamenti, rotturaA: null };
+}
+
+/* ------------------------------------------------------------------ *
+ *  LA RETE DEGLI SCATTI, E L'AGGIUSTAMENTO D'INSIEME
+ * ------------------------------------------------------------------ */
+
+/** un legame trovato fra due scatti, con le coppie che lo reggono */
+export interface LegameScatti {
+  /** scatto di destinazione */
+  a: number;
+  /** scatto di origine: `H` porta i punti di b su quelli di a */
+  b: number;
+  H: Omografia;
+  coppie: Coppia[];
+  /** errore medio di riproiezione sulle coppie buone, in pixel */
+  errore: number;
+  /** quanta parte del fotogramma coprono le coppie buone (0..1) */
+  estensione: number;
+}
+
+export interface Rete {
+  legami: LegameScatti[];
+  /** il primo scatto che non si aggancia a nessuno di quelli prima */
+  rotturaA: number | null;
+}
+
+/**
+ * TUTTI I LEGAMI CHE SI RIESCE A TROVARE, non solo quelli fra vicini.
+ *
+ * Incatenare gli scatti a due a due va benissimo finché sono pochi. Su una
+ * fila lunga no, e il motivo non è che gli anelli siano deboli — nella prova
+ * ognuno sbaglia meno di mezzo pixel — ma che una catena non ha RIDONDANZA:
+ * ogni anello si fida solo del precedente, e il piccolo errore di rotazione
+ * del primo fa da leva su tutti quelli dopo. Nella misura, dodici scatti in
+ * fila arrivavano a 41 px di deriva all'estremità, con anelli da 0,4 px.
+ *
+ * La cura è dare alla fila dei controventi: se lo scatto 1 e lo scatto 3 si
+ * vedono ancora un po', quel legame chiude un triangolo, e un triangolo non
+ * si può deformare senza che qualcuno protesti. Per questo si prova ad
+ * agganciare anche gli scatti distanti fino a `salto` posti — quando non si
+ * sovrappongono abbastanza il legame semplicemente non si trova, e non costa
+ * altro che il tentativo.
+ *
+ * Lo scatto che non si aggancia a NESSUNO di quelli prima rompe la fila: è
+ * l'unico caso in cui non si può andare avanti, e va detto invece di cucire
+ * a caso.
+ */
+/**
+ * QUANTA PARTE DEL FOTOGRAMMA TENGONO le coppie di un legame.
+ *
+ * È la misura che conta per sapere quanto ci si può fidare di un'omografia, e
+ * non va confusa con l'errore di riproiezione. Un legame fra scatti lontani ha
+ * le sue coppie schiacciate in una striscia stretta: là dentro l'omografia le
+ * spiega benissimo — l'errore è anzi più BASSO di quello dei legami vicini,
+ * perché ha meno punti e più sparsi da accontentare — ma fuori dalla striscia
+ * non la regge nessuno, e otto gradi di libertà ricavati da una fascia larga
+ * un quinto di fotogramma sbandano appena si esce.
+ */
+export function estensioneCoppie(coppie: Coppia[], w: number, h: number): number {
+  if (coppie.length < 4) return 0;
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  let y0 = Infinity;
+  let y1 = -Infinity;
+  for (const c of coppie) {
+    x0 = Math.min(x0, c.a.x);
+    x1 = Math.max(x1, c.a.x);
+    y0 = Math.min(y0, c.a.y);
+    y1 = Math.max(y1, c.a.y);
+  }
+  return Math.max(0, Math.min(1, ((x1 - x0) / w) * ((y1 - y0) / h)));
+}
+
+export function reteDiScatti(
+  immagini: Grigia[],
+  salto = 2,
+  quante = ANGOLI,
+  soglia = SOGLIA_ANGOLI
+): Rete {
+  const legami: LegameScatti[] = [];
+  const firme = immagini.map((img) => caratteristiche(img, quante, soglia));
+  const prova = (i: number, j: number): LegameScatti | null => {
+    const all = omografiaFraScatti(abbina(firme[i], firme[j]));
+    if (!all || !allineamentoCredibile(all, immagini[j].w, immagini[j].h)) return null;
+    return {
+      a: i,
+      b: j,
+      H: all.H,
+      coppie: all.buone,
+      errore: all.errore,
+      estensione: estensioneCoppie(all.buone, immagini[i].w, immagini[i].h)
+    };
+  };
+  for (let j = 1; j < immagini.length; j++) {
+    const vicino = prova(j - 1, j);
+    if (vicino) legami.push(vicino);
+    // IL CONTROVENTO SI TENTA SOLO SE PUÒ ESISTERE. Abbinare due scatti è il
+    // conto più caro di tutto il cucito — ogni angolo del primo contro ogni
+    // angolo del secondo — e pagarlo per un legame che non c'è raddoppia il
+    // tempo per niente. Se lo scatto di prima copre già poco fotogramma vuol
+    // dire che ci si è spostati parecchio, e allora quello di due posti
+    // indietro non si sovrappone di sicuro: non si prova nemmeno.
+    let lontano: LegameScatti | null = null;
+    if (salto >= 2 && j >= 2 && (!vicino || vicino.estensione >= SOGLIA_CONTROVENTO)) {
+      lontano = prova(j - 2, j);
+      // e si tiene solo se ha una presa larga: un'omografia ricavata da una
+      // striscia sottile ha l'errore basso e la parola lunga, ed è la
+      // combinazione peggiore
+      if (lontano && lontano.estensione < SOGLIA_CONTROVENTO) lontano = null;
+      if (lontano) legami.push(lontano);
+    }
+    if (!vicino && !lontano) return { legami, rotturaA: j };
+  }
+  return { legami, rotturaA: null };
+}
+
+/** l'albero dei legami più saldi: il punto di partenza da cui rifinire */
+function versoIniziale(n: number, legami: LegameScatti[], rif: number): Omografia[] | null {
+  const verso: Omografia[] = new Array(n).fill(IDENTITA);
+  const messo = new Array(n).fill(false);
+  messo[rif] = true;
+  verso[rif] = IDENTITA;
+  // si cresce dal riferimento verso fuori, prendendo ogni volta il legame
+  // che sbaglia meno: un anello buono all'inizio vale per tutti quelli dopo
+  for (let passo = 1; passo < n; passo++) {
+    let scelto: { legame: LegameScatti; nuovo: number } | null = null;
+    for (const l of legami) {
+      const versoB = messo[l.a] && !messo[l.b];
+      const versoA = messo[l.b] && !messo[l.a];
+      if (!versoB && !versoA) continue;
+      // si sceglie il legame che copre PIÙ fotogramma, non quello con
+      // l'errore più basso: è la larghezza della presa a reggere l'albero
+      if (!scelto || l.estensione > scelto.legame.estensione) {
+        scelto = { legame: l, nuovo: versoB ? l.b : l.a };
+      }
+    }
+    if (!scelto) return null;
+    const { legame: l, nuovo } = scelto;
+    if (nuovo === l.b) {
+      // H porta b su a, e a è già sulla tela
+      verso[l.b] = componiOmografie(verso[l.a], l.H);
+    } else {
+      const indietro = invertiOmografia(l.H);
+      if (!indietro) return null;
+      verso[l.a] = componiOmografie(verso[l.b], indietro);
+    }
+    messo[nuovo] = true;
+  }
+  return messo.every(Boolean) ? verso : null;
+}
+
+/**
+ * L'AGGIUSTAMENTO D'INSIEME: ogni scatto si rimette d'accordo con TUTTI.
+ *
+ * Partendo dall'albero, si gira e rigira sugli scatti: per ognuno si guarda
+ * dove i suoi vicini dicono che debbano cadere i punti in comune, e si rifà
+ * la sua omografia ai minimi quadrati su tutte quelle richieste insieme.
+ * Chi ha un vicino solo non si muove — non ha niente da mediare — chi ne ha
+ * due si mette in mezzo, e l'errore invece di accumularsi si distribuisce.
+ *
+ * Lo scatto di riferimento resta fermo: senza un punto fisso l'intera tela
+ * potrebbe scivolare e girare a piacere senza che nessuna misura cambi, e il
+ * conto non finirebbe mai.
+ */
+export function aggiustaVerso(
+  verso: Omografia[],
+  legami: LegameScatti[],
+  rif: number,
+  giri = 12
+): Omografia[] {
+  const n = verso.length;
+  const vicini: LegameScatti[][] = Array.from({ length: n }, () => []);
+  for (const l of legami) {
+    vicini[l.a].push(l);
+    vicini[l.b].push(l);
+  }
+  const corrente = verso.map((h) => [...h] as Omografia);
+  for (let giro = 0; giro < giri; giro++) {
+    let mosso = 0;
+    // si alterna il senso della passata: partendo sempre dallo stesso capo
+    // l'informazione viaggerebbe solo in una direzione
+    const ordine = Array.from({ length: n }, (_, i) => (giro % 2 ? n - 1 - i : i));
+    for (const i of ordine) {
+      if (i === rif || vicini[i].length < 2) continue;
+      const sorgente: Punto[] = [];
+      const bersaglio: Punto[] = [];
+      const pesi: number[] = [];
+      for (const l of vicini[i]) {
+        const altro = l.a === i ? l.b : l.a;
+        // …e pesa per quanto fotogramma tiene, non per l'errore che dichiara
+        const peso = l.estensione / (0.5 + l.errore);
+        for (const c of l.coppie) {
+          const mio = l.a === i ? c.a : c.b;
+          const suo = l.a === i ? c.b : c.a;
+          const dove = applicaOmografia(corrente[altro], suo);
+          if (!Number.isFinite(dove.x) || !Number.isFinite(dove.y)) continue;
+          sorgente.push(mio);
+          bersaglio.push(dove);
+          pesi.push(peso);
+        }
+      }
+      if (sorgente.length < 8) continue;
+      const nuova = omografiaAiMinimiQuadrati(sorgente, bersaglio, pesi);
+      if (!nuova) continue;
+      if (nuova.some((v) => !Number.isFinite(v))) continue;
+      corrente[i] = nuova;
+      mosso++;
+    }
+    if (mosso === 0) break;
+  }
+  return corrente;
+}
+
+/**
+ * DOVE FINISCE OGNI SCATTO, partendo dalla rete invece che dalla catena.
+ *
+ * Stessa tela di `disposizione` — stesso riquadro, stessa riduzione — ma le
+ * omografie vengono dall'albero rifinito su tutti i legami.
+ */
+export function versoDallaRete(n: number, rete: Rete): Omografia[] | null {
+  if (n === 0 || rete.rotturaA !== null) return null;
+  const rif = Math.floor((n - 1) / 2);
+  const primo = versoIniziale(n, rete.legami, rif);
+  if (!primo) return null;
+  return aggiustaVerso(primo, rete.legami, rif);
+}
+
+export function disposizioneDallaRete(
+  scatti: Scatto[],
+  rete: Rete,
+  latoMax = 8000
+): Disposizione | null {
+  const verso = versoDallaRete(scatti.length, rete);
+  if (!verso) return null;
+  return telaDaVerso(scatti, verso, latoMax);
 }

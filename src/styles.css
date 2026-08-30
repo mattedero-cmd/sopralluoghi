@@ -4053,6 +4053,42 @@ a {
   white-space: nowrap;
 }
 
+/* L'AVVISO SULLA SOVRAPPOSIZIONE, subito dopo lo scatto.
+   Sta in alto e non copre l'otturatore: si legge con la coda dell'occhio
+   mentre ci si sposta per il prossimo, che è l'unico momento utile. */
+.pano-presa {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  max-width: 82%;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.62);
+  border: 1px solid transparent;
+}
+.pano-presa.attesa {
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 500;
+}
+.pano-presa.bene {
+  border-color: #34c759;
+  color: #9cf0b4;
+}
+.pano-presa.cosi {
+  border-color: #ffcc00;
+  color: #ffe082;
+}
+.pano-presa.male {
+  border-color: #ff453a;
+  color: #ffb3ae;
+  background: rgba(60, 0, 0, 0.68);
+}
+
 /* la domanda sull'ingrandimento del teleobiettivo: una volta sola, e poi mai più */
 .pano-chiedi {
   position: absolute;
