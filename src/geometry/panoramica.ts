@@ -649,17 +649,67 @@ export function allineamentoCredibile(
   const raggio = Math.sqrt(Math.max(0, (traccia * traccia) / 4 - (sxx * syy - sxy * sxy)));
   const corto = Math.sqrt(Math.max(0, traccia / 2 - raggio));
   if (corto < 0.01 * Math.hypot(larghezzaB, altezzaB)) return false;
+  return riquadroSano(a.H, larghezzaB, altezzaB, 0.25, 4);
+}
+
+/**
+ * IL RIQUADRO DELLO SCATTO, PORTATO DALL'OMOGRAFIA, È ANCORA UN RIQUADRO?
+ *
+ * Tre domande, e la prima è quella che mancava.
+ *
+ * 1. NON DEVE ATTRAVERSARE IL PROPRIO ORIZZONTE. Ogni omografia ha una retta —
+ *    l'orizzonte — che manda all'infinito: di qua dalla retta il denominatore è
+ *    positivo, di là negativo. Se quella retta taglia il fotogramma, metà
+ *    scatto finisce dietro le spalle e l'immagine non ha più confini: disegnata
+ *    a triangoli diventa un ventaglio di strisce lunghe quanto la tela, che è
+ *    esattamente la panoramica sbavata che si vedeva.
+ *
+ *    E non lo si scopriva perché guardare i quattro angoli non basta: la retta
+ *    può passare in mezzo al fotogramma con tutti e quattro gli angoli sani.
+ *    Peggio: dove il denominatore va a zero il conto restituisce l'origine
+ *    invece di un infinito, e allora il riquadro non esplode — si RESTRINGE, e
+ *    passa i controlli. Il segno del denominatore invece lo dice sempre.
+ *
+ * 2. CONVESSO: i quattro prodotti vettoriali consecutivi hanno tutti lo stesso
+ *    segno. Un'omografia malata piega il riquadro a farfalla, e la foto cucita
+ *    si ripiega su se stessa.
+ *
+ * 3. NON RIBALTATO E DI UNA MISURA SENSATA: se il verso si inverte lo scatto è
+ *    specchiato, e quello che si cuce non è la stessa scena.
+ */
+export function riquadroSano(
+  H: Omografia,
+  larghezza: number,
+  altezza: number,
+  areaMinima: number,
+  areaMassima: number
+): boolean {
   const riquadro = [
     { x: 0, y: 0 },
-    { x: larghezzaB, y: 0 },
-    { x: larghezzaB, y: altezzaB },
-    { x: 0, y: altezzaB }
+    { x: larghezza, y: 0 },
+    { x: larghezza, y: altezza },
+    { x: 0, y: altezza }
   ];
-  const angoli = riquadro.map((p) => applicaOmografia(a.H, p));
+  // il denominatore ai quattro angoli: stesso segno, e mai vicino a zero
+  let segnoW = 0;
+  let minimoW = Infinity;
+  for (const p of riquadro) {
+    const w = H[6] * p.x + H[7] * p.y + H[8];
+    if (!Number.isFinite(w)) return false;
+    const s = Math.sign(w);
+    if (s === 0) return false;
+    if (segnoW === 0) segnoW = s;
+    else if (s !== segnoW) return false;
+    minimoW = Math.min(minimoW, Math.abs(w));
+  }
+  // il centro sta sulla stessa parte: con i quattro angoli concordi non può
+  // essere altrimenti, ma costa niente ed è la garanzia che il conto tiene
+  const wCentro = H[6] * (larghezza / 2) + H[7] * (altezza / 2) + H[8];
+  if (!Number.isFinite(wCentro) || Math.sign(wCentro) !== segnoW) return false;
+  if (!(minimoW > 1e-9)) return false;
+
+  const angoli = riquadro.map((p) => applicaOmografia(H, p));
   if (angoli.some((p) => !Number.isFinite(p.x) || !Number.isFinite(p.y))) return false;
-  // CONVESSO: i quattro prodotti vettoriali consecutivi hanno tutti lo stesso
-  // segno. Un'omografia malata piega il riquadro a farfalla, e la foto cucita
-  // si ripiega su se stessa
   let segno = 0;
   for (let i = 0; i < 4; i++) {
     const p = angoli[i];
@@ -678,11 +728,8 @@ export function allineamentoCredibile(
     }, 0) / 2;
   const dopo = areaSegnata(angoli);
   const prima = areaSegnata(riquadro);
-  // NON RIBALTATO: se il verso si inverte lo scatto è specchiato, e quello che
-  // si sta per cucire non è la stessa scena
   if (Math.sign(dopo) !== Math.sign(prima)) return false;
-  // e con un'area che non sia esplosa né sparita
-  return Math.abs(dopo) > Math.abs(prima) * 0.25 && Math.abs(dopo) < Math.abs(prima) * 4;
+  return Math.abs(dopo) > Math.abs(prima) * areaMinima && Math.abs(dopo) < Math.abs(prima) * areaMassima;
 }
 
 // ---------------------------------------------------------------------------
@@ -755,8 +802,13 @@ export function disposizione(
 export function telaDaVerso(
   scatti: Scatto[],
   verso: Omografia[],
-  latoMax = 8000
+  latoMax = 8000,
+  motivo?: { testo: string }
 ): Disposizione | null {
+  const dire = (t: string) => {
+    if (motivo) motivo.testo = t;
+    return null;
+  };
   const n = scatti.length;
   if (n === 0 || verso.length !== n) return null;
   let minX = Infinity;
@@ -782,12 +834,89 @@ export function telaDaVerso(
   const largo = maxX - minX;
   const alto = maxY - minY;
   if (!(largo > 1) || !(alto > 1)) return null;
-  // una tela sterminata vuol dire che un'omografia ha mandato uno scatto
-  // all'infinito: meglio fermarsi che macinare per niente
+
+  // OGNI SCATTO, COMPOSTO, DEV'ESSERE ANCORA SANO.
+  //
+  // I controlli si facevano solo sulle omografie a DUE A DUE, e lì ognuna può
+  // ingrandire fino a quattro volte restando accettabile. Ma sulla tela ci
+  // arriva la COMPOSIZIONE di più anelli, e quattro anelli da quattro volte
+  // fanno duecentocinquanta: nessuno guardava il risultato. È così che uno
+  // scatto finiva per attraversare il proprio orizzonte e sbavare sull'intera
+  // panoramica, mentre gli altri quattro venivano schiacciati a niente dalla
+  // riduzione d'insieme — e l'app lo dava per riuscito.
+  //
+  // Qui si pretende dalla composta quello che si pretende da ogni anello: che
+  // non attraversi l'orizzonte, che resti convessa e nel verso giusto. La
+  // misura invece si lascia larga — sulla tela uno scatto di scorcio è
+  // legittimamente molto più grande o più piccolo del suo fotogramma.
+  for (let i = 0; i < n; i++) {
+    if (!riquadroSano(verso[i], scatti[i].larghezza, scatti[i].altezza, 0.02, 60)) {
+      return dire(
+        `Lo scatto ${i + 1} finisce di taglio: da questo punto di vista il suo piano ` +
+          'passa dietro l’obiettivo, e una foto piana non lo può contenere. ' +
+          'Succede quando il giro è troppo largo: falla in due panoramiche più corte.'
+      );
+    }
+  }
+
+  // e la tela non dev'essere sterminata. Questo tetto resta largo apposta:
+  // in una panoramica rotativa gli scatti di TESTA sono legittimamente
+  // stirati — misurati dodici volte il loro fotogramma su una ripresa vera,
+  // che sono una sessantina di gradi fuori asse — e stringerlo qui vorrebbe
+  // dire rifiutare panoramiche giuste. A fermare quelle malate è il controllo
+  // sull'orizzonte, che non ha bisogno di soglie.
   const somma = scatti.reduce((s, x) => s + x.larghezza * x.altezza, 0);
-  if (largo * alto > somma * 12) return null;
+  if (largo * alto > somma * 12) {
+    return dire(
+      'Gli scatti si aprono a ventaglio invece di allinearsi: uno di loro non è ' +
+        'nella posizione che dice. Rifai la fila senza saltare nessun passaggio.'
+    );
+  }
 
   const riduzione = Math.min(1, latoMax / Math.max(largo, alto));
+
+  // E RESTA QUALCOSA DA MISURARE, alla fine?
+  //
+  // Una panoramica piana ha un limite che non è un difetto ma geometria: più
+  // il giro è largo, più gli scatti di TESTA si aprono a ventaglio. Su una
+  // ripresa vera quelli agli estremi occupavano il venti per cento della tela
+  // ciascuno e quelli di mezzo il due per cento — ed era ancora buona. Ma la
+  // tela viene dimensionata dai bordi stirati, e poi rimpicciolita per stare
+  // nel tetto: continuando ad allargare il giro, quello che sta in mezzo — la
+  // parte buona, quella che si misura — si schiaccia fino a diventare una
+  // striscia di pixel, e la panoramica esce a ventaglio di strisce.
+  //
+  // Non è un errore da nascondere: è il momento in cui bisogna dire di farne
+  // DUE invece di una. Si guarda quindi lo scatto meno stirato — quello che
+  // conserva meglio la scena — e si pretende che sulla tela finita gli resti
+  // una misura su cui si possa ancora lavorare.
+  let scalaMigliore = 0;
+  for (let i = 0; i < n; i++) {
+    const { larghezza: w, altezza: h } = scatti[i];
+    const q = [
+      { x: 0, y: 0 },
+      { x: w, y: 0 },
+      { x: w, y: h },
+      { x: 0, y: h }
+    ].map((p) => applicaOmografia(verso[i], p));
+    const area = Math.abs(
+      q.reduce((s, p, k) => {
+        const r = q[(k + 1) % 4];
+        return s + (p.x * r.y - r.x * p.y);
+      }, 0) / 2
+    );
+    // quanto quello scatto resta grande sulla tela finita, in pixel di lato
+    const lato = Math.sqrt(area / (w * h)) * riduzione * Math.max(w, h);
+    scalaMigliore = Math.max(scalaMigliore, lato);
+  }
+  if (scalaMigliore < 500) {
+    return dire(
+      'Il giro è troppo largo per una foto piana: i bordi si aprono a ventaglio e ' +
+        'quello che sta in mezzo — la parte che si misura — resta schiacciato a niente. ' +
+        'Falla in DUE panoramiche più corte: si misurano bene tutte e due.'
+    );
+  }
+
   const T: Omografia = [riduzione, 0, -minX * riduzione, 0, riduzione, -minY * riduzione, 0, 0, 1];
   return {
     verso: verso.map((h) => componiOmografie(T, h)),
@@ -998,7 +1127,8 @@ export function aggiustaVerso(
   verso: Omografia[],
   legami: LegameScatti[],
   rif: number,
-  giri = 12
+  giri = 12,
+  scatti?: Scatto[]
 ): Omografia[] {
   const n = verso.length;
   const vicini: LegameScatti[][] = Array.from({ length: n }, () => []);
@@ -1035,6 +1165,10 @@ export function aggiustaVerso(
       const nuova = omografiaAiMinimiQuadrati(sorgente, bersaglio, pesi);
       if (!nuova) continue;
       if (nuova.some((v) => !Number.isFinite(v))) continue;
+      // un ritocco che rovina il riquadro non è un ritocco: i minimi quadrati
+      // accontentano i punti che hanno, e su una fascia sottile possono
+      // ribaltare o piegare tutto il resto del fotogramma senza accorgersene
+      if (scatti && !riquadroSano(nuova, scatti[i].larghezza, scatti[i].altezza, 0.02, 60)) continue;
       corrente[i] = nuova;
       mosso++;
     }
@@ -1049,20 +1183,21 @@ export function aggiustaVerso(
  * Stessa tela di `disposizione` — stesso riquadro, stessa riduzione — ma le
  * omografie vengono dall'albero rifinito su tutti i legami.
  */
-export function versoDallaRete(n: number, rete: Rete): Omografia[] | null {
+export function versoDallaRete(n: number, rete: Rete, scatti?: Scatto[]): Omografia[] | null {
   if (n === 0 || rete.rotturaA !== null) return null;
   const rif = Math.floor((n - 1) / 2);
   const primo = versoIniziale(n, rete.legami, rif);
   if (!primo) return null;
-  return aggiustaVerso(primo, rete.legami, rif);
+  return aggiustaVerso(primo, rete.legami, rif, 12, scatti);
 }
 
 export function disposizioneDallaRete(
   scatti: Scatto[],
   rete: Rete,
-  latoMax = 8000
+  latoMax = 8000,
+  motivo?: { testo: string }
 ): Disposizione | null {
-  const verso = versoDallaRete(scatti.length, rete);
+  const verso = versoDallaRete(scatti.length, rete, scatti);
   if (!verso) return null;
-  return telaDaVerso(scatti, verso, latoMax);
+  return telaDaVerso(scatti, verso, latoMax, motivo);
 }

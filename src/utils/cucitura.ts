@@ -412,7 +412,11 @@ function conBordoSfumato(
   canvas.height = altezza;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new CucituraFallita('Il dispositivo non permette di elaborare le immagini.');
-  ctx.drawImage(bitmap, 0, 0);
+  // scalato alle misure CHIESTE, non a quelle naturali: la seconda passata
+  // deve consegnare lo scatto nel riquadro per cui l'omografia è stata
+  // tarata nella prima, e una decodifica può tornare più piccola della prima
+  // volta se intanto la memoria si è stretta
+  ctx.drawImage(bitmap, 0, 0, larghezza, altezza);
   if (!sfumaSinistra && !sfumaDestra) return canvas;
   const fascia = Math.max(1, Math.round(larghezza * 0.12));
   const g = ctx.createLinearGradient(0, 0, larghezza, 0);
@@ -963,15 +967,24 @@ export async function cuciPanoramica(
   // pixel resterebbero trecento pixel di roba nuova per scatto, e su quelli
   // non si misura niente. Il tetto vero resta quello dei pixel totali.
   const latoMax = opzioni.latoMax ?? Math.min(16000, 4000 + 1000 * file.length);
-  const disp = telaDaVerso(scatti, verso, latoMax);
-  if (!disp) throw new CucituraFallita('Gli scatti non compongono una panoramica sensata.');
+  const motivo = { testo: '' };
+  const disp = telaDaVerso(scatti, verso, latoMax, motivo);
+  if (!disp) {
+    throw new CucituraFallita(
+      motivo.testo || 'Gli scatti non compongono una panoramica sensata.'
+    );
+  }
   // il tetto della tela è il più stretto fra quello che ci siamo dati e
   // quello che il dispositivo regge davvero
   const tettoFinale = Math.min(PIXEL_MAX, tettoDellaTela());
   if (disp.larghezza * disp.altezza > tettoFinale) {
     const k = Math.sqrt(tettoFinale / (disp.larghezza * disp.altezza));
-    const ridotto = telaDaVerso(scatti, verso, Math.floor(latoMax * k));
-    if (!ridotto) throw new CucituraFallita('Panoramica troppo grande per questo dispositivo.');
+    const ridotto = telaDaVerso(scatti, verso, Math.floor(latoMax * k), motivo);
+    if (!ridotto) {
+      throw new CucituraFallita(
+        motivo.testo || 'Panoramica troppo grande per questo dispositivo.'
+      );
+    }
     Object.assign(disp, ridotto);
   }
 
@@ -986,8 +999,13 @@ export async function cuciPanoramica(
   ctx.imageSmoothingQuality = 'high';
   // SECONDA PASSATA: si riapre uno scatto per volta, si disegna, si richiude
   for (let i = 0; i < file.length; i++) {
-    const { immagine, larghezza, altezza } = await apri(file[i]);
+    const { immagine } = await apri(file[i]);
     try {
+      // le misure sono QUELLE DELLA PRIMA PASSATA, non quelle che la
+      // decodifica restituisce adesso: l'omografia è tarata su quelle, e
+      // disegnare in un riquadro diverso vuol dire consegnare lo scatto in
+      // un posto che l'omografia non ha mai visto
+      const { larghezza, altezza } = scatti[i];
       const sfumato = conBordoSfumato(immagine, larghezza, altezza, i > 0, i < file.length - 1);
       disegnaDeformata(ctx, sfumato, larghezza, altezza, disp.verso[i]);
     } finally {

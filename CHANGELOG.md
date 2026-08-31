@@ -10,6 +10,50 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.57.0 — Una panoramica impossibile si rifiuta, non si consegna a ventaglio
+
+La cucitura è riuscita ma la foto era una raggiera di strisce, data per buona.
+Misurando la schermata, le strisce convergono tutte in un punto DENTRO
+l'immagine: è la firma di un'omografia che attraversa il proprio orizzonte.
+
+- **Il controllo anti-infinito non poteva scattare.** Si guardava se i quattro
+  angoli portati sulla tela erano numeri finiti. Ma dove il denominatore va a
+  zero il conto restituisce l'ORIGINE invece di un infinito: il riquadro non
+  esplodeva, si restringeva, e passava. E comunque quattro angoli non bastano —
+  la retta d'orizzonte può passare in mezzo al fotogramma con tutti e quattro
+  gli angoli sani. Adesso si guarda il SEGNO del denominatore ai quattro
+  angoli e al centro: se cambia, metà scatto finisce dietro l'obiettivo e
+  l'immagine non ha più confini. Non ha soglie: o il segno è concorde o no.
+
+- **E quel controllo non veniva mai fatto sulle omografie che arrivano davvero
+  alla tela.** Si verificava solo la trasformazione fra DUE scatti vicini, dove
+  ognuna può ingrandire fino a quattro volte restando accettabile. Sulla tela
+  ci arriva la composizione di più anelli, e quattro anelli da quattro volte
+  fanno duecentocinquanta: nessuno guardava il risultato. Adesso ogni scatto
+  composto deve essere ancora convesso, nel verso giusto, e non attraversare
+  l'orizzonte.
+
+- **L'aggiustamento d'insieme accettava qualunque ritocco finito.** I minimi
+  quadrati accontentano i punti che hanno: su una fascia sottile possono
+  ribaltare o piegare tutto il resto del fotogramma senza accorgersene. Ora un
+  ritocco che rovina il riquadro non viene tenuto.
+
+- **La seconda passata disegnava in un riquadro che l'omografia non aveva mai
+  visto.** Ogni foto si apre due volte — una per cercare i punti, una per
+  disegnare — e le omografie sono tarate sulle misure della PRIMA. Se la
+  seconda decodifica torna più piccola (succede quando la memoria si stringe,
+  e la seconda passata gira dopo aver allocato la tela grande) lo scatto
+  finiva altrove. Adesso si disegna sempre nel riquadro di taratura.
+
+- **E soprattutto: c'è un limite geometrico che va DETTO.** Una panoramica
+  piana si apre a ventaglio ai bordi: su una ripresa vera gli scatti di testa
+  occupano il 20% della tela ciascuno e quelli di mezzo il 2% — ed è ancora
+  buona. Ma la tela la dimensionano i bordi stirati, e continuando ad allargare
+  il giro quello che sta in mezzo — la parte che si misura — si schiaccia fino
+  a sparire. Adesso l'app se ne accorge e lo dice: «il giro è troppo largo per
+  una foto piana, falla in DUE panoramiche più corte». Prima consegnava il
+  ventaglio dichiarando «riuscita».
+
 ## 1.56.0 — La panoramica non dipende più da come il telefono apre le foto
 
 Il difetto era vero e aveva tre cause insieme, tutte invisibili dal computer:
