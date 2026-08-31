@@ -598,16 +598,57 @@ export function allineamentoCredibile(
   if (a.buone.length < 20) return false;
   if (a.buone.length < a.proposte * 0.12) return false;
   if (!(a.errore < 4)) return false;
-  // E DEVONO ESSERE SPARSI. Venti punti tutti in un angolo si spiegano con
-  // mille omografie diverse: quella che si sceglie è giusta là e sbagliata
-  // dappertutto altrove, e l'errore di riproiezione — misurato su quei venti
-  // punti — resta piccolo e non lo dice.
-  const cx = a.buone.reduce((s, c) => s + c.b.x, 0) / a.buone.length;
-  const cy = a.buone.reduce((s, c) => s + c.b.y, 0) / a.buone.length;
-  const sparsi = Math.sqrt(
-    a.buone.reduce((s, c) => s + (c.b.x - cx) ** 2 + (c.b.y - cy) ** 2, 0) / a.buone.length
-  );
-  if (sparsi < 0.08 * Math.hypot(larghezzaB, altezzaB)) return false;
+  // E DEVONO ATTRAVERSARE L'INQUADRATURA. Venti punti tutti in un angolo si
+  // spiegano con mille omografie diverse: quella che si sceglie è giusta là e
+  // sbagliata dappertutto altrove, e l'errore di riproiezione — misurato su
+  // quei venti punti — resta piccolo e non lo dice. È il pericolo vero su un
+  // muro piastrellato o a finestre tutte uguali, dove una finestra si abbina
+  // a quella accanto e la macchia di punti sta tutta lì dentro.
+  //
+  // Ma «attraversare» non vuol dire «essere un cerchio largo», ed è qui che
+  // il conto sbagliava. Si misurava il raggio quadratico medio della macchia:
+  // una FASCIA — punti stesi su metà della larghezza ma alti un decimo —
+  // dava un raggio piccolo e veniva bocciata. Eppure una fascia così
+  // attraversa l'inquadratura eccome, e capita di continuo nelle foto vere:
+  // in un panorama di montagna il cielo e l'acqua non hanno spigoli, e tutto
+  // quello a cui aggrapparsi sta nella striscia della riva.
+  //
+  // Su cinque scatti veri quella coppia stava a 0,074 contro una soglia di
+  // 0,080: passava o non passava secondo come il browser rimpiccioliva le
+  // foto. Un testa o croce, non una verifica.
+  //
+  // Quindi si chiedono le due cose che servono davvero: che la macchia ARRIVI
+  // DA UNA PARTE ALL'ALTRA in almeno un verso — così non è un ciuffo in un
+  // angolo — e che non sia una RIGA, perché su punti allineati un'omografia
+  // non si determina affatto.
+  let x0 = Infinity;
+  let x1 = -Infinity;
+  let y0 = Infinity;
+  let y1 = -Infinity;
+  let cx = 0;
+  let cy = 0;
+  for (const c of a.buone) {
+    x0 = Math.min(x0, c.b.x);
+    x1 = Math.max(x1, c.b.x);
+    y0 = Math.min(y0, c.b.y);
+    y1 = Math.max(y1, c.b.y);
+    cx += c.b.x / a.buone.length;
+    cy += c.b.y / a.buone.length;
+  }
+  if (Math.max((x1 - x0) / larghezzaB, (y1 - y0) / altezzaB) < 0.35) return false;
+  // l'asse corto della macchia: se è quasi zero i punti stanno su una riga
+  let sxx = 0;
+  let syy = 0;
+  let sxy = 0;
+  for (const c of a.buone) {
+    sxx += (c.b.x - cx) ** 2 / a.buone.length;
+    syy += (c.b.y - cy) ** 2 / a.buone.length;
+    sxy += ((c.b.x - cx) * (c.b.y - cy)) / a.buone.length;
+  }
+  const traccia = sxx + syy;
+  const raggio = Math.sqrt(Math.max(0, (traccia * traccia) / 4 - (sxx * syy - sxy * sxy)));
+  const corto = Math.sqrt(Math.max(0, traccia / 2 - raggio));
+  if (corto < 0.01 * Math.hypot(larghezzaB, altezzaB)) return false;
   const riquadro = [
     { x: 0, y: 0 },
     { x: larghezzaB, y: 0 },

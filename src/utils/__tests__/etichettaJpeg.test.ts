@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { etichettaJpeg, inOrdineDiScatto } from '../cucitura';
+import { etichettaJpeg, giroDaApplicare, inOrdineDiScatto } from '../cucitura';
 
 /**
  * L'ETICHETTA DENTRO IL JPEG.
@@ -137,5 +137,52 @@ describe('le foto del rullino si rimettono in fila', () => {
     const dati = [...conOra, senza];
     const messe = await inOrdineDiScatto(dati);
     expect(messe).toEqual(dati);
+  });
+});
+
+/**
+ * CHI GIRA LA FOTO, l'app o il browser?
+ *
+ * È la domanda che ha rotto la panoramica sul telefono e non sul computer.
+ * Chromium applica l'etichetta quando apre la foto, WebKit in certi casi no:
+ * chi la applica due volte se la ritrova coricata, chi non la applica affatto
+ * pure. E basta che capiti su ALCUNI scatti e non su altri perché quelli non
+ * si aggancino più fra loro.
+ *
+ * La forma sopravvive al rimpicciolimento, le misure esatte no: un telefono a
+ * corto di memoria decodifica le foto grandi già ridotte.
+ */
+describe('chi gira la foto', () => {
+  const et = (orientamento: number, larghezza: number, altezza: number) => ({
+    orientamento,
+    larghezza,
+    altezza
+  });
+
+  it('il browser non l’ha girata: la gira l’app', () => {
+    // file disteso 5712×4284 con etichetta 6, e arriva ancora disteso
+    expect(giroDaApplicare(et(6, 5712, 4284), 5712, 4284)).toBe(6);
+    expect(giroDaApplicare(et(8, 5712, 4284), 5712, 4284)).toBe(8);
+  });
+
+  it('il browser l’ha già girata: non si tocca', () => {
+    expect(giroDaApplicare(et(6, 5712, 4284), 4284, 5712)).toBe(0);
+  });
+
+  it('vale anche quando il browser l’ha decodificata rimpicciolita', () => {
+    // stessa forma, metà dei pixel: non girata
+    expect(giroDaApplicare(et(6, 5712, 4284), 2856, 2142)).toBe(6);
+    // girata E rimpicciolita
+    expect(giroDaApplicare(et(6, 5712, 4284), 2142, 2856)).toBe(0);
+  });
+
+  it('senza etichetta, o senza quarto di giro, non si fa niente', () => {
+    expect(giroDaApplicare(null, 100, 200)).toBe(0);
+    for (const o of [1, 2, 3, 4]) expect(giroDaApplicare(et(o, 5712, 4284), 5712, 4284)).toBe(0);
+  });
+
+  it('su una foto quadrata non si scommette', () => {
+    expect(giroDaApplicare(et(6, 4000, 4000), 4000, 4000)).toBe(0);
+    expect(giroDaApplicare(et(6, 5712, 4284), 3000, 3000)).toBe(0);
   });
 });

@@ -47,6 +47,78 @@ const LATO_RICERCA = 1400;
 const SCATTI_MAX = 24;
 /** quanti pixel può avere al massimo la tela finale */
 const PIXEL_MAX = 20_000_000;
+
+/**
+ * IL TETTO VERO DELLE TELE SU QUESTO DISPOSITIVO, misurato invece che indovinato.
+ *
+ * Un telefono non permette una tela grande quanto si vuole. Su iOS c'è un
+ * limite all'area — storicamente sedici milioni e settecentomila pixel — e
+ * quando lo si supera non arriva nessun errore: la tela si crea, si disegna,
+ * e resta VUOTA. Una foto vuota non ha spigoli, e la panoramica si ferma
+ * dicendo che il secondo scatto non si aggancia al primo, che è la cosa più
+ * lontana dalla verità che potesse dire.
+ *
+ * Le foto di un iPhone recente sono da 24,5 milioni di pixel: un colpo solo
+ * sopra il tetto. E il guaio è invisibile da qui — sul computer quel limite
+ * non c'è, quindi la prova passa e il telefono no.
+ *
+ * Scrivere un numero fisso sarebbe indovinare due volte: il limite cambia con
+ * il modello e con la versione. Si misura: si prova una tela, ci si scrive un
+ * pixel nell'angolo più lontano, e lo si rilegge. Se torna, quella tela
+ * regge. Si scende finché non regge, una volta sola per sessione.
+ */
+let tettoMisurato: number | null = null;
+
+function telaRegge(area: number): boolean {
+  // 4:3, come una foto
+  const w = Math.max(1, Math.round(Math.sqrt((area * 4) / 3)));
+  const h = Math.max(1, Math.round(w * 0.75));
+  let c: HTMLCanvasElement | null = document.createElement('canvas');
+  try {
+    c.width = w;
+    c.height = h;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    if (!g) return false;
+    // l'angolo più lontano è quello che cade fuori quando la tela è troppo grande
+    g.fillStyle = '#ff0000';
+    g.fillRect(w - 2, h - 2, 2, 2);
+    const p = g.getImageData(w - 1, h - 1, 1, 1).data;
+    return p[0] > 200 && p[3] > 200;
+  } catch {
+    return false;
+  } finally {
+    if (c) {
+      c.width = 0;
+      c.height = 0;
+      c = null;
+    }
+  }
+}
+
+export function tettoDellaTela(): number {
+  if (tettoMisurato !== null) return tettoMisurato;
+  if (typeof document === 'undefined') return PIXEL_MAX;
+  for (const milioni of [40, 32, 24, 20, 16, 12, 8, 6, 4]) {
+    if (telaRegge(milioni * 1_000_000)) {
+      tettoMisurato = milioni * 1_000_000;
+      return tettoMisurato;
+    }
+  }
+  tettoMisurato = 2_000_000;
+  return tettoMisurato;
+}
+
+/**
+ * Quanto può essere grande UNO SCATTO mentre lo si lavora.
+ *
+ * Non serve tenerlo a piena risoluzione: la tela finale viene comunque
+ * ridotta per stare nel tetto, e con cinque scatti ognuno ci finisce dentro a
+ * poco più di metà del suo lato. Si sta larghi il doppio del necessario e si
+ * resta lontani dal limite del dispositivo.
+ */
+function tettoDelloScatto(): number {
+  return Math.max(2_000_000, Math.floor(tettoDellaTela() * 0.6));
+}
 /** la griglia parte di qui e si infittisce finché serve */
 const CELLE_X = 8;
 const CELLE_Y = 6;
@@ -73,17 +145,53 @@ export class CucituraFallita extends Error {}
 function perLaRicerca(
   bitmap: CanvasImageSource,
   larghezza: number,
-  altezza: number
+  altezza: number,
+  lato = LATO_RICERCA
 ): { grigia: Grigia; fattore: number } {
-  const fattore = Math.min(1, LATO_RICERCA / Math.max(larghezza, altezza));
+  const fattore = Math.min(1, lato / Math.max(larghezza, altezza));
   const w = Math.max(1, Math.round(larghezza * fattore));
   const h = Math.max(1, Math.round(altezza * fattore));
+
+  // A METÀ PER VOLTA, non in un colpo solo.
+  //
+  // Da 5712 px a 1050 c'è un fattore cinque e mezzo, e proprio lì i browser si
+  // comportano in modo diverso: chi rimpicciolisce bene fa la media di tutti i
+  // pixel che finiscono in uno, chi va di fretta ne prende uno e butta gli
+  // altri. Il secondo non «sfoca di più»: INVENTA struttura, perché quale
+  // pixel sopravvive dipende dalla griglia di campionamento. Gli spigoli che
+  // ne escono cadono su artefatti che non si ripetono nello scatto accanto, e
+  // gli abbinamenti crollano.
+  //
+  // Dimezzare è l'unico passo che ogni browser fa bene — quattro pixel in uno,
+  // niente da scegliere — e ripetuto porta vicino al bersaglio prima
+  // dell'ultimo ritocco. Così la panoramica non dipende più da chi la cuce:
+  // sulle stesse cinque foto, il legame più povero passava da 38 abbinamenti a
+  // 63 secondo il modo di rimpicciolire, e 38 era sotto la soglia.
+  let sorgente: CanvasImageSource = bitmap;
+  let sw = larghezza;
+  let sh = altezza;
+  while (sw >= w * 2 && sh >= h * 2) {
+    const mezzo = document.createElement('canvas');
+    mezzo.width = Math.max(1, Math.round(sw / 2));
+    mezzo.height = Math.max(1, Math.round(sh / 2));
+    const g = mezzo.getContext('2d');
+    if (!g) break;
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(sorgente, 0, 0, mezzo.width, mezzo.height);
+    sorgente = mezzo;
+    sw = mezzo.width;
+    sh = mezzo.height;
+  }
+
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) throw new CucituraFallita('Il dispositivo non permette di elaborare le immagini.');
-  ctx.drawImage(bitmap, 0, 0, w, h);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(sorgente, 0, 0, sw, sh, 0, 0, w, h);
   return { grigia: inGrigio(ctx.getImageData(0, 0, w, h).data, w, h), fattore };
 }
 
@@ -465,8 +573,17 @@ export async function raddrizza(
   // il rettangolo di arrivo: la media dei lati opposti, così non si stira né
   // si schiaccia niente rispetto a com'era
   const lato = (a: Punto, b: Punto) => Math.hypot(b.x - a.x, b.y - a.y);
-  const largo = Math.round((lato(quad[0], quad[1]) + lato(quad[3], quad[2])) / 2);
-  const alto = Math.round((lato(quad[1], quad[2]) + lato(quad[0], quad[3])) / 2);
+  let largo = Math.round((lato(quad[0], quad[1]) + lato(quad[3], quad[2])) / 2);
+  let alto = Math.round((lato(quad[1], quad[2]) + lato(quad[0], quad[3])) / 2);
+  // «Tieni tutta» su una panoramica lunga chiede una tela quanto la
+  // panoramica: si resta sotto il tetto del dispositivo, o esce un ritaglio
+  // nero senza che nessuno dica niente
+  const tetto = tettoDellaTela();
+  if (largo * alto > tetto) {
+    const k = Math.sqrt(tetto / (largo * alto));
+    largo = Math.max(9, Math.round(largo * k));
+    alto = Math.max(9, Math.round(alto * k));
+  }
   if (!(largo > 8) || !(alto > 8)) throw new CucituraFallita('Ritaglio troppo piccolo.');
   const H = calcolaOmografia(quad, [
     { x: 0, y: 0 },
@@ -633,46 +750,101 @@ export async function inOrdineDiScatto<T extends Blob>(file: T[]): Promise<T[]> 
 /**
  * LO SCATTO APERTO DRITTO, comunque si comporti il browser.
  *
- * Si guarda che misure ha il file e che misure ha l'immagine decodificata: se
- * il file dice 5712×4284 e il browser restituisce 4284×5712, l'etichetta
- * l'ha già applicata lui e non c'è niente da fare. Se restituisce le stesse
- * misure del file, la gira l'app.
+ * Si guarda che FORMA ha il file e che forma ha l'immagine decodificata: se il
+ * file è disteso e l'etichetta dice «un quarto di giro», quello che si vede
+ * dev'essere in piedi. Se arriva ancora disteso, l'etichetta non l'ha
+ * applicata nessuno e la applica l'app.
+ *
+ * Si guarda la forma e non le misure esatte apposta: un telefono a corto di
+ * memoria decodifica le foto grandi già rimpicciolite, e con le misure esatte
+ * non combacerebbe più niente.
  *
  * Si raddrizzano solo i quarti di giro (etichette 5-8), gli unici che si
- * riconoscono con certezza dalle misure. Un capovolgimento non cambia le
- * misure e non si può distinguere da qui: sarebbe una scommessa, e una foto
- * capovolta si cuce comunque bene — coricata no.
+ * riconoscono con certezza dalla forma. Un capovolgimento non la cambia e non
+ * si può distinguere da qui: sarebbe una scommessa, e una foto capovolta si
+ * cuce comunque bene — coricata no.
+ *
+ * E la tela in cui si gira non supera mai il tetto del dispositivo: una tela
+ * troppo grande non dà errore, resta vuota, e una foto vuota non ha spigoli.
  */
+/**
+ * VA GIRATA DA NOI, questa foto? E di quanto.
+ *
+ * Torna 0 se non c'è niente da fare — o perché l'etichetta non chiede un
+ * quarto di giro, o perché il browser l'ha già applicata — altrimenti il
+ * numero dell'orientamento da applicare (5, 6, 7 o 8).
+ *
+ * Si confrontano le FORME, non le misure: un telefono a corto di memoria
+ * decodifica le foto grandi già rimpicciolite, e con le misure esatte non
+ * combacerebbe più niente — si finirebbe per girare una foto già girata, o
+ * per non girarne una che andava girata. E se capita solo su ALCUNI scatti,
+ * quelli restano coricati rispetto agli altri e non si agganciano più.
+ *
+ * Su una foto quadrata la forma non dice nulla, e non si scommette.
+ */
+export function giroDaApplicare(
+  etichetta: { orientamento: number; larghezza: number; altezza: number } | null,
+  larghezzaDecodificata: number,
+  altezzaDecodificata: number
+): number {
+  if (!etichetta) return 0;
+  const o = etichetta.orientamento;
+  if (o < 5 || o > 8) return 0;
+  if (etichetta.larghezza === etichetta.altezza) return 0;
+  if (larghezzaDecodificata === altezzaDecodificata) return 0;
+  const fileDisteso = etichetta.larghezza > etichetta.altezza;
+  const arrivaDisteso = larghezzaDecodificata > altezzaDecodificata;
+  // se arriva con la stessa forma del file, il quarto di giro non l'ha
+  // applicato nessuno e tocca a noi
+  return arrivaDisteso === fileDisteso ? o : 0;
+}
+
 export async function apriDritta(
   blob: Blob
 ): Promise<{ immagine: ImageBitmap | HTMLCanvasElement; larghezza: number; altezza: number }> {
   const bmp = await createImageBitmap(blob);
   const etichetta = await etichettaJpeg(blob).catch(() => null);
-  const quartoDiGiro = etichetta ? etichetta.orientamento >= 5 && etichetta.orientamento <= 8 : false;
-  const giaGirata =
-    etichetta != null && bmp.width === etichetta.altezza && bmp.height === etichetta.larghezza;
-  if (!quartoDiGiro || giaGirata) {
+
+  // HA GIÀ GIRATO IL BROWSER? Si guardava se le misure decodificate erano
+  // quelle del file scambiate. Non basta: un telefono a corto di memoria
+  // decodifica le foto grandi RIMPICCIOLITE, e allora nessuna delle due misure
+  // combacia — si finiva per girare una foto già girata, o per non girarne una
+  // che andava girata. E se capita solo su ALCUNI scatti, quelli restano
+  // coricati rispetto agli altri e non si agganciano più.
+  //
+  // La forma invece sopravvive al rimpicciolimento: se il file è disteso e
+  // l'etichetta dice «un quarto di giro», l'immagine mostrata dev'essere in
+  // piedi. Se arriva ancora distesa, il browser non ha applicato niente.
+  const daGirare = giroDaApplicare(etichetta, bmp.width, bmp.height);
+
+  // …e comunque non si tiene uno scatto più grande di quanto la tela regga
+  const tetto = tettoDelloScatto();
+  const areaFinita = bmp.width * bmp.height;
+  const riduci = areaFinita > tetto ? Math.sqrt(tetto / areaFinita) : 1;
+
+  if (!daGirare && riduci === 1) {
     return { immagine: bmp, larghezza: bmp.width, altezza: bmp.height };
   }
+
+  const lw = Math.max(1, Math.round(bmp.width * riduci));
+  const lh = Math.max(1, Math.round(bmp.height * riduci));
   const c = document.createElement('canvas');
-  c.width = bmp.height;
-  c.height = bmp.width;
+  c.width = daGirare ? lh : lw;
+  c.height = daGirare ? lw : lh;
   const g = c.getContext('2d');
   if (!g) {
     return { immagine: bmp, larghezza: bmp.width, altezza: bmp.height };
   }
-  const o = etichetta!.orientamento;
-  // 6 = un quarto in senso orario, 8 = antiorario, 5 e 7 con lo specchio
-  if (o === 6) {
-    g.transform(0, 1, -1, 0, bmp.height, 0);
-  } else if (o === 8) {
-    g.transform(0, -1, 1, 0, 0, bmp.width);
-  } else if (o === 5) {
-    g.transform(0, 1, 1, 0, 0, 0);
-  } else {
-    g.transform(0, -1, -1, 0, bmp.height, bmp.width);
+  g.imageSmoothingEnabled = true;
+  g.imageSmoothingQuality = 'high';
+  if (daGirare) {
+    // 6 = un quarto in senso orario, 8 = antiorario, 5 e 7 con lo specchio
+    if (daGirare === 6) g.transform(0, 1, -1, 0, lh, 0);
+    else if (daGirare === 8) g.transform(0, -1, 1, 0, 0, lw);
+    else if (daGirare === 5) g.transform(0, 1, 1, 0, 0, 0);
+    else g.transform(0, -1, -1, 0, lh, lw);
   }
-  g.drawImage(bmp, 0, 0);
+  g.drawImage(bmp, 0, 0, lw, lh);
   bmp.close?.();
   return { immagine: c, larghezza: c.width, altezza: c.height };
 }
@@ -706,16 +878,10 @@ export async function sovrapposizioneFra(
   const apri = async (b: Blob) => {
     const { immagine: bmp, larghezza, altezza } = await apriDritta(b);
     try {
-      const f = Math.min(1, 760 / Math.max(larghezza, altezza));
-      const w = Math.max(1, Math.round(larghezza * f));
-      const h = Math.max(1, Math.round(altezza * f));
-      const c = document.createElement('canvas');
-      c.width = w;
-      c.height = h;
-      const g = c.getContext('2d', { willReadFrequently: true });
-      if (!g) return null;
-      g.drawImage(bmp, 0, 0, w, h);
-      return inGrigio(g.getImageData(0, 0, w, h).data, w, h);
+      // stessa riduzione a metà per volta della ricerca vera: qui si scende
+      // ancora di più — sette volte e mezzo — e in un colpo solo il conto lo
+      // farebbe ognuno a modo suo
+      return perLaRicerca(bmp, larghezza, altezza, 760).grigia;
     } finally {
       if ('close' in bmp) bmp.close?.();
     }
@@ -799,8 +965,11 @@ export async function cuciPanoramica(
   const latoMax = opzioni.latoMax ?? Math.min(16000, 4000 + 1000 * file.length);
   const disp = telaDaVerso(scatti, verso, latoMax);
   if (!disp) throw new CucituraFallita('Gli scatti non compongono una panoramica sensata.');
-  if (disp.larghezza * disp.altezza > PIXEL_MAX) {
-    const k = Math.sqrt(PIXEL_MAX / (disp.larghezza * disp.altezza));
+  // il tetto della tela è il più stretto fra quello che ci siamo dati e
+  // quello che il dispositivo regge davvero
+  const tettoFinale = Math.min(PIXEL_MAX, tettoDellaTela());
+  if (disp.larghezza * disp.altezza > tettoFinale) {
+    const k = Math.sqrt(tettoFinale / (disp.larghezza * disp.altezza));
     const ridotto = telaDaVerso(scatti, verso, Math.floor(latoMax * k));
     if (!ridotto) throw new CucituraFallita('Panoramica troppo grande per questo dispositivo.');
     Object.assign(disp, ridotto);

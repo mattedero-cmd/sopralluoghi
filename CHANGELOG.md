@@ -10,6 +10,59 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.56.0 — La panoramica non dipende più da come il telefono apre le foto
+
+Il difetto era vero e aveva tre cause insieme, tutte invisibili dal computer:
+sul portatile la panoramica riusciva, sul telefono no. Sono state trovate
+riproducendo il guasto — non leggendo il codice — e la stessa prova, fatta
+girare sul codice di prima, dà **parola per parola** il messaggio che
+compariva sul telefono.
+
+- **Una tela troppo grande non dà errore: resta vuota.** Le foto di un iPhone
+  recente sono da 24,5 milioni di pixel; su iOS il limite dell'area di una
+  tela sta più in basso. L'app ne creava tre di quella misura — per
+  raddrizzare la foto, per sfumarne i bordi, e per la panoramica finita — e su
+  quel telefono restavano nere, senza che nessuno protestasse. Una foto nera
+  non ha spigoli, e l'app diceva che il secondo scatto non si agganciava al
+  primo: la cosa più lontana dalla verità che potesse dire. **Adesso il tetto
+  si MISURA** su quel dispositivo — si prova una tela, ci si scrive un pixel
+  nell'angolo più lontano, e lo si rilegge — e non si supera mai. Un numero
+  fisso sarebbe stato indovinare due volte: il limite cambia col modello e con
+  la versione.
+
+- **E quel raddrizzamento lo faceva SOLO il telefono.** Il computer applica da
+  sé l'etichetta di orientamento quando apre la foto, quindi quel pezzo di
+  codice, sul banco di prova, non veniva mai eseguito. Ora la rotazione e il
+  rimpicciolimento si fanno in un passaggio solo, in una tela sotto il tetto.
+
+- **E si guarda la FORMA, non le misure esatte.** Per sapere se il browser ha
+  già girato la foto si confrontavano i pixel con quelli scritti nel file. Ma
+  un telefono a corto di memoria decodifica le foto grandi già rimpicciolite,
+  e allora non combacia più niente: si finiva per girare una foto già girata.
+  Se capita su ALCUNI scatti e non su altri, quelli restano coricati rispetto
+  ai compagni e non si agganciano più. La forma sopravvive al
+  rimpicciolimento; le misure no.
+
+- **Rimpicciolire in un colpo solo lo fa bene chi vuole.** Da 5712 px a 1050
+  c'è un fattore cinque e mezzo, e lì i browser si comportano in modo diverso:
+  chi fa la media dei pixel e chi ne prende uno e butta gli altri. Il secondo
+  non «sfoca di più»: INVENTA struttura, e gli spigoli cadono su artefatti che
+  non si ripetono nello scatto accanto. Misurato sulle stesse cinque foto, il
+  legame più povero passava da 38 abbinamenti a 63 secondo il modo. Adesso si
+  dimezza per gradi — l'unico passo che ogni browser fa bene — e il risultato
+  è lo stesso dappertutto.
+
+- **E un legame buono non si butta più perché i punti stanno in una fascia.**
+  Il controllo sulla dispersione misurava il raggio della macchia di punti: una
+  fascia stesa su metà della larghezza ma alta un decimo dava un raggio piccolo
+  e veniva bocciata. Ma è proprio la forma che ha una foto di panorama, dove il
+  cielo e l'acqua non hanno spigoli e tutto quello a cui aggrapparsi sta nella
+  striscia della riva. Su cinque scatti veri quella coppia stava a 0,074 contro
+  una soglia di 0,080: passava o no secondo il browser. Adesso si chiedono le
+  due cose che servono davvero — che i punti ARRIVINO da una parte all'altra in
+  almeno un verso, e che non siano una riga — e i casi che devono restare
+  rifiutati lo restano, perché a fermarli erano già altri due controlli.
+
 ## 1.55.0 — La panoramica si fa anche con le foto del rullino, e si mettono in fila da sole
 
 - **«Rullino» adesso si vede.** La panoramica da foto già scattate si poteva
