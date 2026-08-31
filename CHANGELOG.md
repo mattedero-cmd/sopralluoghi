@@ -10,6 +10,30 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.55.0 — La panoramica si fa anche con le foto del rullino, e si mettono in fila da sole
+
+- **«Rullino» adesso si vede.** La panoramica da foto già scattate si poteva
+  già fare, ma il pulsante compariva SOLO se la fotocamera non si apriva: un
+  ripiego nascosto dentro un messaggio d'errore. Se la fotocamera funzionava —
+  cioè sempre — non c'era modo di arrivarci. Ora sta in chiaro nel mirino, in
+  basso a sinistra, e la fotocamera continua ad aprirsi subito come prima:
+  nessun passaggio in più per chi scatta sul momento.
+
+- **Le foto prese dal rullino si rimettono in fila da sole.** Il telefono le
+  consegna nell'ordine in cui le hai TOCCATE, non in quello in cui le hai
+  fatte: basta sbagliare un tocco e la cucitura si rifiuta dicendo che la
+  seconda non si aggancia alla prima — e da fuori non c'è modo di capire che
+  il difetto era l'ordine. L'ora dello scatto è scritta dentro ogni foto, e
+  per una panoramica l'ordine del tempo è l'ordine della fila.
+
+- **Ma solo se ce l'hanno tutte.** Se anche una sola foto non porta l'ora, non
+  si tocca niente: mescolare foto datate e foto senza data è il modo migliore
+  per rompere una fila che era già giusta.
+
+- Il lettore dell'etichetta EXIF è provato su file costruiti apposta, nei due
+  versi di ordine dei byte e seguendo il rimando al secondo blocco — che è
+  dove sta l'ora, ed è il punto in cui un lettore scritto a occhio sbaglia.
+
 ## 1.54.0 — Mezza foto di cielo non deve più far fallire la cucitura
 
 - **La quota dei punti non si butta più.** Per non ammucchiare tutti gli

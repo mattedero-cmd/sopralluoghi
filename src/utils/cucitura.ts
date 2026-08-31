@@ -516,13 +516,20 @@ export interface OpzioniCucitura {
  */
 export async function etichettaJpeg(
   blob: Blob
-): Promise<{ orientamento: number; larghezza: number; altezza: number } | null> {
+): Promise<{
+  orientamento: number;
+  larghezza: number;
+  altezza: number;
+  /** quando è stato premuto l'otturatore, in millisecondi; null se non c'è */
+  istante: number | null;
+} | null> {
   // bastano i primi blocchi: EXIF e la testata delle misure stanno all'inizio
   const b = new DataView(await blob.slice(0, 256 * 1024).arrayBuffer());
   if (b.byteLength < 4 || b.getUint16(0) !== 0xffd8) return null;
   let orientamento = 1;
   let larghezza = 0;
   let altezza = 0;
+  let istante: number | null = null;
   let i = 2;
   while (i + 4 <= b.byteLength) {
     if (b.getUint8(i) !== 0xff) {
@@ -553,9 +560,36 @@ export async function etichettaJpeg(
           const l32 = (o: number) => b.getUint32(o, piccolo);
           const ifd = t + l32(t + 4);
           const quanti = l16(ifd);
+          let sottoExif = 0;
           for (let k = 0; k < quanti; k++) {
             const voce = ifd + 2 + k * 12;
-            if (l16(voce) === 0x0112) orientamento = l16(voce + 8);
+            const chiave = l16(voce);
+            if (chiave === 0x0112) orientamento = l16(voce + 8);
+            if (chiave === 0x8769) sottoExif = t + l32(voce + 8);
+          }
+          // L'ORA DELLO SCATTO sta nel blocco Exif vero e proprio, che si
+          // raggiunge seguendo il rimando 0x8769. Serve per rimettere in fila
+          // le foto prese dal rullino: là arrivano nell'ordine in cui le si
+          // tocca, non in quello in cui sono state fatte.
+          if (sottoExif > 0 && sottoExif + 2 < b.byteLength) {
+            const n2 = l16(sottoExif);
+            for (let k = 0; k < n2; k++) {
+              const voce = sottoExif + 2 + k * 12;
+              if (voce + 12 > b.byteLength) break;
+              if (l16(voce) !== 0x9003) continue; // DateTimeOriginal
+              const dove = t + l32(voce + 8);
+              if (dove + 19 > b.byteLength) break;
+              let testo = '';
+              for (let q = dove; q < dove + 19; q++) testo += String.fromCharCode(b.getUint8(q));
+              // «2026:08:31 14:03:22» — non è una data ISO, va tradotta
+              const m = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(testo);
+              if (m) {
+                const v = new Date(
+                  +m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]
+                ).getTime();
+                if (Number.isFinite(v)) istante = v;
+              }
+            }
           }
         } catch {
           // etichetta malformata: si tiene l'orientamento neutro
@@ -565,7 +599,35 @@ export async function etichettaJpeg(
     i += 2 + lungo;
   }
   if (!(larghezza > 0) || !(altezza > 0)) return null;
-  return { orientamento, larghezza, altezza };
+  return { orientamento, larghezza, altezza, istante };
+}
+
+/**
+ * LE FOTO RIMESSE IN FILA PER ORA DI SCATTO.
+ *
+ * Il rullino consegna le foto nell'ordine in cui le si è TOCCATE, non in
+ * quello in cui sono state fatte. Basta sbagliare un tocco e la cucitura si
+ * rifiuta dicendo che la seconda non si aggancia alla prima — e chi guarda
+ * non ha modo di capire che il difetto era l'ordine.
+ *
+ * Per una panoramica l'ordine del tempo È l'ordine della fila: si è girato o
+ * camminato in un verso solo. Quindi si legge l'ora dentro ogni foto e si
+ * ordina. Ma solo se ce l'hanno TUTTE: se anche una sola non la porta, si
+ * lascia tutto com'era invece di mescolare foto datate e foto senza data,
+ * che è il modo migliore per rompere una fila che era giusta.
+ */
+export async function inOrdineDiScatto<T extends Blob>(file: T[]): Promise<T[]> {
+  const conOra = await Promise.all(
+    file.map(async (f, i) => ({
+      f,
+      i,
+      quando: (await etichettaJpeg(f).catch(() => null))?.istante ?? null
+    }))
+  );
+  if (!conOra.every((x) => x.quando !== null)) return [...file];
+  // a parità di secondo si tiene l'ordine in cui sono arrivate
+  conOra.sort((a, b) => a.quando! - b.quando! || a.i - b.i);
+  return conOra.map((x) => x.f);
 }
 
 /**

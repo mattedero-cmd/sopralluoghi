@@ -4053,6 +4053,28 @@ a {
   white-space: nowrap;
 }
 
+/* IL RULLINO: la panoramica si fa anche con foto già scattate, e adesso si
+   vede. Sta in basso a sinistra nel mirino, fuori dai piedi dell'otturatore
+   ma in chiaro, non nascosto dentro un errore come prima. */
+.pano-rullino {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  padding: 7px 13px;
+  border-radius: 999px;
+}
+.pano-rullino:active {
+  background: rgba(0, 0, 0, 0.75);
+}
+
 /* L'AVVISO SULLA SOVRAPPOSIZIONE, subito dopo lo scatto.
    Sta in alto e non copre l'otturatore: si legge con la coda dell'occhio
    mentre ci si sposta per il prossimo, che è l'unico momento utile. */

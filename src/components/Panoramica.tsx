@@ -9,7 +9,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Icona } from './Icona';
-import { sovrapposizioneFra, cuciPanoramica, CucituraFallita, raddrizza, riquadroPieno } from '../utils/cucitura';
+import { inOrdineDiScatto, sovrapposizioneFra, cuciPanoramica, CucituraFallita, raddrizza, riquadroPieno } from '../utils/cucitura';
 import type { Punto } from '../db/types';
 import {
   maniglieDeiLatiQuad,
@@ -518,10 +518,23 @@ function Fotocamera({
     }
   };
 
-  /** DALLA GALLERIA: se la fotocamera non si apre, la panoramica si fa lo
-   *  stesso con gli scatti fatti dall'app fotocamera del telefono. */
+  /**
+   * DAL RULLINO: la panoramica si fa anche con foto già scattate.
+   *
+   * Serve più spesso di quanto sembri — la fotocamera del telefono scatta
+   * meglio della nostra, e capita di trovarsi le foto già fatte da un
+   * sopralluogo di ieri. Prima ci si arrivava solo se la fotocamera NON si
+   * apriva: un ripiego nascosto dentro un errore.
+   *
+   * E si rimettono in fila da sole. Il rullino le consegna nell'ordine in cui
+   * le hai TOCCATE, non in quello in cui le hai fatte: basta sbagliare un
+   * tocco e la cucitura si rifiuta dicendo che la seconda non si aggancia
+   * alla prima. L'ora dello scatto è scritta dentro ogni foto, e per una
+   * panoramica l'ordine del tempo È l'ordine della fila. Chi non ce l'ha
+   * resta dov'era.
+   */
   const daGalleria = async (files: File[]) => {
-    for (const f of files) {
+    for (const f of await inOrdineDiScatto(files)) {
       const bitmap = await createImageBitmap(f).catch(() => null);
       onScatto({
         blob: f,
@@ -595,6 +608,11 @@ function Fotocamera({
             L’obiettivo si sceglie prima del primo scatto
           </div>
         )}
+        {!errore && (
+          <button className="pano-rullino" onClick={() => galleria.current?.click()}>
+            <Icona nome="immagine" dimensione={17} /> Rullino
+          </button>
+        )}
         {presa && (
           <div className={`pano-presa ${classeDellaPresa(presa)}`}>
             {presa.attesa
@@ -631,6 +649,7 @@ function Fotocamera({
             Sovrapponi almeno DUE TERZI fra uno scatto e il successivo: è quello che tiene
             dritta una fila lunga. Davanti a una facciata piatta puoi camminare di lato; se
             invece inquadri roba vicina e roba lontana insieme, gira sui piedi senza spostarti.
+            Con «Rullino» prendi foto già fatte, e si rimettono in fila da sole.
           </span>
         ) : (
           prese.map((p, i) => (
