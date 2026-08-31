@@ -10,6 +10,38 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.54.0 — Mezza foto di cielo non deve più far fallire la cucitura
+
+- **La quota dei punti non si butta più.** Per non ammucchiare tutti gli
+  spigoli sullo stesso mattone, l'inquadratura si divide a caselle e da ognuna
+  se ne tengono pochi. Ma in una foto vera metà inquadratura è CIELO — o
+  acqua, o asfalto — e lì di spigoli non ce n'è: la quota di quelle caselle
+  andava persa, e il conto teneva la metà dei punti che gli erano stati
+  chiesti. Adesso quello che avanza si ridistribuisce a giro fra le caselle
+  che hanno qualcosa da mostrare.
+
+- **Su una panoramica vera è la differenza fra cucire e non cucire.** Misurato
+  su cinque scatti di montagna e lago, con il 55-62% di sovrapposizione — cioè
+  scattati bene:
+
+  | | punti tenuti | abbinamenti buoni della coppia più povera |
+  |---|---|---|
+  | prima | 1037 su 2000 | 30 |
+  | adesso | 2000 su 2000 | 49 |
+
+  Trenta è sul filo: sotto quella soglia il cucito si rifiuta, e bastava un
+  decodificatore JPEG leggermente diverso per finirci sotto. Le altre coppie
+  sono passate da 68 a 107, da 107 a 179, da 132 a 188. Quelle cinque foto
+  adesso si cuciono: 5409×3697 px, giunzioni entro 1,2 px.
+
+- **L'orientamento della foto non dipende più dal browser.** Un telefono
+  tenuto in verticale non gira i pixel: li scrive orizzontali e mette
+  un'etichetta «questa va girata di un quarto». Alcuni browser la applicano
+  quando l'app apre la foto, altri no — e la stessa panoramica usciva dritta
+  di qua e coricata di là, con le sfumature dei bordi sui lati sbagliati.
+  Adesso l'etichetta la legge l'app, la confronta con quello che il browser ha
+  effettivamente fatto, e raddrizza solo se serve.
+
 ## 1.53.0 — Panoramiche lunghe: fino a 24 scatti, e la sovrapposizione si controlla mentre si scatta
 
 - **Il tetto passa da 8 a 24 scatti.** Il numero non veniva dalla geometria:

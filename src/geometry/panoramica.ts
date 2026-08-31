@@ -199,10 +199,34 @@ export function selezionati(angoli: Angolo[], w: number, h: number, quanti = 900
     if (!caselle.has(k)) caselle.set(k, []);
     caselle.get(k)!.push(a);
   }
+  const liste = [...caselle.values()];
+  for (const lista of liste) lista.sort((a, b) => b.forza - a.forza);
   const fuori: Angolo[] = [];
-  for (const lista of caselle.values()) {
-    lista.sort((a, b) => b.forza - a.forza);
-    for (const a of lista.slice(0, perCasella)) fuori.push(a);
+  for (const lista of liste) for (const a of lista.slice(0, perCasella)) fuori.push(a);
+
+  // …E IL RESTO NON SI BUTTA.
+  //
+  // La quota per casella serve a non ammucchiare tutto su un mattone. Ma
+  // metà delle caselle, su una foto vera, è CIELO: non ci sono spigoli, e la
+  // loro quota andava persa. Su una panoramica di montagna il conto chiedeva
+  // duemila punti e ne teneva mille, e la coppia più povera si ritrovava con
+  // trenta abbinamenti buoni invece di centotrenta — proprio al limite sotto
+  // il quale il cucito si rifiuta.
+  //
+  // Quello che avanza si ridistribuisce a giro: il secondo miglior punto di
+  // ogni casella piena, poi il terzo, e così via. La spartizione resta
+  // equilibrata — non si finisce con mille punti tutti sullo stesso albero —
+  // e la quota del cielo va a chi ha qualcosa da mostrare.
+  for (let giro = perCasella; fuori.length < quanti; giro++) {
+    let aggiunti = 0;
+    for (const lista of liste) {
+      if (fuori.length >= quanti) break;
+      if (giro < lista.length) {
+        fuori.push(lista[giro]);
+        aggiunti++;
+      }
+    }
+    if (aggiunti === 0) break;
   }
   return fuori.sort((a, b) => b.forza - a.forza).slice(0, quanti);
 }

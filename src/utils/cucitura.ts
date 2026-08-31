@@ -70,10 +70,14 @@ export interface EsitoCucitura {
 export class CucituraFallita extends Error {}
 
 /** l'immagine ridotta al lato di ricerca, con il fattore usato */
-function perLaRicerca(bitmap: ImageBitmap): { grigia: Grigia; fattore: number } {
-  const fattore = Math.min(1, LATO_RICERCA / Math.max(bitmap.width, bitmap.height));
-  const w = Math.max(1, Math.round(bitmap.width * fattore));
-  const h = Math.max(1, Math.round(bitmap.height * fattore));
+function perLaRicerca(
+  bitmap: CanvasImageSource,
+  larghezza: number,
+  altezza: number
+): { grigia: Grigia; fattore: number } {
+  const fattore = Math.min(1, LATO_RICERCA / Math.max(larghezza, altezza));
+  const w = Math.max(1, Math.round(larghezza * fattore));
+  const h = Math.max(1, Math.round(altezza * fattore));
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
@@ -289,27 +293,29 @@ export function disegnaDeformata(
  * vicino: sui bordi esterni della panoramica la sfumatura sarebbe un alone.
  */
 function conBordoSfumato(
-  bitmap: ImageBitmap,
+  bitmap: CanvasImageSource,
+  larghezza: number,
+  altezza: number,
   sfumaSinistra: boolean,
   sfumaDestra: boolean
 ): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
-  canvas.width = bitmap.width;
-  canvas.height = bitmap.height;
+  canvas.width = larghezza;
+  canvas.height = altezza;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new CucituraFallita('Il dispositivo non permette di elaborare le immagini.');
   ctx.drawImage(bitmap, 0, 0);
   if (!sfumaSinistra && !sfumaDestra) return canvas;
-  const larghezza = Math.max(1, Math.round(bitmap.width * 0.12));
-  const g = ctx.createLinearGradient(0, 0, bitmap.width, 0);
-  const s = larghezza / bitmap.width;
+  const fascia = Math.max(1, Math.round(larghezza * 0.12));
+  const g = ctx.createLinearGradient(0, 0, larghezza, 0);
+  const s = fascia / larghezza;
   g.addColorStop(0, sfumaSinistra ? 'rgba(0,0,0,0)' : 'rgba(0,0,0,1)');
   g.addColorStop(s, 'rgba(0,0,0,1)');
   g.addColorStop(1 - s, 'rgba(0,0,0,1)');
   g.addColorStop(1, sfumaDestra ? 'rgba(0,0,0,0)' : 'rgba(0,0,0,1)');
   ctx.globalCompositeOperation = 'destination-in';
   ctx.fillStyle = g;
-  ctx.fillRect(0, 0, bitmap.width, bitmap.height);
+  ctx.fillRect(0, 0, larghezza, altezza);
   ctx.globalCompositeOperation = 'source-over';
   return canvas;
 }
@@ -494,6 +500,122 @@ export interface OpzioniCucitura {
  * precedente di almeno un terzo.
  */
 /**
+ * L'ORIENTAMENTO SCRITTO DENTRO IL JPEG, e le misure che il file dichiara.
+ *
+ * Un telefono tenuto in verticale non gira i pixel: li scrive come li legge
+ * il sensore — orizzontali — e mette in un'etichetta «questa va girata di un
+ * quarto». Chi guarda la foto applica l'etichetta, e nessuno se ne accorge
+ * mai. Tranne noi: `createImageBitmap` la applica su un browser e non
+ * sull'altro, e la stessa panoramica esce dritta di qua e coricata di là.
+ * Peggio: se non la si applica, una panoramica scattata girando in
+ * orizzontale scorre in VERTICALE nei pixel, e le sfumature dei bordi
+ * finiscono sui lati sbagliati.
+ *
+ * Qui l'etichetta si legge da soli, e si confronta con quello che il browser
+ * ha effettivamente deciso di fare. Così non si dipende più da chi la applica.
+ */
+export async function etichettaJpeg(
+  blob: Blob
+): Promise<{ orientamento: number; larghezza: number; altezza: number } | null> {
+  // bastano i primi blocchi: EXIF e la testata delle misure stanno all'inizio
+  const b = new DataView(await blob.slice(0, 256 * 1024).arrayBuffer());
+  if (b.byteLength < 4 || b.getUint16(0) !== 0xffd8) return null;
+  let orientamento = 1;
+  let larghezza = 0;
+  let altezza = 0;
+  let i = 2;
+  while (i + 4 <= b.byteLength) {
+    if (b.getUint8(i) !== 0xff) {
+      i++;
+      continue;
+    }
+    const marchio = b.getUint8(i + 1);
+    if (marchio === 0xd8 || marchio === 0x01 || (marchio >= 0xd0 && marchio <= 0xd7)) {
+      i += 2;
+      continue;
+    }
+    if (marchio === 0xda) break; // comincia l'immagine: oltre non serve
+    const lungo = b.getUint16(i + 2);
+    // SOF: le misure vere dei pixel scritti nel file
+    const eSof = marchio >= 0xc0 && marchio <= 0xcf && marchio !== 0xc4 && marchio !== 0xc8 && marchio !== 0xcc;
+    if (eSof && i + 9 <= b.byteLength) {
+      altezza = b.getUint16(i + 5);
+      larghezza = b.getUint16(i + 7);
+    }
+    if (marchio === 0xe1 && i + 10 < b.byteLength) {
+      let testo = '';
+      for (let k = i + 4; k < i + 8; k++) testo += String.fromCharCode(b.getUint8(k));
+      if (testo === 'Exif') {
+        try {
+          const t = i + 10;
+          const piccolo = b.getUint8(t) === 0x49;
+          const l16 = (o: number) => b.getUint16(o, piccolo);
+          const l32 = (o: number) => b.getUint32(o, piccolo);
+          const ifd = t + l32(t + 4);
+          const quanti = l16(ifd);
+          for (let k = 0; k < quanti; k++) {
+            const voce = ifd + 2 + k * 12;
+            if (l16(voce) === 0x0112) orientamento = l16(voce + 8);
+          }
+        } catch {
+          // etichetta malformata: si tiene l'orientamento neutro
+        }
+      }
+    }
+    i += 2 + lungo;
+  }
+  if (!(larghezza > 0) || !(altezza > 0)) return null;
+  return { orientamento, larghezza, altezza };
+}
+
+/**
+ * LO SCATTO APERTO DRITTO, comunque si comporti il browser.
+ *
+ * Si guarda che misure ha il file e che misure ha l'immagine decodificata: se
+ * il file dice 5712×4284 e il browser restituisce 4284×5712, l'etichetta
+ * l'ha già applicata lui e non c'è niente da fare. Se restituisce le stesse
+ * misure del file, la gira l'app.
+ *
+ * Si raddrizzano solo i quarti di giro (etichette 5-8), gli unici che si
+ * riconoscono con certezza dalle misure. Un capovolgimento non cambia le
+ * misure e non si può distinguere da qui: sarebbe una scommessa, e una foto
+ * capovolta si cuce comunque bene — coricata no.
+ */
+export async function apriDritta(
+  blob: Blob
+): Promise<{ immagine: ImageBitmap | HTMLCanvasElement; larghezza: number; altezza: number }> {
+  const bmp = await createImageBitmap(blob);
+  const etichetta = await etichettaJpeg(blob).catch(() => null);
+  const quartoDiGiro = etichetta ? etichetta.orientamento >= 5 && etichetta.orientamento <= 8 : false;
+  const giaGirata =
+    etichetta != null && bmp.width === etichetta.altezza && bmp.height === etichetta.larghezza;
+  if (!quartoDiGiro || giaGirata) {
+    return { immagine: bmp, larghezza: bmp.width, altezza: bmp.height };
+  }
+  const c = document.createElement('canvas');
+  c.width = bmp.height;
+  c.height = bmp.width;
+  const g = c.getContext('2d');
+  if (!g) {
+    return { immagine: bmp, larghezza: bmp.width, altezza: bmp.height };
+  }
+  const o = etichetta!.orientamento;
+  // 6 = un quarto in senso orario, 8 = antiorario, 5 e 7 con lo specchio
+  if (o === 6) {
+    g.transform(0, 1, -1, 0, bmp.height, 0);
+  } else if (o === 8) {
+    g.transform(0, -1, 1, 0, 0, bmp.width);
+  } else if (o === 5) {
+    g.transform(0, 1, 1, 0, 0, 0);
+  } else {
+    g.transform(0, -1, -1, 0, bmp.height, bmp.width);
+  }
+  g.drawImage(bmp, 0, 0);
+  bmp.close?.();
+  return { immagine: c, larghezza: c.width, altezza: c.height };
+}
+
+/**
  * QUANTO SI SOVRAPPONGONO DUE SCATTI, subito dopo averli fatti.
  *
  * La misura sul banco è netta: con venti scatti sovrapposti a metà la
@@ -520,11 +642,11 @@ export async function sovrapposizioneFra(
   nuovo: Blob
 ): Promise<number | null> {
   const apri = async (b: Blob) => {
-    const bmp = await createImageBitmap(b);
+    const { immagine: bmp, larghezza, altezza } = await apriDritta(b);
     try {
-      const f = Math.min(1, 760 / Math.max(bmp.width, bmp.height));
-      const w = Math.max(1, Math.round(bmp.width * f));
-      const h = Math.max(1, Math.round(bmp.height * f));
+      const f = Math.min(1, 760 / Math.max(larghezza, altezza));
+      const w = Math.max(1, Math.round(larghezza * f));
+      const h = Math.max(1, Math.round(altezza * f));
       const c = document.createElement('canvas');
       c.width = w;
       c.height = h;
@@ -533,7 +655,7 @@ export async function sovrapposizioneFra(
       g.drawImage(bmp, 0, 0, w, h);
       return inGrigio(g.getImageData(0, 0, w, h).data, w, h);
     } finally {
-      bmp.close?.();
+      if ('close' in bmp) bmp.close?.();
     }
   };
   const a = await apri(precedente);
@@ -561,7 +683,7 @@ export async function cuciPanoramica(
   if (file.length > SCATTI_MAX)
     throw new CucituraFallita(`Al massimo ${SCATTI_MAX} scatti per panoramica.`);
 
-  const apri = (f: File | Blob) => createImageBitmap(f instanceof Blob ? f : new Blob([f]));
+  const apri = (f: File | Blob) => apriDritta(f instanceof Blob ? f : new Blob([f]));
 
   // PRIMA PASSATA: uno scatto per volta.
   //
@@ -575,12 +697,12 @@ export async function cuciPanoramica(
   const ridotte: Array<{ grigia: Grigia; fattore: number }> = [];
   const scatti: Array<{ larghezza: number; altezza: number }> = [];
   for (let i = 0; i < file.length; i++) {
-    const b = await apri(file[i]);
+    const { immagine, larghezza, altezza } = await apri(file[i]);
     try {
-      scatti.push({ larghezza: b.width, altezza: b.height });
-      ridotte.push(perLaRicerca(b));
+      scatti.push({ larghezza, altezza });
+      ridotte.push(perLaRicerca(immagine, larghezza, altezza));
     } finally {
-      b.close?.();
+      if ('close' in immagine) immagine.close?.();
     }
     avanti(0.05 + (0.1 * (i + 1)) / file.length, 'Apro gli scatti');
   }
@@ -633,12 +755,12 @@ export async function cuciPanoramica(
   ctx.imageSmoothingQuality = 'high';
   // SECONDA PASSATA: si riapre uno scatto per volta, si disegna, si richiude
   for (let i = 0; i < file.length; i++) {
-    const b = await apri(file[i]);
+    const { immagine, larghezza, altezza } = await apri(file[i]);
     try {
-      const sfumato = conBordoSfumato(b, i > 0, i < file.length - 1);
-      disegnaDeformata(ctx, sfumato, b.width, b.height, disp.verso[i]);
+      const sfumato = conBordoSfumato(immagine, larghezza, altezza, i > 0, i < file.length - 1);
+      disegnaDeformata(ctx, sfumato, larghezza, altezza, disp.verso[i]);
     } finally {
-      b.close?.();
+      if ('close' in immagine) immagine.close?.();
     }
     avanti(0.5 + (0.45 * (i + 1)) / file.length, 'Cucio');
   }

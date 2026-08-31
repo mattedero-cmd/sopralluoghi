@@ -164,6 +164,32 @@ describe('la macchina fotografica finta funziona', () => {
     const caselle = new Set(scelti.map((a) => `${Math.floor(a.x / 80)},${Math.floor(a.y / 80)}`));
     expect(caselle.size).toBeGreaterThan(20);
   });
+
+  /**
+   * MEZZA FOTO DI CIELO NON DEVE DIMEZZARE I PUNTI.
+   *
+   * La quota per casella serve a non ammucchiare tutti i punti sullo stesso
+   * mattone. Ma in una foto vera metà inquadratura è cielo — o asfalto, o
+   * acqua — e lì di spigoli non ce n'è nessuno: la loro quota andava persa e
+   * il conto teneva la metà dei punti che gli erano stati chiesti.
+   *
+   * Su una panoramica di montagna vera questo faceva la differenza fra
+   * cucire e non cucire: la coppia più povera scendeva a trenta abbinamenti
+   * buoni, sul filo del rifiuto, e con la quota ridistribuita ne fa
+   * cinquanta.
+   */
+  it('anche con mezza inquadratura vuota si tengono tutti i punti chiesti', () => {
+    const img = rendi(scatto(0));
+    // si spegne la metà di sopra: cielo liscio, nessuno spigolo
+    const cielo: Grigia = { dati: new Float32Array(img.dati), w: W, h: H };
+    for (let y = 0; y < H / 2; y++) for (let x = 0; x < W; x++) cielo.dati[y * W + x] = 200;
+    const angoli = angoliFast(cielo);
+    const scelti = selezionati(angoli, W, H, 900);
+    const inAlto = scelti.filter((a) => a.y < H / 2).length;
+    console.log(`mezza foto vuota: angoli ${angoli.length}, tenuti ${scelti.length}/900`);
+    expect(inAlto, 'nel cielo non si inventa niente').toBe(0);
+    expect(scelti.length, 'la quota del cielo va a chi ha qualcosa').toBe(900);
+  });
 });
 
 describe('il descrittore riconosce lo stesso punto', () => {
