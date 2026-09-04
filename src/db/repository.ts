@@ -394,6 +394,7 @@ export async function creaPiantaDaFoto(progettoId: ID, sorgente: Foto): Promise<
     // ricalcata sopra deve avere le stesse due
     piani: sorgente.piani?.map((p) => ({ ...p })),
     ePianta: true,
+    piantaDi: sorgente.id,
     sfondoNascosto: false,
     // PRIVACY: copiando i pixel si copiano anche le regioni oscurate, altrimenti
     // lo sfondo della pianta mostrerebbe i volti scoperti

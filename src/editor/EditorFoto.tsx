@@ -36,7 +36,7 @@ import {
   segmentiPoligono,
   segmentoELato
 } from '../db/types';
-import { aggiornaFoto, aggiungiFoto, eliminaFoto, impostaSfondoPianta, incorporaCensureFoto, leggiImpostazioni, salvaAnnotazione, salvaAnnotazioniFoto } from '../db/repository';
+import { aggiornaFoto, aggiungiFoto, creaPiantaDaFoto, eliminaFoto, impostaSfondoPianta, incorporaCensureFoto, leggiImpostazioni, salvaAnnotazione, salvaAnnotazioniFoto } from '../db/repository';
 import {
   blobOrigine,
   canvasInBlob,
@@ -210,139 +210,130 @@ type GruppoStrumenti = {
     icona: NomeIcona;
     testo: string;
     /**
-     * Non uno strumento da posare ma un COMANDO da eseguire. La calibrazione
-     * si toglie da dove si mette: cercarla altrove non viene in mente a
-     * nessuno, e infatti stava sepolta nelle note della foto.
+     * Non uno strumento da posare ma un COMANDO da eseguire. Mettere e
+     * togliere la calibrazione non sta più qui: è la striscia sotto
+     * l'intestazione, dove si vede sempre.
      */
-    comando?: 'togliPiano' | 'togliScala';
-    /** la voce si mostra solo se questa condizione è vera */
-    seCe?: 'piano' | 'scala';
+    comando?: 'apriPianta';
   }>;
 };
 
 /**
- * MENU QUOTATURE — tutte le funzioni di misura e quotatura: quote base,
- * quote multiple (tecniche), cerchi/dettagli, forme quotate e la
- * calibrazione della scala/prospettiva (piano). Include l'autoquotatura.
+ * IL MENU DELLA FOTO — MISURE.
+ *
+ * Quattro gruppi, e un ordine che segue il lavoro: prima la misura singola,
+ * poi le catene, poi i pezzi interi, poi i tondi. La calibrazione non è più
+ * un gruppo: è la striscia sotto l'intestazione, perché non è uno strumento
+ * ma il PRESUPPOSTO di tutti — se manca, nessuna misura vale niente, e
+ * seppellirla in un cassetto insieme al resto la rendeva invisibile proprio
+ * quando serviva.
  */
-const GRUPPI_STRUMENTI_QUOTATURE: GruppoStrumenti[] = [
+const GRUPPI_MISURE: GruppoStrumenti[] = [
   {
     id: 'quote',
-    icona: 'quota-allin',
+    icona: 'misure',
     testo: 'Quote',
     voci: [
-      { s: 'quotaO', icona: 'quota-orizz', testo: 'Orizzontale' },
-      { s: 'quotaV', icona: 'quota-vert', testo: 'Verticale' },
-      { s: 'quotaA', icona: 'quota-allin', testo: 'Allineata' },
-      { s: 'angolo', icona: 'angolo', testo: 'Angolo' }
+      { s: 'quotaO', icona: 'quota-h', testo: 'Orizzontale' },
+      { s: 'quotaV', icona: 'quota-v', testo: 'Verticale' },
+      { s: 'quotaA', icona: 'quota-obliqua', testo: 'Inclinata' },
+      { s: 'angolo', icona: 'quota-angolo', testo: 'Angolo' }
     ]
   },
   {
-    id: 'quoteMultiple',
-    icona: 'griglia',
-    testo: 'Quote multiple',
+    id: 'catene',
+    icona: 'catene',
+    testo: 'Catene',
     voci: [
-      { s: 'tecSerie', icona: 'quota-orizz', testo: 'In serie' },
-      { s: 'tecParallelo', icona: 'quota-vert', testo: 'In parallelo' },
-      { s: 'tecProgressiva', icona: 'quota-allin', testo: 'Progressiva' }
+      { s: 'tecSerie', icona: 'catena-serie', testo: 'In serie' },
+      // «In parallelo» diceva come è disegnata, non che cosa fa: le quote
+      // partono tutte dallo stesso punto zero
+      { s: 'tecParallelo', icona: 'catena-origine', testo: 'Da un’origine' },
+      { s: 'tecProgressiva', icona: 'catena-progressiva', testo: 'Progressiva' }
     ]
   },
   {
-    id: 'cerchiDettagli',
-    icona: 'cerchio-3p',
-    testo: 'Cerchi e dettagli',
+    id: 'pezzi',
+    icona: 'pezzi',
+    testo: 'Pezzi',
     voci: [
-      { s: 'raggio', icona: 'cerchio', testo: 'Raggio' },
-      { s: 'cerchio3p', icona: 'cerchio-3p', testo: 'Cerchio 3 punti' },
-      { s: 'tecForo', icona: 'goccia', testo: 'Foro ⌀/R' },
-      { s: 'tecSmusso', icona: 'angolo', testo: 'Smusso' },
-      { s: 'tecFilettatura', icona: 'righello', testo: 'Filettatura' }
+      { s: 'auto', icona: 'forma-auto', testo: 'Riconosci forma' },
+      { s: 'rettangolo', icona: 'forma-rett', testo: 'Rettangolo' },
+      { s: 'quad', icona: 'forma-quattro', testo: '4 angoli' },
+      { s: 'tri', icona: 'forma-tri', testo: 'Triangolo' },
+      { s: 'polilinea', icona: 'forma-spezzata', testo: 'Spezzata' },
+      // NON uno strumento ma una PORTA. «Schizzo stanza» armava qui lo stesso
+      // strumento del menu Pianta e apriva su una foto normale un ambiente
+      // parametrico che quel documento non sa eseguire: tutti i rami sono
+      // chiusi da `foto.ePianta`. Adesso il passaggio è esplicito.
+      { s: 'seleziona', icona: 'porta-pianta', testo: 'Pianta della stanza', comando: 'apriPianta' }
     ]
   },
   {
-    id: 'formeQuotate',
-    icona: 'rettangolo',
-    testo: 'Forme quotate',
+    id: 'tondi',
+    icona: 'tondi',
+    testo: 'Tondi',
     voci: [
-      { s: 'rettangolo', icona: 'rettangolo', testo: 'Rettangolo' },
-      { s: 'quad', icona: 'quad', testo: '4 angoli' },
-      { s: 'tri', icona: 'triangolo', testo: 'Triangolo' },
-      { s: 'polilinea', icona: 'polilinea', testo: 'Polilinea' },
-      { s: 'schizzo', icona: 'griglia', testo: 'Schizzo stanza' }
-    ]
-  },
-  {
-    id: 'scala',
-    icona: 'righello',
-    testo: 'Scala e piano',
-    voci: [
-      { s: 'auto', icona: 'auto', testo: 'Quotatura automatica' },
-      { s: 'riferimento', icona: 'riferimento', testo: 'Riferimento auto' },
-      { s: 'calibra', icona: 'righello', testo: 'Scala (segmento)' },
-      { s: 'piano', icona: 'piano', testo: 'Piano (prospettiva)' },
-      { s: 'pianoForme', icona: 'auto', testo: 'Piano dalle forme' },
-      {
-        s: 'seleziona',
-        icona: 'cestino',
-        testo: 'Togli la scala',
-        comando: 'togliScala',
-        seCe: 'scala'
-      }
+      { s: 'raggio', icona: 'tondo-raggio', testo: 'Raggio' },
+      { s: 'cerchio3p', icona: 'tondo-tre-punti', testo: 'Cerchio 3 punti' },
+      { s: 'tecForo', icona: 'tondo-foro', testo: 'Foro ⌀/R' },
+      { s: 'tecSmusso', icona: 'tondo-smusso', testo: 'Smusso' },
+      { s: 'tecFilettatura', icona: 'tondo-filetto', testo: 'Filettatura' }
     ]
   }
 ];
 
 /**
- * MENU DISEGNO — grafica generica NON parametrica: forme libere (linea,
- * rettangolo, cerchio, poligono, mano libera) e annotazioni (etichette,
- * testo, frecce, dettagli). Nessuna misura: solo elementi grafici.
+ * IL MENU DELLA FOTO — NOTE. Grafica senza misure: segni e annotazioni.
+ *
+ * I nomi dicono l'ESITO, non il gesto. «Rettangolo» esisteva in tre posti e
+ * ne uscivano tre cose diverse — un pezzo quotato, un segno, un ingombro di
+ * pianta — con lo stesso nome e la stessa icona. Qui il segno si chiama
+ * riquadro, e il cerchio senza misure si chiama ovale.
  */
-const GRUPPI_STRUMENTI_DISEGNO: GruppoStrumenti[] = [
+const GRUPPI_NOTE: GruppoStrumenti[] = [
   {
-    id: 'forme',
-    icona: 'disegno',
-    testo: 'Forme',
+    id: 'segni',
+    icona: 'segni',
+    testo: 'Segni',
     voci: [
-      { s: 'forLinea', icona: 'righello', testo: 'Linea' },
-      { s: 'forRett', icona: 'rettangolo', testo: 'Rettangolo' },
-      { s: 'forCerchio', icona: 'cerchio', testo: 'Cerchio' },
-      { s: 'forPoligono', icona: 'polilinea', testo: 'Poligono' },
-      { s: 'disegno', icona: 'matita', testo: 'Mano libera' }
+      { s: 'forLinea', icona: 'segno-linea', testo: 'Linea' },
+      { s: 'forRett', icona: 'segno-riquadro', testo: 'Riquadro' },
+      { s: 'forCerchio', icona: 'segno-ovale', testo: 'Ovale' },
+      { s: 'forPoligono', icona: 'segno-poligono', testo: 'Poligono' },
+      { s: 'disegno', icona: 'segno-penna', testo: 'Penna' }
     ]
   },
   {
     id: 'note',
-    icona: 'etichetta',
+    icona: 'note',
     testo: 'Note',
     voci: [
-      { s: 'etichetta', icona: 'etichetta', testo: 'Etichette e legenda' },
-      { s: 'testo', icona: 'testo', testo: 'Testo' },
-      { s: 'freccia', icona: 'freccia', testo: 'Freccia' },
-      { s: 'callout', icona: 'dettaglio', testo: 'Dettaglio' }
+      { s: 'etichetta', icona: 'nota-etichetta', testo: 'Etichetta' },
+      { s: 'testo', icona: 'nota-testo', testo: 'Testo' },
+      { s: 'freccia', icona: 'nota-freccia', testo: 'Freccia' },
+      { s: 'callout', icona: 'nota-dettaglio', testo: 'Dettaglio' }
     ]
   }
 ];
 
 /**
- * Menu funzionale a cui appartiene un'annotazione: selezionando un oggetto si
- * apre automaticamente il suo menu dedicato (linea/forma/nota → Disegno, quota
- * → Quotature, elemento dello Schizzo → Schizzo). Indipendente dal menu attivo:
- * la selezione riporta sempre nel contesto giusto.
+ * Menu a cui appartiene un'annotazione: selezionando un oggetto si apre da sé
+ * il menu giusto, qualunque fosse quello attivo. Il perimetro parametrico è
+ * l'oggetto della PIANTA.
  */
-function menuDiAnnotazione(tipo: TipoAnnotazione): 'quotature' | 'disegno' | 'schizzo' {
-  // il perimetro parametrico è l'oggetto dello Schizzo: selezionandolo si apre
-  // il menu Schizzo (dove le quote comandano la geometria), su qualsiasi foto.
-  if (tipo === 'quotaPoligono') return 'schizzo';
+function menuDiAnnotazione(tipo: TipoAnnotazione): 'misure' | 'note' | 'pianta' {
+  if (tipo === 'quotaPoligono') return 'pianta';
   switch (tipo) {
     case 'quota':
     case 'quotaAngolo':
     case 'quotaRaggio':
     case 'quotaRett':
     case 'quotaTecnica':
-      return 'quotature';
+      return 'misure';
     default:
       // testo, disegno, freccia, callout, etichetta, legenda, forma
-      return 'disegno';
+      return 'note';
   }
 }
 
@@ -361,15 +352,16 @@ const STRUMENTI_TECNICI = new Set<Strumento>([
 const STRUMENTI_POSA_TECNICA = new Set<Strumento>(['tecSerie', 'tecParallelo', 'tecProgressiva']);
 
 /**
- * MENU SCHIZZO (§CAD) — terzo menu principale, dedicato alla costruzione
- * PARAMETRICA dello schizzo. Sezioni Disegno/Quote/Vincoli/Oggetti/Pulizia con
- * le funzioni disponibili. Ogni voce è uno strumento (`tool`), un comando
- * immediato (`cmd`) o un suggerimento operativo (`suggerimento`).
+ * IL MENU DELLA PIANTA — la costruzione parametrica, dove la quota COMANDA il
+ * disegno invece di leggerlo.
+ *
+ * Non è più una scheda della foto: è la barra di un altro DOCUMENTO
+ * (`foto.ePianta`), e si vede solo lì. Non si chiama più «Schizzo» perché in
+ * cantiere uno schizzo è un disegno approssimativo, mentre questo è il modo
+ * più esatto dell'app — e il codice la chiama pianta dappertutto.
  */
 type ComandoPianta =
-  | 'snap30'
-  | 'snap45'
-  | 'raddrizza90'
+  | 'raddrizza'
   | 'unisci'
   | 'semplifica'
   | 'ricostruisci'
@@ -377,7 +369,7 @@ type ComandoPianta =
   | 'togliVincoli'
   | 'nome';
 /** azioni "arma-e-tocca" sul canvas: vincoli geometrici + operazioni puntuali */
-type TipoArmato = TipoVincoloPianta | 'diagonale' | 'angoloVertice' | 'eliminaLato';
+type TipoArmato = TipoVincoloPianta | 'diagonale' | 'angoloVertice' | 'eliminaLato' | 'dritto';
 interface VocePianta {
   icona: NomeIcona;
   testo: string;
@@ -385,96 +377,60 @@ interface VocePianta {
   cmd?: ComandoPianta;
   /** azione da applicare a tocchi sul canvas (tap-tap) */
   vincolo?: TipoArmato;
-  /** suggerimento operativo mostrato come avviso (funzioni "seleziona-poi-agisci") */
-  suggerimento?: string;
 }
-const GRUPPI_STRUMENTI_PIANTA: Array<{
+const GRUPPI_PIANTA: Array<{
   id: string;
   icona: NomeIcona;
   testo: string;
   voci: VocePianta[];
 }> = [
   {
-    id: 'piaDisegno',
-    icona: 'disegno',
-    testo: 'Disegno',
+    id: 'piaTraccia',
+    icona: 'pianta',
+    testo: 'Traccia',
     voci: [
-      { icona: 'disegno', testo: 'Mano libera', tool: 'schizzo' },
-      { icona: 'etichetta', testo: 'Nome / numero stanza', cmd: 'nome' },
-      { icona: 'mirino', testo: 'Origine (datum) sì/no', cmd: 'origine' }
+      { icona: 'muro-perimetro', testo: 'Perimetro a mano', tool: 'schizzo' },
+      { icona: 'muro-ingombro', testo: 'Ingombro rett.', tool: 'oggRett' },
+      { icona: 'muro-tondo', testo: 'Ingombro tondo', tool: 'oggCerchio' },
+      { icona: 'muro-nome', testo: 'Nome stanza', cmd: 'nome' },
+      { icona: 'muro-origine', testo: 'Origine (datum)', cmd: 'origine' }
     ]
   },
   {
     id: 'piaQuote',
-    icona: 'quota-orizz',
+    icona: 'quote-comandano',
     testo: 'Quote',
     voci: [
-      {
-        icona: 'quota-allin',
-        testo: 'Quota lato (parametrica)',
-        suggerimento:
-          'Tocca l’etichetta di una quota sul canvas e digita il valore: la quota comanda il disegno.'
-      },
-      { icona: 'quota-orizz', testo: 'Diagonale (tocca 2 vertici)', vincolo: 'diagonale' },
-      { icona: 'angolo', testo: 'Angolo (tocca un vertice)', vincolo: 'angoloVertice' },
-      {
-        icona: 'occhio',
-        testo: 'Quota di riferimento',
-        suggerimento:
-          'Tocca l’etichetta della quota e scegli “( ) Riferimento”: misura soltanto, non comanda il disegno.'
-      }
+      // le due misure fra punti restano DUE, e con nomi che le distinguono:
+      // scrivono record diversi — una quota sul perimetro, un vincolo di
+      // distanza — con usi diversi a valle. Il difetto era che si chiamavano
+      // quasi uguale e stavano in due gruppi lontani.
+      { icona: 'dist-due-punti', testo: 'Diagonale (2 vertici)', vincolo: 'diagonale' },
+      { icona: 'dist-distanza', testo: 'Distanza (2 punti)', vincolo: 'distanza' },
+      { icona: 'dist-angolo', testo: 'Angolo al vertice', vincolo: 'angoloVertice' },
+      { icona: 'dist-uguale', testo: 'Stessa misura', vincolo: 'ugualeLunghezza' }
     ]
   },
   {
-    id: 'piaVincoli',
-    icona: 'angolo',
-    testo: 'Vincoli',
+    id: 'piaRaddrizza',
+    icona: 'raddrizza',
+    testo: 'Raddrizza',
     voci: [
-      // vincoli a tocchi (tap-tap): premi, poi tocca lati o PUNTI (vertice,
-      // centro-lato, centro oggetto) — anche tra oggetti diversi e col perimetro
-      { icona: 'mirino', testo: 'Coincidente (2 punti)', vincolo: 'coincidente' },
-      { icona: 'quota-orizz', testo: 'Orizzontale (lato o 2 punti)', vincolo: 'orizzontale' },
-      { icona: 'quota-vert', testo: 'Verticale (lato o 2 punti)', vincolo: 'verticale' },
-      { icona: 'quota-allin', testo: 'Collineare / complanare', vincolo: 'collineare' },
-      { icona: 'polilinea', testo: 'Parallelo', vincolo: 'parallelo' },
-      { icona: 'angolo', testo: 'Perpendicolare', vincolo: 'perpendicolare' },
-      { icona: 'righello', testo: 'Uguale lunghezza', vincolo: 'ugualeLunghezza' },
-      {
-        icona: 'magnete',
-        testo: 'Blocca lato / ancora',
-        suggerimento:
-          'Tocca l’etichetta della quota di un lato: nel campo trovi “Blocca” e l’ancora (vertice/centro/lato).'
-      },
-      { icona: 'cestino', testo: 'Rimuovi vincoli geometrici', cmd: 'togliVincoli' }
-    ]
-  },
-  {
-    id: 'piaOggetti',
-    icona: 'rettangolo',
-    testo: 'Oggetti',
-    voci: [
-      // gli oggetti si DISEGNANO trascinando sul canvas, come le forme; poi
-      // sono entità a sé stanti: tocco = selezione (ancore, dimensioni,
-      // elimina), trascinamento = spostamento
-      { icona: 'rettangolo', testo: 'Rettangolo (disegna)', tool: 'oggRett' },
-      { icona: 'cerchio', testo: 'Cerchio (disegna)', tool: 'oggCerchio' },
-      // quota di distanza punto-a-punto: due tocchi su punti (pallini rossi) o
-      // lati; toccando poi la sua etichetta il valore COMANDA il disegno
-      { icona: 'quota-allin', testo: 'Quota distanza (2 punti)', vincolo: 'distanza' }
-    ]
-  },
-  {
-    id: 'piaPulizia',
-    icona: 'griglia',
-    testo: 'Pulizia',
-    voci: [
-      { icona: 'griglia', testo: 'Rendi ortogonale (90°)', cmd: 'raddrizza90' },
-      { icona: 'angolo', testo: 'Snap 45°', cmd: 'snap45' },
-      { icona: 'angolo', testo: 'Snap 30°', cmd: 'snap30' },
-      { icona: 'polilinea', testo: 'Unisci lati allineati', cmd: 'unisci' },
-      { icona: 'auto', testo: 'Semplifica (togli micro-lati)', cmd: 'semplifica' },
-      { icona: 'rettangolo', testo: 'Ricostruisci dalle misure', cmd: 'ricostruisci' },
-      { icona: 'cestino', testo: 'Elimina lato (tocca il lato)', vincolo: 'eliminaLato' }
+      // era tre voci — 90°, snap 45°, snap 30° — che nel codice sono una riga
+      // sola con un parametro. Il passo si sceglie nel pannello.
+      { icona: 'dritto-90', testo: 'Ortogonale', cmd: 'raddrizza' },
+      // erano tre vincoli che chiedevano all'utente di NOMINARE un asse che
+      // il lato dice già da sé: orizzontale, verticale, perpendicolare.
+      { icona: 'dritto-asse', testo: 'Metti dritto', vincolo: 'dritto' },
+      // due cose diverse, che stavano in due gruppi lontani col nome quasi
+      // uguale: la prima VINCOLA due lati a stare in linea, la seconda
+      // FONDE quelli che già ci stanno.
+      { icona: 'dritto-allinea', testo: 'Allinea due lati', vincolo: 'collineare' },
+      { icona: 'dritto-unisci', testo: 'Unisci lati dritti', cmd: 'unisci' },
+      { icona: 'dritto-semplifica', testo: 'Semplifica', cmd: 'semplifica' },
+      { icona: 'dritto-ricostruisci', testo: 'Ricostruisci', cmd: 'ricostruisci' },
+      { icona: 'dritto-elimina', testo: 'Elimina lato', vincolo: 'eliminaLato' },
+      { icona: 'dritto-sblocca', testo: 'Sblocca tutto', cmd: 'togliVincoli' }
     ]
   }
 ];
@@ -541,9 +497,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [annotazioni, setAnnotazioni] = useState<Annotazione[] | null>(null);
   const [selezioneId, setSelezioneId] = useState<string | null>(null);
   const [strumento, setStrumento] = useState<Strumento>('seleziona');
-  /** menu attivo (sostituisce la toolbar): quotature · disegno · schizzo */
-  const [modalitaMenu, setModalitaMenu] = useState<'quotature' | 'disegno' | 'schizzo'>(
-    'quotature'
+  /** menu attivo: sulla foto Misure · Note, sulla pianta il suo solo menu */
+  const [modalitaMenu, setModalitaMenu] = useState<'misure' | 'note' | 'pianta'>(
+    'misure'
   );
   /** punti posati della quotatura tecnica in serie in corso (catena da generare) */
   const [puntiTecnici, setPuntiTecnici] = useState<Punto[]>([]);
@@ -618,6 +574,11 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     x: number;
     y: number;
   } | null>(null);
+  /** passo dell'aggancio angolare del comando «Ortogonale».
+   *  Erano tre voci di menu (90°, snap 45°, snap 30°) per una riga di
+   *  codice con un parametro: adesso è UNA voce e il passo si sceglie qui,
+   *  dove si vede anche quale è in uso. */
+  const [passoSnap, setPassoSnap] = useState<90 | 45 | 30>(90);
   /** vincolo "armato" (tap-tap): tipo, poligono bersaglio e lati già toccati.
    *  Con lo strumento 'vincolo' il tocco successivo sceglie il lato. Per la
    *  quota di DISTANZA il primo tocco sceglie l'oggetto (centro o bordo). */
@@ -846,7 +807,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     if (piantaInit.current === foto.id) return;
     piantaInit.current = foto.id;
     if (foto.ePianta) {
-      setModalitaMenu('schizzo');
+      setModalitaMenu('pianta');
       if (annotazioni.length === 0) setStrumento('schizzo');
     }
   }, [foto, annotazioni]);
@@ -865,12 +826,40 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     menuDaSelezione.current = selezioneId;
     const a = annotazioni.find((x) => x.id === selezioneId);
     if (!a) return;
-    const m = menuDiAnnotazione(a.tipo);
+    const suo = menuDiAnnotazione(a.tipo);
+    const m = suo === 'pianta' && !foto.ePianta ? 'misure' : suo;
     setModalitaMenu((cur) => (cur === m ? cur : m));
   }, [selezioneId, annotazioni, foto]);
 
+  /**
+   * LA PORTA VERSO LA PIANTA. «Schizzo stanza» era una voce del menu della
+   * foto che armava lo strumento parametrico su un documento che non lo sa
+   * eseguire: tutti i rami di quel codice sono chiusi da `foto.ePianta`,
+   * quindi si toccava e non succedeva niente. La pianta è un DOCUMENTO, e
+   * qui ci si passa: se da questa foto ne è già nata una si torna su quella,
+   * altrimenti se ne crea una ricalcata sopra, con la sua calibrazione.
+   */
+  const apriPianta = useCallback(async () => {
+    if (!foto) return;
+    const gia = (fotoProgetto ?? []).find((f) => f.ePianta && f.piantaDi === foto.id);
+    if (gia) {
+      naviga({ nome: 'foto', id: gia.id });
+      return;
+    }
+    if (fotoIllegibile(foto)) {
+      mostraToast('errore', 'Questa foto non è leggibile: non si può ricalcarci sopra.');
+      return;
+    }
+    try {
+      const p = await creaPiantaDaFoto(foto.progettoId, foto);
+      naviga({ nome: 'foto', id: p.id });
+    } catch (e) {
+      mostraToast('errore', e instanceof Error ? e.message : 'Pianta non creata.');
+    }
+  }, [foto, fotoProgetto]);
+
   /** cambia il menu funzionale attivo dalla barra dedicata */
-  const cambiaMenu = useCallback((m: 'quotature' | 'disegno' | 'schizzo') => {
+  const cambiaMenu = useCallback((m: 'misure' | 'note' | 'pianta') => {
     setMenuAperto(null);
     setStrumento('seleziona');
     setModalitaMenu(m);
@@ -1912,6 +1901,33 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       return;
     }
     const i = latoPiuVicino(poli, p);
+    // METTI DRITTO: non si chiede all'utente di nominare l'asse — un lato
+    // è già più orizzontale che verticale, o viceversa, e lo dice da sé.
+    // Erano tre voci di menu (Orizzontale, Verticale, Perpendicolare) e
+    // tre parole da CAD per una cosa che in cantiere si dice «mettilo
+    // dritto».
+    if (vincoloArmato.tipo === 'dritto') {
+      const n = poli.punti.length;
+      const A = poli.punti[i];
+      const B = poli.punti[(i + 1) % n];
+      const asse: TipoVincoloPianta =
+        Math.abs(B.x - A.x) >= Math.abs(B.y - A.y) ? 'orizzontale' : 'verticale';
+      const dritto: VincoloPianta = {
+        id: nuovoId(),
+        tipo: asse,
+        riferimenti: [{ entita: 'lato' as const, indice: i }]
+      };
+      const fatto = applicaVincoliSchizzo(poli, [...(poli.vincoli ?? []), dritto]);
+      setVincoloArmato(null);
+      setStrumento('seleziona');
+      if (!fatto) mostraToast('errore', 'Vincolo in conflitto con gli altri: non applicato.');
+      else
+        mostraToast(
+          'successo',
+          asse === 'orizzontale' ? 'Lato messo in bolla.' : 'Lato messo a piombo.'
+        );
+      return;
+    }
     const binario = VINCOLI_BINARI.includes(vincoloArmato.tipo);
     const richiesti = binario ? 2 : 1;
     // per i binari il secondo lato dev'essere diverso dal primo
@@ -3330,7 +3346,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       );
       return;
     }
-    const passo = cmd === 'snap30' ? 30 : cmd === 'snap45' ? 45 : 90;
+    const passo = passoSnap;
     let nuoviPunti = snapAngoliPoligono(poli.punti, passo, passo / 2);
     // se la pianta è quotata e calibrata, dopo lo snap si riadattano le
     // LUNGHEZZE alle quote esistenti (come un CAD: lo snap aggiunge il vincolo
@@ -3660,35 +3676,97 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         </button>
       </header>
 
-      {/* Selettore del menu funzionale, staccato dagli strumenti: tre pulsanti
-          separati (Quotature · Disegno · Schizzo) sotto l'intestazione. Lo
-          Schizzo è un menu principale come gli altri, disponibile su ogni foto. */}
-      <div className="selettore-menu" role="tablist" aria-label="Menu">
-        <button
-          role="tab"
-          aria-selected={modalitaMenu === 'quotature'}
-          className={modalitaMenu === 'quotature' ? 'attivo' : ''}
-          onClick={() => cambiaMenu('quotature')}
-        >
-          <Icona nome="quota-allin" dimensione={18} /> Quotature
-        </button>
-        <button
-          role="tab"
-          aria-selected={modalitaMenu === 'disegno'}
-          className={modalitaMenu === 'disegno' ? 'attivo' : ''}
-          onClick={() => cambiaMenu('disegno')}
-        >
-          <Icona nome="disegno" dimensione={18} /> Disegno
-        </button>
-        <button
-          role="tab"
-          aria-selected={modalitaMenu === 'schizzo'}
-          className={modalitaMenu === 'schizzo' ? 'attivo' : ''}
-          onClick={() => cambiaMenu('schizzo')}
-        >
-          <Icona nome="griglia" dimensione={18} /> Schizzo
-        </button>
+      {/* LA STRISCIA DELLA CALIBRAZIONE — sempre sotto gli occhi.
+          Stava dentro il gruppo «Scala e piano», sepolta fra le altre voci del
+          menu Quotature: per sapere se una foto era calibrata bisognava aprire
+          un cassetto, e senza calibrazione nessuna misura calcolata vale
+          niente.
+
+          Le sei voci per esteso non ci stanno su un telefono — misurate, fanno
+          787 px contro i 390 dello schermo, e i due terzi finivano fuori: una
+          striscia che si legge solo scorrendola non è più visibile del cassetto
+          di prima. Qui resta sempre a schermo quello che conta davvero — SE la
+          foto è calibrata e con che cosa — più il modo più rapido di metterla
+          a posto; gli altri sono a un tocco, nel pannello dove si aprono tutti
+          gli altri strumenti. */}
+      <div className="striscia-scala" role="group" aria-label="Calibrazione della foto">
+        <span className={`stato-cal${foto.scala || foto.piano ? '' : ' manca'}`}>
+          <Icona nome={foto.scala || foto.piano ? 'scala-piena' : 'scala-vuota'} dimensione={18} />
+          {foto.scala && foto.piano
+            ? 'Scala e piano'
+            : foto.scala
+              ? 'Scala'
+              : foto.piano
+                ? `Piano${(foto.piani?.length ?? 0) > 1 ? ` · ${foto.piani!.length} pareti` : ''}`
+                : 'Senza scala'}
+        </span>
+        {/* la via più corta, fuori dal pannello, ma solo finché serve: senza
+            calibrazione è quello che l'utente deve fare adesso */}
+        {!foto.scala && !foto.piano && (
+          <button
+            className={`cal-btn${strumento === 'riferimento' ? ' attivo' : ''}`}
+            title="Tocca un oggetto di formato noto (A4, bancomat…): il piano si ricava da solo"
+            onClick={() => {
+              setMenuAperto(null);
+              setStrumento('riferimento');
+            }}
+          >
+            <Icona nome="riferimento" dimensione={18} /> Riferimento
+          </button>
+        )}
+        {(() => {
+          // con uno strumento di calibrazione in mano la striscia lo dice: il
+          // suggerimento sul canvas spiega il gesto, ma non da dove viene
+          const armato =
+            strumento === 'calibra'
+              ? 'Segmento'
+              : strumento === 'piano'
+                ? '4 angoli'
+                : strumento === 'riferimento'
+                  ? 'Riferimento'
+                  : null;
+          const aperto = menuAperto === 'cal';
+          return (
+            <button
+              className={`cal-btn${aperto || armato ? ' attivo' : ''}`}
+              aria-expanded={aperto}
+              onClick={() => setMenuAperto((m) => (m === 'cal' ? null : 'cal'))}
+            >
+              <Icona nome="righello" dimensione={18} />
+              {armato ?? (foto.scala || foto.piano ? 'Calibrazione' : 'Altri modi')}
+              <Icona nome="giu" dimensione={13} className="caret" />
+            </button>
+          );
+        })()}
       </div>
+
+      {/* IL SELETTORE — due sole schede, e solo sulla foto.
+          Erano tre (Quotature · Disegno · Schizzo) su ogni foto, ma la terza
+          apriva su una foto normale un ambiente parametrico che quel
+          documento non sa eseguire: ogni suo ramo è chiuso da `foto.ePianta`,
+          quindi i comandi c'erano e non facevano niente. La pianta è un
+          DOCUMENTO a sé, non una scheda: sul suo documento la sua barra è
+          l'unica, e non c'è niente da scegliere. */}
+      {!foto.ePianta && (
+        <div className="selettore-menu" role="tablist" aria-label="Menu">
+          <button
+            role="tab"
+            aria-selected={modalitaMenu === 'misure'}
+            className={modalitaMenu === 'misure' ? 'attivo' : ''}
+            onClick={() => cambiaMenu('misure')}
+          >
+            <Icona nome="misure" dimensione={18} /> Misure
+          </button>
+          <button
+            role="tab"
+            aria-selected={modalitaMenu === 'note'}
+            className={modalitaMenu === 'note' ? 'attivo' : ''}
+            onClick={() => cambiaMenu('note')}
+          >
+            <Icona nome="note" dimensione={18} /> Note
+          </button>
+        </div>
+      )}
 
       <StageEditor
         foto={fotoVista ?? foto}
@@ -3832,7 +3910,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         </div>
       )}
 
-      {modalitaMenu === 'schizzo' &&
+      {modalitaMenu === 'pianta' &&
         strumento !== 'schizzo' &&
         (() => {
           const poli = poligonoBersaglio();
@@ -4626,7 +4704,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
 
       {/* MENU RICHIAMO: elenco delle misure ORIGINALI richiamabili nel progetto */}
       {menuRichiamo && (
-        <Modale titolo="Richiama una misura" onChiudi={() => setMenuRichiamo(false)}>
+        <Modale titolo="Ripeti una misura" onChiudi={() => setMenuRichiamo(false)}>
           <p className="aiuto" style={{ marginTop: 0 }}>
             Scegli una misura già presa: la riporti su questa foto toccando gli elementi
             uguali, senza rimisurarla. Vengono mostrate solo le misure originali.
@@ -4783,13 +4861,116 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         {menuAperto && (
           <div className="backdrop-strumenti" onClick={() => setMenuAperto(null)} />
         )}
+        {menuAperto === 'cal' && (
+          <div className="pannello-strumenti" role="menu" aria-label="Calibrazione">
+            <div className="riga-pannello">
+              <span className="etichetta">SCALA — un segmento di lunghezza nota</span>
+            </div>
+            <button
+              className={`btn-strumento-grande${strumento === 'calibra' ? ' attivo' : ''}`}
+              onClick={() => {
+                setMenuAperto(null);
+                setStrumento('calibra');
+              }}
+            >
+              <span className="ico">
+                <Icona nome="righello" dimensione={26} />
+              </span>
+              <span>Segmento</span>
+            </button>
+            {foto.scala && (
+              <button
+                className="btn-strumento-grande pericoloso"
+                onClick={() => {
+                  setMenuAperto(null);
+                  void togliScala();
+                }}
+              >
+                <span className="ico">
+                  <Icona nome="cestino" dimensione={26} />
+                </span>
+                <span>Togli la scala</span>
+              </button>
+            )}
+            <div className="riga-pannello">
+              <span className="etichetta">PIANO — una parete intera in prospettiva</span>
+            </div>
+            <button
+              className={`btn-strumento-grande${strumento === 'riferimento' ? ' attivo' : ''}`}
+              onClick={() => {
+                setMenuAperto(null);
+                setStrumento('riferimento');
+              }}
+            >
+              <span className="ico">
+                <Icona nome="riferimento" dimensione={26} />
+              </span>
+              <span>Riferimento</span>
+            </button>
+            <button
+              className={`btn-strumento-grande${strumento === 'piano' ? ' attivo' : ''}`}
+              onClick={() => {
+                setMenuAperto(null);
+                setStrumento('piano');
+              }}
+            >
+              <span className="ico">
+                <Icona nome="piano" dimensione={26} />
+              </span>
+              <span>4 angoli</span>
+            </button>
+            <button
+              className="btn-strumento-grande"
+              onClick={() => {
+                setMenuAperto(null);
+                ricavaPianoDalleForme();
+              }}
+            >
+              <span className="ico">
+                <Icona nome="forma-auto" dimensione={26} />
+              </span>
+              <span>Dalle forme</span>
+            </button>
+            {foto.piano && (
+              <button
+                className="btn-strumento-grande pericoloso"
+                onClick={() => {
+                  setMenuAperto(null);
+                  void togliPiano();
+                }}
+              >
+                <span className="ico">
+                  <Icona nome="cestino" dimensione={26} />
+                </span>
+                <span>Togli il piano</span>
+              </button>
+            )}
+          </div>
+        )}
         {menuAperto &&
-          modalitaMenu === 'schizzo' &&
+          modalitaMenu === 'pianta' &&
           (() => {
-            const g = GRUPPI_STRUMENTI_PIANTA.find((x) => x.id === menuAperto);
+            const g = GRUPPI_PIANTA.find((x) => x.id === menuAperto);
             if (!g) return null;
             return (
               <div className="pannello-strumenti" role="menu" aria-label={g.testo}>
+                {g.id === 'piaRaddrizza' && (
+                  <div className="riga-pannello">
+                    <span className="etichetta">Passo di «Ortogonale»</span>
+                    <span className="segmenti" role="group" aria-label="Passo dell'aggancio">
+                      {([90, 45, 30] as const).map((p) => (
+                        <button
+                          key={p}
+                          className={passoSnap === p ? 'attivo' : ''}
+                          aria-pressed={passoSnap === p}
+                          onClick={() => setPassoSnap(p)}
+                        >
+                          {p}°
+                        </button>
+                      ))}
+                    </span>
+                  </div>
+                )}
                 {g.voci.map((v, i) => (
                   <button
                     key={i}
@@ -4811,10 +4992,6 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                       }
                       if (v.vincolo) {
                         armaVincolo(v.vincolo);
-                        return;
-                      }
-                      if (v.suggerimento) {
-                        mostraToast('info', v.suggerimento);
                       }
                     }}
                   >
@@ -4828,21 +5005,15 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             );
           })()}
         {menuAperto &&
-          modalitaMenu !== 'schizzo' &&
+          modalitaMenu !== 'pianta' &&
           (() => {
             const set =
-              modalitaMenu === 'disegno' ? GRUPPI_STRUMENTI_DISEGNO : GRUPPI_STRUMENTI_QUOTATURE;
+              modalitaMenu === 'note' ? GRUPPI_NOTE : GRUPPI_MISURE;
             const g = set.find((x) => x.id === menuAperto);
             if (!g) return null;
             return (
               <div className="pannello-strumenti" role="menu" aria-label={g.testo}>
-                {g.voci
-                  .filter(
-                    (v) =>
-                      !v.seCe ||
-                      (v.seCe === 'piano' ? !!foto.piano : !!foto.scala)
-                  )
-                  .map((v) => (
+                {g.voci.map((v) => (
                   <button
                     key={v.comando ?? v.s}
                     className={`btn-strumento-grande${
@@ -4850,12 +5021,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                     }`}
                     onClick={() => {
                       setMenuAperto(null);
-                      if (v.comando === 'togliPiano') {
-                        void togliPiano();
-                        return;
-                      }
-                      if (v.comando === 'togliScala') {
-                        void togliScala();
+                      if (v.comando === 'apriPianta') {
+                        void apriPianta();
                         return;
                       }
                       if (STRUMENTI_POSA_TECNICA.has(v.s)) {
@@ -4880,12 +5047,6 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                         mostraToast('info', 'Questo strumento tecnico arriva nelle prossime fasi.');
                         return;
                       }
-                      if (v.s === 'pianoForme') {
-                        // non è uno strumento da posare: è un comando, e apre
-                        // la sua scheda di verifica
-                        ricavaPianoDalleForme();
-                        return;
-                      }
                       setStrumento(v.s);
                     }}
                   >
@@ -4906,11 +5067,11 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               setMenuAperto(null);
             }}
             icona="cursore"
-            testo="Seleziona"
+            testo="Scegli"
           />
           {/* "Auto" (autoquotatura) è ora nel gruppo Scala del menu Quotature.
               "Richiama" resta a portata di mano ma non serve nel Menu Schizzo. */}
-          {modalitaMenu !== 'schizzo' && (
+          {modalitaMenu !== 'pianta' && (
             <BtnStrumento
               attivo={menuRichiamo || !!duplicaMaster}
               onClick={() => {
@@ -4920,13 +5081,13 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 setMenuRichiamo(true);
               }}
               icona="duplica"
-              testo="Richiama"
+              testo="Ripeti"
             />
           )}
-          {modalitaMenu !== 'schizzo' &&
-            (modalitaMenu === 'disegno'
-              ? GRUPPI_STRUMENTI_DISEGNO
-              : GRUPPI_STRUMENTI_QUOTATURE
+          {modalitaMenu !== 'pianta' &&
+            (modalitaMenu === 'note'
+              ? GRUPPI_NOTE
+              : GRUPPI_MISURE
             ).map((g) => {
               // le voci-COMANDO non sono strumenti: non devono mai
               // prendersi l'icona del gruppo
@@ -4942,8 +5103,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 />
               );
             })}
-          {modalitaMenu === 'schizzo' &&
-            GRUPPI_STRUMENTI_PIANTA.map((g) => {
+          {modalitaMenu === 'pianta' &&
+            GRUPPI_PIANTA.map((g) => {
               const attivo = g.voci.some((v) => v.tool && v.tool === strumento);
               return (
                 <BtnStrumento
@@ -8088,9 +8249,9 @@ function BtnStrumento({
         <Icona nome={icona} dimensione={23} />
       </span>
       <span className="testo-strumento">
-        {testo}
-        {gruppo && <Icona nome="giu" dimensione={13} className="caret" />}
+        <span className="lab">{testo}</span>
       </span>
+      {gruppo && <Icona nome="giu" dimensione={12} className="caret" />}
     </button>
   );
 }

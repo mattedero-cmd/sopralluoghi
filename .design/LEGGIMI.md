@@ -24,12 +24,29 @@ ricuce con `seed-canvas.mjs` passando i cinque `.dc.html` e `canvas.json`.
 → 53, nessuna ripetuta; tre menù sulla foto → due, perché la pianta è un
 altro documento (`foto.ePianta`), non una scheda della foto.
 
-Due difetti trovati nel codice mentre la si studiava, ancora da correggere:
+Due difetti trovati nel codice mentre la si studiava, ora corretti (1.58.0):
 
-- `togliPiano` è dichiarato (EditorFoto.tsx:217), implementato (:1004) e
-  gestito (:4853), ma nessuna voce di menù lo richiama: il piano si toglie
-  soltanto da una scheda flottante, per caso.
-- «Schizzo stanza» (`s: 'schizzo'`, :271) e «Mano libera» del menù Schizzo
-  (`tool: 'schizzo'`, :402) sono lo STESSO strumento con due nomi e due
-  icone; e sulla foto normale apre un menù parametrico che quel documento
-  non sa eseguire (35 rami chiusi da `foto.ePianta`).
+- `togliPiano` era dichiarato, implementato e gestito, ma nessuna voce di
+  menù lo richiamava: il piano si metteva e non si toglieva più. Adesso sta
+  nel pannello della calibrazione, accanto a «Togli la scala».
+- «Schizzo stanza» e «Mano libera» del menù Schizzo erano lo STESSO
+  strumento con due nomi e due icone; e sulla foto normale apriva un menù
+  parametrico che quel documento non sa eseguire (35 rami chiusi da
+  `foto.ePianta`). Adesso la voce sulla foto è una PORTA: apre (o riapre) il
+  documento pianta ricalcato su quella foto.
+
+## Dove l'app finita si scosta dalla proposta
+
+La proposta metteva la calibrazione in una striscia con tutte e sei le voci
+per esteso. Misurata nel browser su uno schermo da 390 px, quella striscia
+è larga 787 px con la foto scalibrata e 966 px con scala e piano: i due
+terzi restavano fuori, e una striscia che si legge solo scorrendola non è
+più visibile del cassetto di prima. Nell'app la striscia porta lo STATO
+(sempre a schermo, in giallo quando manca) più la via più rapida; gli altri
+modi stanno nel pannello dove si aprono tutti gli altri strumenti, divisi
+fra SCALA e PIANO.
+
+Rispetto alle 53 icone della proposta l'app ne ha 108 in tutto: le 53 nuove
+si aggiungono a quelle che il resto dell'applicazione già usava, più
+`tondo-filetto` per la Filettatura, che la proposta aveva lasciato fuori dal
+gruppo Tondi.

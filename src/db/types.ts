@@ -218,6 +218,14 @@ export interface Foto {
    */
   ePianta?: boolean;
   /**
+   * Se questa è una pianta RICALCATA su una foto, l'id della foto da cui è
+   * nata. Serve alla porta «Pianta della stanza» del menu della foto: senza
+   * questo legame ogni tocco creerebbe un documento nuovo, e chi torna sulla
+   * foto per riprendere la sua pianta se ne ritroverebbe due identiche e
+   * vuote. Non è indicizzato: si cerca fra le poche foto del progetto.
+   */
+  piantaDi?: ID;
+  /**
    * Pianta tracciata su una foto reale: se true lo sfondo (la foto) è
    * nascosto e si vede solo lo schizzo su bianco. Si può mostrare/nascondere
    * a piacere dopo aver tracciato la geometria.

@@ -4,3 +4,9 @@ menu-sopralluoghi.html
 node_modules
 package.json
 *.png
+
+# script usa-e-getta della riscrittura: mutano src/editor/EditorFoto.tsx una
+# volta sola e rieseguirli sul file già riscritto lo romperebbe
+cablaggio.py
+menu-nuovo.py
+innesta-icone.mjs

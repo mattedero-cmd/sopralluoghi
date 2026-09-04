@@ -10,6 +10,70 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.58.0 — Il menu riordinato: due schede sulla foto, la pianta un documento
+
+Settanta voci, ventisei icone. «Angolo» ne copriva sette da sola — Angolo,
+Smusso, Angolo su vertice, il gruppo Vincoli, Perpendicolare, Snap 45° e
+Snap 30° — e in dodici casi l'icona di un gruppo era identica a quella di una
+sua voce. Un'icona che vale per sette cose non è un'icona: è decorazione.
+
+- **108 icone, una per voce, nessuna uguale a un'altra.** Ogni voce del menu ha
+  il suo disegno. Una prova legge il sorgente (non i tipi: due nomi possono
+  puntare allo stesso disegno e il compilatore è contento) e non lascia
+  passare né un doppione né un nome senza disegno.
+
+- **Due schede sulla foto — Misure e Note — e basta.** Erano tre: la terza,
+  «Schizzo», armava su una foto normale gli strumenti della costruzione
+  parametrica, ma ogni ramo di quel codice è chiuso da `foto.ePianta`: i
+  comandi c'erano e non facevano niente. La pianta è un DOCUMENTO a sé, con la
+  sua barra, e sul suo documento non c'è nessuna scheda da scegliere.
+
+- **Dal menu Pezzi si passa alla pianta, non si finge di averla.** «Pianta
+  della stanza» apre il documento: se da questa foto ne è già nata una si torna
+  su quella, se no se ne crea una ricalcata sopra, con la sua calibrazione.
+
+- **La calibrazione è una striscia sotto l'intestazione, sempre a schermo.**
+  Stava dentro il gruppo «Scala e piano», sepolta fra gli strumenti di disegno:
+  per sapere se una foto era calibrata bisognava aprire un cassetto, e senza
+  calibrazione nessuna misura calcolata vale niente. Adesso «Senza scala» si
+  legge in giallo senza toccare nulla, e accanto c'è il modo più rapido di
+  metterla a posto. Le sei voci per esteso su un telefono misurano 787 px
+  contro 390 di schermo: gli altri modi stanno nel pannello, dove si aprono
+  tutti gli altri strumenti, divisi fra SCALA (un segmento di lunghezza nota) e
+  PIANO (una parete intera in prospettiva).
+
+- **«Togli il piano» adesso esiste davvero.** Il comando era scritto nel codice
+  ma nessuna voce di menu lo chiamava: si poteva mettere un piano prospettico e
+  non toglierlo più.
+
+- **Nomi che dicono l'esito, non il gesto.** «Rettangolo» era in tre gruppi e
+  faceva tre cose diverse: adesso il pezzo quotato è «Rettangolo», il segno
+  grafico è «Riquadro», l'ingombro di pianta è «Ingombro rett.». «In parallelo»
+  diceva come è disegnata la catena, non che fa: adesso è «Da un'origine».
+
+- **Tre voci diventate una: «Metti dritto».** Orizzontale, Verticale e
+  Perpendicolare chiedevano all'utente di nominare un asse che il lato dice già
+  da sé — è più orizzontale che verticale, o viceversa. In cantiere si dice
+  «mettilo dritto», e adesso si fa così: l'app sceglie l'asse e risponde
+  «Lato messo in bolla» o «Lato messo a piombo».
+
+- **Tre voci diventate una: «Ortogonale».** 90°, snap 45° e snap 30° nel codice
+  sono una riga sola con un parametro. Il passo si sceglie adesso in cima al
+  pannello Raddrizza, dove si vede anche qual è quello in uso.
+
+- **Etichette che non si troncano più a metà parola.** «Selezic», «Richiar»,
+  «Detta misui»: la freccetta dei gruppi stava in riga con la parola e le
+  toglieva 15 dei 47 px disponibili, e `text-overflow` non faceva niente perché
+  quel blocco è un `inline-flex`. La freccetta è passata in alto a destra e due
+  parole troppo lunghe per sei pulsanti su 390 px sono diventate «Scegli» e
+  «Ripeti».
+
+- **Due cose che NON sono state unite, e perché.** «Diagonale (2 vertici)» e
+  «Distanza (2 punti)» sembrano la stessa voce ma scrivono record diversi, con
+  usi diversi a valle: sono state rinominate perché si distinguano, non fuse.
+  «Unisci lati dritti» e «Semplifica» restano due comandi: fonderli avrebbe
+  richiesto una chiamata ricorsiva su uno stato non ancora salvato.
+
 ## 1.57.0 — Una panoramica impossibile si rifiuta, non si consegna a ventaglio
 
 La cucitura è riuscita ma la foto era una raggiera di strisce, data per buona.

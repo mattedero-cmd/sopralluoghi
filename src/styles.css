@@ -623,7 +623,7 @@ h2 {
 
 .editor-toolbar {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   padding: 10px 8px;
   padding-bottom: calc(10px + env(safe-area-inset-bottom));
   background: var(--sfondo-2);
@@ -633,12 +633,13 @@ h2 {
 }
 
 .editor-toolbar .btn {
+  position: relative;
   flex: 1 1 0;
   min-width: 0;
   flex-direction: column;
   gap: 5px;
   font-size: 12px;
-  padding: 8px 5px;
+  padding: 8px 4px;
   min-height: 60px;
   border-radius: 12px;
   overflow: hidden;
@@ -658,8 +659,14 @@ h2 {
   line-height: 1;
 }
 
+/* la freccetta dei gruppi non sta in riga con la parola: le toglieva 15 px
+   dei 47 che ha, e l'etichetta usciva troncata. In alto a destra si vede
+   uguale e non costa larghezza. */
 .editor-toolbar .caret {
-  opacity: 0.6;
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  opacity: 0.55;
 }
 
 /* Gruppi di strumenti: ordine visivo per categorie */
@@ -693,12 +700,18 @@ h2 {
   display: inline-flex;
   align-items: center;
   gap: 2px;
+  max-width: 100%;
+  min-width: 0;
 }
 
-.editor-toolbar .caret {
-  font-size: 9px;
-  opacity: 0.7;
+.editor-toolbar .testo-strumento .lab {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+
+
 
 /* il pannello dei sotto-strumenti si apre sopra la toolbar */
 .backdrop-strumenti {
@@ -722,6 +735,30 @@ h2 {
   background: var(--sfondo-2);
   border-top: 1px solid var(--bordo);
   box-shadow: 0 -10px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* riga a tutta larghezza dentro il pannello dei sotto-strumenti: serve al
+   passo dell'aggancio, che non è una voce ma un'impostazione delle voci */
+.riga-pannello {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 2px 2px 6px;
+}
+
+.riga-pannello .etichetta {
+  color: var(--testo-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.riga-pannello .segmenti button {
+  padding: 8px 14px;
+  min-height: 40px;
+  font-size: 14px;
 }
 
 .btn-strumento-grande {
@@ -752,6 +789,11 @@ h2 {
   background: var(--accento);
   border-color: var(--accento);
   color: #fff;
+}
+
+.btn-strumento-grande.pericoloso {
+  color: var(--pericolo);
+  border-color: color-mix(in srgb, var(--pericolo) 45%, var(--bordo));
 }
 
 /* Pulsante colore unico + menu a comparsa */
@@ -2032,6 +2074,70 @@ h2 {
 .segmenti button.attivo {
   background: var(--accento);
   color: #fff;
+}
+
+/* La striscia della calibrazione: sempre visibile sotto l'intestazione.
+   Scorre in orizzontale sui telefoni stretti invece di andare a capo: resta
+   una riga sola, e l'altezza dell'area di lavoro non cambia mai. */
+.striscia-scala {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  background: var(--sfondo-2);
+  border-bottom: 1px solid var(--bordo);
+  flex-shrink: 0;
+}
+
+.stato-cal {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--sfondo-3);
+  border: 1px solid var(--bordo);
+  color: var(--testo);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* senza calibrazione nessuna misura calcolata esiste: si vede da lontano */
+.stato-cal.manca {
+  color: var(--avviso);
+  border-color: var(--avviso);
+  background: transparent;
+}
+
+.cal-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 1 auto;
+  min-width: 0;
+  gap: 5px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--bordo);
+  border-radius: 10px;
+  background: var(--sfondo-3);
+  color: var(--testo);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.cal-btn.attivo {
+  background: var(--accento);
+  border-color: var(--accento);
+  color: #fff;
+}
+
+.cal-btn .caret {
+  opacity: 0.7;
 }
 
 /* Selettore del menu funzionale (Quotature · Disegno · Pianta): barra
