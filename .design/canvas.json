@@ -1,0 +1,74 @@
+{
+  "artboards": [
+    {
+      "file": "Prima.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "Oggi"
+    },
+    {
+      "file": "Main.dc.html",
+      "x": 530,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "Foto · nuovo",
+      "is_interactive": true
+    },
+    {
+      "file": "Pianta.dc.html",
+      "x": 1060,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "Pianta · nuovo",
+      "is_interactive": true
+    },
+    {
+      "file": "Doppioni.dc.html",
+      "x": 1590,
+      "y": 0,
+      "w": 980,
+      "h": 1625,
+      "print": "flow",
+      "title": "Che cosa si unisce"
+    },
+    {
+      "file": "Icone.dc.html",
+      "x": 0,
+      "y": 990,
+      "w": 1000,
+      "h": 2670,
+      "print": "flow",
+      "title": "Le icone"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "n-prima",
+      "x": 0,
+      "y": -150,
+      "w": 390,
+      "text": "PRIMA\nTre menù su ogni foto, 70 voci, 26 icone.\nIl numero rosso = quante cose diverse fa\nquella stessa icona."
+    },
+    {
+      "id": "n-dopo",
+      "x": 530,
+      "y": -150,
+      "w": 920,
+      "text": "DOPO — toccabile\nSulla FOTO due menù (Misure · Note); la PIANTA è un documento a sé, non un tab.\nLa scala non è più sepolta in un gruppo: è una striscia sempre visibile, e da lì si mette e si toglie.\nTocca i gruppi in basso: i pannelli si aprono davvero."
+    },
+    {
+      "id": "n-icone",
+      "x": 0,
+      "y": 3700,
+      "w": 1000,
+      "text": "53 icone, nessuna uguale a un'altra — stesso stile dell'app (24×24, tratto 1,8, estremi tondi)."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

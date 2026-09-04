@@ -1,0 +1,236 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+  :host, body { margin: 0; }
+  .tel { width: 390px; height: 844px; position: relative; display: flex; flex-direction: column;
+    background: var(--sfondo); color: var(--testo); overflow: hidden;
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; font-size: 17px; }
+  a { color: var(--accento-2); } a:hover { color: var(--testo); }
+  .testata { display: flex; align-items: center; gap: 10px; padding: 14px 12px 10px;
+    background: color-mix(in srgb, var(--sfondo-2) 86%, transparent);
+    border-bottom: 1px solid var(--bordo); flex-shrink: 0; }
+  .testata .tit { font-size: 19px; font-weight: 700; letter-spacing: -.01em; }
+  .testata .via { margin-left: auto; display: flex; gap: 8px; color: var(--testo-2); }
+  .doc { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700;
+    letter-spacing: .09em; text-transform: uppercase; padding: 4px 9px; border-radius: 999px;
+    border: 1px solid var(--bordo); color: var(--testo-2); }
+  .scala { display: flex; align-items: center; gap: 10px; padding: 10px 12px; flex-shrink: 0;
+    border-bottom: 1px solid var(--bordo); cursor: pointer; }
+  .scala .eti { font-size: 11px; font-weight: 700; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--testo-2); }
+  .scala .val { font-size: 14px; font-weight: 600; }
+  .scala .fine { margin-left: auto; color: var(--testo-2); display: flex; }
+  .tela { flex: 1; position: relative; overflow: hidden;
+    background:
+      repeating-linear-gradient(0deg, rgba(255,255,255,.028) 0 1px, transparent 1px 34px),
+      repeating-linear-gradient(90deg, rgba(255,255,255,.028) 0 1px, transparent 1px 34px),
+      radial-gradient(120% 80% at 50% 0%, #1c232c 0%, #10141a 70%); }
+  .fondo { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: var(--testo-2); font-size: 13px; letter-spacing: .04em; opacity: .5; }
+  .barre { position: relative; flex-shrink: 0; }
+  .velo { position: absolute; inset: auto 0 100% 0; height: 420px; }
+  .pannello { display: grid; grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+    gap: 8px; padding: 12px 12px 14px; background: var(--sfondo-2);
+    border-top: 1px solid var(--bordo); box-shadow: 0 -10px 24px rgba(0,0,0,.4); }
+  .pannello .cap { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 8px;
+    margin-bottom: 2px; }
+  .pannello .cap b { font-size: 15px; font-weight: 700; }
+  .pannello .cap span { font-size: 12px; color: var(--testo-2); }
+  .voce { width: 100%; min-height: var(--h-voce); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 5px; border: 1px solid var(--bordo);
+    border-radius: 16px; background: var(--sfondo-3); color: var(--testo);
+    font-size: 13px; font-weight: 600; cursor: pointer; padding: 6px 4px; text-align: center;
+    line-height: 1.15; }
+  .voce.on { background: var(--accento); border-color: var(--accento); color: #fff; }
+  .voce .ico { display: flex; }
+  .porta { grid-column: 1 / -1; min-height: 54px; flex-direction: row; gap: 10px;
+    border-style: dashed; border-color: var(--accento); color: var(--accento-2);
+    background: color-mix(in srgb, var(--accento) 12%, transparent); }
+  .scelta { grid-column: 1 / -1; display: flex; gap: 6px; align-items: center;
+    padding: 8px 10px; border: 1px solid var(--bordo); border-radius: 14px;
+    background: var(--sfondo); }
+  .scelta .lab { font-size: 12px; color: var(--testo-2); margin-right: 2px; }
+  .scelta button { flex: 1; padding: 8px 0; border-radius: 10px; border: 1px solid transparent;
+    background: transparent; color: var(--testo-2); font-size: 13px; font-weight: 700;
+    cursor: pointer; }
+  .scelta button.on { background: var(--sfondo-3); border-color: var(--bordo); color: var(--testo); }
+  .barra { display: flex; align-items: stretch; gap: 6px; padding: 8px 10px;
+    padding-bottom: 14px; background: color-mix(in srgb, var(--sfondo-2) 92%, transparent);
+    border-top: 1px solid var(--bordo); }
+  .fisso { display: inline-flex; gap: 6px; padding: 6px; background: var(--sfondo);
+    border: 1px solid var(--bordo); border-radius: 16px; flex-shrink: 0; }
+  .gruppi { display: inline-flex; gap: 6px; padding: 6px; background: var(--sfondo);
+    border: 1px solid var(--bordo); border-radius: 16px; flex: 1; min-width: 0; }
+  .tasto { flex: 1; min-width: 0; min-height: 50px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 3px; border: none; border-radius: 12px;
+    background: transparent; color: var(--testo); cursor: pointer; padding: 4px 2px; }
+  .tasto.on { background: var(--accento); color: #fff; }
+  .tasto .lab { font-size: 10.5px; font-weight: 600; letter-spacing: -.01em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .tab { display: flex; gap: 4px; padding: 8px 12px 0; flex-shrink: 0; }
+  .tab button { flex: 1; padding: 9px 0; border-radius: 11px; border: 1px solid var(--bordo);
+    background: var(--sfondo-2); color: var(--testo-2); font-size: 13.5px; font-weight: 700;
+    cursor: pointer; }
+  .tab button.on { background: var(--sfondo-3); color: var(--testo); border-color: var(--accento); }
+</style>
+</helmet>
+<div class="tel" style="--sfondo: #10141a; --sfondo-2: #1a2029; --sfondo-3: #242c38; --bordo: #36404f; --testo: #f2f5f9; --testo-2: #aab4c2; --accento: {{accento}}; --accento-2: #58a6ff; --h-voce: {{altezzaVoce}}px;">
+  <div class="testata">
+    <div class="tit">Bagno · pianta</div>
+    <span class="doc"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 20V8l8.5-5 8.5 5v12z"/><path d="M9 20v-6h6v6"/></svg> Pianta</span>
+    <div class="via"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="10" height="10" rx="2"/><path d="M9 5h7a4 4 0 0 1 4 4v6"/><path d="M17.5 12.5L20 15l2.2-2.5"/></svg></div>
+  </div>
+
+  <div class="scala" onClick="{{h.scala}}" style="background: {{scalaFondo}};">
+    <span style="color: {{scalaTinta}}; display: flex;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="8" width="13" height="8" rx="1.6"/><path d="M6.5 8v3M11 8v4"/><path d="M17 13.5l2 2 3.5-4"/></svg></span>
+    <div>
+      <div class="eti">Scala</div>
+      <div class="val">Ereditata dalla foto · 1 : 20</div>
+    </div>
+    <span class="fine"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7v10M20 7v10"/><path d="M4 12h16"/><path d="M7 9.5L4.5 12 7 14.5M17 9.5L19.5 12 17 14.5"/></svg></span>
+  </div>
+
+  <div class="tela"><div class="fondo">la foto sta qui</div></div>
+
+  <div class="barre">
+    <div class="velo" onClick="{{h.chiudi}}" style="display: {{velo}};"></div>
+    <sc-if value="{{p.traccia}}" hint-placeholder-val="{{ false }}">
+      <div class="pannello">
+        <div class="cap"><b>Traccia</b><span>5 voci</span></div>
+        <button class="voce {{s.perimetro}}" onClick="{{h.v_perimetro}}">
+          <span class="ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19c-.6-4 .4-8 2.5-11 2-3 6-4 9-2.5s4.5 5.5 3.5 9c-.9 3-3.5 4.8-6.5 4.5"/><circle cx="4" cy="19" r="1.5"/><circle cx="12.5" cy="19" r="1.5"/></svg></span><span>Perimetro a mano</span>
+        </button>
+        <button class="voce {{s.ingombroRett}}" onClick="{{h.v_ingombroRett}}">
+          <span class="ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="7" width="16" height="10" rx="1"/><path d="M4 17L20 7"/><path d="M4 12l5-5M9 17l11-7.5"/></svg></span><span>Ingombro rett.</span>
+        </button>
+        <button class="voce {{s.ingombroCerchio}}" onClick="{{h.v_ingombroCerchio}}">
+          <span class="ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7.5"/><path d="M6 16l10-8M8.5 18.5L19 11M5 11l6-5"/></svg></span><span>Ingombro tondo</span>
+        </button>
+        <button class="voce {{s.nomeStanza}}" onClick="{{h.v_nomeStanza}}">
+          <span class="ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M7.5 15v-6l3 4 3-4v6"/><path d="M16 15V9h1.5a2 2 0 0 1 0 4H16"/></svg></span><span>Nome stanza</span>
+        </button>
+        <button class="voce {{s.origine}}" onClick="{{h.v_origine}}">
+          <span class="ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6M12 16v6M2 12h6M16 12h6"/><circle cx="12" cy="12" r="3.2"/><circle cx="12" cy="12" r="1"/></svg></span><span>Origine</span>
+        </button>
+      </div>
+    </sc-if>
+    <sc-if value="{{p.detta}}" hint-placeholder-val="{{ false }}">
+      <div class="pannello">
+        <div class="cap"><b>Detta misure</b><span>3 voci</span></div>
+        <button class="voce {{s.quotaDuePunti}}" onClick="{{h.v_quotaDuePunti}}">
+          <span class="ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="17" r="2"/><circle cx="19" cy="7" r="2"/><path d="M6.7 15.5L17.3 8.5"/><path d="M8.6 14.9l-1.9 1.3.4 2.2M15.4 9.1l1.9-1.3-.4-2.2"/></svg></span><span>Fra due punti</span>
+        </button>
+        <button class="voce {{s.angoloVertice}}" onClick="{{h.v_angoloVertice}}">
+          <span class="ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="18" r="1.8"/><path d="M5 18h14M5 18L15 5"/><path d="M12.6 18a7.6 7.6 0 0 0-1.4-4.4"/></svg></span><span>Angolo al vertice</span>
+        </button>
+        <button class="voce {{s.stessaMisura}}" onClick="{{h.v_stessaMisura}}">
+          <span class="ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h8M3 16h8"/><path d="M3 6v4M11 6v4M3 14v4M11 14v4"/><path d="M15 10h6M15 14h6"/></svg></span><span>Stessa misura</span>
+        </button>
+      </div>
+    </sc-if>
+    <sc-if value="{{p.raddrizza}}" hint-placeholder-val="{{ false }}">
+      <div class="pannello">
+        <div class="cap"><b>Raddrizza</b><span>7 voci</span></div>
+        <button class="voce {{s.ortogonale}}" onClick="{{h.v_ortogonale}}">
+          <span class="ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4v15h15"/><path d="M5 13h6v6"/><path d="M13 4h7v7"/><path d="M20 4l-7 7"/></svg></span><span>Ortogonale</span>
+        </button>
+        <button class="voce {{s.mettiDritto}}" onClick="{{h.v_mettiDritto}}">
+          <span class="ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18L15 6"/><path d="M4 18h16"/><path d="M12.5 4.5a7 7 0 0 1 3.5 6" stroke-dasharray="2.5 2.5"/><path d="M17.5 9.5l-1.5 1.5-1.5-1.5"/></svg></span><span>Metti dritto</span>
+        </button>
+        <button class="voce {{s.allinea}}" onClick="{{h.v_allinea}}">
+          <span class="ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12h8M13.5 12h8"/><circle cx="12" cy="12" r="1.6"/><path d="M6 8.5v7M18 8.5v7"/></svg></span><span>Allinea</span>
+        </button>
+        <button class="voce {{s.semplifica}}" onClick="{{h.v_semplifica}}">
+          <span class="ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16c2.5 0 3-5 5.5-5S11 15 13.5 15 16 8 21 8"/><path d="M3 20h18" stroke-dasharray="2 3"/></svg></span><span>Semplifica</span>
+        </button>
+        <button class="voce {{s.ricostruisci}}" onClick="{{h.v_ricostruisci}}">
+          <span class="ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 19V9h12v10"/><path d="M4 19h16"/><path d="M9 6.5h6"/><path d="M10.4 5.2L9 6.5l1.4 1.3M13.6 5.2L15 6.5l-1.4 1.3"/></svg></span><span>Ricostruisci</span>
+        </button>
+        <button class="voce {{s.eliminaLato}}" onClick="{{h.v_eliminaLato}}">
+          <span class="ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18V7h16v11"/><path d="M4 18h16" stroke-dasharray="2.5 2.5"/><path d="M9 20.5l6-5M9 15.5l6 5"/></svg></span><span>Elimina lato</span>
+        </button>
+        <button class="voce {{s.sblocca}}" onClick="{{h.v_sblocca}}">
+          <span class="ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="11" width="15" height="9.5" rx="2"/><path d="M8 11V7.5a4 4 0 0 1 7.6-1.7"/><path d="M12 15v2.5"/></svg></span><span>Sblocca tutto</span>
+        </button>
+        <div class="scelta">
+          <span class="lab">Passo</span>
+          <button class="{{s.passo90}}" onClick="{{h.p90}}">90°</button>
+          <button class="{{s.passo45}}" onClick="{{h.p45}}">45°</button>
+          <button class="{{s.passo30}}" onClick="{{h.p30}}">30°</button>
+        </div>
+      </div>
+    </sc-if>
+    <div class="barra">
+      <div class="fisso">
+        <button class="tasto {{c.seleziona}}" onClick="{{h.seleziona}}">
+          <span class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l6 16 2.2-6.4L19.6 10z"/></svg></span><span class="lab">Seleziona</span>
+        </button>
+        <button class="tasto {{c.richiama}}" onClick="{{h.richiama}}">
+          <span class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="10" height="10" rx="2"/><path d="M9 5h7a4 4 0 0 1 4 4v6"/><path d="M17.5 12.5L20 15l2.2-2.5"/></svg></span><span class="lab">Richiama</span>
+        </button>
+      </div>
+  <sc-if value="{{m.pianta}}" hint-placeholder-val="{{ true }}">
+    <div class="gruppi">
+      <button class="tasto {{c.traccia}}" onClick="{{h.traccia}}">
+        <span class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 20V8l8.5-5 8.5 5v12z"/><path d="M9 20v-6h6v6"/></svg></span>
+        <span class="lab">Traccia</span>
+      </button>
+      <button class="tasto {{c.detta}}" onClick="{{h.detta}}">
+        <span class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18v5H3z"/><path d="M7 6v5M11 6v5M15 6v5"/><path d="M6 15h4M6 18.5h8"/><path d="M14.5 14l3 3 4-5"/></svg></span>
+        <span class="lab">Detta misure</span>
+      </button>
+      <button class="tasto {{c.raddrizza}}" onClick="{{h.raddrizza}}">
+        <span class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v16h16"/><path d="M4 12h8v8"/><path d="M15 8l4-4 2 2-4 4z"/></svg></span>
+        <span class="lab">Raddrizza</span>
+      </button>
+    </div>
+  </sc-if>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"accento":{"editor":"color","default":"#2f81f7","options":["#2f81f7","#ff9f0a","#32d74b","#bf5af2"]},"altezzaVoce":{"editor":"range","default":66,"min":52,"max":84,"step":2,"unit":"px","section":"Densità"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.state = { menu: 'pianta', aperto: 'raddrizza', attivo: null, passo: 90 }; }
+  renderVals() {
+    const s = this.state;
+    const acc = this.props.accento ?? '#2f81f7';
+    const G = ["traccia","detta","raddrizza"];
+    const V = ["perimetro","ingombroRett","ingombroCerchio","nomeStanza","origine","quotaDuePunti","angoloVertice","stessaMisura","ortogonale","mettiDritto","allinea","semplifica","ricostruisci","eliminaLato","sblocca"];
+    const M = ["pianta"];
+    const h = {
+      chiudi: () => this.setState({ aperto: null }),
+      scala: () => {},
+      seleziona: () => this.setState({ attivo: null, aperto: null }),
+      richiama: () => this.setState({ attivo: 'richiama', aperto: null })
+    };
+    const c = { seleziona: s.attivo === null ? 'on' : '', richiama: s.attivo === 'richiama' ? 'on' : '' };
+    const p = {};
+    const m = {};
+    const t = {};
+    const sel = {};
+    for (const g of G) { h[g] = () => this.setState({ aperto: s.aperto === g ? null : g });
+      c[g] = s.aperto === g ? 'on' : ''; p[g] = s.aperto === g; }
+    for (const v of V) { h['v_' + v] = () => this.setState({ attivo: v }); sel[v] = s.attivo === v ? 'on' : ''; }
+    for (const k of M) { h['m_' + k] = () => this.setState({ menu: k, aperto: null }); m[k] = s.menu === k; t[k] = s.menu === k ? 'on' : ''; }
+    for (const k of [90, 45, 30]) sel['passo' + k] = s.passo === k ? 'on' : '';
+    h.p90 = () => this.setState({ passo: 90 });
+    h.p45 = () => this.setState({ passo: 45 });
+    h.p30 = () => this.setState({ passo: 30 });
+    return { accento: acc, altezzaVoce: this.props.altezzaVoce ?? 66,
+      velo: s.aperto ? 'block' : 'none',
+      scalaFondo: 'Scala' === 'Nessuna scala' ? 'color-mix(in srgb, #ffd60a 10%, transparent)' : 'color-mix(in srgb, #32d74b 9%, transparent)',
+      scalaTinta: 'Scala' === 'Nessuna scala' ? '#ffd60a' : '#32d74b',
+      h, c, p, m, t, s: sel };
+  }
+}
+</script>
+</body>
+</html>

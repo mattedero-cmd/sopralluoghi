@@ -1,0 +1,6 @@
+# il canvas cucito è enorme (2,5 MB: si porta dentro l'editor) e si rigenera
+# dai file qui accanto con seed-canvas.mjs — non si versiona
+menu-sopralluoghi.html
+node_modules
+package.json
+*.png
