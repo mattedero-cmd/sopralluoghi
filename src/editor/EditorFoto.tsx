@@ -195,11 +195,9 @@ function distanzaPuntoSegmento(p: Punto, a: Punto, b: Punto): number {
 
 /**
  * Strumenti raggruppati per FUNZIONE. La toolbar mostra pochi pulsanti grandi;
- * toccando un gruppo si apre un pannello temporaneo con le varianti. I menu
- * sono organizzati per area: Quotature (tutte le misure/quote), Disegno
- * (grafica libera non parametrica) e Schizzo (ambiente parametrico integrato).
- * Nessuna funzione nuova: le voci esistenti sono solo raggruppate in modo più
- * logico e bilanciato, con meno pulsanti a schermo.
+ * toccando un gruppo si apre un pannello temporaneo con le varianti. Sulla
+ * foto i menu sono due, Misure (tutte le quote) e Note (grafica senza misure);
+ * la pianta è un altro documento e ha la sua barra.
  */
 type GruppoStrumenti = {
   id: string;
@@ -426,6 +424,9 @@ const GRUPPI_PIANTA: Array<{
       // uguale: la prima VINCOLA due lati a stare in linea, la seconda
       // FONDE quelli che già ci stanno.
       { icona: 'dritto-allinea', testo: 'Allinea due lati', vincolo: 'collineare' },
+      // agganciare lo spigolo di un ingombro all'angolo della stanza: era
+      // «Coincidente (2 punti)», ed era sparito senza sostituto
+      { icona: 'dritto-coincide', testo: 'Stesso punto', vincolo: 'coincidente' },
       { icona: 'dritto-unisci', testo: 'Unisci lati dritti', cmd: 'unisci' },
       { icona: 'dritto-semplifica', testo: 'Semplifica', cmd: 'semplifica' },
       { icona: 'dritto-ricostruisci', testo: 'Ricostruisci', cmd: 'ricostruisci' },
@@ -798,9 +799,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     }
   }, [strumento]);
 
-  // aprendo una pianta si entra già nel Menu Schizzo; se vuota, con lo Schizzo
-  // pronto a tracciare. Sulle foto normali il Menu Schizzo resta comunque
-  // disponibile come menu principale, ma non è quello di partenza.
+  // aprendo una pianta si entra nella sua barra; se vuota, col perimetro a
+  // mano già in mano. Sulle foto normali quella barra non esiste.
   const piantaInit = useRef<string | null>(null);
   useEffect(() => {
     if (!foto || !annotazioni) return;
@@ -812,10 +812,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     }
   }, [foto, annotazioni]);
 
-  // Selezionando un oggetto si apre automaticamente il suo menu dedicato
-  // (linea/forma/nota → Disegno, quota → Quotature, elemento dello Schizzo →
-  // Schizzo), indipendentemente dal menu attivo. Così "Seleziona" resta neutro
-  // e riporta sempre nel contesto giusto dell'oggetto scelto.
+  // Selezionando un oggetto si apre automaticamente il suo menu (linea, forma,
+  // nota → Note; quota → Misure), qualunque fosse quello attivo. Così «Scegli»
+  // resta neutro e riporta sempre nel contesto giusto dell'oggetto scelto.
   const menuDaSelezione = useRef<string | null>(null);
   useEffect(() => {
     if (!selezioneId || !annotazioni || !foto) {
@@ -857,6 +856,63 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       mostraToast('errore', e instanceof Error ? e.message : 'Pianta non creata.');
     }
   }, [foto, fotoProgetto]);
+
+  /**
+   * IL PERIMETRO RIMASTO SU UNA FOTO. Con «Schizzo stanza» si tracciava la
+   * stanza direttamente sulla foto, e i suoi strumenti stavano nella terza
+   * scheda; ora quella scheda non c'è, perché stanno sulla pianta. Sulla foto
+   * un poligono quotato è di regola un PEZZO (4 angoli, triangolo, spezzata),
+   * e un pezzo non si sposta: si riconosce la stanza dai segni che solo i
+   * suoi strumenti lasciano — snap angolare, vincoli, oggetti, origine.
+   */
+  const eStanzaSuFoto = (a: Annotazione): a is QuotaPoligono =>
+    a.tipo === 'quotaPoligono' &&
+    !foto?.ePianta &&
+    !a.soloEtichetta &&
+    (a.snapAngolo != null ||
+      (a.vincoli?.length ?? 0) > 0 ||
+      (a.oggetti?.length ?? 0) > 0 ||
+      a.origine != null);
+
+  /** porta il perimetro nella pianta della foto (creandola se non c'è) */
+  const portaNellaPianta = async (peri: QuotaPoligono) => {
+    if (!foto || !annotazioni) return;
+    let pianta = (fotoProgetto ?? []).find((f) => f.ePianta && f.piantaDi === foto.id);
+    if (
+      pianta &&
+      (pianta.larghezzaPx !== foto.larghezzaPx || pianta.altezzaPx !== foto.altezzaPx)
+    ) {
+      mostraToast('errore', 'La pianta di questa foto ha un altro sfondo: il perimetro non combacerebbe.');
+      return;
+    }
+    if (!pianta) {
+      if (fotoIllegibile(foto)) {
+        mostraToast('errore', 'Questa foto non è leggibile: non si può ricalcarci sopra.');
+        return;
+      }
+      try {
+        pianta = await creaPiantaDaFoto(foto.progettoId, foto);
+      } catch (e) {
+        mostraToast('errore', e instanceof Error ? e.message : 'Pianta non creata.');
+        return;
+      }
+    }
+    const senza = annotazioni.filter((a) => a.id !== peri.id);
+    try {
+      // l'ordine conta: l'autosave della foto cancella e riscrive TUTTE le sue
+      // annotazioni, e non deve più trovarci questo id. Prima si svuota ciò
+      // che è in attesa, poi la foto senza il perimetro, poi il perimetro
+      // sotto la pianta.
+      salvaOra();
+      await salvaAnnotazioniFoto(foto.id, senza);
+      await salvaAnnotazione({ ...peri, fotoId: pianta.id });
+    } catch {
+      return; // errore già notificato dal repository
+    }
+    commit(senza);
+    setSelezioneId(null);
+    naviga({ nome: 'foto', id: pianta.id });
+  };
 
   /** cambia il menu funzionale attivo dalla barra dedicata */
   const cambiaMenu = useCallback((m: 'misure' | 'note' | 'pianta') => {
@@ -1179,9 +1235,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     commit([...annotazioni, a]);
     setSelezioneId(a.id);
     setStrumento('seleziona');
-    // lo Schizzo resta sul canvas: il poligono creato viene solo selezionato
-    // (la selezione apre il Menu Schizzo) e resta modificabile con i pulsanti
-    // flottanti, senza aprire un ambiente separato a schermo intero.
+    // il perimetro resta sul canvas: il poligono creato viene solo selezionato
+    // e resta modificabile con i pulsanti flottanti, senza aprire un ambiente
+    // separato a schermo intero.
   };
 
   // -------------------------------------------------------------------------
@@ -1604,6 +1660,89 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     setStrumento('vincolo');
   };
 
+  /**
+   * Applica un vincolo fra due entità già scelte (punti o lati, anche di
+   * oggetto): solo perimetro → risolutore; con oggetti → proiezione rigida.
+   * Lo usano i vincoli nominati (coincidente, collineare…) e «Metti dritto»,
+   * che arriva qui con l'asse già deciso dai due punti.
+   */
+  const applicaVincoloTraEntita = (
+    poli: QuotaPoligono,
+    tipoV: TipoVincoloPianta,
+    refs: RiferimentoPianta[]
+  ) => {
+    if (!annotazioni || !foto) return;
+    const conOggetti = refs.some((r) => r.oggettoId != null);
+    const nuovo: VincoloPianta = { id: nuovoId(), tipo: tipoV, riferimenti: refs };
+    setVincoloArmato(null);
+    setStrumento('seleziona');
+    if (!conOggetti) {
+      // solo perimetro: coincidente/collineare passano dal risolutore LM
+      const ok = applicaVincoliSchizzo(poli, [...(poli.vincoli ?? []), nuovo]);
+      if (!ok) mostraToast('errore', 'Vincolo in conflitto con gli altri: non applicato.');
+      else mostraToast('successo', 'Vincolo applicato: la forma si è adattata.');
+      return;
+    }
+    // livello OGGETTI: applica subito con la proiezione (traslazioni rigide)
+    const segsPoli = segmentiPoligono(poli);
+    const tutti = [...(poli.vincoli ?? []), nuovo];
+    const r = applicaVincoliOggetti(
+      poli.punti,
+      segsPoli,
+      poli.oggetti,
+      tutti,
+      poli.origine ?? origineDefault(poli.punti)
+    );
+    // si giudica solo il vincolo NUOVO: eventuali vincoli preesistenti già
+    // insoddisfatti non devono bloccare (né farsi attribuire) questo
+    if (!r || r.fallitiIds.includes(nuovo.id)) {
+      mostraToast(
+        'errore',
+        tipoV === 'collineare'
+          ? 'Vincolo non applicabile: lati non paralleli (gli oggetti non ruotano) o tutto ancorato.'
+          : 'Vincolo non applicabile: gli elementi coinvolti sono tutti ancorati.'
+      );
+      return;
+    }
+    if (r.fallitiIds.length > 0) {
+      mostraToast(
+        'info',
+        `${r.fallitiIds.length} vincoli preesistenti non risultano soddisfatti (elementi ancorati o in conflitto).`
+      );
+    }
+    const px = pxPerUnita(foto, poli.unita);
+    // se il MURO si è spostato, le quote auto dei lati si riquotano
+    const nLatiPoli = poli.punti.length;
+    const segsFinali =
+      r.punti !== poli.punti && px != null
+        ? segsPoli.map((s) => {
+            if (s.valore == null || quotaFissa(s, nLatiPoli)) return s;
+            const A = r.punti[s.da];
+            const B = r.punti[s.a];
+            if (!A || !B) return s;
+            return { ...s, valore: arrotondaMisura(Math.hypot(B.x - A.x, B.y - A.y) / px) };
+          })
+        : undefined;
+    const vincoliFinali =
+      px != null ? rimisuraDistanze(tutti, r.punti, r.oggetti, px, arrotondaMisura) : tutti;
+    commit(
+      annotazioni.map((a) =>
+        a.id === poli.id
+          ? ({
+              ...poli,
+              punti: r.punti,
+              ...(segsFinali ? { segmenti: segsFinali } : {}),
+              oggetti: r.oggetti,
+              vincoli: vincoliFinali,
+              lati: undefined,
+              offsetLati: undefined
+            } as QuotaPoligono)
+          : a
+      )
+    );
+    mostraToast('successo', 'Vincolo applicato: gli elementi si sono allineati.');
+  };
+
   /** Tocco in modalità vincolo: sceglie il lato più vicino e, raggiunto il
    *  numero di lati richiesto, applica il vincolo e disarma il comando. */
   const onPuntoVincolo = (p: Punto, cliente: { x: number; y: number }) => {
@@ -1830,102 +1969,63 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         );
         return;
       }
-      const nuovo: VincoloPianta = { id: nuovoId(), tipo: tipoV, riferimenti: refs };
-      setVincoloArmato(null);
-      setStrumento('seleziona');
-      if (!conOggetti) {
-        // solo perimetro: coincidente/collineare passano dal risolutore LM
-        const ok = applicaVincoliSchizzo(poli, [...(poli.vincoli ?? []), nuovo]);
-        if (!ok) mostraToast('errore', 'Vincolo in conflitto con gli altri: non applicato.');
-        else mostraToast('successo', 'Vincolo applicato: la forma si è adattata.');
-        return;
-      }
-      // livello OGGETTI: applica subito con la proiezione (traslazioni rigide)
-      const segsPoli = segmentiPoligono(poli);
-      const tutti = [...(poli.vincoli ?? []), nuovo];
-      const r = applicaVincoliOggetti(
-        poli.punti,
-        segsPoli,
-        poli.oggetti,
-        tutti,
-        poli.origine ?? origineDefault(poli.punti)
-      );
-      // si giudica solo il vincolo NUOVO: eventuali vincoli preesistenti già
-      // insoddisfatti non devono bloccare (né farsi attribuire) questo
-      if (!r || r.fallitiIds.includes(nuovo.id)) {
-        mostraToast(
-          'errore',
-          tipoV === 'collineare'
-            ? 'Vincolo non applicabile: lati non paralleli (gli oggetti non ruotano) o tutto ancorato.'
-            : 'Vincolo non applicabile: gli elementi coinvolti sono tutti ancorati.'
-        );
-        return;
-      }
-      if (r.fallitiIds.length > 0) {
-        mostraToast(
-          'info',
-          `${r.fallitiIds.length} vincoli preesistenti non risultano soddisfatti (elementi ancorati o in conflitto).`
-        );
-      }
-      const px = pxPerUnita(foto, poli.unita);
-      // se il MURO si è spostato, le quote auto dei lati si riquotano
-      const nLatiPoli = poli.punti.length;
-      const segsFinali =
-        r.punti !== poli.punti && px != null
-          ? segsPoli.map((s) => {
-              if (s.valore == null || quotaFissa(s, nLatiPoli)) return s;
-              const A = r.punti[s.da];
-              const B = r.punti[s.a];
-              if (!A || !B) return s;
-              return { ...s, valore: arrotondaMisura(Math.hypot(B.x - A.x, B.y - A.y) / px) };
-            })
-          : undefined;
-      const vincoliFinali =
-        px != null ? rimisuraDistanze(tutti, r.punti, r.oggetti, px, arrotondaMisura) : tutti;
-      commit(
-        annotazioni.map((a) =>
-          a.id === poli.id
-            ? ({
-                ...poli,
-                punti: r.punti,
-                ...(segsFinali ? { segmenti: segsFinali } : {}),
-                oggetti: r.oggetti,
-                vincoli: vincoliFinali,
-                lati: undefined,
-                offsetLati: undefined
-              } as QuotaPoligono)
-            : a
-        )
-      );
-      mostraToast('successo', 'Vincolo applicato: gli elementi si sono allineati.');
+      applicaVincoloTraEntita(poli, tipoV, refs);
       return;
     }
     const i = latoPiuVicino(poli, p);
-    // METTI DRITTO: non si chiede all'utente di nominare l'asse — un lato
-    // è già più orizzontale che verticale, o viceversa, e lo dice da sé.
-    // Erano tre voci di menu (Orizzontale, Verticale, Perpendicolare) e
-    // tre parole da CAD per una cosa che in cantiere si dice «mettilo
-    // dritto».
+    // METTI DRITTO: non si chiede all'utente di nominare l'asse. Un lato del
+    // perimetro è già più orizzontale che verticale, o viceversa, e lo dice da
+    // sé; due punti — di un oggetto, o oggetto e perimetro — idem. Erano tre
+    // voci di menu (Orizzontale, Verticale, Perpendicolare) e tre parole da CAD
+    // per una cosa che in cantiere si dice «mettilo dritto».
     if (vincoloArmato.tipo === 'dritto') {
-      const n = poli.punti.length;
-      const A = poli.punti[i];
-      const B = poli.punti[(i + 1) % n];
-      const asse: TipoVincoloPianta =
+      const asseFra = (A: Punto, B: Punto): TipoVincoloPianta =>
         Math.abs(B.x - A.x) >= Math.abs(B.y - A.y) ? 'orizzontale' : 'verticale';
-      const dritto: VincoloPianta = {
-        id: nuovoId(),
-        tipo: asse,
-        riferimenti: [{ entita: 'lato' as const, indice: i }]
-      };
-      const fatto = applicaVincoliSchizzo(poli, [...(poli.vincoli ?? []), dritto]);
-      setVincoloArmato(null);
-      setStrumento('seleziona');
-      if (!fatto) mostraToast('errore', 'Vincolo in conflitto con gli altri: non applicato.');
-      else
+      const primo = !vincoloArmato.refs?.length;
+      const ent = entitaPiuVicina(poli, p, primo ? 'misto' : 'punto');
+      if (primo && ent.genere === 'lato') {
+        // lato del perimetro: vincolo classico immediato
+        const n = poli.punti.length;
+        const idx = ent.rif.indice ?? 0;
+        const asse = asseFra(poli.punti[idx], poli.punti[(idx + 1) % n]);
+        const dritto: VincoloPianta = { id: nuovoId(), tipo: asse, riferimenti: [ent.rif] };
+        const fatto = applicaVincoliSchizzo(poli, [...(poli.vincoli ?? []), dritto]);
+        setVincoloArmato(null);
+        setStrumento('seleziona');
+        if (!fatto) mostraToast('errore', 'Vincolo in conflitto con gli altri: non applicato.');
+        else
+          mostraToast(
+            'successo',
+            asse === 'orizzontale' ? 'Lato messo in bolla.' : 'Lato messo a piombo.'
+          );
+        return;
+      }
+      if (primo) {
+        // un punto di un oggetto: si aspetta il secondo, e i due diranno l'asse
+        setVincoloArmato({ ...vincoloArmato, refs: [ent.rif] });
+        return;
+      }
+      const rA = vincoloArmato.refs![0];
+      const rB = ent.rif;
+      const stesso =
+        rA.entita === rB.entita && rA.oggettoId === rB.oggettoId && rA.indice === rB.indice;
+      const stessoOggetto = rA.oggettoId != null && rA.oggettoId === rB.oggettoId;
+      if (stesso || stessoOggetto) {
         mostraToast(
-          'successo',
-          asse === 'orizzontale' ? 'Lato messo in bolla.' : 'Lato messo a piombo.'
+          'info',
+          stessoOggetto && !stesso
+            ? 'Tocca un punto di un ALTRO oggetto o del perimetro: un vincolo interno a un oggetto rigido non ha effetto.'
+            : 'Tocca un secondo punto diverso dal primo.'
         );
+        return;
+      }
+      const A = puntoRiferimento(poli.punti, poli.oggetti, rA);
+      const B = puntoRiferimento(poli.punti, poli.oggetti, rB);
+      if (!A || !B) {
+        annullaVincolo();
+        return;
+      }
+      applicaVincoloTraEntita(poli, asseFra(A, B), [rA, rB]);
       return;
     }
     const binario = VINCOLI_BINARI.includes(vincoloArmato.tipo);
@@ -2015,7 +2115,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       puntiOggetti();
       return out;
     }
-    if (t === 'orizzontale' || t === 'verticale') {
+    if (t === 'orizzontale' || t === 'verticale' || t === 'dritto') {
       // primo tocco: lato del perimetro o PUNTO di un oggetto; secondo: punti
       if (vincoloArmato.refs?.length) {
         puntiPerimetro();
@@ -2130,7 +2230,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     if (!annotazioni) return;
     const poli = poligonoBersaglio();
     if (!poli) {
-      mostraToast('info', 'Disegna prima lo schizzo: Disegno → Mano libera.');
+      mostraToast('info', 'Traccia prima il perimetro: Traccia → Perimetro a mano.');
       setStrumento('seleziona');
       return;
     }
@@ -2377,7 +2477,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       setConfidenza(0);
       mostraToast(
         'info',
-        'Nessun rettangolo riconosciuto: regola la sensibilità col cursore, tocca al centro dell’oggetto, oppure usa "Piano" e tocca i 4 angoli a mano.'
+        'Nessun rettangolo riconosciuto: regola la sensibilità col cursore, tocca al centro dell’oggetto, oppure «4 angoli» nel pannello Calibrazione, e toccali a mano.'
       );
       return;
     }
@@ -3104,7 +3204,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     if (pareti.length === 0) {
       mostraToast(
         'errore',
-        'La prospettiva di questa foto è troppo inclinata per scriverne un piano: calibra a mano con «Piano».'
+        'La prospettiva di questa foto è troppo inclinata per scriverne un piano: calibra a mano con «4 angoli» nel pannello Calibrazione.'
       );
       return;
     }
@@ -3224,7 +3324,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const poligoniPianta = (): QuotaPoligono[] =>
     (annotazioni ?? []).filter((a): a is QuotaPoligono => a.tipo === 'quotaPoligono');
 
-  /** Poligono-perimetro bersaglio dei comandi del Menu Schizzo: quello
+  /** Poligono-perimetro bersaglio dei comandi della pianta: quello
    *  selezionato se è un poligono, altrimenti l'UNICO dello schizzo. Con più
    *  stanze e nessuna selezione è ambiguo → null (il chiamante avvisa). */
   const poligonoBersaglio = (): QuotaPoligono | null => {
@@ -3247,7 +3347,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     return { validi: validi.length ? validi : undefined, persi: tutti.length - validi.length };
   };
 
-  /** Esegue un comando del Menu Schizzo (Pulizia/Ricostruisci) sul perimetro. */
+  /** Esegue un comando della barra della pianta (Raddrizza) sul perimetro. */
   const eseguiComandoPianta = (cmd: ComandoPianta) => {
     if (!annotazioni) return;
     const poli = poligonoBersaglio();
@@ -3256,7 +3356,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         'info',
         poligoniPianta().length > 1
           ? 'Seleziona prima la stanza su cui operare.'
-          : 'Disegna prima lo schizzo: Disegno → Mano libera.'
+          : 'Traccia prima il perimetro: Traccia → Perimetro a mano.'
       );
       return;
     }
@@ -3549,8 +3649,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     // una copia "solo etichetta" non ha un editor proprio (la misura è
     // dell'originale): si può solo spostare o eliminare
     if (a.tipo === 'quotaPoligono' && a.soloEtichetta) return;
-    // SCHIZZO (pianta): niente ambiente dedicato — si lavora tutto sul canvas
-    // (quote inline, vincoli tap-tap, comandi del Menu Schizzo)
+    // PIANTA: niente ambiente dedicato — si lavora tutto sul canvas
+    // (quote inline, vincoli tap-tap, comandi della barra della pianta)
     if (a.tipo === 'quotaPoligono' && foto.ePianta) return;
     if (a.tipo === 'quotaPoligono') setQuotaInModifica({ tipo: 'poligono', id });
     else if (a.tipo === 'callout') setQuotaInModifica({ tipo: 'callout', id });
@@ -3717,12 +3817,15 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         {(() => {
           // con uno strumento di calibrazione in mano la striscia lo dice: il
           // suggerimento sul canvas spiega il gesto, ma non da dove viene
+          // se «Riferimento» è armato dal suo pulsante rapido, è quello a
+          // dirlo: non serve che lo dica anche questo
+          const rapidoVisibile = !foto.scala && !foto.piano;
           const armato =
             strumento === 'calibra'
               ? 'Segmento'
               : strumento === 'piano'
                 ? '4 angoli'
-                : strumento === 'riferimento'
+                : strumento === 'riferimento' && !rapidoVisibile
                   ? 'Riferimento'
                   : null;
           const aperto = menuAperto === 'cal';
@@ -3919,8 +4022,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               <div className="barra-etichetta" role="status">
                 <span className="hint">
                   {poligoniPianta().length > 1
-                    ? 'Menu Schizzo · seleziona una stanza per operare'
-                    : 'Menu Schizzo · Disegno → Mano libera per tracciare la stanza'}
+                    ? 'Pianta · seleziona una stanza per operare'
+                    : 'Pianta · Traccia → Perimetro a mano per tracciare la stanza'}
                 </span>
               </div>
             );
@@ -3938,7 +4041,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                   aria-hidden
                   style={{ width: 11, height: 11, borderRadius: 999, background: info[stato][1] }}
                 />
-                <span className="hint">Schizzo: {info[stato][0]}</span>
+                <span className="hint">Perimetro: {info[stato][0]}</span>
               </span>
               <span className="hint" style={{ opacity: 0.65 }}>
                 Tocca un lato per quotarlo o vincolarlo
@@ -4226,7 +4329,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       {vincoloArmato &&
         (() => {
           const nomi: Partial<Record<TipoArmato, string>> = {
-            coincidente: 'Coincidente',
+            dritto: 'Metti dritto',
+            coincidente: 'Stesso punto',
             orizzontale: 'Orizzontale',
             verticale: 'Verticale',
             parallelo: 'Parallelo',
@@ -4257,7 +4361,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                       ? nRefs === 0
                         ? 'tocca il primo punto (vertice, centro-lato, centro)'
                         : 'tocca il secondo punto'
-                      : vincoloArmato.tipo === 'orizzontale' || vincoloArmato.tipo === 'verticale'
+                      : vincoloArmato.tipo === 'orizzontale' ||
+                          vincoloArmato.tipo === 'verticale' ||
+                          vincoloArmato.tipo === 'dritto'
                         ? nRefs === 0
                           ? 'tocca un lato del perimetro, o un punto per allineare'
                           : 'tocca il secondo punto'
@@ -4653,6 +4759,16 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 </button>
               </>
             )}
+            {eStanzaSuFoto(selezionata) && (
+              <button
+                className="azione-flottante modifica"
+                aria-label="Porta nella pianta"
+                title="Porta questa stanza nella pianta della foto, dove ha i suoi strumenti"
+                onClick={() => void portaNellaPianta(selezionata)}
+              >
+                <Icona nome="porta-pianta" dimensione={20} />
+              </button>
+            )}
             {selezionata.tipo === 'quotaPoligono' && (
               <button
                 className="azione-flottante duplica"
@@ -4980,7 +5096,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                       if (v.tool) {
                         // gli oggetti si disegnano DENTRO uno schizzo esistente
                         if ((v.tool === 'oggRett' || v.tool === 'oggCerchio') && !poligonoBersaglio()) {
-                          mostraToast('info', 'Disegna prima lo schizzo: Disegno → Mano libera.');
+                          mostraToast('info', 'Traccia prima il perimetro: Traccia → Perimetro a mano.');
                           return;
                         }
                         setStrumento(v.tool);
@@ -5069,8 +5185,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             icona="cursore"
             testo="Scegli"
           />
-          {/* "Auto" (autoquotatura) è ora nel gruppo Scala del menu Quotature.
-              "Richiama" resta a portata di mano ma non serve nel Menu Schizzo. */}
+          {/* «Ripeti» resta a portata di mano, ma sulla pianta non serve. */}
           {modalitaMenu !== 'pianta' && (
             <BtnStrumento
               attivo={menuRichiamo || !!duplicaMaster}
@@ -5117,8 +5232,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 />
               );
             })}
-          {/* Il selettore del menu (Quotature · Disegno · Pianta) è nella
-              barra dedicata sotto l'intestazione, staccato dagli strumenti. */}
+          {/* Il selettore del menu (Misure · Note) è nella barra dedicata
+              sotto l'intestazione, staccato dagli strumenti. */}
         </nav>
       </div>
 
@@ -5845,7 +5960,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           const extraPianta = foto.ePianta ? (
             <>
               <div className="campo">
-                <label>Quota (Menu Schizzo)</label>
+                <label>Quota della pianta</label>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                   <span className="segmenti" role="group" aria-label="Tipo di quota">
                     <button

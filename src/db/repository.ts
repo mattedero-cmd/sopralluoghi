@@ -426,6 +426,9 @@ export async function impostaSfondoPianta(piantaId: ID, sorgente: Foto): Promise
       scala: sorgente.scala ? { ...sorgente.scala } : null,
       piano: sorgente.piano ?? null,
       piani: sorgente.piani?.map((p) => ({ ...p })),
+      // la pianta adesso è ricalcata su QUESTA foto: la porta «Pianta della
+      // stanza» deve partire da qui, non dalla foto di prima
+      piantaDi: sorgente.id,
       sfondoNascosto: false,
       // PRIVACY: le regioni oscurate seguono i pixel della foto di riferimento
       censure: sorgente.censure?.map((c) => ({ ...c })),

@@ -10,6 +10,43 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.58.1 — Quello che il riordino aveva perso per strada
+
+Una rilettura ostile del menù nuovo, e sei cose messe a posto.
+
+- **«Metti dritto» allinea anche due punti.** Il vecchio Orizzontale/Verticale
+  accettava «lato o 2 punti»: uno spigolo di un ingombro e un vertice della
+  stanza, per esempio. La voce nuova prendeva solo un lato del perimetro. Ora
+  il primo tocco su un punto di un oggetto apre il modo a due punti, e l'asse
+  lo dicono i due punti, come per il lato.
+
+- **«Stesso punto» torna nel gruppo Raddrizza.** Era «Coincidente (2 punti)»,
+  e il riordino l'aveva tolto senza sostituto: agganciare lo spigolo di un
+  mobile all'angolo della stanza non si poteva più.
+
+- **Il perimetro rimasto su una foto vecchia si porta nella pianta.** Nel
+  commit precedente ho scritto che ogni ramo del menù Schizzo era chiuso da
+  `foto.ePianta`: non era vero, i comandi e i vincoli non lo erano, e sulle
+  foto normali quella scheda funzionava davvero. Sulla foto, però, un poligono
+  quotato è di regola un PEZZO (4 angoli, triangolo, spezzata), e un pezzo non
+  si sposta. La stanza si riconosce dai segni che solo i suoi strumenti
+  lasciano — snap angolare, vincoli, oggetti, origine — e solo lei ha il
+  pulsante «Porta nella pianta», che la sposta nel documento dove ha i suoi
+  strumenti, creandolo se non c'è.
+
+- **Nove testi indicavano menù che non esistono più**: «Disegno → Mano
+  libera», «Menu Schizzo», «Piano», «Schizzo:». Ora dicono Traccia →
+  Perimetro a mano, Pianta, «4 angoli» nel pannello Calibrazione, Perimetro.
+
+- **La barra del comando armato diceva «Vincolo dritto · tocca il lato».**
+  Il nome grezzo del tipo. Ora «Metti dritto», con l'istruzione giusta.
+
+- **`piantaDi` segue il cambio di foto di riferimento**: sostituendo lo
+  sfondo di una pianta, la porta «Pianta della stanza» parte dalla foto nuova.
+
+- **Un solo pulsante blu nella striscia** armando «Riferimento» dal pulsante
+  rapido: prima si accendevano in due con la stessa parola.
+
 ## 1.58.0 — Il menu riordinato: due schede sulla foto, la pianta un documento
 
 Settanta voci, ventisei icone. «Angolo» ne copriva sette da sola — Angolo,

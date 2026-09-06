@@ -108,6 +108,7 @@ export type NomeIcona =
   | 'dist-uguale'
   | 'dritto-90'
   | 'dritto-asse'
+  | 'dritto-coincide'
   | 'dritto-allinea'
   | 'dritto-semplifica'
   | 'dritto-ricostruisci'
@@ -679,6 +680,14 @@ const FORME: Record<NomeIcona, JSX.Element> = {
       <path d="M4 18h16" />
       <path d="M12.5 4.5a7 7 0 0 1 3.5 6" strokeDasharray="2.5 2.5" />
       <path d="M17.5 9.5l-1.5 1.5-1.5-1.5" />
+    </>
+  ),
+  'dritto-coincide': (
+    <>
+      <circle cx="12" cy="14" r="2.2" />
+      <path d="M4.5 4.5l5.6 7.6M19.5 4.5l-5.6 7.6" />
+      <path d="M4.5 9V4.5H9M19.5 9V4.5H15" />
+      <path d="M12 16.5v4" />
     </>
   ),
   'dritto-allinea': (
