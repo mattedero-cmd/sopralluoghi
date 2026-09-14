@@ -9,9 +9,16 @@
  *   (C0 M100 Y0 K0, cioè #EC008C in schermo): è il nome che i software di
  *   taglio cercano per riconoscere le linee da seguire.
  *
- * Le misure sono in millimetri reali: `width`/`height` in mm e viewBox con
- * un'unità = un millimetro, così il disegno arriva in scala 1:1 senza che
- * nessuno debba riscalarlo a mano.
+ * Le misure sono in millimetri reali: la viewBox ha un'unità = un millimetro,
+ * così il disegno arriva senza che nessuno debba riscalarlo a mano.
+ *
+ * LA SCALA. Alla macchina si manda 1:1, ed è il valore predefinito: il file è
+ * largo quanto il materiale. Per guardarlo, o per stamparlo su un foglio e
+ * prenderci le misure sopra, serve invece una riduzione: un foglio da due
+ * metri e mezzo su un A4 vuole un 1:10. Si riduce `width`/`height` lasciando
+ * intatta la viewBox, così le coordinate restano i millimetri veri del pezzo;
+ * e la scala finisce SCRITTA nel titolo, perché una misura presa da un
+ * disegno di cui non si sa la scala è una misura sbagliata.
  *
  * Le etichette — livello a parte, che la macchina non taglia — sono impaginate
  * dallo stesso motore del PDF: nome e misura dentro il pezzo, grandi quanto il
@@ -21,7 +28,7 @@
 
 import type { LastraNesting, Piazzamento } from './nesting';
 import { ancoraEtichetta, misureForma } from './sagome';
-import { pianoEtichetta } from '../utils/etichettaNesting';
+import { pianoEtichetta, righeEtichetta } from '../utils/etichettaNesting';
 
 /** magenta 100% in quadricromia, come lo rende lo schermo */
 export const MAGENTA_TAGLIO = '#EC008C';
@@ -29,10 +36,33 @@ export const MAGENTA_TAGLIO = '#EC008C';
 export interface OpzioniSvgTaglio {
   /** titolo del disegno, finisce nel tag <title> */
   titolo?: string;
-  /** spessore delle linee in mm: sottile, deve solo essere visibile */
+  /** spessore delle linee in mm DI FOGLIO: sottile, deve solo essere visibile */
   spessore?: number;
   /** disegnare anche il nome dei pezzi (non tagliato, solo riferimento) */
   etichette?: boolean;
+  /**
+   * Denominatore della scala: 1 = 1:1 (alla macchina), 10 = 1:10 (sul foglio).
+   * Rimpicciolisce il disegno stampato, non le coordinate.
+   */
+  scala?: number;
+}
+
+/** le scale che si usano davvero: 1:1 per la macchina, il resto per il foglio */
+export const SCALE_TAGLIO = [1, 2, 5, 10, 20, 25, 50] as const;
+
+/**
+ * Il denominatore della scala, messo in riga: un intero da 1 in su.
+ *
+ * Un valore assente, storto o minore di uno vale 1:1 — l'unica scala che
+ * non può mai essere sbagliata, perché è il file che va alla macchina.
+ */
+export function denominatoreScala(v: number | undefined): number {
+  return Number.isFinite(v) ? Math.max(1, Math.round(v as number)) : 1;
+}
+
+/** «1:10», come si scrive su un disegno */
+export function scalaScritta(denominatore: number): string {
+  return `1:${denominatoreScala(denominatore)}`;
 }
 
 const num = (v: number) => {
@@ -60,7 +90,11 @@ export function svgTaglio(
 ): string {
   const L = Math.max(0, misure.larghezza);
   const A = Math.max(0, misure.altezza);
-  const sp = opzioni?.spessore ?? 0.25;
+  const k = denominatoreScala(opzioni?.scala);
+  // il tratto è una proprietà del FOGLIO, non del disegno: a 1:10 una linea da
+  // un quarto di millimetro diventerebbe un quarantesimo, cioè niente. Si
+  // ingrandisce quanto si rimpicciolisce il disegno, e resta com'era in mano.
+  const sp = (opzioni?.spessore ?? 0.25) * k;
 
   // il contorno da tagliare è la SAGOMA vera del pezzo: la macchina segue
   // questa linea, e un trapezio tagliato per ingombro è un pezzo sbagliato
@@ -93,8 +127,12 @@ export function svgTaglio(
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     `<svg xmlns="http://www.w3.org/2000/svg" version="1.1"`,
-    `     width="${num(L)}mm" height="${num(A)}mm" viewBox="0 0 ${num(L)} ${num(A)}">`,
-    opzioni?.titolo ? `  <title>${perXml(opzioni.titolo)}</title>` : '',
+    `     width="${num(L / k)}mm" height="${num(A / k)}mm" viewBox="0 0 ${num(L)} ${num(A)}">`,
+    // la scala si dichiara sempre, anche quando è 1:1: è il dato che rende
+    // vera o falsa ogni misura presa sul disegno
+    `  <title>${perXml(
+      [opzioni?.titolo, `scala ${scalaScritta(k)}`].filter(Boolean).join(' — ')
+    )}</title>`,
     `  <g id="sheet" fill="none" stroke="#000000" stroke-width="${num(sp)}">`,
     `    <rect x="0" y="0" width="${num(L)}" height="${num(A)}"/>`,
     '  </g>',
@@ -124,9 +162,6 @@ const CORPI_ETICHETTA = { massimo: 50, comodo: 10, dueRighe: 8, minimo: 3.5 };
 /** grigio scuro: si distingue dal nero del supporto e si legge sul chiaro */
 const GRIGIO_ETICHETTA = '#4d4d4d';
 
-/** interlinea, come nell'impaginazione del PDF */
-const INTERLINEA = 1.15;
-
 /** l'etichetta di un pezzo: nome e misura, o quel che ci sta */
 function etichettaPezzo(p: Piazzamento): string {
   // come in pagina: il testo sta nel baricentro della sagoma, non del riquadro
@@ -146,21 +181,15 @@ function etichettaPezzo(p: Piazzamento): string {
   const piano = pianoEtichetta(largaUtile, altaUtile, p.nome || '', misura, CORPI_ETICHETTA);
   if (!piano) return '';
 
-  const riga = (testo: string, corpo: number, dy: number, forte: boolean) =>
-    `      <text x="${num(cx)}" y="${num(cy + dy)}" font-size="${num(corpo)}"` +
-    `${forte ? ' font-weight="600"' : ''}` +
-    ` text-anchor="middle" dominant-baseline="central">${perXml(testo)}</text>`;
-
-  const righe: string[] = [];
-  if (piano.ampia && piano.nome && piano.misura) {
-    // due righe centrate sul pezzo: il nome sopra, la misura sotto
-    righe.push(riga(piano.nome, piano.corpoNome, -(piano.corpoMisura * INTERLINEA) / 2, true));
-    righe.push(riga(piano.misura, piano.corpoMisura, (piano.corpoNome * INTERLINEA) / 2, false));
-  } else if (piano.nome) {
-    righe.push(riga(piano.nome, piano.corpoNome, 0, true));
-  } else if (piano.misura) {
-    righe.push(riga(piano.misura, piano.corpoMisura, 0, false));
-  }
+  // le righe — il nome, magari mandato a capo, e sotto la misura — arrivano
+  // già collocate dal motore: schermo, PDF e file di taglio le mettono nello
+  // stesso punto perché le chiedono alla stessa funzione
+  const righe = righeEtichetta(piano).map(
+    (r) =>
+      `      <text x="${num(cx)}" y="${num(cy + r.dy)}" font-size="${num(r.corpo)}"` +
+      `${r.forte ? ' font-weight="600"' : ''}` +
+      ` text-anchor="middle" dominant-baseline="central">${perXml(r.testo)}</text>`
+  );
   if (righe.length === 0) return '';
 
   // sui pezzi stretti la scritta va per lungo: gira tutto il gruppo attorno al

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pianoEtichetta } from '../etichettaNesting';
+import { pianoEtichetta, righeEtichetta } from '../etichettaNesting';
 
 // corpi tipici (in mm di disegno) su una lastra da 2500 mm larga ~390 px:
 // 1 px di schermo ≈ 6,4 mm
@@ -10,18 +10,19 @@ function dentro(l: number, a: number, p: ReturnType<typeof pianoEtichetta>) {
   if (!p) return true;
   const lungo = p.ruotata ? a : l;
   const alto = p.ruotata ? l : a;
-  const righe: Array<[string, number]> = [];
-  if (p.nome) righe.push([p.nome, p.corpoNome]);
-  if (p.misura) righe.push([p.misura, p.corpoMisura]);
-  const piuLargo = Math.max(...righe.map(([t, c]) => c * 0.58 * t.length));
-  const altezzaTesto = righe.reduce((s, [, c]) => s + c * 1.15, 0);
+  const righe = righeEtichetta(p);
+  const piuLargo = Math.max(...righe.map((r) => r.corpo * 0.58 * r.testo.length));
+  const altezzaTesto = righe.reduce((s, r) => s + r.corpo * 1.15, 0);
   return piuLargo <= lungo && altezzaTesto <= alto;
 }
+
+/** il nome come si legge, righe rimesse insieme */
+const letto = (p: ReturnType<typeof pianoEtichetta>) => p?.nome?.join(' ');
 
 describe('pianoEtichetta', () => {
   it('su un pezzo grande scrive nome e misura su due righe', () => {
     const p = pianoEtichetta(600, 400, 'Anta', '600×400', CORPI);
-    expect(p).toMatchObject({ nome: 'Anta', misura: '600×400', ampia: true, ruotata: false });
+    expect(p).toMatchObject({ nome: ['Anta'], misura: '600×400', ampia: true, ruotata: false });
     expect(dentro(600, 400, p)).toBe(true);
   });
 
@@ -30,18 +31,48 @@ describe('pianoEtichetta', () => {
     expect(p?.corpoNome).toBe(CORPI.massimo);
   });
 
-  it('su un pezzo grande con nome lungo tronca invece di rimpicciolire', () => {
+  it('un nome lungo va a capo intero invece di finire troncato', () => {
     const p = pianoEtichetta(600, 400, 'Fianco laterale destro mobile', '600×400', CORPI);
-    expect(p?.nome).toMatch(/…$/);
-    // resta leggibile: niente scritte microscopiche su pezzi grandi
+    expect(letto(p)).toBe('Fianco laterale destro mobile');
+    expect(p?.nome!.length).toBeGreaterThan(1);
+    // e va a capo fra le parole, non dentro una parola
+    for (const riga of p!.nome!) expect(riga).not.toMatch(/…/);
     expect(p?.corpoNome).toBeGreaterThanOrEqual(CORPI.comodo);
     expect(p?.misura).toBe('600×400');
     expect(dentro(600, 400, p)).toBe(true);
   });
 
+  it('andare a capo fa scrivere più grande che stringersi su una riga', () => {
+    const nome = 'Vetrata scorrevole soggiorno';
+    const p = pianoEtichetta(700, 500, nome, '700×500', CORPI);
+    // su una riga sola quel nome starebbe in 700·0,96/(0,58·28) ≈ 41 mm
+    const suUnaRiga = (700 * 0.96) / (0.58 * nome.length);
+    expect(p?.corpoNome).toBeGreaterThan(suUnaRiga);
+    expect(letto(p)).toBe(nome);
+  });
+
+  it('non spende più di tre righe per un nome', () => {
+    const p = pianoEtichetta(
+      900,
+      900,
+      'Anta a battente della colonna dispensa lato finestra cucina',
+      '900×900',
+      CORPI
+    );
+    expect(p?.nome!.length).toBeLessThanOrEqual(3);
+    expect(dentro(900, 900, p)).toBe(true);
+  });
+
+  it('una parola sola troppo lunga si tronca: a capo non si può andare', () => {
+    const p = pianoEtichetta(150, 150, 'Controtelaio', '150×150', CORPI);
+    expect(p?.nome!.length).toBe(1);
+    expect(p?.nome![0]).toMatch(/…$/);
+    expect(dentro(150, 150, p)).toBe(true);
+  });
+
   it('quando le due righe rimpicciolirebbero troppo tiene solo il nome', () => {
     const p = pianoEtichetta(500, 60, 'Zoccolo', '500×60', CORPI);
-    expect(p?.nome).toBe('Zoccolo');
+    expect(letto(p)).toBe('Zoccolo');
     expect(p?.misura).toBeUndefined();
     expect(p?.ampia).toBe(false);
     expect(dentro(500, 60, p)).toBe(true);
@@ -49,22 +80,28 @@ describe('pianoEtichetta', () => {
 
   it('rimpicciolisce sotto il comodo solo quando è l’altezza a imporlo', () => {
     const p = pianoEtichetta(600, 40, 'Montante', '600×40', CORPI);
-    expect(p?.nome).toBe('Montante');
+    expect(letto(p)).toBe('Montante');
     expect(p?.corpoNome).toBeLessThan(CORPI.comodo);
     expect(dentro(600, 40, p)).toBe(true);
+  });
+
+  it('su un pezzo basso non va a capo: righe in più non ci stanno', () => {
+    const p = pianoEtichetta(900, 50, 'Traversa superiore', '900×50', CORPI);
+    expect(p?.nome!.length).toBe(1);
+    expect(dentro(900, 50, p)).toBe(true);
   });
 
   it('gira il testo sui pezzi alti e stretti', () => {
     const p = pianoEtichetta(40, 600, 'Montante', '40×600', CORPI);
     expect(p?.ruotata).toBe(true);
-    expect(p?.nome).toBe('Montante');
+    expect(letto(p)).toBe('Montante');
     expect(dentro(40, 600, p)).toBe(true);
   });
 
   it('tronca il nome invece di lasciare il pezzo muto', () => {
     const p = pianoEtichetta(180, 60, 'Traversa superiore lunga', '180×60', CORPI);
-    expect(p?.nome).toMatch(/…$/);
-    expect(p?.nome?.length).toBeGreaterThan(2);
+    expect(p?.nome!.join(' ')).toMatch(/…$/);
+    expect(p?.nome![0].length).toBeGreaterThan(2);
     expect(p?.misura).toBeUndefined();
     expect(dentro(180, 60, p)).toBe(true);
   });
@@ -111,13 +148,49 @@ describe('pianoEtichetta', () => {
   });
 
   it('un pezzo abbastanza grande non resta mai muto, per quanto lungo sia il nome', () => {
+    // il patto è questo: o il nome si legge INTERO, e allora può essere un po'
+    // più piccolo del comodo perché è andato a capo; oppure è stato troncato,
+    // e allora dev'essere almeno comodo — troncare per scrivere piccolo non
+    // avrebbe senso.
     const nome = 'Fianco laterale destro del mobile alto della cucina';
     for (let l = 200; l <= 1400; l += 61) {
       for (let a = 200; a <= 1400; a += 71) {
         const p = pianoEtichetta(l, a, nome, `${l}×${a}`, CORPI);
         expect(p?.nome, `${l}×${a}`).toBeTruthy();
-        expect(p?.corpoNome, `${l}×${a}`).toBeGreaterThanOrEqual(CORPI.comodo);
+        const intero = p!.nome!.join(' ') === nome;
+        if (intero) expect(p!.corpoNome, `${l}×${a}`).toBeGreaterThanOrEqual(CORPI.minimo);
+        else expect(p!.corpoNome, `${l}×${a}`).toBeGreaterThanOrEqual(CORPI.comodo);
       }
     }
+  });
+
+  it('un nome fatto di parole corte non resta mai troncato su un pezzo grande', () => {
+    const nome = 'Anta bassa vano lato est';
+    for (let l = 300; l <= 1200; l += 53) {
+      for (let a = 300; a <= 1200; a += 67) {
+        const p = pianoEtichetta(l, a, nome, `${l}×${a}`, CORPI);
+        expect(p?.nome?.join(' '), `${l}×${a}`).toBe(nome);
+      }
+    }
+  });
+});
+
+describe('righeEtichetta', () => {
+  it('centra il blocco di testo sul pezzo', () => {
+    const p = pianoEtichetta(600, 400, 'Anta', '600×400', CORPI)!;
+    const righe = righeEtichetta(p);
+    const cima = righe[0].dy - righe[0].corpo * 1.15 * 0.5;
+    const fondo =
+      righe[righe.length - 1].dy + righe[righe.length - 1].corpo * 1.15 * 0.5;
+    expect(cima + fondo).toBeCloseTo(0, 6);
+  });
+
+  it('mette il nome sopra e la misura sotto, nell’ordine di lettura', () => {
+    const p = pianoEtichetta(800, 600, 'Fianco laterale destro', '800×600', CORPI)!;
+    const righe = righeEtichetta(p);
+    expect(righe.length).toBe(p.nome!.length + 1);
+    expect(righe[righe.length - 1].testo).toBe('800×600');
+    expect(righe[righe.length - 1].forte).toBe(false);
+    for (let i = 1; i < righe.length; i++) expect(righe[i].dy).toBeGreaterThan(righe[i - 1].dy);
   });
 });

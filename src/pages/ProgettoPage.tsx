@@ -513,18 +513,25 @@ export function ProgettoPage({ id }: { id: string }) {
           conto.altre += d.altre;
         }
       }
-      if (pezzi.length === 0) {
-        // meglio dire che cosa si è trovato che lasciare un vicolo cieco
-        mostraToast(
-          'info',
-          conto.formeChiuse === 0
-            ? conto.quoteLineari > 0
-              ? `Ci sono ${conto.quoteLineari} quote lineari ma nessuna forma chiusa: i pezzi nascono da rettangoli, poligoni e cerchi quotati.`
-              : 'In questo sopralluogo non ci sono forme quotate: disegna un rettangolo, un poligono o un cerchio e quotalo.'
-            : `${conto.formeChiuse} forme trovate, ma senza misure utilizzabili: scrivi le misure sui lati (o calibra la foto).`
-        );
-        return;
-      }
+      /**
+       * SENZA MISURE IL PIANO SI FA LO STESSO, VUOTO.
+       *
+       * Prima qui ci si fermava con un avviso, e il piano di taglio non
+       * nasceva: ma un sopralluogo può cominciare dal foglietto delle misure
+       * scritte a mano, o da quelle dettate al telefono, e i pezzi si
+       * incollano da testo dentro il piano. Pretendere che prima si quotino
+       * delle foto è un vicolo cieco su un lavoro che sta già andando avanti.
+       *
+       * L'avviso resta, perché dice una cosa utile — che cosa si è trovato
+       * sulle foto e perché non è diventato un pezzo — ma adesso accompagna
+       * il piano invece di sbarrargli la strada.
+       */
+      const avvisoVuoto =
+        conto.formeChiuse === 0
+          ? conto.quoteLineari > 0
+            ? `Piano di taglio vuoto: ci sono ${conto.quoteLineari} quote lineari ma nessuna forma chiusa. Incolla la lista dei pezzi, o quota un rettangolo sulle foto.`
+            : 'Piano di taglio vuoto: nel sopralluogo non ci sono forme quotate. Incolla la lista dei pezzi, oppure quotane una sulle foto.'
+          : `Piano di taglio vuoto: ${conto.formeChiuse} forme trovate, ma senza misure utilizzabili. Incolla la lista dei pezzi, o scrivi le misure sui lati.`;
 
       const materiale = {
         ...materialeNuovo(nuovoId(), 'Materiale 1'),
@@ -558,13 +565,17 @@ export function ProgettoPage({ id }: { id: string }) {
         },
         { cartellaId: progetto.cartellaId, progettoId: progetto.id }
       );
-      const conAbb = pezzi.filter((p) => p.conAbbondanze).length;
-      mostraToast(
-        'successo',
-        `${pezzi.length} pezzi portati nel piano di taglio${
-          conAbb > 0 ? `, di cui ${conAbb} con le abbondanze` : ''
-        }.`
-      );
+      if (pezzi.length === 0) {
+        mostraToast('info', avvisoVuoto);
+      } else {
+        const conAbb = pezzi.filter((p) => p.conAbbondanze).length;
+        mostraToast(
+          'successo',
+          `${pezzi.length} pezzi portati nel piano di taglio${
+            conAbb > 0 ? `, di cui ${conAbb} con le abbondanze` : ''
+          }.`
+        );
+      }
       naviga({ nome: 'nesting', id });
     } catch (e) {
       mostraToast(

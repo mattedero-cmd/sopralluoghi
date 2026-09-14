@@ -12,7 +12,7 @@
 import { lunghezzaUsata } from '../geometry/nesting';
 import { calcolaNestingAuto } from '../geometry/nestingSagome';
 import { segmentaBobina } from '../geometry/segmenti';
-import { nomeFoglioSvg, svgTaglio } from '../geometry/svgTaglio';
+import { denominatoreScala, nomeFoglioSvg, scalaScritta, svgTaglio } from '../geometry/svgTaglio';
 import {
   opzioniRicerca,
   parametriDi,
@@ -36,6 +36,11 @@ export interface OpzioniSvgTaglio {
   massimoSegmento: number;
   /** scrivere anche i nomi dei pezzi (fuori dal livello di taglio) */
   etichette: boolean;
+  /**
+   * Denominatore della scala: 1 = 1:1, il file che va alla macchina.
+   * Più grande vuol dire ridotto, per guardarlo o stamparlo su un foglio.
+   */
+  scala?: number;
 }
 
 export function fileSvgTaglio(
@@ -43,6 +48,7 @@ export function fileSvgTaglio(
   opzioni: OpzioniSvgTaglio
 ): FileTaglio[] {
   const file: FileTaglio[] = [];
+  const k = denominatoreScala(opzioni.scala);
 
   for (const m of doc.materiali) {
     const par = parametriDi(m);
@@ -54,11 +60,17 @@ export function fileSvgTaglio(
       foglio: string
     ) => {
       if (lastra.piazzamenti.length === 0) return;
+      // la scala sta anche nel NOME del file, non solo nel titolo: due
+      // esportazioni dello stesso foglio a scale diverse sono due disegni
+      // diversi, e con lo stesso nome il secondo cancellerebbe il primo
+      // i due punti non sopravvivono a un nome di file: «1-10», non «1:10»
+      const etichettaScala = k === 1 ? '' : `scala ${scalaScritta(k).replace(':', '-')}`;
       file.push({
-        nome: nomeFoglioSvg(doc.nome, m.nome, foglio),
+        nome: nomeFoglioSvg(doc.nome, m.nome, [foglio, etichettaScala].filter(Boolean).join(' ')),
         contenuto: svgTaglio(lastra, misure, {
           titolo: `${doc.nome} — ${m.nome} — ${foglio}`,
-          etichette: opzioni.etichette
+          etichette: opzioni.etichette,
+          scala: k
         }),
         materiale: m.nome,
         foglio

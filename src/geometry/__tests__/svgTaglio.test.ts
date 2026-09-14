@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAGENTA_TAGLIO, nomeFoglioSvg, svgTaglio } from '../svgTaglio';
+import { MAGENTA_TAGLIO, nomeFoglioSvg, scalaScritta, svgTaglio } from '../svgTaglio';
 import { calcolaNesting, type LastraNesting, type Piazzamento } from '../nesting';
 
 const lastra = (...righe: Array<[number, number, number, number, string?]>): LastraNesting => ({
@@ -27,6 +27,49 @@ describe('svgTaglio', () => {
     expect(s).toContain('width="1220mm"');
     expect(s).toContain('height="2000mm"');
     expect(s).toContain('viewBox="0 0 1220 2000"');
+  });
+
+  it('senza chiedere niente esce 1:1, e la scala è scritta nel titolo', () => {
+    expect(s).toContain('<title>scala 1:1</title>');
+  });
+
+  it('la scala rimpicciolisce il foglio ma non le coordinate', () => {
+    const r = svgTaglio(lastra([10, 10, 500, 300, 'Anta']), { larghezza: 1220, altezza: 2000 }, {
+      titolo: 'Cucina Rossi — Bianco — Lastra 1',
+      scala: 10
+    });
+    // il file è dieci volte più piccolo da stampare…
+    expect(r).toContain('width="122mm"');
+    expect(r).toContain('height="200mm"');
+    // …ma le misure dentro restano i millimetri veri del pezzo
+    expect(r).toContain('viewBox="0 0 1220 2000"');
+    expect(r).toContain('<rect x="10" y="10" width="500" height="300"/>');
+    // e la scala è dichiarata, in coda al titolo
+    expect(r).toContain('<title>Cucina Rossi — Bianco — Lastra 1 — scala 1:10</title>');
+  });
+
+  it('a scala ridotta il tratto resta grosso uguale sul foglio', () => {
+    const uno = svgTaglio(lastra([0, 0, 100, 100]), { larghezza: 500, altezza: 500 });
+    const dieci = svgTaglio(lastra([0, 0, 100, 100]), { larghezza: 500, altezza: 500 }, {
+      scala: 10
+    });
+    const tratto = (t: string) => Number(t.match(/stroke-width="([\d.]+)"/)![1]);
+    // dieci volte più grosso in unità di disegno = uguale in millimetri di
+    // foglio, perché il disegno è dieci volte più piccolo
+    expect(tratto(dieci)).toBeCloseTo(tratto(uno) * 10, 6);
+  });
+
+  it('una scala storta non rompe niente: sotto l’uno si torna a 1:1', () => {
+    for (const k of [0, -5, 0.5, NaN]) {
+      const r = svgTaglio(lastra([0, 0, 100, 100]), { larghezza: 500, altezza: 500 }, { scala: k });
+      expect(r, String(k)).toContain('width="500mm"');
+      expect(r, String(k)).toContain('<title>scala 1:1</title>');
+    }
+  });
+
+  it('scalaScritta si legge come su un disegno', () => {
+    expect(scalaScritta(1)).toBe('1:1');
+    expect(scalaScritta(20)).toBe('1:20');
   });
 
   it('il contorno del supporto sta nel livello «sheet», nero', () => {
@@ -126,15 +169,41 @@ describe('svgTaglio', () => {
     expect(con).not.toContain('<text');
   });
 
-  it('un nome lungo su un pezzo piccolo viene troncato, non rimpicciolito all’infinito', () => {
+  it('un nome lungo su un pezzo piccolo va a capo invece di essere troncato', () => {
     const con = svgTaglio(
       lastra([0, 0, 120, 90, 'Frontale cassettone centrale inferiore']),
       { larghezza: 400, altezza: 400 },
       { etichette: true }
     );
-    expect(con).toContain('…');
+    const scritte = [...con.matchAll(/>([^<]+)<\/text>/g)].map((m) => m[1]);
+    expect(scritte.filter((t) => t !== '120×90').join(' ')).toBe(
+      'Frontale cassettone centrale inferiore'
+    );
+    expect(con).not.toContain('…');
     const corpi = [...con.matchAll(/font-size="([\d.]+)"/g)].map((m) => Number(m[1]));
     expect(Math.min(...corpi)).toBeGreaterThanOrEqual(3.5);
+  });
+
+  it('le righe di un nome andato a capo stanno una sotto l’altra, centrate', () => {
+    const con = svgTaglio(
+      lastra([0, 0, 300, 300, 'Anta della colonna dispensa']),
+      { larghezza: 400, altezza: 400 },
+      { etichette: true }
+    );
+    const righe = [
+      ...con.matchAll(/<text x="([\d.-]+)" y="([\d.-]+)" font-size="([\d.]+)"[^>]*>([^<]+)</g)
+    ].map((m) => ({ x: Number(m[1]), y: Number(m[2]), corpo: Number(m[3]), testo: m[4] }));
+    expect(righe.length).toBeGreaterThan(2);
+    // tutte sulla stessa colonna, e in ordine dall'alto in basso
+    for (const r of righe) expect(r.x).toBe(150);
+    for (let i = 1; i < righe.length; i++) expect(righe[i].y).toBeGreaterThan(righe[i - 1].y);
+    // il BLOCCO è centrato sul pezzo: la cima della prima riga e il fondo
+    // dell'ultima cadono alla stessa distanza dal centro
+    const primo = righe[0];
+    const ultimo = righe[righe.length - 1];
+    const cima = primo.y - (primo.corpo * 1.15) / 2;
+    const fondo = ultimo.y + (ultimo.corpo * 1.15) / 2;
+    expect((cima + fondo) / 2).toBeCloseTo(150, 2);
   });
 
   it('i caratteri speciali non rompono il file', () => {
@@ -142,8 +211,13 @@ describe('svgTaglio', () => {
       larghezza: 200,
       altezza: 200
     }, { etichette: true, titolo: 'Lavoro "prova" & co.' });
-    expect(con).toContain('Anta &amp; &lt;fianco&gt;');
+    // il nome può essere andato a capo: quello che conta è che ogni pezzo di
+    // testo sia passato dall'escape e che nel file non resti markup crudo
+    const scritte = [...con.matchAll(/>([^<]+)<\/text>/g)].map((m) => m[1]);
+    expect(scritte.join(' ')).toContain('&amp;');
+    expect(scritte.join(' ')).toContain('&lt;fianco&gt;');
     expect(con).toContain('Lavoro &quot;prova&quot; &amp; co.');
+    expect(con.replace(/<[^>]+>/g, '')).not.toContain('<fianco>');
   });
 
   it('un nesting vero finisce tutto dentro il contorno del supporto', () => {

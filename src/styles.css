@@ -2140,6 +2140,33 @@ h2 {
   opacity: 0.7;
 }
 
+/* Scelta della scala del disegno di taglio: va a capo da sola, così le scale
+   ci stanno tutte anche sullo schermo più stretto. */
+.scelta-scala {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(66px, 1fr));
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.scelta-scala button {
+  min-height: 44px;
+  padding: 8px 6px;
+  border: 1px solid var(--bordo);
+  border-radius: var(--raggio);
+  background: var(--sfondo-3);
+  color: var(--testo);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.scelta-scala button.attivo {
+  background: var(--accento);
+  border-color: var(--accento);
+  color: #fff;
+}
+
 /* Selettore del menu funzionale (Quotature · Disegno · Pianta): barra
    dedicata sotto l'intestazione, staccata dagli strumenti in basso. */
 .selettore-menu {

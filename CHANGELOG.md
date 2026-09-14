@@ -10,6 +10,49 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.59.0 — Il piano di taglio parte anche da un foglietto di misure
+
+- **Il piano di taglio nasce anche senza misure quotate.** Prima, su un
+  sopralluogo senza forme quotate, il pulsante si fermava con un avviso e non
+  creava niente: un vicolo cieco. Ma un lavoro comincia spesso dal foglietto
+  delle misure prese a mano, o da quelle dettate al telefono, e i pezzi si
+  incollano da testo DENTRO il piano. Adesso il piano si apre vuoto e l'avviso
+  dice che cosa si è trovato sulle foto invece di sbarrare la strada. Sul
+  piano vuoto c'è scritto da dove ricominciare: «Aggiungi», oppure «Incolla da
+  testo», che legge misure, quantità e forme da un elenco libero.
+
+- **L'SVG si esporta in scala, e la scala è scritta nel titolo.** 1:1 resta il
+  valore di partenza, ed è il file che va alla macchina. Le riduzioni — fino a
+  1:50 — servono a guardarlo o a stamparlo su un foglio e prenderci le misure
+  sopra: si riduce il formato di stampa lasciando intatte le coordinate, che
+  restano i millimetri veri del pezzo. La scala finisce nel tag `<title>` del
+  disegno e nel nome del file, perché una misura presa da un disegno di cui
+  non si sa la scala è una misura sbagliata. Il tratto si ingrossa quanto il
+  disegno rimpicciolisce: a 1:10 una linea da un quarto di millimetro sarebbe
+  diventata un quarantesimo, cioè niente.
+
+- **I nomi dei pezzi vanno a capo.** «Fianco laterale destro mobile» su una
+  riga sola obbligava a scegliere fra una scritta minuscola e un moncone con i
+  puntini: ora si spezza fra le parole, e ci sta intero e più grande, perché
+  righe più corte vogliono dire caratteri più larghi. Si prova una riga, due e
+  tre, e vince il corpo più grande. Vale per il disegno a schermo, per il PDF
+  e per l'SVG, che usano lo stesso motore di impaginazione — e adesso gli
+  chiedono anche DOVE mettere le righe, così le tre cose coincidono davvero.
+  Si tronca ancora, ma solo quando a capo non si può andare: una parola sola
+  troppo lunga, o un pezzo troppo basso per due righe.
+
+- **Lo zip degli SVG porta il nome del progetto.** Il nome del lavoro di
+  nesting si scrive una volta, quando il piano nasce, e da lì non segue più
+  niente: si può rinominare il piano, si può rinominare il sopralluogo, e i
+  due nomi divergono. Uno zip che si chiama «prova» non si ritrova fra i
+  download, e chi lo riceve non sa di che cantiere sia. Adesso, quando il
+  piano è archiviato dentro un sopralluogo, i file escono col nome del
+  progetto — e lo prendono vivo dal database, non da una copia vecchia.
+
+- **La scelta della scala non esce dallo schermo.** Sette scale in fila fanno
+  546 px contro i 350 di un telefono: le ultime due restavano fuori, senza
+  modo di arrivarci. Adesso vanno a capo.
+
 ## 1.58.1 — Quello che il riordino aveva perso per strada
 
 Una rilettura ostile del menù nuovo, e sei cose messe a posto.

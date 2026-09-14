@@ -8,7 +8,7 @@
  */
 
 import type { LastraNesting } from '../geometry/nesting';
-import { pianoEtichetta } from '../utils/etichettaNesting';
+import { pianoEtichetta, righeEtichetta } from '../utils/etichettaNesting';
 import { ancoraEtichetta, misureForma } from '../geometry/sagome';
 import { tintaBordoEsa, tintaSfondoEsa } from '../utils/tinte';
 import { formattaNumero } from '../utils/format';
@@ -191,72 +191,44 @@ export function impaginaLastra(
     );
     if (!piano) continue;
 
+    // le righe arrivano già collocate dal motore: il nome può essere andato
+    // a capo, e schermo, PDF e file di taglio le impaginano allo stesso modo
+    const disposte = righeEtichetta(piano);
+    if (disposte.length === 0) continue;
+
     // pezzo stretto e alto: il nome ci sta solo scritto per lungo, come si
     // scrive a matita sui listelli. Il foglio si gira, ma si legge tutto.
     if (piano.ruotata) {
-      const righe = piano.ampia
-        ? [
-            {
-              testo: piano.nome ?? '',
-              corpo: piano.corpoNome,
-              grassetto: true,
-              colore: '#1d2229',
-              scarto: -piano.corpoNome * 0.15
-            },
-            {
-              testo: piano.misura ?? '',
-              corpo: piano.corpoMisura,
-              grassetto: false,
-              colore: '#3a424c',
-              scarto: piano.corpoMisura * 1.05
-            }
-          ]
-        : [
-            {
-              testo: (piano.nome || piano.misura) ?? '',
-              corpo: piano.nome ? piano.corpoNome : piano.corpoMisura,
-              grassetto: !!piano.nome,
-              colore: '#1d2229',
-              scarto: (piano.nome ? piano.corpoNome : piano.corpoMisura) * 0.36
-            }
-          ];
-      ruotate.push({ x: rx, y: ry, larghezza: rw, altezza: rh, righe });
+      ruotate.push({
+        x: rx,
+        y: ry,
+        larghezza: rw,
+        altezza: rh,
+        righe: disposte.map((r) => ({
+          testo: r.testo,
+          corpo: r.corpo,
+          grassetto: r.forte,
+          colore: r.forte ? '#1d2229' : '#3a424c',
+          // pdfmake posa il testo dall'ALTO della riga, il motore ne dà il
+          // centro: si scende di mezza riga
+          scarto: r.dy - r.corpo * 0.5
+        }))
+      });
       continue;
     }
 
     // la cassa di testo è centrata sull'ancora, larga quanto il pezzo è largo lì
     const larga = ancora ? ancora.larghezza * scala : rw;
     const tsx = tx - larga / 2;
-    const cy = ty;
-    if (piano.ampia) {
+    for (const r of disposte) {
       testi.push({
         x: tsx,
-        y: cy - piano.corpoNome * 1.15,
+        y: ty + r.dy - r.corpo * 0.62,
         larghezza: larga,
-        testo: piano.nome ?? '',
-        corpo: piano.corpoNome,
-        grassetto: true,
-        colore: '#1d2229'
-      });
-      testi.push({
-        x: tsx,
-        y: cy + piano.corpoMisura * 0.05,
-        larghezza: larga,
-        testo: piano.misura ?? '',
-        corpo: piano.corpoMisura,
-        grassetto: false,
-        colore: '#3a424c'
-      });
-    } else {
-      const corpo = piano.nome ? piano.corpoNome : piano.corpoMisura;
-      testi.push({
-        x: tsx,
-        y: cy - corpo * 0.62,
-        larghezza: larga,
-        testo: (piano.nome || piano.misura) ?? '',
-        corpo,
-        grassetto: !!piano.nome,
-        colore: '#1d2229'
+        testo: r.testo,
+        corpo: r.corpo,
+        grassetto: r.forte,
+        colore: r.forte ? '#1d2229' : '#3a424c'
       });
     }
   }

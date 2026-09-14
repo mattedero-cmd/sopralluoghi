@@ -34,7 +34,7 @@ import {
 } from '../geometry/segmenti';
 import { analizzaTestoPezzi, type PezzoTestuale } from '../utils/parserPezzi';
 import { formattaData, formattaNumero } from '../utils/format';
-import { pianoEtichetta } from '../utils/etichettaNesting';
+import { pianoEtichetta, righeEtichetta } from '../utils/etichettaNesting';
 import { prossimaTinta, tintaBordo, tintaSfondo } from '../utils/tinte';
 import {
   cambioVenatura,
@@ -62,10 +62,13 @@ import {
   salvaPdfNesting
 } from '../db/repository';
 import type { LavoroNesting } from '../db/types';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../db/db';
 import { mostraToast } from '../state/toast';
 import { ModaleAnteprimaPdf } from '../components/ModaleAnteprimaPdf';
 import { condividiOScarica, nomeFileSicuro } from '../utils/share';
 import type { OpzioniSvgTaglio } from '../utils/esportaTaglio';
+import { SCALE_TAGLIO, scalaScritta } from '../geometry/svgTaglio';
 import { OPZIONI_PDF_PREDEFINITE, type OpzioniPdfNesting } from '../pdf/opzioni';
 
 /**
@@ -240,6 +243,18 @@ export function NestingPage({
    */
   /** progetto in cui è archiviato il lavoro, se ci sta dentro */
   const [progettoId, setProgettoId] = useState<string | null>(null);
+  /**
+   * Il progetto, letto vivo dal database.
+   *
+   * Il nome del LAVORO si scrive una volta, quando il piano di taglio nasce, e
+   * da lì non segue più niente: si può rinominare il piano, si può rinominare
+   * il sopralluogo, e i due nomi divergono. Per i file che escono dall'app
+   * comanda il progetto, perché è quello che il cliente riconosce.
+   */
+  const progetto = useLiveQuery(
+    () => (progettoId ? db.progetti.get(progettoId) : undefined),
+    [progettoId]
+  );
   const [cartellaId, setCartellaId] = useState<string | null | undefined>(() => {
     if (nuovoIn) return nuovoIn;
     if (!id && !iniziale?.idArchivio && dentro) return dentro;
@@ -722,7 +737,7 @@ export function NestingPage({
         import('../db/repository'),
         import('../utils/svgDisegno')
       ]);
-      const file = fileSvgTaglio(doc, opzioni);
+      const file = fileSvgTaglio({ ...doc, nome: nomeEsportazione() }, opzioni);
       if (file.length === 0) {
         mostraToast('info', 'Non c’è niente da tagliare: aggiungi dei pezzi.');
         return;
@@ -758,17 +773,34 @@ export function NestingPage({
     }
   };
 
+  /**
+   * Con che nome escono i file dall'app.
+   *
+   * Dentro un sopralluogo è il PROGETTO a dare il nome: uno zip che si chiama
+   * come il lavoro di nesting — magari «prova», perché era una prova — non si
+   * ritrova più fra i download, e chi lo riceve non sa di che cantiere sia.
+   * Fuori da un sopralluogo resta il nome del lavoro, che è tutto quello che
+   * c'è.
+   */
+  const nomeEsportazione = () => {
+    const daProgetto = progetto?.nome?.trim();
+    if (daProgetto) return `Taglio — ${daProgetto}`;
+    return doc.nome.trim() || 'piano-di-taglio';
+  };
+
   const esportaSvg = async (opzioni: OpzioniSvgTaglio) => {
     setEsporta(false);
     setPdfInCorso(true);
     try {
       const { fileSvgTaglio } = await import('../utils/esportaTaglio');
-      const file = fileSvgTaglio(doc, opzioni);
+      const nome = nomeEsportazione();
+      // i fogli dentro lo zip portano lo stesso nome dello zip: aperti, si sa
+      // ancora da dove vengono
+      const file = fileSvgTaglio({ ...doc, nome }, opzioni);
       if (file.length === 0) {
         mostraToast('info', 'Non c’è niente da tagliare: aggiungi dei pezzi.');
         return;
       }
-      const nome = doc.nome || 'piano-di-taglio';
       if (file.length === 1) {
         const blob = new Blob([file[0].contenuto], { type: 'image/svg+xml' });
         await condividiOScarica(blob, `${file[0].nome}.svg`, nome);
@@ -1399,7 +1431,12 @@ export function NestingPage({
         {senzaPezzi ? (
           <div className="vuoto">
             <div className="grande">▦</div>
-            <p>Aggiungi almeno un rettangolo per calcolare il nesting.</p>
+            {/* si arriva qui anche da un sopralluogo senza misure quotate: la
+                strada da prendere dev'essere scritta, non indovinata */}
+            <p>
+              Ancora nessun pezzo. Scrivili con «Aggiungi», oppure incollali da un elenco con
+              «Incolla da testo»: misure, quantità e forme vengono lette da sole.
+            </p>
           </div>
         ) : (
           <>
@@ -1969,41 +2006,20 @@ function Lastra({
                     entrambi i temi, quindi non segue le variabili del tema */}
                 {piano && (
                   <g transform={piano.ruotata ? `rotate(-90 ${cx} ${cy})` : undefined}>
-                    {piano.ampia ? (
-                      <>
-                        <text
-                          x={cx}
-                          y={cy - piano.corpoNome * 0.15}
-                          textAnchor="middle"
-                          fontSize={piano.corpoNome}
-                          fontWeight={600}
-                          fill="#20252b"
-                        >
-                          {piano.nome}
-                        </text>
-                        <text
-                          x={cx}
-                          y={cy + piano.corpoMisura * 1.05}
-                          textAnchor="middle"
-                          fontSize={piano.corpoMisura}
-                          fill="#3a424c"
-                        >
-                          {piano.misura}
-                        </text>
-                      </>
-                    ) : (
+                    {righeEtichetta(piano).map((r, k) => (
                       <text
+                        key={k}
                         x={cx}
-                        y={cy}
+                        y={cy + r.dy}
                         textAnchor="middle"
                         dominantBaseline="central"
-                        fontSize={piano.nome ? piano.corpoNome : piano.corpoMisura}
-                        fontWeight={piano.nome ? 600 : 400}
-                        fill={piano.nome ? '#20252b' : '#2a3138'}
+                        fontSize={r.corpo}
+                        fontWeight={r.forte ? 600 : 400}
+                        fill={r.forte ? '#20252b' : '#3a424c'}
                       >
-                        {piano.nome || piano.misura}
+                        {r.testo}
                       </text>
-                    )}
+                    ))}
                   </g>
                 )}
                 {/* il segno «girato» sta nell'angolo, in coordinate lastra:
@@ -2076,6 +2092,8 @@ function ModaleEsporta({
   // l'SVG può seguire la stessa divisione del PDF o restare un file unico
   const [svgUnico, setSvgUnico] = useState(false);
   const [svgEtichette, setSvgEtichette] = useState(false);
+  // 1:1 è quello che va alla macchina, ed è il valore di partenza
+  const [svgScala, setSvgScala] = useState<number>(1);
 
   return (
     <Modale titolo="Esporta il piano di taglio" onChiudi={onChiudi}>
@@ -2128,10 +2146,34 @@ function ModaleEsporta({
         SVG per il taglio a macchina
       </h3>
       <p className="nest-sub">
-        Un file per foglio, in scala 1:1: il contorno del supporto nel livello{' '}
-        <code>sheet</code> in nero, i contorni dei pezzi nel livello{' '}
-        <code>CutContour</code> in magenta 100% — i nomi che i software di taglio cercano.
+        Un file per foglio: il contorno del supporto nel livello <code>sheet</code> in nero, i
+        contorni dei pezzi nel livello <code>CutContour</code> in magenta 100% — i nomi che i
+        software di taglio cercano.
       </p>
+      <div className="campo" style={{ marginTop: 10 }}>
+        <span>Scala</span>
+        {/* griglia e non la striscia di «segmenti»: sette scale in fila fanno
+            546 px contro i 350 di un telefono, e le ultime due restavano
+            fuori dallo schermo senza modo di arrivarci */}
+        <span className="scelta-scala" role="group" aria-label="Scala del disegno">
+          {SCALE_TAGLIO.map((k) => (
+            <button
+              key={k}
+              className={svgScala === k ? 'attivo' : ''}
+              aria-pressed={svgScala === k}
+              onClick={() => setSvgScala(k)}
+            >
+              {scalaScritta(k)}
+            </button>
+          ))}
+        </span>
+        <small>
+          {svgScala === 1
+            ? 'Grandezza vera: è il file da mandare alla macchina da taglio.'
+            : `Ridotto ${scalaScritta(svgScala)} per guardarlo o stamparlo — le misure dentro ` +
+              'restano quelle vere. La scala è scritta nel titolo del disegno e nel nome del file.'}
+        </small>
+      </div>
       {conBobine && (
         <div className="segmenti" role="group" aria-label="Come dividere i file SVG">
           <button className={svgUnico ? 'attivo' : ''} onClick={() => setSvgUnico(true)}>
@@ -2158,7 +2200,8 @@ function ModaleEsporta({
             onEsportaSvg({
               perSegmento: conBobine ? !svgUnico : true,
               massimoSegmento: massimo,
-              etichette: svgEtichette
+              etichette: svgEtichette,
+              scala: svgScala
             })
           }
         >
@@ -2171,7 +2214,8 @@ function ModaleEsporta({
             onArchiviaSvg({
               perSegmento: conBobine ? !svgUnico : true,
               massimoSegmento: massimo,
-              etichette: svgEtichette
+              etichette: svgEtichette,
+              scala: svgScala
             })
           }
         >

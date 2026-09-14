@@ -59,6 +59,50 @@ describe('impaginaLastra', () => {
     }
   });
 
+  it('un nome lungo va a capo sul pezzo, e le righe restano in colonna', () => {
+    const lungo = calcolaNesting(
+      { lastra: { larghezza: 2500, altezza: 1250 }, lama: 3, abbondanza: 0, margine: 10 },
+      [
+        {
+          id: 'v',
+          nome: 'Pannello laterale corto vano tecnico',
+          larghezza: 600,
+          altezza: 900,
+          quantita: 2,
+          ruotabile: true,
+          tinta: 0
+        }
+      ]
+    );
+    const p = impaginaLastra(lungo.lastre[0], { larghezza: 2500, altezza: 1250 }, AREA, {
+      margine: 10
+    });
+    expect(p.ruotate).toHaveLength(0);
+    // il nome esce intero, spezzato fra le parole, più la misura
+    const scritte = p.testi.map((t) => t.testo);
+    // sul foglio il pezzo è largo 129 punti: a corpo 9 ci stanno 23 caratteri
+    // per riga, e questo nome ne ha 36
+    expect(scritte.join(' ')).toContain('Pannello laterale corto vano tecnico');
+    expect(scritte).not.toContain('Pannello laterale corto vano tecnico');
+    expect(scritte.filter((t) => t.includes('…'))).toEqual([]);
+    // le righe di uno stesso pezzo stanno sulla stessa colonna, una sotto
+    // l'altra e dentro il pezzo
+    for (const pezzo of p.pezzi) {
+      const sue = p.testi
+        .filter((t) => t.x >= pezzo.x - 0.001 && t.x + t.larghezza <= pezzo.x + pezzo.larghezza + 0.001)
+        .filter((t) => t.y >= pezzo.y - 0.001 && t.y <= pezzo.y + pezzo.altezza + 0.001)
+        .sort((a, b) => a.y - b.y);
+      if (sue.length < 2) continue;
+      for (const t of sue) expect(t.x).toBeCloseTo(sue[0].x, 6);
+      for (let i = 1; i < sue.length; i++) expect(sue[i].y).toBeGreaterThan(sue[i - 1].y);
+      // il blocco è centrato sul pezzo
+      const cima = sue[0].y;
+      const fondo = sue[sue.length - 1].y + sue[sue.length - 1].corpo * 1.15;
+      const centro = (cima + fondo) / 2;
+      expect(centro).toBeCloseTo(pezzo.y + pezzo.altezza / 2, 0);
+    }
+  });
+
   it('gira il testo solo dove dritto non ci starebbe', () => {
     // gli Zoccolo sono impaginati in piedi (60 mm di larghezza): lì il nome
     // ci sta solo per lungo. Anta e Ripiano restano dritti.
