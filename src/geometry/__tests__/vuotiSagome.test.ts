@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { analizzaTestoPezzi } from '../../utils/parserPezzi';
 import { calcolaNestingSagome } from '../nestingSagome';
 import { calcolaNestingMigliore, type PezzoNesting, type Piazzamento } from '../nesting';
+import { coppiaPiuStretta, distanzaSagome, sagomaDi } from '../distanzaPoligoni';
 
 /**
  * I VUOTI CHE NESSUNO HA IMPOSTATO.
@@ -26,73 +27,28 @@ import { calcolaNestingMigliore, type PezzoNesting, type Piazzamento } from '../
  * Chi stringe i pezzi senza rispettare la seconda rompe del materiale vero.
  */
 
-type Pt = [number, number];
 
-/** la sagoma vera del piazzamento, in coordinate di lastra */
-function sagoma(p: Piazzamento): Pt[] {
-  if (p.punti && p.punti.length > 2) return p.punti.map((q) => [p.x + q[0], p.y + q[1]] as Pt);
-  if (p.forma === 'cerchio') {
-    // il cerchio non porta poligono: qui basta approssimarlo fitto, e per
-    // difetto — un poligono inscritto non fa mai sembrare una coppia più
-    // larga di quanto sia
-    const r = p.larghezza / 2;
-    const cx = p.x + r;
-    const cy = p.y + r;
-    const n = 360;
-    return Array.from({ length: n }, (_, k): Pt => {
-      const a = (2 * Math.PI * k) / n;
-      return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
-    });
+/**
+ * Di quanto potrebbe ANCORA scorrere il pezzo verso l'origine, sagome vere:
+ * è la misura di quanto vuoto resta sul tavolo dopo il riaccostamento. Scansione
+ * a passo fine — lenta e stupida apposta: qui non si vuole ricontrollare il
+ * conto furbo del motore con lo stesso conto furbo.
+ */
+function scorreAncora(
+  p: Piazzamento,
+  altri: Piazzamento[],
+  verso: 'x' | 'y',
+  lama: number,
+  margine: number,
+  fino: number
+): number {
+  const sagome = altri.map((q) => sagomaDi(q));
+  const massimo = Math.min(fino, p[verso] - margine);
+  for (let d = 0.5; d <= massimo; d += 0.5) {
+    const S = verso === 'y' ? sagomaDi(p, 0, -d) : sagomaDi(p, -d, 0);
+    for (const q of sagome) if (distanzaSagome(S, q) < lama - 1e-6) return d - 0.5;
   }
-  return [
-    [p.x, p.y],
-    [p.x + p.larghezza, p.y],
-    [p.x + p.larghezza, p.y + p.altezza],
-    [p.x, p.y + p.altezza]
-  ];
-}
-
-function distanzaSegmenti(a: Pt, b: Pt, c: Pt, d: Pt): number {
-  const puntoSegmento = (p: Pt, q: Pt, r: Pt) => {
-    const vx = r[0] - q[0];
-    const vy = r[1] - q[1];
-    const l = vx * vx + vy * vy;
-    const t = l ? Math.max(0, Math.min(1, ((p[0] - q[0]) * vx + (p[1] - q[1]) * vy) / l)) : 0;
-    return Math.hypot(p[0] - (q[0] + t * vx), p[1] - (q[1] + t * vy));
-  };
-  return Math.min(
-    puntoSegmento(a, c, d),
-    puntoSegmento(b, c, d),
-    puntoSegmento(c, a, b),
-    puntoSegmento(d, a, b)
-  );
-}
-
-/** distanza fra due poligoni convessi (0 se si toccano o si accavallano) */
-function distanzaSagome(P: Pt[], Q: Pt[]): number {
-  let m = Infinity;
-  for (let i = 0; i < P.length; i++)
-    for (let j = 0; j < Q.length; j++)
-      m = Math.min(m, distanzaSegmenti(P[i], P[(i + 1) % P.length], Q[j], Q[(j + 1) % Q.length]));
-  return m;
-}
-
-/** la coppia più stretta di tutto il piano, sagoma contro sagoma */
-function piuStretta(esito: { lastre: Array<{ piazzamenti: Piazzamento[] }> }) {
-  let minima = Infinity;
-  let chi = '';
-  esito.lastre.forEach((l, i) => {
-    const ps = l.piazzamenti;
-    for (let a = 0; a < ps.length; a++)
-      for (let b = a + 1; b < ps.length; b++) {
-        const d = distanzaSagome(sagoma(ps[a]), sagoma(ps[b]));
-        if (d < minima) {
-          minima = d;
-          chi = `${ps[a].nome} e ${ps[b].nome} sulla lastra ${i + 1}`;
-        }
-      }
-  });
-  return { minima, chi };
+  return massimo > 0 ? massimo : 0;
 }
 
 /** i vuoti verticali fra pezzi incolonnati: è il filo che si vede nel piano */
@@ -185,7 +141,7 @@ describe('i vuoti fra i pezzi quando c’è una sagoma', () => {
         forma: 'trapezio'
       }
     ] as unknown as PezzoNesting[]);
-    const { minima, chi } = piuStretta(e);
+    const { minima, chi } = coppiaPiuStretta(e);
     expect(minima, chi).toBeGreaterThanOrEqual(BOBINA.lama - 0.01);
   }, 180000);
 
@@ -230,7 +186,7 @@ describe('i vuoti fra i pezzi quando c’è una sagoma', () => {
       }
 
       const e = calcolaNestingSagome(par, lista);
-      const { minima, chi } = piuStretta(e);
+      const { minima, chi } = coppiaPiuStretta(e);
       if (Number.isFinite(minima)) {
         expect(minima, `giro ${giro}: ${chi}`).toBeGreaterThanOrEqual(par.lama - 0.01);
         coppie++;
@@ -242,5 +198,37 @@ describe('i vuoti fra i pezzi quando c’è una sagoma', () => {
     // coppia che si tocca esattamente a lama.
     expect(coppie).toBeGreaterThan(20);
     expect(strette / coppie).toBeGreaterThan(0.8);
+  }, 300000);
+
+  it('sotto una falda il pezzo arriva a toccarla, non si ferma a mezz’aria', () => {
+    // È il difetto che si vedeva nel piano: sotto il lato in pendenza di un
+    // trapezio restava un vuoto che nessuno aveva chiesto. Veniva dalla
+    // griglia — su una bobina da 25 m la cella arriva a quattro centimetri —
+    // e il riaccostamento a rettangoli d'ingombro non lo toglieva: l'ingombro
+    // del trapezio arriva già sotto il pezzo accostato, e dichiara «fermo»
+    // quando di strada ce n'è ancora.
+    //
+    // La bobina da 25 METRI non è un dettaglio: è la lunghezza che fa crescere
+    // la cella, ed è su quella che il difetto si vedeva. Su 5 m non si vede.
+    const par = { lastra: { larghezza: 900, altezza: 25000 }, lama: 3, abbondanza: 0, margine: 10 };
+    const e = calcolaNestingSagome(par, [
+      { id: 'tz', nome: 'Trapezio', larghezza: 860, altezza: 1610, misura3: 1130, quantita: 5, ruotabile: true, tinta: 0, forma: 'trapezioR' },
+      { id: 'r1', nome: 'Verde', larghezza: 600, altezza: 700, quantita: 6, ruotabile: true, tinta: 1 },
+      { id: 'r2', nome: 'Piccolo', larghezza: 350, altezza: 300, quantita: 8, ruotabile: true, tinta: 2 }
+    ] as unknown as PezzoNesting[]);
+
+    expect(e.cella, 'senza una cella grossa questa prova non prova niente').toBeGreaterThan(20);
+
+    let peggiore = { d: 0, chi: '' };
+    for (const l of e.lastre)
+      for (const p of l.piazzamenti) {
+        const altri = l.piazzamenti.filter((q) => q !== p);
+        for (const verso of ['y', 'x'] as const) {
+          const d = scorreAncora(p, altri, verso, par.lama, par.margine, 150);
+          if (d > peggiore.d) peggiore = { d, chi: `${p.nome} in (${p.x}, ${p.y}) può ancora fare ${d} mm in ${verso}` };
+        }
+      }
+    // un decimo di millimetro è l'arrotondamento del piano, non un vuoto
+    expect(peggiore.d, peggiore.chi).toBeLessThanOrEqual(0.5);
   }, 300000);
 });

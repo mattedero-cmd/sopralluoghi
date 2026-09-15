@@ -10,6 +10,52 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.61.3 — Sotto una falda i pezzi arrivano a toccarla
+
+- **Il vuoto sotto il lato in pendenza.** Il riaccostamento della 1.61.2
+  lavorava sui RETTANGOLI D'INGOMBRO, e fra due rettangoli va benissimo: il
+  vuoto è per forza orizzontale o verticale, e l'ingombro dice la verità.
+  Sotto una falda no. Il rettangolo d'ingombro del trapezio arriva già sotto
+  il pezzo che gli sta accosto, e la regola dell'ingombro dichiara «fermo»
+  quando di strada ce n'è ancora.
+
+  Misurato su una bobina da 25 m — ed è la LUNGHEZZA che conta, perché è lei
+  a far crescere la cella della griglia, che a 25 m arriva a **quattro
+  centimetri**: un pezzo restava fino a **97 mm** sotto il punto in cui
+  poteva stare. Su una bobina da 5 m lo stesso lavoro non lo mostra: la cella
+  è di 8 mm e il difetto non si vede.
+
+  Adesso, quando il pezzo o il suo vicino non sono rettangoli, si scorre
+  sulla **sagoma vera** fino al punto esatto in cui le due sagome arrivano a
+  distanza di lama. Fra due rettangoli si tiene il conto sull'ingombro, che
+  dà la stessa identica risposta e non costa niente. Dopo: **zero** millimetri
+  di scorrimento rimasto, su tutti i pezzi e su tutte le lunghezze di bobina.
+
+  In materiale, sul giro di trapezi e falde: **da 12,13 m a 11,90 m** di
+  bobina, 228 mm recuperati. Su un lavoro misto con cerchi, triangoli e
+  rombi: da 12,50 m a 12,29 m. Sui lavori di soli rettangoli non cambia
+  niente, perché non c'era niente da cambiare.
+
+- **Il cerchio resta un cerchio.** La distanza da un cerchio è quella dal
+  centro meno il raggio, esatta. Approssimarlo con un poligono sarebbe stato
+  sbagliato in tutti e due i versi: inscritto lo fa sembrare più piccolo di
+  com'è e la lama passa dentro il pezzo, circoscritto tiene lontani gli altri
+  pezzi per niente. Ed è anche la ragione per cui il conto esatto costa poco:
+  il riaccostamento di un lavoro misto è passato da 524 a **44 ms**.
+
+- **La misura con cui si giudicano i piani era sbagliata, e diceva di sì.**
+  La distanza fra due sagome è un conto che sembra banale: il minimo fra le
+  distanze dei lati. Non lo è, e sbagliarlo non fa fallire niente — fa
+  passare tutto. Due lati INCROCIATI non hanno nessun estremo vicino
+  all'altro lato, e il minimo torna allegramente dieci centimetri mentre i
+  pezzi si accavallano; due lati COLLINEARI e staccati (due pezzi appoggiati
+  alla stessa riga del margine) hanno tutti i prodotti vettoriali a zero e un
+  test di incidenza scritto in fretta li dichiara a distanza zero; un pezzo
+  finito tutto dentro un altro non ha nessun lato che tagli niente. Adesso il
+  conto sta in `src/geometry/distanzaPoligoni.ts`, da solo, con diciotto
+  prove sue — perché è il metro con cui si giudica se fra due pezzi passa la
+  lama, e un metro sbagliato non si accorge di niente.
+
 ## 1.61.2 — I vuoti che nessuno aveva impostato
 
 - **Basta un pezzo non rettangolare e fra tutti i pezzi comparivano vuoti di
