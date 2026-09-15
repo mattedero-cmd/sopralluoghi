@@ -353,6 +353,10 @@ export function analizzaTestoPezzi(testo: string): EsitoParser {
       }
     }
     const esplicita = rilevaForma(s);
+    // la parola è una ETICHETTA solo se apre la riga («triangolo 400x300»):
+    // lì non è il nome del pezzo e non va ripetuta. In seconda posizione è
+    // un aggettivo — «vetrata triangolare» — e il nome è quello.
+    const etichettaForma = !!parolaForma(s.trim().split(/\s+/)[0] ?? '');
     const forma = esplicita ?? formaDaNotazione(s) ?? formaCorrente ?? 'rett';
     const cmScale = /\bcm\b/i.test(s) && !/\bmm\b/i.test(s) ? 10 : 1;
 
@@ -422,8 +426,15 @@ export function analizzaTestoPezzi(testo: string): EsitoParser {
       .replace(/\b\d+\s*[x×](?=\s|$)/gi, ' ')
       .replace(/[Øø⌀]\s*\d*(?:[.,]\d+)?/g, ' ')
       .replace(/\bdiam\w*\.?/gi, ' ')
+      // la parola di forma si toglie SOLO se è servita a dichiarare la forma:
+      // lì è una parola di servizio, e ripeterla nel nome («Cerchio cerchio»)
+      // non dice niente. Se invece la forma l'hanno detta le misure, quella
+      // parola fa parte del nome che l'utente ha scelto — «vetrata
+      // triangolare» si chiama così — e toglierla è perdere informazione.
       .replace(
-        /\b(?:cerchi[oi]?|tond[oi]|disc[ohi]|circolar\w*|triangol\w*|romb[oi]|trapez\w*|rettangol\w*|quadrat[oi]|quadrilater\w*|isoscel\w*)\b/gi,
+        etichettaForma
+          ? /\b(?:cerchi[oi]?|tond[oi]|disc[ohi]|circolar\w*|triangol\w*|romb[oi]|trapez\w*|rettangol\w*|quadrat[oi]|quadrilater\w*|isoscel\w*)\b/gi
+          : /\b(?:isoscel\w*)\b/gi,
         ' '
       )
       .replace(/\b(?:h|alt\w*)\s*(?:sx|dx|sinistra?|destra?|1|2)\s*[:=]?\s*\d*(?:[.,]\d+)?/gi, ' ')

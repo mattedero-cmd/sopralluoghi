@@ -350,6 +350,16 @@ describe('analizzaTestoPezzi — forme', () => {
     expect(uno('triangolo 400x300').forma).toBe('triangolo');
   });
 
+  it('la parola di forma resta nel nome se non è servita a dichiarare la forma', () => {
+    // «TRIANGOLO SOTTO» è il nome del pezzo, non un comando: sparirebbe dal
+    // nome e in cantiere non si saprebbe più di quale pezzo si parla
+    expect(uno('TRAP. DX – TRIANGOLO SOTTO — 155 × 70 cm').nome).toBe('TRAP DX TRIANGOLO SOTTO');
+    expect(uno('vetrata triangolare 500/800/700').nome).toBe('Vetrata triangolare');
+    // dichiarandola invece è una parola di servizio, e non si ripete
+    expect(uno('triangolo 400x300').nome).toBe('Triangolo');
+    expect(uno('cerchio Ø300').nome).toBe('Cerchio');
+  });
+
   it('le misure sanno dire la forma anche senza la parola in testa', () => {
     // tre lati che chiudono: solo un triangolo li ha
     expect(uno('vetrata del bagno 500/800/700')).toMatchObject({

@@ -10,6 +10,24 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.61.1 — Le regole da dare al modello, e il nome che resta quello detto
+
+- **`docs/REGOLE-LISTA-PEZZI.md`**: il testo da incollare nelle istruzioni
+  del progetto dell'assistente vocale, perché la lista che esce dalla
+  chiacchierata in cantiere sia già nel formato che l'app legge. Formato
+  della riga, misure sempre in centimetri, quantità sempre `N pz`,
+  nomenclatura costante nel tempo, titoli, forme, verso, e le cose da non
+  fare. Un documento così invecchia in silenzio, quindi c'è una prova che
+  prende l'esempio DAL FILE e lo fa passare dal lettore vero: se un domani
+  non tornasse più, si rompe.
+
+- **La parola di forma resta nel nome quando non dichiara la forma.**
+  «TRAP. DX – TRIANGOLO SOTTO» perdeva la parola TRIANGOLO — veniva tolta
+  come parola di servizio — e in cantiere quel pezzo non si riconosceva più.
+  Adesso si toglie solo quando apre la riga, cioè quando è un'etichetta
+  («triangolo 400x300») e non un nome. In seconda posizione è un aggettivo:
+  «vetrata triangolare» si chiama così.
+
 ## 1.61.0 — Finita una bobina se ne apre un'altra
 
 - **La bobina non è più una sola.** Prima il rotolo era uno e quello che non
