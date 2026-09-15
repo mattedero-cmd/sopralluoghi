@@ -229,6 +229,12 @@ export interface PezzoScartato {
 export interface EsitoNesting {
   lastre: LastraNesting[];
   scartati: PezzoScartato[];
+  /**
+   * Il piano a sagoma reale non reggeva il controllo e si è ripiegato sugli
+   * INGOMBRI: più materiale, ma tagliabile. Chi disegna deve dirlo, perché è
+   * una rinuncia, non una scelta.
+   */
+  ripiego?: 'ingombri';
 }
 
 interface Spazio {

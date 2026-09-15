@@ -10,6 +10,41 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.63.0 — La partita doppia: un piano impossibile non passa più
+
+- **Una resa sopra il 100% non è un piano stretto: è un piano impossibile.**
+  La somma delle aree dei pezzi appoggiati su un foglio non può superare
+  l'area del foglio; se la supera c'è del materiale contato due volte, cioè
+  due pezzi nello stesso posto. Non c'è disegno, tolleranza o forma strana che
+  lo giustifichi.
+
+  Adesso il piano tiene **due libri**, e devono tornare tutti e due. Il primo è
+  la geometria: le sagome a due a due, e fra loro deve passare la lama. Il
+  secondo è l'aritmetica, che di poligoni non sa niente e guarda solo le aree.
+  Si coprono a vicenda: la geometria vede due pezzi che si sfiorano di un
+  millimetro, dove l'aritmetica non si accorge di niente; l'aritmetica vede
+  tre pezzi impilati nello stesso punto anche se il conto delle distanze
+  avesse un difetto proprio lì.
+
+- **E se non tornano, la questione si risolve.** Dire «attenzione, questi pezzi
+  si sovrappongono» e lasciare lì il piano non serve a chi deve tagliare
+  stasera. Se il piano a sagoma reale non regge il controllo, il programma lo
+  **rifà sugli ingombri**: ogni sagoma dentro il suo rettangolo. Due
+  rettangoli che non si toccano non possono contenere due sagome che si
+  toccano, quindi quel piano è tagliabile per costruzione. Costa materiale —
+  sul lavoro delle funivie 16,02 m invece di 15,54 — ed è scritto in chiaro in
+  cima al piano, perché è una rinuncia, non una scelta. Meglio un piano più
+  largo che un piano che non si può tagliare.
+
+- **L'allarme dice il numero.** Se un foglio non torna, l'avviso rosso nomina
+  il segmento, la resa impossibile e le coppie di pezzi coinvolte: una lista
+  che si fotografa e si manda.
+
+- Misurato: su centoventi lavori sani più i quattro veri (funivie, treno,
+  trapezi, misto su lastra) il ripiego **non scatta mai** e le rese restano
+  identiche. Un ripiego che parte per niente sarebbe materiale buttato in
+  silenzio, che è esattamente il difetto che questo controllo deve impedire.
+
 ## 1.62.0 — Prima le sagome: 41 cm di bobina sul lavoro delle funivie
 
 - **L'ordine con cui i pezzi entrano decide chi si prende i vuoti.** Il motore

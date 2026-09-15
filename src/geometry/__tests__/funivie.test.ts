@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { calcolaNestingAuto } from '../nestingSagome';
-import { sovrapposizioni } from '../controlloPiano';
+import { aIngombro, calcolaNestingAuto } from '../nestingSagome';
+import { calcolaNestingMigliore } from '../nesting';
+import { pianoRotto, sovrapposizioni } from '../controlloPiano';
 import { areaForma } from '../sagome';
 import { opzioniRicerca, parametriDi } from '../../utils/documentoNesting';
 import type { PezzoNesting } from '../nesting';
@@ -119,4 +120,51 @@ describe('il lavoro delle funivie', () => {
     const guasti = e.lastre.flatMap((l) => sovrapposizioni(l, LAMA));
     expect(guasti).toEqual([]);
   }, 120000);
+});
+
+/**
+ * LA SCIALUPPA.
+ *
+ * Quando il piano a sagoma reale non regge il controllo, il programma non si
+ * limita a dirlo: rifà il piano sugli INGOMBRI. Due rettangoli che non si
+ * toccano non possono contenere due sagome che si toccano, quindi quel piano
+ * è tagliabile per costruzione — costa materiale, ed è il motivo per cui il
+ * motore a sagome esiste, ma meglio un piano più largo che un piano che non
+ * si può tagliare.
+ *
+ * Qui si prova che la scialuppa galleggia: sullo stesso lavoro, il piano a
+ * ingombri è sano in tutti e due i libri.
+ */
+describe('il ripiego sugli ingombri', () => {
+  it('sul lavoro sano non scatta: sarebbe materiale buttato in silenzio', () => {
+    expect(piano().ripiego).toBeUndefined();
+  }, 120000);
+
+  it('il piano a ingombri è tagliabile, e costa di più', () => {
+    const par = { lastra: { larghezza: LARGO, altezza: 50_000 }, lama: LAMA, abbondanza: 0, margine: 0 };
+    const r = calcolaNestingMigliore(par, PEZZI.map(aIngombro), { bloccoMassimo: 3000 });
+    expect(r.scartati).toHaveLength(0);
+    for (const l of r.lastre) {
+      if (!l.piazzamenti.length) continue;
+      const alta = Math.max(...l.piazzamenti.map((p) => p.y + p.altezza));
+      expect(pianoRotto(l, LAMA, LARGO, alta), 'la scialuppa fa acqua').toBeNull();
+    }
+    const usato = r.lastre.reduce(
+      (s, l) => s + (l.piazzamenti.length ? Math.max(...l.piazzamenti.map((p) => p.y + p.altezza)) : 0),
+      0
+    );
+    // costa più del piano a sagoma: è il prezzo di essere sicuri
+    expect(usato).toBeGreaterThan(15_540);
+    console.log(`ripiego a ingombri: ${(usato / 1000).toFixed(2)} m contro i 15,54 a sagoma`);
+  }, 120000);
+
+  it('l’ingombro di un trapezio è la sua misura più alta, non quella scritta', () => {
+    // B1.1 è 860 × 1130 con la terza misura 1610: il suo ingombro è 860 × 1610,
+    // e chi ripiega deve prendere quello, se no il pezzo esce corto
+    const b = aIngombro(PEZZI[0]);
+    expect(b).toMatchObject({ larghezza: 860, altezza: 1610 });
+    expect((b as { forma?: string }).forma).toBeUndefined();
+    // un rettangolo non si tocca
+    expect(aIngombro(PEZZI[3])).toBe(PEZZI[3]);
+  });
 });

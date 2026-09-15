@@ -40,6 +40,7 @@ import {
 import { haSagome } from './sagome';
 import { sagomaDi, type Sagoma } from './distanzaPoligoni';
 import { corsaLibera, eRettangolo, fermata } from './scorrimento';
+import { pianoRotto } from './controlloPiano';
 import {
   areaForma,
   formaDi,
@@ -70,7 +71,53 @@ export function calcolaNestingAuto(
   pezzi: PezzoNesting[],
   opzioni?: OpzioniRicerca
 ): EsitoNesting {
-  return haSagome(pezzi) ? calcolaNestingSagome(par, pezzi) : calcolaNestingMigliore(par, pezzi, opzioni);
+  if (!haSagome(pezzi)) return calcolaNestingMigliore(par, pezzi, opzioni);
+  const e = calcolaNestingSagome(par, pezzi);
+  if (!lastreRotte(e, par)) return e;
+  // IL PIANO NON REGGE: SI RIPIEGA SUGLI INGOMBRI.
+  //
+  // Dire «attenzione, questi pezzi si sovrappongono» e lasciare lì il piano
+  // non serve a chi deve tagliare stasera. Il motore a rettangoli lavora sui
+  // rettangoli d'ingombro, e due rettangoli che non si toccano non possono
+  // contenere due sagome che si toccano: spreca materiale — è il motivo per
+  // cui il motore a sagome esiste — ma un piano tagliabile lo dà sempre.
+  //
+  // Meglio un piano più largo che un piano che non si può tagliare.
+  const ripiego = calcolaNestingMigliore(par, pezzi.map(aIngombro), opzioni);
+  return { ...ripiego, ripiego: 'ingombri' };
+}
+
+/** il pezzo ridotto al suo rettangolo d'ingombro, forma dimenticata */
+export function aIngombro(p: PezzoNesting): PezzoNesting {
+  if (formaDi(p) === 'rett') return p;
+  const ing = ingombroForma(p);
+  const { forma, misura3, vertici, ...resto } = p as PezzoNesting & {
+    misura3?: number;
+    vertici?: unknown;
+  };
+  void forma;
+  void misura3;
+  void vertici;
+  return { ...resto, larghezza: ing.larghezza, altezza: ing.altezza };
+}
+
+/**
+ * Il piano regge?
+ *
+ * Per l'aritmetica si guarda il TRATTO OCCUPATO, non il foglio intero: su una
+ * bobina da cinquanta metri la resa calcolata sul rotolo sarebbe sempre
+ * bassissima e non vedrebbe niente. Il tratto occupato è anche il metro più
+ * stretto possibile che resti onesto — i pezzi ci stanno tutti dentro per
+ * definizione, quindi senza sovrapposizioni la somma delle loro aree non può
+ * superarlo.
+ */
+function lastreRotte(e: EsitoNesting, par: ParametriNesting): boolean {
+  for (const l of e.lastre) {
+    if (!l.piazzamenti.length) continue;
+    const alta = Math.max(...l.piazzamenti.map((p) => p.y + p.altezza));
+    if (pianoRotto(l, par.lama, par.lastra.larghezza, alta)) return true;
+  }
+  return false;
 }
 
 /** oltre questo numero di copie il calcolo si tronca, e lo si dice */

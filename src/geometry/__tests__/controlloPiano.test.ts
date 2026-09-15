@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sovrapposizioni } from '../controlloPiano';
+import { pianoRotto, resaImpossibile, sovrapposizioni } from '../controlloPiano';
 import type { LastraNesting, Piazzamento } from '../nesting';
 
 /**
@@ -104,5 +104,63 @@ describe('sovrapposizioni', () => {
     const a = pezzo('Obló', 0, 0, 100, 100, { forma: 'cerchio' });
     const b = pezzo('Obló', 100, 100, 100, 100, { forma: 'cerchio' });
     expect(sovrapposizioni(piano(a, b), 3)).toEqual([]);
+  });
+});
+
+describe('la partita doppia: geometria e aritmetica', () => {
+  const pezzo = (nome: string, x: number, y: number, l: number, a: number, extra = {}): Piazzamento =>
+    ({
+      x, y, larghezza: l, altezza: a, larghezzaFinita: l, altezzaFinita: a,
+      nome, tinta: 0, ruotato: false, chiave: `${nome}#0`, ...extra
+    }) as Piazzamento;
+  const piano = (...p: Piazzamento[]): LastraNesting => ({ piazzamenti: p });
+
+  it('un piano sano torna in tutti e due i libri', () => {
+    const l = piano(pezzo('A', 0, 0, 900, 1000), pezzo('B', 0, 1003, 900, 1000));
+    expect(resaImpossibile(l, 915, 2003)).toBeNull();
+    expect(pianoRotto(l, 3, 915, 2003)).toBeNull();
+  });
+
+  it('la resa non può superare il 100%: è materiale contato due volte', () => {
+    // tre pezzi impilati nello stesso punto: 2,7 volte il foglio
+    const l = piano(
+      pezzo('A', 0, 0, 900, 1000),
+      pezzo('B', 0, 0, 900, 1000),
+      pezzo('C', 0, 0, 900, 700)
+    );
+    const r = resaImpossibile(l, 915, 1000);
+    expect(r).not.toBeNull();
+    expect(r!).toBeGreaterThan(250);
+  });
+
+  it('un foglio pieno esatto passa: è il 100% che non si supera', () => {
+    const l = piano(pezzo('A', 0, 0, 915, 1000));
+    expect(resaImpossibile(l, 915, 1000)).toBeNull();
+  });
+
+  it('l’ARITMETICA vede quello che la geometria potrebbe lasciarsi sfuggire', () => {
+    // due sagome dichiarate lontane da una misura sbagliata, ma impilate:
+    // qui i `punti` mentono di proposito — sono due triangolini in un angolo —
+    // mentre le misure finite dicono che i pezzi sono grandi. La geometria si
+    // fida dei punti e tace; l'aritmetica no.
+    const bugiardo = (nome: string) =>
+      pezzo(nome, 0, 0, 900, 1000, {
+        forma: 'triangolo',
+        punti: nome === 'A' ? [[0, 0], [10, 0], [0, 10]] : [[890, 990], [900, 990], [900, 1000]],
+        areaVera: 900 * 1000
+      });
+    const l = piano(bugiardo('A'), bugiardo('B'));
+    expect(sovrapposizioni(l, 3), 'la geometria non vede niente').toEqual([]);
+    expect(resaImpossibile(l, 915, 1000), 'l’aritmetica sì').not.toBeNull();
+    expect(pianoRotto(l, 3, 915, 1000)).not.toBeNull();
+  });
+
+  it('la GEOMETRIA vede quello che l’aritmetica non può vedere', () => {
+    // due pezzi piccoli che si sfiorano: l'area è una briciola del foglio,
+    // l'aritmetica è tranquilla, ma la lama lì non passa
+    const l = piano(pezzo('A', 0, 0, 100, 100), pezzo('B', 0, 101, 100, 100));
+    expect(resaImpossibile(l, 915, 1000), 'l’aritmetica non vede niente').toBeNull();
+    expect(sovrapposizioni(l, 3), 'la geometria sì').toHaveLength(1);
+    expect(pianoRotto(l, 3, 915, 1000)).not.toBeNull();
   });
 });

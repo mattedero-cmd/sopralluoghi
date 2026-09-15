@@ -15,7 +15,7 @@ import {
   type PezzoNesting
 } from '../geometry/nesting';
 import { calcolaNestingAuto, type EsitoSagome } from '../geometry/nestingSagome';
-import { sovrapposizioni } from '../geometry/controlloPiano';
+import { pianoRotto } from '../geometry/controlloPiano';
 import {
   ancoraEtichetta,
   etichetteMisure,
@@ -1019,9 +1019,11 @@ export function NestingPage({
    */
   const guasti = useMemo(
     () =>
-      fogli.flatMap((f) =>
-        sovrapposizioni(f.lastra, mat.lama).map((g) => ({ ...g, dove: `${f.titolo} · ${g.dove}` }))
-      ),
+      fogli.flatMap((f) => {
+        const r = pianoRotto(f.lastra, mat.lama, f.misure.larghezza, f.misure.altezza);
+        if (!r) return [];
+        return [{ ...r, titolo: f.titolo }];
+      }),
     [fogli, mat.lama]
   );
 
@@ -1622,23 +1624,47 @@ export function NestingPage({
               </div>
             )}
 
+            {esito.ripiego === 'ingombri' && (
+              <div className="nest-avviso" role="status">
+                <strong>Piano rifatto a ingombri.</strong> Quello a sagoma reale non reggeva il
+                controllo — ci sarebbero stati pezzi sovrapposti — quindi ogni sagoma è stata
+                impaginata dentro il suo rettangolo. Si consuma più materiale, ma questo piano si
+                può tagliare. È un difetto del programma: segnalalo.
+              </div>
+            )}
+
             {guasti.length > 0 && (
               <div className="nest-avviso grave" role="alert">
-                <strong>
-                  Non tagliare questo piano: {guasti.length}{' '}
-                  {guasti.length === 1 ? 'coppia di pezzi si sovrappone' : 'coppie di pezzi si sovrappongono'}
-                </strong>{' '}
-                — fra questi pezzi la lama non ci passa. È un errore di calcolo del piano, non
-                delle tue misure: se lo vedi, segnalalo con questa lista.
+                <strong>Non tagliare questo piano.</strong> Il controllo non torna su{' '}
+                {guasti.length === 1 ? 'un foglio' : `${guasti.length} fogli`}: è un errore di
+                calcolo del piano, non delle tue misure. Segnalalo con questa lista.
                 <ul>
-                  {guasti.slice(0, 6).map((g, i) => (
+                  {guasti.slice(0, 4).map((g, i) => (
                     <li key={i}>
-                      <strong>{g.a}</strong> e <strong>{g.b}</strong>:{' '}
-                      {g.distanza <= 0.01 ? 'si accavallano' : `${g.distanza.toFixed(1)} mm invece di ${mat.lama}`}{' '}
-                      ({g.dove})
+                      <strong>{g.titolo}</strong>
+                      {g.resa != null && (
+                        <>
+                          {' '}— resa <strong>{g.resa.toFixed(1)}%</strong>: sopra il 100% vuol dire
+                          che c’è materiale contato due volte, cioè pezzi nello stesso posto
+                        </>
+                      )}
+                      {g.sovrapposti.length > 0 && (
+                        <ul>
+                          {g.sovrapposti.slice(0, 4).map((c, k) => (
+                            <li key={k}>
+                              {c.a} e {c.b}:{' '}
+                              {c.distanza <= 0.01
+                                ? 'si accavallano'
+                                : `${c.distanza.toFixed(1)} mm invece di ${mat.lama}`}{' '}
+                              ({c.dove})
+                            </li>
+                          ))}
+                          {g.sovrapposti.length > 4 && <li>…e altre {g.sovrapposti.length - 4}</li>}
+                        </ul>
+                      )}
                     </li>
                   ))}
-                  {guasti.length > 6 && <li>…e altre {guasti.length - 6}</li>}
+                  {guasti.length > 4 && <li>…e altri {guasti.length - 4}</li>}
                 </ul>
               </div>
             )}

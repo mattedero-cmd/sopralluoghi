@@ -70,3 +70,69 @@ export function sovrapposizioni(lastra: LastraNesting, lama: number): Sovrapposi
   }
   return fuori;
 }
+
+/**
+ * LA PARTITA DOPPIA DEL PIANO.
+ *
+ * Il controllo qui sopra guarda la GEOMETRIA: prende le sagome a due a due e
+ * misura se fra loro ci passa la lama. È un conto giusto, ma è un conto solo —
+ * e un conto solo, quando sbaglia, sbaglia in silenzio. Serve un secondo
+ * libro, tenuto in un modo completamente diverso, che alla fine deve tornare
+ * con il primo.
+ *
+ * Il secondo libro è l'ARITMETICA, e non sa niente di poligoni: la somma delle
+ * aree dei pezzi appoggiati su un foglio non può superare l'area del foglio.
+ * Se la supera, da qualche parte c'è del materiale contato due volte — cioè
+ * due pezzi nello stesso posto — e non c'è disegno, tolleranza o forma strana
+ * che possa giustificarlo. Una resa del 121% non è un piano stretto: è un
+ * piano impossibile.
+ *
+ * Le due prove si coprono a vicenda. La geometria vede due pezzi che si
+ * sfiorano di un millimetro, dove l'aritmetica non si accorge di niente.
+ * L'aritmetica vede tre pezzi impilati nello stesso punto anche se il conto
+ * delle distanze avesse un difetto proprio lì. Perché il piano passi devono
+ * tornare tutte e due.
+ */
+export function resaImpossibile(
+  lastra: LastraNesting,
+  larghezza: number,
+  altezza: number
+): number | null {
+  if (!(larghezza > 0) || !(altezza > 0)) return null;
+  const area = lastra.piazzamenti.reduce(
+    // sulle sagome conta l'area geometrica vera, non il prodotto delle misure:
+    // è lo stesso numero che il piano mostra come «resa»
+    (s, p) => s + (p.areaVera ?? p.larghezzaFinita * p.altezzaFinita),
+    0
+  );
+  const resa = (100 * area) / (larghezza * altezza);
+  // un filo di tolleranza per l'arrotondamento dei decimi di millimetro: è il
+  // 100% che non si può superare, non il 100,01%
+  return resa > 100.5 ? resa : null;
+}
+
+/** perché questo piano non si può tagliare, se non si può */
+export interface PianoRotto {
+  /** coppie fra cui la lama non passa */
+  sovrapposti: Sovrapposizione[];
+  /** resa oltre il 100%, cioè materiale contato due volte */
+  resa: number | null;
+}
+
+/**
+ * Il piano regge? Tutti e due i libri, in un colpo solo.
+ *
+ * `larghezza` e `altezza` sono quelle del foglio come viene DISEGNATO: su una
+ * bobina è il segmento, non il rotolo intero, se no la resa si annacqua e
+ * l'aritmetica non vede più niente.
+ */
+export function pianoRotto(
+  lastra: LastraNesting,
+  lama: number,
+  larghezza: number,
+  altezza: number
+): PianoRotto | null {
+  const sovrapposti = sovrapposizioni(lastra, lama);
+  const resa = resaImpossibile(lastra, larghezza, altezza);
+  return sovrapposti.length || resa !== null ? { sovrapposti, resa } : null;
+}
