@@ -31,6 +31,7 @@
 import {
   calcolaNestingMigliore,
   type EsitoNesting,
+  type LastraNesting,
   type OpzioniRicerca,
   type ParametriNesting,
   type PezzoNesting,
@@ -105,6 +106,65 @@ interface Posto {
   cy: number;
   rot: number;
   mask: MascheraSagoma;
+}
+
+/**
+ * RIACCOSTA i pezzi dopo il piazzamento sulla griglia.
+ *
+ * Il piazzamento lavora su celle di qualche millimetro, e quella cella si vede
+ * nel piano: fra due pezzi resta un filo di vuoto che nessuno ha impostato —
+ * non è la lama, è l'arrotondamento del calcolo. Qui i pezzi si riaccostano in
+ * millimetri veri: prima tutti in su, poi tutti a sinistra, uno alla volta e
+ * in ordine, ciascuno fino a toccare a distanza di lama quello che ha davanti.
+ * Nessuno scavalca nessuno, quindi l'ordine non cambia; e siccome ci si muove
+ * solo verso l'origine, il materiale occupato non può che calare.
+ *
+ * LA CONDIZIONE DA RISPETTARE è che due pezzi siano distanti almeno una lama
+ * su ALMENO UNO dei due assi: è quello che serve perché il taglio passi. Va
+ * scritta così, e non «si sovrappongono in x», se no la seconda passata
+ * combina guai: spostando un pezzo a sinistra lo si porta in colonna con uno
+ * che prima gli stava di fianco, e la distanza verticale che andava benissimo
+ * quando erano in due colonne diverse diventa di colpo un taglio impossibile.
+ *
+ * Si guarda l'INGOMBRO e non la sagoma vera: è la scelta prudente. Due trapezi
+ * testa-coda potrebbero avvicinarsi ancora, ma per saperlo servirebbe il
+ * confronto fra i poligoni, e un errore lì vuol dire due pezzi tagliati uno
+ * dentro l'altro.
+ */
+export function accosta(lastre: LastraNesting[], lama: number, margine: number): LastraNesting[] {
+  const E = 1e-6;
+  /** i due pezzi hanno già il passaggio della lama su quest'asse? */
+  const separati = (
+    a: Piazzamento,
+    b: Piazzamento,
+    da: 'x' | 'y',
+    quanto: 'larghezza' | 'altezza'
+  ) => a[da] + a[quanto] + lama <= b[da] + E || b[da] + b[quanto] + lama <= a[da] + E;
+
+  const scivola = (piazzamenti: Piazzamento[], verso: 'x' | 'y'): Piazzamento[] => {
+    const lungo = verso === 'y' ? 'altezza' : 'larghezza';
+    const altro = verso === 'y' ? 'x' : 'y';
+    const altroLungo = verso === 'y' ? 'larghezza' : 'altezza';
+    // si scorre dal più vicino all'origine — chi sta davanti si è già fermato —
+    // ma si scrive al POSTO SUO: l'ordine dei piazzamenti è l'ordine in cui il
+    // piano li numera, e riordinarlo qui rinominerebbe i pezzi sul disegno
+    const fuori = [...piazzamenti];
+    const ordine = fuori.map((_, i) => i).sort((a, b) => fuori[a][verso] - fuori[b][verso]);
+    const fermi: Piazzamento[] = [];
+    for (const i of ordine) {
+      const p = fuori[i];
+      let limite = margine;
+      for (const q of fermi) {
+        // chi ha già la lama sull'ALTRO asse non mi ferma: passa di fianco
+        if (separati(p, q, altro, altroLungo)) continue;
+        limite = Math.max(limite, q[verso] + q[lungo] + lama);
+      }
+      fuori[i] = { ...p, [verso]: Math.min(p[verso], limite) };
+      fermi.push(fuori[i]);
+    }
+    return fuori;
+  };
+  return lastre.map((l) => ({ piazzamenti: scivola(scivola(l.piazzamenti, 'y'), 'x') }));
 }
 
 function entraAt(
@@ -376,7 +436,15 @@ export function calcolaNestingSagome(
     }
   }
 
-  esito.lastre = migliore!.lastre;
+  // LA GRIGLIA SI TOGLIE DI MEZZO ALLA FINE.
+  //
+  // Il piazzamento lavora su celle di qualche millimetro, e quella cella si
+  // vede nel piano: fra due pezzi resta un filo di vuoto che nessuno ha
+  // impostato — non è la lama, è l'arrotondamento del calcolo. Qui i pezzi si
+  // riaccostano in millimetri veri, ognuno fino a toccare a distanza di lama
+  // quello che ha davanti. Si muovono per INGOMBRO, che è la cosa prudente:
+  // se non si toccano i rettangoli non si toccano nemmeno le sagome dentro.
+  esito.lastre = accosta(migliore!.lastre, lama, margine);
   esito.scartati = migliore!.scartati;
   esito.cella = migliore!.cella;
   return esito;

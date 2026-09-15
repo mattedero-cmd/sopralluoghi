@@ -10,6 +10,36 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.61.2 — I vuoti che nessuno aveva impostato
+
+- **Basta un pezzo non rettangolare e fra tutti i pezzi comparivano vuoti di
+  otto-dieci millimetri.** Non erano la lama e non li aveva chiesti nessuno.
+  Una sagoma nell'elenco fa passare TUTTO il materiale dal motore a
+  rettangoli a quello a sagoma reale, che appoggia i pezzi su una griglia di
+  qualche millimetro: quella griglia si vedeva nel piano, su ogni pezzo,
+  anche sui rettangoli che con le sagome non c'entravano niente.
+
+  Misurato sul lavoro del treno, su bobina da 122 × 500 cm: vuoto mediano fra
+  due pezzi incolonnati **8 mm, con il novantesimo percentile a 10 mm**, dove
+  il motore a rettangoli lasciava 3 mm — la lama, e basta.
+
+  Adesso, finito il piazzamento, i pezzi si **riaccostano in millimetri
+  veri**: prima tutti in su, poi tutti a sinistra, ognuno fino a toccare a
+  distanza di lama quello che ha davanti. Stesso lavoro, stesse lastre,
+  stessa resa: vuoto mediano **3 mm, p90 3 mm**, uguale al motore a
+  rettangoli.
+
+  La regola che si rispetta è che due pezzi abbiano il passaggio della lama
+  su ALMENO UNO dei due assi — non «non si sovrappongono in x», che al
+  secondo passaggio avvicinava due pezzi sotto la lama. Su trenta lavori a
+  caso, con lame da 2, 3 e 5 mm, lastre e bobine, cerchi, triangoli, rombi e
+  trapezi, la distanza fra le SAGOME VERE non scende mai sotto la lama, e
+  nell'ottanta per cento abbondante dei casi c'è almeno una coppia che si
+  tocca esattamente a lama.
+
+  I pezzi restano nell'ordine in cui il piano li numera: riaccostarli non li
+  rinomina.
+
 ## 1.61.1 — Le regole da dare al modello, e il nome che resta quello detto
 
 - **`docs/REGOLE-LISTA-PEZZI.md`**: il testo da incollare nelle istruzioni
