@@ -783,11 +783,67 @@ export function versiAMano(
         : f === 'quad' && !poligonoSagoma(p)
           ? [0]
           : orientazioniPer(p);
-  if (!dentro) return versi;
-  return versi.filter((g) => {
-    const i = ingombroRuotato(p, g);
-    return i.larghezza <= dentro.larghezza + 1e-6 && i.altezza <= dentro.altezza + 1e-6;
-  });
+  const entrano = dentro
+    ? versi.filter((g) => {
+        const i = ingombroRuotato(p, g);
+        return i.larghezza <= dentro.larghezza + 1e-6 && i.altezza <= dentro.altezza + 1e-6;
+      })
+    : versi;
+  return perUtilita(entrano);
+}
+
+/**
+ * Il verso che tocca al prossimo tocco, o `null` per tornare in automatico.
+ *
+ * LA REGOLA È UNA SOLA, ed è quella che una persona ha in testa guardando un
+ * pezzo puntato dalla parte sbagliata: il primo tocco lo RIBALTA. Mezzo giro
+ * rispetto a com'è adesso, non «il prossimo di un elenco» — perché con un
+ * elenco fisso quello che esce dipende da dove il motore aveva messo il pezzo,
+ * e lo stesso tocco sullo stesso pezzo dà cose diverse in lavori diversi.
+ *
+ * Dal secondo tocco in poi si cammina nell'elenco, che è già in ordine di
+ * utilità; finito, il vincolo si toglie e il pezzo torna a farsi mettere dal
+ * calcolo, invece di ricominciare il giro all'infinito.
+ *
+ * @param versi     i versi disponibili (già filtrati su quelli che ci stanno)
+ * @param applicato il verso che il pezzo ha adesso nel piano
+ * @param imposto   il verso messo a mano finora, se c'è
+ */
+export function prossimoVerso(
+  versi: number[],
+  applicato: number,
+  imposto: number | boolean | null | undefined
+): number | null {
+  if (versi.length <= 1) return null;
+  const tondo = (v: number) => ((v % 360) + 360) % 360;
+  const indice = (v: number) => versi.findIndex((x) => Math.abs(x - tondo(v)) < 0.01);
+  if (imposto == null) {
+    const i = indice(applicato + 180);
+    if (i >= 0) return versi[i];
+    // niente mezzo giro disponibile: il primo verso diverso da com'è
+    const altro = versi.find((v) => indice(v) !== indice(applicato));
+    return altro ?? null;
+  }
+  const i = indice(typeof imposto === 'number' ? imposto : imposto ? 90 : 0);
+  return i < 0 || i >= versi.length - 1 ? null : versi[i + 1];
+}
+
+/**
+ * L'ordine in cui conviene proporre i versi a chi gira un pezzo a mano.
+ *
+ * Il MEZZO GIRO viene per primo, dopo il verso dritto. È il movimento che una
+ * persona ha in testa quando guarda un trapezio puntato dalla parte sbagliata:
+ * cambia il verso della falda senza cambiare l'ingombro, ed è quello che fa
+ * incastrare due pezzi testa-coda. I quarti di giro ribaltano il pezzo —
+ * spesso lo fanno diventare più largo del supporto — e gli appoggi obliqui
+ * sono roba da casi speciali: vengono dopo.
+ *
+ * L'elenco del MOTORE resta quello di prima: lì non conta l'ordine, le prova
+ * tutte. Conta qui, dove ogni verso in più è un tocco in più a vuoto.
+ */
+function perUtilita(versi: number[]): number[] {
+  const peso = (g: number) => (g === 0 ? 0 : g === 180 ? 1 : g % 90 === 0 ? 2 : 3);
+  return [...versi].sort((a, b) => peso(a) - peso(b) || versi.indexOf(a) - versi.indexOf(b));
 }
 
 /**

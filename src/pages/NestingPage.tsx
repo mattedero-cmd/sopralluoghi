@@ -23,6 +23,7 @@ import {
   haSagome,
   servemisura3,
   misureForma,
+  prossimoVerso,
   versiAMano,
   FORME,
   type FormaPezzo
@@ -458,18 +459,7 @@ export function NestingPage({
         const pezzo = m.pezzi.find((p) => p.id === id);
         const versi = pezzo ? versiAMano(pezzo, spazioUtile(m)) : [0, 90];
         if (versi.length <= 1) return m;
-        const indice = (v: number) =>
-          versi.findIndex((x) => Math.abs(x - (((v % 360) + 360) % 360)) < 0.01);
-        const imposto = nuovi[chiave];
-        let prossimo: number | null;
-        if (imposto == null) {
-          // primo tocco: dal verso che ha adesso al successivo
-          prossimo = versi[(indice(applicato) + 1 + versi.length) % versi.length];
-        } else {
-          const i = indice(typeof imposto === 'number' ? imposto : imposto ? 90 : 0);
-          // fine giro: si torna in automatico invece di ricominciare
-          prossimo = i < 0 || i >= versi.length - 1 ? null : versi[i + 1];
-        }
+        const prossimo = prossimoVerso(versi, applicato, nuovi[chiave]);
         if (prossimo === null) delete nuovi[chiave];
         else nuovi[chiave] = prossimo;
         return { ...m, orientamenti: nuovi };
@@ -1940,6 +1930,19 @@ function Lastra({
   const siGira = (chiave: string) =>
     !bloccati.has(chiave.slice(0, chiave.lastIndexOf('#'))) && quantiVersi(chiave) > 1;
 
+  /**
+   * Come sta il pezzo adesso, detto a parole. Girare un pezzo al tocco senza
+   * dire dove è arrivato vuol dire farlo indovinare: si tocca, qualcosa
+   * cambia, e non si sa se si è preso il mezzo giro o un appoggio storto.
+   */
+  const comeSta = (g: number) => {
+    const n = ((Math.round(g * 10) / 10) % 360 + 360) % 360;
+    if (n === 0) return 'dritto';
+    if (n === 180) return 'mezzo giro';
+    if (n === 90 || n === 270) return 'un quarto di giro';
+    return `appoggiato su un lato (${n}°)`;
+  };
+
   return (
     <section className="nest-lastra">
       <div className="testa">
@@ -2033,7 +2036,6 @@ function Lastra({
                 : null;
             // anche le sagome si girano a mano, e non solo di un quarto
             const girabile = siGira(pc.chiave);
-            const versi = (pc.rotazione ?? 0) % 90 !== 0 ? 'lato' : 'quarto';
             return (
               <g
                 key={i}
@@ -2057,10 +2059,8 @@ function Lastra({
               >
                 <title>
                   {girabile
-                    ? `${pc.nome || 'Pezzo'} ${misura} — tocca per girarlo${
-                        imposti[pc.chiave] != null
-                          ? ` (verso messo a mano${versi === 'lato' ? ', appoggiato su un lato' : ''})`
-                          : ''
+                    ? `${pc.nome || 'Pezzo'} ${misura} — ${comeSta(pc.rotazione ?? 0)}, tocca per girarlo${
+                        imposti[pc.chiave] != null ? ' (verso messo a mano)' : ''
                       }`
                     : `${pc.nome || 'Pezzo'} ${misura} — bloccato dalla venatura`}
                 </title>

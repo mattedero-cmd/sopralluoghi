@@ -10,6 +10,31 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.61.7 — Il primo tocco ribalta il pezzo, da dovunque parta
+
+- **Il giro dei versi partiva dall'inizio di un elenco**, quindi quello che
+  usciva al primo tocco dipendeva da dove il motore aveva messo il pezzo:
+  stesso tocco, stesso pezzo, risultati diversi in lavori diversi. E il mezzo
+  giro — che è quello che si vuole guardando un trapezio puntato dalla parte
+  sbagliata — arrivava quando capitava. Misurato su un trapezio 860×1260|715:
+  su bobina da 152 il primo tocco dava un quarto di giro, su bobina da 90 ne
+  dava un altro ancora.
+
+  Adesso la regola è una sola: **il primo tocco ribalta il pezzo**, mezzo giro
+  rispetto a com'è adesso. Dal secondo in poi si cammina nell'elenco, che ora
+  è ordinato per utilità — dritto, mezzo giro, quarti, e solo dopo gli appoggi
+  obliqui; finito il giro il vincolo si toglie e il pezzo torna a farsi mettere
+  dal calcolo. Se il mezzo giro non esiste (un rettangolo ha solo dritto e
+  quarto) si propone comunque l'altro verso, invece di non fare niente.
+
+- **Il pezzo dice come sta.** Toccare un pezzo e vederlo cambiare senza sapere
+  dove è arrivato vuol dire indovinare. Adesso ogni pezzo si presenta come
+  «dritto», «mezzo giro», «un quarto di giro» o «appoggiato su un lato (37°)»,
+  e se il verso è stato messo a mano lo dice.
+
+- La regola del giro adesso è una funzione sua (`prossimoVerso`), con le sue
+  prove: prima era scritta dentro la pagina e non la provava nessuno.
+
 ## 1.61.6 — Il piano si controlla da solo
 
 - **Se due pezzi si sovrappongono, adesso lo dice il piano.** Due pezzi uno

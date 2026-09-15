@@ -12,6 +12,7 @@ import {
   rotazioniPer,
   ruotaPunti,
   ingombroRuotato,
+  prossimoVerso,
   versiAMano,
   versiParalleli,
   versiStretti,
@@ -601,9 +602,7 @@ describe('i versi obliqui: appoggiare un lato per terra', () => {
     const t = { forma: 'trapezioR' as const, larghezza: 860, altezza: 1260, misura3: 715 };
     const dentro = { larghezza: 880, altezza: 25000 };
 
-    // senza il supporto l'elenco è quello di prima, col quarto di giro per primo
-    expect(versiAMano(t).slice(0, 2)).toEqual([0, 90]);
-    // con il supporto il quarto di giro non c'è più, e il primo tocco dà 180
+    // con il supporto il quarto di giro non c'è più
     const versi = versiAMano(t, dentro);
     expect(versi).toContain(180);
     expect(versi).not.toContain(90);
@@ -613,6 +612,68 @@ describe('i versi obliqui: appoggiare un lato per terra', () => {
     for (const g of versi) {
       expect(ingombroRuotato(t, g).larghezza, `verso ${g}`).toBeLessThanOrEqual(880 + 1e-6);
     }
+  });
+
+  it('il mezzo giro viene per primo: è il tocco che si ha in testa', () => {
+    // guardando un trapezio puntato dalla parte sbagliata si vuole ribaltare
+    // la falda, non mettere il pezzo di traverso. Il quarto di giro cambia
+    // l'ingombro e spesso non ci sta nemmeno; il mezzo giro no.
+    const t = { forma: 'trapezioR' as const, larghezza: 600, altezza: 900, misura3: 400 };
+    const versi = versiAMano(t);
+    expect(versi[0]).toBe(0);
+    expect(versi[1]).toBe(180);
+    expect(versi.indexOf(180)).toBeLessThan(versi.indexOf(90));
+    expect(versi.indexOf(180)).toBeLessThan(versi.indexOf(270));
+    // e gli appoggi obliqui vengono dopo tutti i quarti
+    const primoObliquo = versi.findIndex((g) => g % 90 !== 0);
+    if (primoObliquo >= 0) {
+      for (const q of [0, 90, 180, 270]) expect(versi.indexOf(q)).toBeLessThan(primoObliquo);
+    }
+    // il motore invece li vuole nell'ordine suo, e non è cambiato
+    expect(orientazioniPer(t).slice(0, 4)).toEqual([0, 90, 180, 270]);
+  });
+
+  it('il primo tocco RIBALTA il pezzo, da dovunque parta', () => {
+    // È il difetto che si vedeva in cantiere: il giro dei versi partiva
+    // dall'inizio di un elenco, quindi quello che usciva dipendeva da dove il
+    // motore aveva messo il pezzo. Stesso tocco, stesso pezzo, risultati
+    // diversi in lavori diversi — e il mezzo giro, che è quello che si vuole,
+    // arrivava quando capitava.
+    const t = { forma: 'trapezioR' as const, larghezza: 860, altezza: 1260, misura3: 715 };
+
+    // bobina stretta: ci stanno solo dritto e mezzo giro
+    const stretta = versiAMano(t, { larghezza: 880, altezza: 25000 });
+    expect(stretta).toEqual([0, 180]);
+    expect(prossimoVerso(stretta, 0, null)).toBe(180);
+    expect(prossimoVerso(stretta, 180, null)).toBe(0);
+
+    // bobina larga: ci stanno anche i quarti, e il primo tocco resta il mezzo giro
+    const larga = versiAMano(t, { larghezza: 1500, altezza: 25000 });
+    expect(larga).toContain(90);
+    expect(prossimoVerso(larga, 0, null)).toBe(180);
+    expect(prossimoVerso(larga, 90, null)).toBe(270);
+    expect(prossimoVerso(larga, 180, null)).toBe(0);
+    expect(prossimoVerso(larga, 270, null)).toBe(90);
+  });
+
+  it('dal secondo tocco si cammina, e alla fine si torna in automatico', () => {
+    const t = { forma: 'trapezioR' as const, larghezza: 860, altezza: 1260, misura3: 715 };
+    const versi = versiAMano(t, { larghezza: 880, altezza: 25000 });
+    expect(versi).toEqual([0, 180]);
+    // messo a mano su 0 → si passa a 180 → poi si molla il vincolo
+    expect(prossimoVerso(versi, 180, 0)).toBe(180);
+    expect(prossimoVerso(versi, 0, 180)).toBeNull();
+    // un pezzo con un verso solo non gira: non c'è niente da proporre
+    expect(prossimoVerso([0], 0, null)).toBeNull();
+  });
+
+  it('senza mezzo giro disponibile si propone comunque qualcosa di diverso', () => {
+    // un rettangolo ha solo [0, 90]: il mezzo giro non esiste, e il tocco deve
+    // dare l'altro verso invece di non fare niente
+    const r = versiAMano({ forma: 'rett', larghezza: 600, altezza: 400 });
+    expect(r).toEqual([0, 90]);
+    expect(prossimoVerso(r, 0, null)).toBe(90);
+    expect(prossimoVerso(r, 90, null)).toBe(0);
   });
 
   it('l’ingombro girato non è lo scambio di larghezza e altezza', () => {
