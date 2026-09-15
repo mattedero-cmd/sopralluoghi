@@ -15,6 +15,7 @@ import {
   type PezzoNesting
 } from '../geometry/nesting';
 import { calcolaNestingAuto, type EsitoSagome } from '../geometry/nestingSagome';
+import { sovrapposizioni } from '../geometry/controlloPiano';
 import {
   ancoraEtichetta,
   etichetteMisure,
@@ -1015,6 +1016,25 @@ export function NestingPage({
     });
   }, [esito, mat.modo, mat.lastra, mat.bobina.larghezza, mat.margine, mat.lama, stampa]);
 
+  /**
+   * IL PIANO SI CONTROLLA DA SOLO.
+   *
+   * Due pezzi uno sopra l'altro sono l'errore più caro che questo programma
+   * possa fare: al disegno due sagome incastrate e due sagome accavallate si
+   * somigliano, e la differenza si scopre al banco col materiale già tagliato.
+   * È già successo due volte, da due cause lontane fra loro, e tutte e due le
+   * volte le prove del motore erano verdi — perché guardavano il motore, non
+   * il piano che si vede. Qui si guarda quello che finisce sotto gli occhi, e
+   * si controllano i fogli DISEGNATI, segmenti compresi.
+   */
+  const guasti = useMemo(
+    () =>
+      fogli.flatMap((f) =>
+        sovrapposizioni(f.lastra, mat.lama).map((g) => ({ ...g, dove: `${f.titolo} · ${g.dove}` }))
+      ),
+    [fogli, mat.lama]
+  );
+
   return (
     <div className="app">
       <header className="barra">
@@ -1609,6 +1629,27 @@ export function NestingPage({
                 <button className="btn piccolo" onClick={selezionaFuori}>
                   <Icona nome="sposta" dimensione={16} /> Spunta quelli rimasti fuori
                 </button>
+              </div>
+            )}
+
+            {guasti.length > 0 && (
+              <div className="nest-avviso grave" role="alert">
+                <strong>
+                  Non tagliare questo piano: {guasti.length}{' '}
+                  {guasti.length === 1 ? 'coppia di pezzi si sovrappone' : 'coppie di pezzi si sovrappongono'}
+                </strong>{' '}
+                — fra questi pezzi la lama non ci passa. È un errore di calcolo del piano, non
+                delle tue misure: se lo vedi, segnalalo con questa lista.
+                <ul>
+                  {guasti.slice(0, 6).map((g, i) => (
+                    <li key={i}>
+                      <strong>{g.a}</strong> e <strong>{g.b}</strong>:{' '}
+                      {g.distanza <= 0.01 ? 'si accavallano' : `${g.distanza.toFixed(1)} mm invece di ${mat.lama}`}{' '}
+                      ({g.dove})
+                    </li>
+                  ))}
+                  {guasti.length > 6 && <li>…e altre {guasti.length - 6}</li>}
+                </ul>
               </div>
             )}
 

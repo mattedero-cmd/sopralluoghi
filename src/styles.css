@@ -3195,6 +3195,17 @@ a {
   margin-top: 10px;
 }
 
+/* Un piano con due pezzi uno sopra l'altro non è un avviso come gli altri: è
+   materiale rovinato se non lo si vede. Sfondo pieno, non una cornice. */
+.nest-avviso.grave {
+  border-width: 2px;
+  background: color-mix(in srgb, var(--pericolo) 26%, transparent);
+}
+
+.nest-avviso.grave ul {
+  color: var(--testo-1);
+}
+
 /* lastre */
 .nest-lastra {
   background: var(--sfondo-2);

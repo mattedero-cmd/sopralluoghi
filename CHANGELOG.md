@@ -10,6 +10,29 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.61.6 — Il piano si controlla da solo
+
+- **Se due pezzi si sovrappongono, adesso lo dice il piano.** Due pezzi uno
+  sopra l'altro sono l'errore più caro che questo programma possa fare: al
+  disegno due sagome incastrate e due sagome accavallate si somigliano, e la
+  differenza si scopre al banco, col materiale già tagliato. È successo due
+  volte, da due cause lontane fra loro — il riaccostamento dopo il nesting e
+  la caduta dei pezzi in fondo al blocco — e tutte e due le volte le prove
+  erano verdi, perché guardavano il motore e non il piano che si vede.
+
+  Adesso il controllo guarda il **risultato**: i fogli davvero disegnati,
+  segmenti compresi. Se fra due pezzi la lama non ci passa compare un avviso
+  rosso, in cima, con i nomi dei due pezzi, di quanto sono vicini e in che
+  segmento stanno — una lista che si può fotografare e mandare. Costa un pugno
+  di confronti per lastra, perché le coppie lontane si scartano guardando i
+  rettangoli d'ingombro prima di misurare le sagome.
+
+  Il controllo sa la differenza fra due sagome **incastrate** e due sagome
+  **accavallate**: due trapezi testa-coda hanno i rettangoli d'ingombro
+  sovrapposti per mezzo metro e stanno benissimo, ed è tutta la ragione per
+  cui il motore a sagome esiste. Un allarme che suona su quelli sarebbe
+  peggio di nessun allarme.
+
 ## 1.61.5 — Il giro dei versi non offre più versi impossibili
 
 - **Toccare un pezzo per girarlo non deve farlo sparire dal piano.** Un
