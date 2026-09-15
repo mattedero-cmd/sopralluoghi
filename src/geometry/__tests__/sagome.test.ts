@@ -11,6 +11,7 @@ import {
   orientazioniPer,
   rotazioniPer,
   ruotaPunti,
+  ingombroRuotato,
   versiAMano,
   versiParalleli,
   versiStretti,
@@ -589,6 +590,58 @@ describe('i versi obliqui: appoggiare un lato per terra', () => {
     expect(versiAMano({ forma: 'rett', larghezza: 500, altezza: 500 })).toEqual([0]);
     expect(versiAMano({ forma: 'cerchio', larghezza: 300, altezza: 300 })).toEqual([0]);
     expect(versiAMano({ forma: 'rombo', larghezza: 754, altezza: 597 }).length).toBe(6);
+  });
+
+  it('non si offre un verso in cui il pezzo non entra nel supporto', () => {
+    // IL CASO DEL CANTIERE. Un trapezio da 860 di base e 1260 di altezza, su
+    // una bobina larga 900: girato di un quarto diventa largo 1260, cioè più
+    // del rotolo, e il pezzo sparisce dal piano. Chi lo tocca per girarlo
+    // voleva il MEZZO giro — che di larghezza resta 860 — e invece se lo
+    // trovava dietro un verso impossibile.
+    const t = { forma: 'trapezioR' as const, larghezza: 860, altezza: 1260, misura3: 715 };
+    const dentro = { larghezza: 880, altezza: 25000 };
+
+    // senza il supporto l'elenco è quello di prima, col quarto di giro per primo
+    expect(versiAMano(t).slice(0, 2)).toEqual([0, 90]);
+    // con il supporto il quarto di giro non c'è più, e il primo tocco dà 180
+    const versi = versiAMano(t, dentro);
+    expect(versi).toContain(180);
+    expect(versi).not.toContain(90);
+    expect(versi).not.toContain(270);
+    expect(versi[versi.indexOf(0) + 1]).toBe(180);
+    // e tutti quelli rimasti ci stanno davvero
+    for (const g of versi) {
+      expect(ingombroRuotato(t, g).larghezza, `verso ${g}`).toBeLessThanOrEqual(880 + 1e-6);
+    }
+  });
+
+  it('l’ingombro girato non è lo scambio di larghezza e altezza', () => {
+    // un rombo appoggiato su un lato è più stretto del suo diamante: è tutta
+    // la ragione per cui gli appoggi obliqui esistono
+    const r = { forma: 'rombo' as const, larghezza: 754, altezza: 597 };
+    expect(ingombroRuotato(r, 0)).toEqual({ larghezza: 754, altezza: 597 });
+    const obliquo = versiAMano(r).find((g) => g % 90 !== 0)!;
+    expect(ingombroRuotato(r, obliquo).larghezza).toBeLessThan(754);
+    // e il cerchio gira su sé stesso
+    expect(ingombroRuotato({ forma: 'cerchio', larghezza: 300, altezza: 300 }, 37)).toEqual({
+      larghezza: 300,
+      altezza: 300
+    });
+  });
+
+  it('un verso offerto è un verso che il motore riesce a piazzare', () => {
+    // il patto vero: quello che l'elenco propone non deve far sparire il pezzo
+    const t = { forma: 'trapezioR' as const, larghezza: 860, altezza: 1260, misura3: 715 };
+    const margine = 10;
+    const bobina = { larghezza: 900, altezza: 25000 };
+    const dentro = { larghezza: bobina.larghezza - 2 * margine, altezza: bobina.altezza - 2 * margine };
+    for (const g of versiAMano(t, dentro)) {
+      const esito = calcolaNestingSagome(
+        { lastra: bobina, lama: 3, abbondanza: 0, margine, orientamenti: { 'tz#0': g } },
+        [{ ...t, id: 'tz', nome: 'T', quantita: 1, ruotabile: true, tinta: 0 }] as PezzoNesting[]
+      );
+      expect(esito.scartati, `verso ${g} fa sparire il pezzo`).toHaveLength(0);
+    }
   });
 
   it('i rombi obliqui accorciano davvero la lastra', () => {

@@ -731,17 +731,63 @@ export function sagomaSpeculare<T extends MisureForma>(p: T): T {
 }
 
 /**
+ * L'ingombro del pezzo APPOGGIATO a `gradi`.
+ *
+ * Non è lo scambio di larghezza e altezza: quello vale per i quarti di giro e
+ * basta. Un rombo appoggiato su un lato è largo 591, non 754 come il suo
+ * diamante, e un trapezio girato di mezzo giro è largo uguale ma non alto
+ * uguale. Si guarda il poligono davvero ruotato.
+ */
+export function ingombroRuotato(
+  p: MisureForma,
+  gradi: number
+): { larghezza: number; altezza: number } {
+  const poly = poligonoSagoma(p);
+  if (!poly) return ingombroForma(p); // il cerchio gira su sé stesso
+  const r = ruotaPunti(poly, gradi);
+  let l = 0;
+  let a = 0;
+  for (const q of r) {
+    if (q[0] > l) l = q[0];
+    if (q[1] > a) a = q[1];
+  }
+  return { larghezza: l, altezza: a };
+}
+
+/**
  * I versi fra cui far scorrere un pezzo quando lo si gira A MANO, in ordine.
  *
  * Sono gli stessi che il motore sa provare: un rettangolo ha il mezzo giro,
  * una sagoma i suoi appoggi di lato. Il cerchio non si gira.
+ *
+ * `dentro` è lo spazio in cui il pezzo deve starci — l'utile del supporto, già
+ * tolti margine e abbondanza — e serve a NON OFFRIRE i versi in cui il pezzo
+ * non entra. Non è una raffinatezza: senza, un trapezio alto più di quanto sia
+ * larga la bobina offre come primo tocco il quarto di giro, che lo fa diventare
+ * più largo del rotolo; il pezzo sparisce dal piano, e il mezzo giro — che era
+ * quello che si voleva — resta dietro un verso che nessuno può usare. Un verso
+ * che butta il pezzo fuori dal piano non è una scelta, è una trappola.
  */
-export function versiAMano(p: MisureForma): number[] {
+export function versiAMano(
+  p: MisureForma,
+  dentro?: { larghezza: number; altezza: number }
+): number[] {
   const f = formaDi(p);
-  if (f === 'cerchio') return [0];
-  if (f === 'rett') return p.larghezza === p.altezza ? [0] : [0, 90];
-  if (f === 'quad' && !poligonoSagoma(p)) return [0];
-  return orientazioniPer(p);
+  const versi =
+    f === 'cerchio'
+      ? [0]
+      : f === 'rett'
+        ? p.larghezza === p.altezza
+          ? [0]
+          : [0, 90]
+        : f === 'quad' && !poligonoSagoma(p)
+          ? [0]
+          : orientazioniPer(p);
+  if (!dentro) return versi;
+  return versi.filter((g) => {
+    const i = ingombroRuotato(p, g);
+    return i.larghezza <= dentro.larghezza + 1e-6 && i.altezza <= dentro.altezza + 1e-6;
+  });
 }
 
 /**

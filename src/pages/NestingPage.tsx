@@ -429,10 +429,24 @@ export function NestingPage({
    *
    * Un rettangolo ha due versi e basta il mezzo giro. Una sagoma no: un rombo
    * o un triangolo storto, girati a mano, si appoggiano su un LORO LATO, e i
-   * versi sensati sono quelli — gli stessi che prova il motore. Il tocco li fa
-   * scorrere uno alla volta; finito il giro il vincolo si toglie e il pezzo
-   * torna a farsi mettere dal calcolo.
+   * versi sensati sono quelli — gli stessi che prova il motore, meno quelli in
+   * cui il pezzo non entra nel supporto. Il tocco li fa scorrere uno alla
+   * volta; finito il giro il vincolo si toglie e il pezzo torna a farsi mettere
+   * dal calcolo.
    */
+  /**
+   * Lo spazio in cui un pezzo deve starci per essere piazzabile: l'utile del
+   * supporto meno l'abbondanza, che è lo stesso conto che fa il motore quando
+   * decide se un verso entra o va scartato.
+   */
+  const spazioUtile = (m: MaterialeNesting) => {
+    const l = parametriDi(m).lastra;
+    return {
+      larghezza: l.larghezza - 2 * m.margine - m.abbondanza,
+      altezza: l.altezza - 2 * m.margine - m.abbondanza
+    };
+  };
+
   const giraPezzo = (chiave: string, applicato: number) =>
     setDoc((d) => ({
       ...d,
@@ -441,7 +455,8 @@ export function NestingPage({
         const nuovi = { ...m.orientamenti };
         const id = chiave.slice(0, chiave.lastIndexOf('#'));
         const pezzo = m.pezzi.find((p) => p.id === id);
-        const versi = pezzo ? versiAMano(pezzo) : [0, 90];
+        const versi = pezzo ? versiAMano(pezzo, spazioUtile(m)) : [0, 90];
+        if (versi.length <= 1) return m;
         const indice = (v: number) =>
           versi.findIndex((x) => Math.abs(x - (((v % 360) + 360) % 360)) < 0.01);
         const imposto = nuovi[chiave];
@@ -1645,6 +1660,7 @@ export function NestingPage({
                 pezzi={pezziCalcolo}
                 venatura={mat.venatura}
                 imposti={mat.orientamenti}
+                spazio={spazioUtile(mat)}
                 onGira={giraPezzo}
                 legenda={i === 0}
               />
@@ -1818,6 +1834,7 @@ function Lastra({
   pezzi,
   venatura,
   imposti,
+  spazio,
   onGira,
   legenda
 }: {
@@ -1832,6 +1849,8 @@ function Lastra({
   pezzi: PezzoNesting[];
   venatura: Venatura;
   imposti: Record<string, boolean | number>;
+  /** l'utile del supporto: i versi in cui il pezzo non ci sta non si offrono */
+  spazio: { larghezza: number; altezza: number };
   onGira: (chiave: string, applicato: number) => void;
   legenda: boolean;
 }) {
@@ -1866,7 +1885,19 @@ function Lastra({
   const bloccati = new Set(
     venatura === 'nessuna' ? [] : pezzi.filter((p) => !p.ruotabile).map((p) => p.id)
   );
-  const siGira = (chiave: string) => !bloccati.has(chiave.slice(0, chiave.lastIndexOf('#')));
+  /**
+   * Quanti versi ha davvero questo pezzo. Un verso in cui il pezzo non entra
+   * nel supporto non conta: offrirlo vorrebbe dire far sparire il pezzo dal
+   * piano al primo tocco. Se ne resta uno solo, il pezzo non si gira — e non
+   * si accende nemmeno, perché un pulsante che non fa niente è peggio di un
+   * pulsante che non c'è.
+   */
+  const quantiVersi = (chiave: string) => {
+    const p = pezzi.find((q) => q.id === chiave.slice(0, chiave.lastIndexOf('#')));
+    return p ? versiAMano(p, spazio).length : 0;
+  };
+  const siGira = (chiave: string) =>
+    !bloccati.has(chiave.slice(0, chiave.lastIndexOf('#'))) && quantiVersi(chiave) > 1;
 
   return (
     <section className="nest-lastra">

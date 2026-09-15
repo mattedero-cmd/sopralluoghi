@@ -10,6 +10,31 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.61.5 — Il giro dei versi non offre più versi impossibili
+
+- **Toccare un pezzo per girarlo non deve farlo sparire dal piano.** Un
+  trapezio da 86 cm di base e 126 di altezza, su una bobina larga 90, al primo
+  tocco faceva un quarto di giro: diventava largo 126 cm, cioè più del rotolo,
+  e finiva fra i pezzi che non entrano. Chi lo toccava voleva il **mezzo
+  giro** — che di larghezza resta 86 — e se lo trovava dietro un verso che
+  nessuno poteva usare.
+
+  Adesso i versi che si possono scegliere sono solo quelli in cui il pezzo
+  **ci sta davvero**, con lo stesso conto che fa il motore quando decide se un
+  verso è piazzabile: utile del supporto meno margine e abbondanza, e
+  l'ingombro preso sul pezzo davvero ruotato (un rombo appoggiato su un lato è
+  più stretto del suo diamante, non è lo scambio di larghezza e altezza).
+
+  Sul caso del cantiere: il quarto di giro non viene più offerto, il primo
+  tocco dà il mezzo giro, il pezzo resta nel piano e la resa sale da 88,2% a
+  89,3%. Prima, lo stesso tocco lasciava 4 pezzi su 5 con l'avviso «1 pezzo
+  non entra nella bobina».
+
+- **Un pezzo con un verso solo non si accende più.** Se dopo il filtro resta
+  un'orientazione sola non c'è niente da scegliere, e il pezzo non si presenta
+  come toccabile: un pulsante che non fa niente è peggio di un pulsante che
+  non c'è.
+
 ## 1.61.4 — I trapezi sovrapposti: non era il nesting, era il segmento
 
 - **Il piano di taglio poteva uscire con due pezzi uno dentro l'altro.** Non
