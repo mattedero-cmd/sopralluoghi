@@ -10,6 +10,31 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.62.0 — Prima le sagome: 41 cm di bobina sul lavoro delle funivie
+
+- **L'ordine con cui i pezzi entrano decide chi si prende i vuoti.** Il motore
+  prova tutti i versi che vuole, ma li infila sempre dal più lungo al più
+  corto — e i vuoti buoni li fanno le sagome. Sotto la falda di un trapezio ci
+  sta un altro trapezio; se quando arriva il suo turno quel posto se l'è già
+  preso un rettangolo alto, l'incastro è perso per sempre.
+
+  Misurato sul lavoro vero delle funivie (bobina 91,5 cm, tre trapezi e otto
+  rettangoli): l'incastro che mancava valeva **477 mm**, e il piano ne buttava
+  via 410 in tutto. Adesso il motore prova anche l'ordine **sagome prima,
+  rettangoli dopo**, e tiene il migliore dei due: **da 15,81 m a 15,54 m**,
+  resa dall'88,4% all'89,9%.
+
+  Su venti lavori a caso con sagome e rettangoli mescolati: nessuno peggiora,
+  tre migliorano. Sul lavoro del treno e sul giro di trapezi non cambia
+  niente, perché lì non c'era niente da cambiare. Costa un pacco in più solo
+  quando ci sono sagome E rettangoli insieme.
+
+- Nota di geometria, per chi guarda il piano: **due trapezi specchiati non si
+  possono incastrare**, per quanto li si giri. `860×1130|1610` e
+  `860×1610|1130` hanno le falde che pendono al contrario, e il programma i
+  pezzi li gira ma non li ribalta. Metterli uno dietro l'altro a distanza di
+  lama è il massimo possibile.
+
 ## 1.61.7 — Il primo tocco ribalta il pezzo, da dovunque parta
 
 - **Il giro dei versi partiva dall'inizio di un elenco**, quindi quello che

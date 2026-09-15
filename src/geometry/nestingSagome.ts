@@ -372,12 +372,13 @@ export function calcolaNestingSagome(
   const pacco = (
     modo: 'quarti' | 'obliqui' | 'parallelo',
     seme: number,
-    blocchi: Record<string, number> | null
+    blocchi: Record<string, number> | null,
+    lista: Istanza[] = daProvare
   ): Giro => {
     let finestra = bH;
     let meglio: Giro | null = null;
     for (let tentativo = 0; ; tentativo++) {
-      const e = unGiro(par, daProvare, pad, bW, finestra, bobina, seme, modo, blocchi);
+      const e = unGiro(par, lista, pad, bW, finestra, bobina, seme, modo, blocchi);
       if (!meglio || meglioDi(e, meglio)) meglio = e;
       // sul rotolo, se la finestra stimata non è bastata, si allarga e si
       // rifà: quello che non entra dev'essere un fatto del materiale, non
@@ -396,6 +397,32 @@ export function calcolaNestingSagome(
   };
   prova(pacco('quarti', 0, null));
   if (conGiro) prova(pacco('quarti', 1, null));
+
+  /**
+   * PRIMA LE SAGOME, POI I RETTANGOLI.
+   *
+   * L'ordine d'inserimento è uno solo — pezzo più lungo per primo — e attorno
+   * a quello il motore prova tutti i versi che vuole. Ma l'ordine decide chi
+   * si prende i vuoti, e i vuoti buoni li fanno le SAGOME: sotto la falda di
+   * un trapezio ci sta un altro trapezio, e se quando arriva il suo turno il
+   * posto se l'è già preso un rettangolo, quell'incastro è perso per sempre.
+   *
+   * Misurato sul lavoro delle funivie (bobina 915, tre trapezi e otto
+   * rettangoli): l'ordine per lunghezza infila un rettangolo alto sotto la
+   * falda del trapezio grosso, e il trapezio che sarebbe entrato lì finisce
+   * più avanti, di fianco a un pezzo con cui non si incastra. Quarantun
+   * centimetri di bobina, su quindici metri.
+   *
+   * Si prova solo con sagome E rettangoli insieme: se sono tutte sagome
+   * l'ordine non cambia, e se sono tutti rettangoli qui non ci si arriva.
+   */
+  const sagome = daProvare.filter((it) => formaDi(it.pezzo) !== 'rett');
+  if (sagome.length > 0 && sagome.length < daProvare.length) {
+    const rettangoli = daProvare.filter((it) => formaDi(it.pezzo) === 'rett');
+    prova(pacco('quarti', 0, null, [...sagome, ...rettangoli]));
+    if (conGiro) prova(pacco('quarti', 1, null, [...sagome, ...rettangoli]));
+  }
+
   if (conAngoli) {
     prova(pacco('obliqui', 0, null));
     prova(pacco('parallelo', 0, null));
