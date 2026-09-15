@@ -10,6 +10,48 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.60.0 — L'importazione di una lista vera, e una lastra in meno
+
+Da un lavoro vero: tre vagoni di un treno, settantacinque righe, centotrenta
+pezzi, su pellicola in lastre da 122 cm per 5 metri. Adesso è un banco di
+prova nel codice.
+
+- **Un titolo con un numero o un trattino è un titolo.** «VAGONE 1», «PIANO
+  2», «VAGONE – TESTA»: righe così venivano buttate in silenzio fra le
+  ignorate, e tutti i pezzi sotto finivano nell'essenza precedente — da cui
+  il lavoro di rifare le essenze a mano. Si arriva a quel controllo solo
+  quando la riga NON contiene misure leggibili, quindi una cifra non è un
+  motivo per scartarla: si scarta invece quello che è fatto di numeri, cioè
+  una misura scritta male. Il trattino non conta più da solo: a distinguere
+  «VAGONE – TESTA» da «Progetto cucina — lista tagli» sono le parole. E un
+  titolo può arrivare a otto parole invece di cinque.
+
+- **La forma si dichiara in testa alla riga, non si pesca dal nome.**
+  «TRAP. DX – TRIANGOLO SOTTO — 155 × 70» diventava un triangolo perché la
+  parola compariva nel nome — ma di misure ne porta due, cioè un rettangolo,
+  e quel pezzo si chiama così perché in cantiere sta sotto ed è fatto a
+  triangolo. Su settantacinque righe quei due andavano ritrovati a mano. Ora
+  la parola vale dove si dichiara una forma: all'inizio della riga
+  («triangolo 400x300») o su una riga sua («Trapezi:»). In mezzo a un nome è
+  una descrizione, e comandano le misure — che la forma sanno dirla da sole
+  quando c'è davvero: tre lati che chiudono sono un triangolo comunque sia
+  scritto il nome, e una parola tonda con una misura sola è un diametro.
+
+- **Una lastra in meno sul vagone centrale.** L'euristica piazza dal pezzo
+  più grande al più piccolo, e quell'ordine è uno solo: se è quello sbagliato
+  nessun raffinamento dopo lo recupera. Adesso si riparte anche da tre ordini
+  «scossi» — un piccolo strappo ai pesi che rimescola chi viene prima fra
+  pezzi di taglia simile — e si tiene una ripartenza a una condizione sola:
+  che tolga una lastra. Sul treno il vagone centrale passa da otto lastre a
+  sette, e la resa del lavoro dal 76,1% all'80,5%. Il conto costa una
+  cinquantina di millisecondi in più per essenza.
+
+  La condizione è stretta perché misurata: lasciando vincere le ripartenze su
+  tutto il punteggio, su un lavoro fatto di pezzi tutti larghi uguali
+  prendevano un ritaglio appena più grande coricando ventitré pezzi di
+  traverso — il conto ci guadagnava di un soffio e il piano era peggiore. Una
+  lastra in meno, invece, non è mai un soffio.
+
 ## 1.59.1 — «Nuovo piano di taglio» ne apriva uno vecchio
 
 Un piano di taglio dato per salvato e poi introvabile. Tre difetti, tutti

@@ -196,6 +196,37 @@ Materiale chiaro (pelle chiara)
     const e = analizzaTestoPezzi('**Legno scuro:**\nAnta 600x400');
     expect(e.materiali).toEqual(['Legno scuro']);
   });
+
+  it('un titolo numerato è un titolo: «VAGONE 1» non è una misura', () => {
+    // qui si arriva solo perché la riga non conteneva misure leggibili: una
+    // cifra da sola non è un motivo per buttarla, e prima i pezzi sotto
+    // finivano in silenzio nell'essenza precedente
+    const e = analizzaTestoPezzi('VAGONE 1\nAnta 600x400\nVAGONE 2\nFianco 300x500');
+    expect(e.materiali).toEqual(['VAGONE 1', 'VAGONE 2']);
+    expect(e.pezzi.map((p) => p.materiale)).toEqual(['VAGONE 1', 'VAGONE 2']);
+    expect(e.ignorate).toEqual([]);
+  });
+
+  it('un titolo col trattino è un titolo; un titolo di documento no', () => {
+    expect(analizzaTestoPezzi('VAGONE – TESTA\nAnta 600x400').materiali).toEqual([
+      'VAGONE – TESTA'
+    ]);
+    // a distinguerli sono le parole, non il trattino
+    const doc = analizzaTestoPezzi('Progetto cucina — lista tagli\nAnta 600x400');
+    expect(doc.materiali).toEqual([]);
+    expect(doc.ignorate).toEqual(['Progetto cucina — lista tagli']);
+  });
+
+  it('un titolo può essere lungo, ma non fatto di numeri', () => {
+    expect(
+      analizzaTestoPezzi('VAGONE DI TESTA LATO NORD INTERNO\nAnta 600x400').materiali
+    ).toEqual(['VAGONE DI TESTA LATO NORD INTERNO']);
+    // solo cifre, o una misura scritta male: non sono titoli
+    for (const riga of ['600', '2 pz', '1200 x', '4500']) {
+      const e = analizzaTestoPezzi(`${riga}\nAnta 600x400`);
+      expect(e.materiali, riga).toEqual([]);
+    }
+  });
 });
 
 describe('analizzaTestoPezzi — forme', () => {
@@ -305,6 +336,34 @@ describe('analizzaTestoPezzi — forme', () => {
     const storta = analizzaTestoPezzi('triangolo 1000/200/300');
     expect(storta.pezzi).toHaveLength(0);
     expect(storta.ignorate).toEqual(['triangolo 1000/200/300']);
+  });
+
+  it('la forma si dichiara in testa: nel mezzo di un nome è una descrizione', () => {
+    // il pezzo della lista vera: si chiama così perché in cantiere sta sotto
+    // ed è fatto a triangolo, ma di misure ne porta due — cioè un rettangolo
+    const p = uno('TRAP. DX – TRIANGOLO SOTTO — 2 pz — 155 × 70 cm');
+    expect(p.forma).toBeUndefined();
+    expect(p).toMatchObject({ larghezza: 1550, altezza: 700, quantita: 2 });
+    // e nemmeno il cerchio si prende una riga con due misure diverse
+    expect(uno('Pannello porta tondo 600 x 400').forma).toBeUndefined();
+    // dichiarata in testa, invece, la parola comanda come sempre
+    expect(uno('triangolo 400x300').forma).toBe('triangolo');
+  });
+
+  it('le misure sanno dire la forma anche senza la parola in testa', () => {
+    // tre lati che chiudono: solo un triangolo li ha
+    expect(uno('vetrata del bagno 500/800/700')).toMatchObject({
+      forma: 'triangoloL',
+      larghezza: 800,
+      altezza: 700,
+      misura3: 500
+    });
+    // una parola tonda e UNA misura sola: quella è il diametro
+    expect(uno('oblò grande tondo 450')).toMatchObject({
+      forma: 'cerchio',
+      larghezza: 450,
+      altezza: 450
+    });
   });
 
   it('le righe rettangolari di sempre non prendono nessuna forma', () => {

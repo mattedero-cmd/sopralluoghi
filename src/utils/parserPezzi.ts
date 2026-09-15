@@ -65,8 +65,31 @@ const RE_DIAMETRO = /(?:[Øø⌀]|\bdiam\w*\.?)\s*[:=]?\s*(\d+(?:[.,]\d+)?)/i;
 
 const P = (v: string) => parseFloat(v.replace(',', '.'));
 
-/** la forma nominata nella riga, se c'è */
-function rilevaForma(s: string): FormaPezzo | null {
+/**
+ * LA FORMA SI DICHIARA IN TESTA ALLA RIGA.
+ *
+ * «TRAP. DX – TRIANGOLO SOTTO — 155 × 70» non è un triangolo: è il pezzo che
+ * in cantiere sta sotto ed è fatto a triangolo, e di misure ne porta due, cioè
+ * un rettangolo. Prima bastava che la parola comparisse da qualche parte nel
+ * nome per cambiare la forma del pezzo — e su una lista di settantacinque
+ * righe quei due andavano ritrovati a mano e rimessi a posto.
+ *
+ * Adesso la parola vale solo dove si dichiara una forma: all'inizio della
+ * riga («triangolo 400x300») o su una riga sua («Trapezi:»). In mezzo a un
+ * nome è una descrizione, e a comandare restano le misure — che sanno dirlo
+ * da sole quando la forma c'è davvero (tre lati, un diametro, due altezze).
+ */
+function rilevaForma(s: string, ovunque = false): FormaPezzo | null {
+  if (!ovunque) {
+    // le prime due parole: «triangolo 400x300», ma anche «vetrata triangolare»
+    const testa = s.trim().split(/\s+/).slice(0, 2).join(' ');
+    return parolaForma(testa);
+  }
+  return parolaForma(s);
+}
+
+/** la forma nominata da una parola, ovunque si guardi */
+function parolaForma(s: string): FormaPezzo | null {
   if (/cerchi|tond[oi]|disc[ohi]|circolar/i.test(s)) return 'cerchio';
   if (/triangol/i.test(s)) return 'triangolo';
   if (/romb/i.test(s)) return 'rombo';
@@ -87,6 +110,22 @@ function formaDaNotazione(s: string): FormaPezzo | null {
   if (RE_DIAMETRO.test(s)) return 'cerchio';
   if (RE_ALTEZZE.test(s)) return 'trapezioR';
   if (RE_BARRA.test(s) || RE_BASI.test(s)) return 'trapezio';
+  // tre lati che chiudono: solo un triangolo li ha, comunque sia scritto il
+  // nome. Se non chiudono non è un triangolo e non è niente: meglio lasciare
+  // che la riga finisca fra le ignorate, in bella vista nell'anteprima.
+  const tre = RE_TRE_LATI.exec(s);
+  if (tre) {
+    const l = [P(tre[1]), P(tre[2]), P(tre[3])].sort((x, y) => y - x);
+    if (l[2] > 0 && l[1] + l[2] > l[0]) return 'triangolo';
+  }
+  // «oblò grande tondo 450»: una parola di forma tonda e UNA misura sola —
+  // quella misura non può che essere il diametro
+  if (
+    /cerchi|tond[oi]|disc[ohi]|circolar/i.test(s) &&
+    (s.match(/\d+(?:[.,]\d+)?/g) ?? []).length === 1
+  ) {
+    return 'cerchio';
+  }
   return null;
 }
 
@@ -104,22 +143,26 @@ function possibileMateriale(riga: string): string | null {
     .replace(/^[-–—\s]+|[-–—\s]+$/g, '')
     .replace(/[:：]\s*$/, '')
     .trim();
-  // un trattino che separa due parti è da titolo di documento
-  // ("Progetto cucina — lista tagli"), non da essenza
-  if (/\s[-–—]\s/.test(s)) return null;
   // "Materiale: rovere" → "Rovere"
   s = s.replace(/^(?:materiale|essenza|finitura|supporto|pannello)\s*[:\-–—]\s*/i, '').trim();
   if (s.length < 2 || s.length > 40) return null;
-  if (/\d/.test(s)) return null;
-  if (s.split(/\s+/).length > 5) return null;
-  // appunti e promemoria: non sono essenze
-  if (
-    /^(?:nota|note|attenzione|avviso|ps|todo|da|ricorda\w*|verificar\w*|controllar\w*|misur\w*|totale|totali|riepilogo|progetto|lista|elenco|distinta|commessa|cliente|preventivo|tagli)\b/i.test(
-      s
-    )
-  ) {
-    return null;
-  }
+  // Fin qui si arriva solo se la riga NON conteneva misure leggibili, quindi
+  // una cifra non è un motivo per buttarla: «VAGONE 1», «PIANO 2», «LOTTO 3»
+  // sono titoli normalissimi, e prima finivano in silenzio fra le ignorate —
+  // con tutti i loro pezzi versati nell'essenza di prima. Si scarta invece
+  // quello che è fatto di numeri: un numero lungo è una misura scritta male.
+  if ((s.match(/\d+/g) ?? []).some((c) => c.length > 3)) return null;
+  // dev'esserci una parola vera, non solo cifre e sigle: «600» no, «2 pz» no
+  if (!/\p{L}{3}/u.test(s)) return null;
+  const parole = s.split(/\s+/);
+  if (parole.length > 8) return null;
+  // appunti e promemoria: non sono essenze. Si guarda anche dopo il trattino,
+  // perché «Progetto cucina — lista tagli» è un titolo di documento mentre
+  // «VAGONE – TESTA» è un'intestazione buona: a distinguerli sono le parole,
+  // non il trattino.
+  const nota =
+    /^(?:nota|note|attenzione|avviso|ps|todo|da|ricorda\w*|verificar\w*|controllar\w*|misur\w*|totale|totali|riepilogo|progetto|lista|elenco|distinta|commessa|cliente|preventivo|tagli)\b/i;
+  if (s.split(/\s[-–—]\s/).some((parte) => nota.test(parte.trim()))) return null;
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
@@ -300,12 +343,16 @@ export function analizzaTestoPezzi(testo: string): EsitoParser {
     let s = riga.replace(/^[\s\-*•·–—▪◦»>]+/, '');
     s = s.replace(/^\d{1,3}[.)]\s+/, '');
 
-    const esplicita = rilevaForma(s);
-    if (esplicita && !/\d/.test(s)) {
-      // riga-intestazione di forma («Cerchi:», «Trapezi»)
-      formaCorrente = esplicita;
-      continue;
+    // una riga SENZA cifre fatta della sola parola di forma è una sezione:
+    // lì la parola si cerca dovunque stia, perché altro non c'è
+    if (!/\d/.test(s)) {
+      const sezione = rilevaForma(s, true);
+      if (sezione) {
+        formaCorrente = sezione;
+        continue;
+      }
     }
+    const esplicita = rilevaForma(s);
     const forma = esplicita ?? formaDaNotazione(s) ?? formaCorrente ?? 'rett';
     const cmScale = /\bcm\b/i.test(s) && !/\bmm\b/i.test(s) ? 10 : 1;
 

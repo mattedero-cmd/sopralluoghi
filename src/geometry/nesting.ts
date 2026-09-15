@@ -72,6 +72,17 @@ export interface ParametriNesting {
   /** distanza dai bordi della lastra, su tutti i lati */
   margine: number;
   /**
+   * SCOSSONE all'ordine di piazzamento (0 = nessuno).
+   *
+   * L'euristica piazza dal pezzo più grande al più piccolo, e quell'ordine è
+   * uno solo: se è quello sbagliato, nessun raffinamento successivo lo
+   * recupera. Un piccolo strappo ai pesi rimescola le paritè e i quasi-pari —
+   * chi viene prima fra due pezzi simili — e ogni rimescolata è una partenza
+   * diversa. Il seme rende il risultato ripetibile: lo stesso lavoro dà
+   * sempre lo stesso piano.
+   */
+  scossa?: number;
+  /**
    * Numero massimo di lastre utilizzabili. Serve per la BOBINA: il materiale
    * è uno solo e di lunghezza data, quindi ciò che non entra non "apre un
    * altro pezzo" ma resta fuori. Assente = quantità illimitata.
@@ -126,6 +137,24 @@ export interface ParametriNesting {
 export type Criterio = 'area' | 'latoCorto' | 'bassoSinistra';
 
 export const CRITERI: Criterio[] = ['area', 'latoCorto', 'bassoSinistra'];
+
+/**
+ * Quanto può cambiare il peso di un pezzo nell'ordinamento scosso: il 18% basta
+ * a scambiare pezzi di taglia simile senza mai far passare un piccolo davanti
+ * a un grande. Misurato: sotto il 10% le partenze si somigliano troppo e non
+ * si guadagna niente, sopra il 30% l'euristica peggiora.
+ */
+const SCOSSA_MASSIMA = 0.18;
+
+/**
+ * Le ripartenze provate: la prima è l'ordine pulito, le altre lo scuotono.
+ *
+ * Quattro. Misurato su quaranta lavori a caso e sul lavoro vero del treno:
+ * con quattro si prende tutto il guadagno (una lastra in meno sul vagone
+ * centrale, resa dal 76,1% all'80,5%), con otto e con sedici non cambia più
+ * niente e il conto costa il doppio e il quadruplo.
+ */
+const SCOSSE = [0, 1, 2, 3];
 
 /** verso di partenza dei pezzi liberi di girare */
 export type Verso = 'auto' | 'diritto' | 'girato';
@@ -365,6 +394,15 @@ export function calcolaNesting(par: ParametriNesting, pezzi: PezzoNesting[]): Es
   // dal più grande al più piccolo: i grandi trovano posto finché c'è spazio.
   // «grande» però si può misurare in più modi, e il migliore dipende dalla
   // lista: vedi calcolaNestingMigliore.
+  const scossa = par.scossa ?? 0;
+  // scossone ripetibile: lo stesso pezzo prende sempre lo stesso strappo per
+  // un dato seme, così una disposizione si può rifare identica
+  const strappo = (chiave: string): number => {
+    if (scossa === 0) return 1;
+    let h = scossa >>> 0;
+    for (let k = 0; k < chiave.length; k++) h = (Math.imul(h ^ chiave.charCodeAt(k), 16777619) >>> 0);
+    return 1 + (h / 4294967296 - 0.5) * 2 * SCOSSA_MASSIMA;
+  };
   const peso = (i: Istanza): number => {
     switch (par.ordinamento) {
       case 'latoLungo':
@@ -380,9 +418,10 @@ export function calcolaNesting(par: ParametriNesting, pezzi: PezzoNesting[]): Es
     }
   };
   // a pari peso decide l'area, poi il lato lungo: l'ordine resta deterministico
+  const pesato = new Map(istanze.map((i) => [i.chiave, peso(i) * strappo(i.chiave)]));
   istanze.sort(
     (a, b) =>
-      peso(b) - peso(a) ||
+      pesato.get(b.chiave)! - pesato.get(a.chiave)! ||
       b.packL * b.packA - a.packL * a.packA ||
       Math.max(b.packL, b.packA) - Math.max(a.packL, a.packA)
   );
@@ -811,22 +850,53 @@ export function calcolaNestingMigliore(
 ): EsitoNesting {
   const valuta = (e: EsitoNesting) => qualita(par, e, opzioni);
 
-  let migliore: EsitoNesting | null = null;
-  let punteggio: Punteggio | null = null;
-  let strategia: Pick<ParametriNesting, 'ordinamento' | 'verso' | 'criterio'> = {};
-  for (const ordinamento of ORDINAMENTI) {
-    for (const verso of VERSI) {
-      for (const criterio of CRITERI) {
-        const e = calcolaNesting({ ...par, ordinamento, verso, criterio }, pezzi);
-        const q = valuta(e);
-        if (!punteggio || confronta(q, punteggio) < 0) {
-          migliore = e;
-          punteggio = q;
-          strategia = { ordinamento, verso, criterio };
+  type Prova = {
+    esito: EsitoNesting;
+    punteggio: Punteggio;
+    strategia: Pick<ParametriNesting, 'ordinamento' | 'verso' | 'criterio' | 'scossa'>;
+  };
+
+  /** il meglio che si ottiene da un dato ordine di partenza */
+  const giroCompleto = (scossa: number): Prova | null => {
+    let meglio: Prova | null = null;
+    for (const ordinamento of ORDINAMENTI) {
+      for (const verso of VERSI) {
+        for (const criterio of CRITERI) {
+          const esito = calcolaNesting({ ...par, ordinamento, verso, criterio, scossa }, pezzi);
+          const q = valuta(esito);
+          if (!meglio || confronta(q, meglio.punteggio) < 0) {
+            meglio = { esito, punteggio: q, strategia: { ordinamento, verso, criterio, scossa } };
+          }
         }
       }
     }
+    return meglio;
+  };
+
+  // l'ordine pulito, dal pezzo più grande al più piccolo: è il riferimento
+  let vincente = giroCompleto(0);
+
+  // Poi le RIPARTENZE SCOSSE, e si accettano a una condizione sola: una lastra
+  // in meno. Non è prudenza generica, è misurata. Lasciandole vincere su tutto
+  // il punteggio, su un lavoro vero fatto di pezzi tutti larghi uguali
+  // prendevano un ritaglio appena più grande coricando ventitré pezzi di
+  // traverso: il conto ci guadagnava di un soffio e il piano era peggiore. Una
+  // lastra in meno, invece, non è mai un soffio.
+  for (const scossa of SCOSSE) {
+    if (scossa === 0 || !vincente) continue;
+    const prova = giroCompleto(scossa);
+    if (
+      prova &&
+      prova.esito.lastre.length < vincente.esito.lastre.length &&
+      confronta(prova.punteggio, vincente.punteggio) < 0
+    ) {
+      vincente = prova;
+    }
   }
+
+  let migliore: EsitoNesting | null = vincente ? vincente.esito : null;
+  let punteggio: Punteggio | null = vincente ? vincente.punteggio : null;
+  const strategia = vincente ? vincente.strategia : {};
   if (!migliore || !punteggio) return { lastre: [], scartati: [] };
 
   // poi si gira un pezzo alla volta, tenendo solo i giri che migliorano
@@ -1006,7 +1076,7 @@ function trasloca(
 function affina(
   par: ParametriNesting,
   pezzi: PezzoNesting[],
-  strategia: Pick<ParametriNesting, 'ordinamento' | 'verso' | 'criterio'>,
+  strategia: Pick<ParametriNesting, 'ordinamento' | 'verso' | 'criterio' | 'scossa'>,
   esito: EsitoNesting,
   punteggio: Punteggio,
   valuta: (e: EsitoNesting) => Punteggio,
