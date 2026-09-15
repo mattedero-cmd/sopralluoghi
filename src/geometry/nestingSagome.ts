@@ -38,13 +38,8 @@ import {
   type Piazzamento
 } from './nesting';
 import { haSagome } from './sagome';
-import {
-  copiaSagoma,
-  distanzaSagome,
-  sagomaDi,
-  traslaIn,
-  type Sagoma
-} from './distanzaPoligoni';
+import { sagomaDi, type Sagoma } from './distanzaPoligoni';
+import { corsaLibera, eRettangolo, fermata } from './scorrimento';
 import {
   areaForma,
   formaDi,
@@ -153,69 +148,7 @@ interface Posto {
  * il punto di contatto e appoggiare due pezzi uno dentro l'altro.
  */
 export function accosta(lastre: LastraNesting[], lama: number, margine: number): LastraNesting[] {
-  const E = 1e-6;
-  /** i due pezzi hanno già il passaggio della lama su quest'asse? */
-  const separati = (
-    a: Piazzamento,
-    b: Piazzamento,
-    da: 'x' | 'y',
-    quanto: 'larghezza' | 'altezza'
-  ) => a[da] + a[quanto] + lama <= b[da] + E || b[da] + b[quanto] + lama <= a[da] + E;
-
-  /**
-   * Un rettangolo puro: il suo ingombro È la sua sagoma, e non c'è niente da
-   * calcolare. Attenzione a non chiederlo ai vertici: il piazzamento porta
-   * `punti` anche per i rettangoli — sono i quattro spigoli — e chi guarda lì
-   * finisce per fare il conto esatto su tutto il piano, lento e senza motivo.
-   */
-  const rettangolo = (p: Piazzamento) => p.forma === undefined || p.forma === 'rett';
-
-  /**
-   * Di quanto può ancora scorrere `p` verso l'origine prima di arrivare a
-   * distanza di lama da `q`, fra `da` e `massimo`. Sagome vere, conto esatto.
-   *
-   * `da` non è un'ottimizzazione qualunque: è la corsa che concede l'INGOMBRO,
-   * e fin lì la sagoma è al sicuro per costruzione — se i due rettangoli
-   * d'ingombro distano una lama, le sagome dentro distano almeno altrettanto.
-   * Partire da lì risparmia la parte di ricerca che si sa già come finisce.
-   */
-  const scorsaEsatta = (
-    P: Sagoma,
-    Q: Sagoma,
-    verso: 'x' | 'y',
-    da: number,
-    massimo: number
-  ): number => {
-    if (massimo <= da) return massimo;
-    const mosso = copiaSagoma(P);
-    const dist = (d: number) => distanzaSagome(traslaIn(mosso, P, verso, d), Q);
-    // il minimo della distanza sul tratto, per sezione: se non scende sotto la
-    // lama il pezzo può fare tutta la strada
-    let a = da;
-    let b = massimo;
-    for (let k = 0; k < 22; k++) {
-      const m1 = a + (b - a) / 3;
-      const m2 = b - (b - a) / 3;
-      if (dist(m1) < dist(m2)) b = m2;
-      else a = m1;
-    }
-    const peggio = (a + b) / 2;
-    if (dist(peggio) >= lama - E) return massimo;
-    // c'è un contatto: si bisseca il PRIMO, cioè prima del punto peggiore
-    let sicuro = da;
-    let rotto = peggio;
-    for (let k = 0; k < 28; k++) {
-      const m = (sicuro + rotto) / 2;
-      if (dist(m) >= lama - E) sicuro = m;
-      else rotto = m;
-    }
-    return sicuro;
-  };
-
   const scivola = (piazzamenti: Piazzamento[], verso: 'x' | 'y'): Piazzamento[] => {
-    const lungo = verso === 'y' ? 'altezza' : 'larghezza';
-    const altro = verso === 'y' ? 'x' : 'y';
-    const altroLungo = verso === 'y' ? 'larghezza' : 'altezza';
     // si scorre dal più vicino all'origine — chi sta davanti si è già fermato —
     // ma si scrive al POSTO SUO: l'ordine dei piazzamenti è l'ordine in cui il
     // piano li numera, e riordinarlo qui rinominerebbe i pezzi sul disegno
@@ -223,70 +156,15 @@ export function accosta(lastre: LastraNesting[], lama: number, margine: number):
     const ordine = fuori.map((_, i) => i).sort((a, b) => fuori[a][verso] - fuori[b][verso]);
     // le sagome si costruiscono una volta sola e si rifanno solo per il pezzo
     // che si è mosso: rifarle a ogni confronto è il grosso del conto
-    const sagome: Array<Sagoma | null> = fuori.map((q) => (rettangolo(q) ? null : sagomaDi(q)));
-    const fermi: number[] = [];
+    const sagome: Array<Sagoma | null> = fuori.map((q) => (eRettangolo(q) ? null : sagomaDi(q)));
     for (const i of ordine) {
       const p = fuori[i];
-      // FRA RETTANGOLI bastano i pezzi già fermi, quelli davanti: muovendosi
-      // verso l'origine ci si allontana da chi sta dietro, e il conto è quello
-      // di sempre.
-      let limite = margine;
-      for (const k of fermi) {
-        const q = fuori[k];
-        if (!rettangolo(p) || !rettangolo(q)) continue;
-        // chi ha già la lama sull'ALTRO asse non mi ferma: passa di fianco
-        if (separati(p, q, altro, altroLungo)) continue;
-        limite = Math.max(limite, q[verso] + q[lungo] + lama);
-      }
-      let corsa = p[verso] - limite;
-      // CON UNA SAGOMA IN MEZZO si guardano TUTTI gli altri, anche quelli che
-      // stanno dietro. Andare verso l'origine non vuol dire allontanarsi da
-      // chi sta dietro: se il vicino è un trapezio che si stringe, salendo gli
-      // si scorre lungo la falda e gli si va INCONTRO. Con i rettangoli non
-      // succede, con una falda sì, e il prezzo è due pezzi sovrapposti.
-      if (corsa > 0) {
-        const P = sagome[i] ?? sagomaDi(p);
-        for (let k = 0; k < fuori.length && corsa > 0; k++) {
-          if (k === i) continue;
-          const q = fuori[k];
-          if (rettangolo(p) && rettangolo(q)) continue;
-          // la lama passa già di fianco: scorrere su quest'asse non li avvicina
-          if (separati(p, q, altro, altroLungo)) continue;
-          // GLI INGOMBRI DICONO GIÀ QUASI TUTTO, e gratis. Scorrendo di `d`, i
-          // due rettangoli d'ingombro si avvicinano a meno di una lama solo
-          // per `d` dentro una finestra, che si calcola a mente:
-          //   apre a  p − (q + lungo_q + lama)   — q davanti, gli si arriva
-          //   chiude a p + lungo_p + lama − q    — lo si è scavalcato
-          // Fuori di lì gli ingombri sono larghi, e la sagoma che ci sta
-          // dentro lo è almeno altrettanto: niente da calcolare. Dentro, si fa
-          // il conto esatto solo su quel tratto. È questo che tiene il prezzo
-          // del conto esatto dove deve stare.
-          const apre = p[verso] - (q[verso] + q[lungo] + lama);
-          const chiude = p[verso] + p[lungo] + lama - q[verso];
-          if (apre >= corsa || chiude <= 0) continue;
-          const fin = Math.min(corsa, chiude);
-          const scorsa = scorsaEsatta(
-            P,
-            sagome[k] ?? sagomaDi(q),
-            verso,
-            Math.max(0, apre),
-            fin
-          );
-          // fermarsi alla finestra non è fermarsi davvero: se la sagoma arriva
-          // in fondo alla finestra senza toccare, oltre è di nuovo libera
-          if (scorsa < fin) corsa = Math.min(corsa, scorsa);
-        }
-      }
-      // la fermata si arrotonda al decimo di millimetro DALLA PARTE LARGA: il
-      // piano non porta in giro numeri come 3,000055, e un decimo in più di
-      // vuoto è sempre concesso, un decimo in meno no. Il pizzico di
-      // tolleranza (un millesimo di millimetro, cioè niente) copre sia la
-      // virgola mobile sia la precisione della bisezione, che senza di essa
-      // trasformerebbe un 3013 tondo in 3013,0001 e poi in 3013,1.
-      const fermata = p[verso] - Math.max(0, corsa);
-      fuori[i] = { ...p, [verso]: Math.min(p[verso], Math.ceil(fermata * 10 - 1e-3) / 10) };
+      const corsa = corsaLibera(p, fuori, verso, -1, lama, p[verso] - margine, {
+        propria: sagome[i],
+        altrui: sagome
+      });
+      fuori[i] = { ...p, [verso]: fermata(p[verso], corsa, -1) };
       if (sagome[i]) sagome[i] = sagomaDi(fuori[i]);
-      fermi.push(i);
     }
     return fuori;
   };

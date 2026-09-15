@@ -10,6 +10,42 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.61.4 — I trapezi sovrapposti: non era il nesting, era il segmento
+
+- **Il piano di taglio poteva uscire con due pezzi uno dentro l'altro.** Non
+  dal nesting — che era sano, e l'ho verificato su oltre seicento lavori a
+  caso senza trovare una sola violazione — ma dal passo DOPO: la divisione
+  del rotolo in blocchi maneggiabili al banco.
+
+  Dentro ogni blocco i pezzi vengono fatti **cadere in fondo**: non cambia il
+  taglio, cambia la forma dello sfrido, che così resta un ritaglio unico
+  invece di due corti. Quella caduta era scritta per conto suo e guardava una
+  cosa sola: se i rettangoli d'ingombro si accavallavano in x. Sbagliava in
+  due modi, tutti e due silenziosi:
+
+  - due pezzi **affiancati**, con gli ingombri che si sfiorano ma non si
+    accavallano, risultavano indipendenti: uno scendeva scorrendo lungo
+    l'altro fino a incollarglisi, e lì la lama non passa;
+  - con le **sagome** l'ingombro non è la sagoma: due trapezi incastrati
+    testa-coda hanno gli ingombri completamente accavallati, e venivano
+    scaricati in fondo uno addosso all'altro.
+
+  Misurato: su seicento lavori a caso con sagome, **sei piani rotti**, due dei
+  quali con due pezzi a distanza **zero**. Adesso zero.
+
+- **Una regola sola per gli spostamenti** (`src/geometry/scorrimento.ts`). I
+  pezzi si muovono in due momenti — quando si riaccostano dopo il nesting e
+  quando cadono in fondo al segmento — e la stessa domanda era scritta due
+  volte in due modi diversi. Una delle due era sbagliata. Adesso è scritta una
+  volta, e dice: fra due pezzi la lama deve passare su **almeno un asse**, e
+  quando c'è di mezzo una sagoma si guarda la sagoma vera, non l'ingombro.
+
+- **Far cadere i pezzi è un miglioramento, e un miglioramento che rompe il
+  piano si butta.** Il segmento adesso controlla le disposizioni che si
+  inventa e scarta quelle in cui la lama non passa, tenendosi quella di
+  partenza. Costa un pugno di confronti per segmento ed è l'unica cosa che sta
+  fra un errore di calcolo e il materiale tagliato.
+
 ## 1.61.3 — Sotto una falda i pezzi arrivano a toccarla
 
 - **Il vuoto sotto il lato in pendenza.** Il riaccostamento della 1.61.2

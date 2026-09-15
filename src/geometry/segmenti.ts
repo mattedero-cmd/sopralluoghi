@@ -20,6 +20,8 @@
  */
 
 import type { LastraNesting, Piazzamento } from './nesting';
+import { corsaLibera, fermata } from './scorrimento';
+import { coppiaPiuStretta } from './distanzaPoligoni';
 
 /**
  * Lunghezza di riferimento di un blocco maneggevole al banco (mm).
@@ -230,6 +232,12 @@ function assestaSegmento(
   let migliore = lastra;
   let punteggio = -1;
   for (const c of candidate) {
+    // FAR CADERE I PEZZI È UN MIGLIORAMENTO, e un miglioramento che rompe il
+    // piano non è un miglioramento: si butta e si tiene com'era. Il conto qui
+    // sopra è stato sbagliato una volta e nessuno se n'è accorto fino al banco
+    // di taglio — questo controllo costa un pugno di confronti per segmento ed
+    // è l'unica cosa che sta fra un errore di calcolo e il materiale tagliato.
+    if (c !== lastra && coppiaPiuStretta({ lastre: [c] }).minima < contesto.lama - 0.01) continue;
     const r = strisciaResidua(c, contesto.larghezza, lunghezza);
     // a parità di ritaglio si tiene la prima, cioè la disposizione originale
     const valore = r ? r.larghezza * r.lunghezza : 0;
@@ -245,6 +253,16 @@ function assestaSegmento(
  * Fa "cadere" i pezzi verso il fondo del blocco, uno alla volta partendo dal
  * più basso. Con `soloFluttuanti` restano fermi quelli che partono dalla testa
  * del blocco: sono già a posto, e muoverli aprirebbe un buco in cima.
+ *
+ * QUANTO PUÒ SCENDERE UN PEZZO non si decide qui: lo dice `corsaLibera`, la
+ * stessa regola che usa il riaccostamento dopo il nesting. Prima il conto era
+ * scritto qui a mano e guardava solo se gli ingombri si accavallavano in x — e
+ * sbagliava in due modi, tutti e due silenziosi. Due pezzi affiancati con gli
+ * ingombri che si sfioravano risultavano indipendenti, e uno scendeva
+ * incollandosi all'altro: lì la lama non passa. E con le sagome l'ingombro non
+ * è la sagoma: due trapezi incastrati testa-coda venivano scaricati in fondo
+ * uno addosso all'altro. Chi guardava il piano vedeva i trapezi sovrapposti, e
+ * aveva ragione.
  */
 function cadono(
   pezzi: Piazzamento[],
@@ -253,20 +271,20 @@ function cadono(
   soloFluttuanti: boolean
 ): Piazzamento[] {
   const testa = Math.min(...pezzi.map((p) => p.y));
-  const ordinati = [...pezzi].sort((a, b) => b.y + b.altezza - (a.y + a.altezza));
-  const messi: Piazzamento[] = [];
-  for (const p of ordinati) {
-    if (soloFluttuanti && p.y <= testa + EPS) {
-      messi.push(p);
-      continue;
-    }
-    let y = fondo - p.altezza;
-    for (const q of messi) {
-      const incrociaX = p.x < q.x + q.larghezza - EPS && p.x + p.larghezza > q.x + EPS;
-      if (incrociaX) y = Math.min(y, q.y - lama - p.altezza);
-    }
-    // solo in giù: risalire sposterebbe il pezzo fuori dal suo blocco
-    messi.push({ ...p, y: Math.max(p.y, y) });
+  const ordine = pezzi
+    .map((_, i) => i)
+    .sort((a, b) => pezzi[b].y + pezzi[b].altezza - (pezzi[a].y + pezzi[a].altezza));
+  // si scrive al posto suo: l'ordine dei piazzamenti è quello con cui il piano
+  // numera i pezzi, e rimescolarlo qui li rinominerebbe sul disegno
+  const messi = [...pezzi];
+  for (const i of ordine) {
+    const p = messi[i];
+    if (soloFluttuanti && p.y <= testa + EPS) continue;
+    // gli ostacoli sono TUTTI gli altri, alla posizione in cui stanno adesso:
+    // chi è già caduto ha la sua nuova, chi deve ancora cadere la vecchia, e
+    // quando toccherà a lui sarà lui a farsi i conti con questo
+    const corsa = corsaLibera(p, messi, 'y', 1, lama, fondo - p.altezza - p.y);
+    messi[i] = { ...p, y: fermata(p.y, corsa, 1) };
   }
   return messi;
 }
