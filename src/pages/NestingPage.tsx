@@ -212,18 +212,19 @@ function leggiBozza(): Bozza | null {
 
 export function NestingPage({
   id,
-  nuovoIn,
+  nuovo,
   dentro
 }: {
   id?: string;
-  nuovoIn?: string;
+  /** vero quando si chiede un piano NUOVO: non si riprende la bozza */
+  nuovo?: boolean;
   /** cartella da cui si è aperto lo strumento: casa di una bozza mai archiviata */
   dentro?: string;
 }) {
   // un lavoro nuovo dentro una cartella parte pulito, non dalla bozza
-  const iniziale = useMemo(() => (id || nuovoIn ? null : leggiBozza()), [id, nuovoIn]);
+  const iniziale = useMemo(() => (id || nuovo ? null : leggiBozza()), [id, nuovo]);
   const [doc, setDoc] = useState<DocumentoNesting>(
-    () => iniziale?.documento ?? (nuovoIn ? documentoVuoto() : documentoEsempio())
+    () => iniziale?.documento ?? (nuovo ? documentoVuoto() : documentoEsempio())
   );
   const [idArchivio, setIdArchivio] = useState<string | null>(
     id ?? iniziale?.idArchivio ?? null
@@ -256,7 +257,7 @@ export function NestingPage({
     [progettoId]
   );
   const [cartellaId, setCartellaId] = useState<string | null | undefined>(() => {
-    if (nuovoIn) return nuovoIn;
+    if (nuovo) return dentro ?? null;
     if (!id && !iniziale?.idArchivio && dentro) return dentro;
     return undefined;
   });
@@ -629,16 +630,39 @@ export function NestingPage({
   /* --- archivio ---------------------------------------------------- */
 
   const salva = async (nome?: string) => {
+    // finché il lavoro arriva dal database a schermo c'è il documento
+    // d'esempio: salvarlo adesso vorrebbe dire scrivere i mobili di prova
+    // sopra il lavoro vero
+    if (caricamento) {
+      mostraToast('info', 'Un attimo: il lavoro si sta ancora aprendo.');
+      return;
+    }
     const titolo = (nome ?? doc.nome).trim() || 'Lavoro senza nome';
     const id = idArchivio ?? nuovoId();
     const documento = { ...doc, nome: titolo };
     try {
-      await salvaNesting(id, titolo, documento, { cartellaId });
+      // il progetto si passa SOLO se lo si conosce: `undefined` vuol dire
+      // «lascia il legame com'è», e un piano appena aperto non sa ancora di
+      // chi è. Senza questo, un lavoro salvato la prima volta da dentro un
+      // sopralluogo nasceva sciolto, e nel sopralluogo non compariva.
+      await salvaNesting(id, titolo, documento, {
+        cartellaId,
+        ...(progettoId ? { progettoId } : {})
+      });
       setDoc(documento);
       setIdArchivio(id);
       // il PDF nasce insieme al lavoro: nell'archivio si apre con un tocco
       await rigeneraPdf(id, documento);
-      mostraToast('successo', `Lavoro «${titolo}» salvato in archivio.`);
+      // DOVE è finito, non «in archivio» e basta: un piano che sta dentro un
+      // sopralluogo NON compare fra i lavori sciolti dell'archivio — si trova
+      // aprendo il sopralluogo — e mandare a cercarlo nel posto sbagliato è
+      // come dire che non è stato salvato
+      mostraToast(
+        'successo',
+        progetto
+          ? `Piano di taglio «${titolo}» salvato nel sopralluogo «${progetto.nome}».`
+          : `Lavoro «${titolo}» salvato in archivio.`
+      );
       // da qui in poi l'indirizzo è quello del lavoro in archivio: ricaricando
       // la pagina si riapre lo stesso, non se ne crea un altro
       if (!idArchivio) naviga({ nome: 'nesting', id });

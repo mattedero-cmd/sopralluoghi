@@ -11,7 +11,7 @@ export type Rotta =
   | { nome: 'clienti' }
   | { nome: 'cliente'; id: string }
   | { nome: 'preventivo'; id: string }
-  | { nome: 'nesting'; id?: string; nuovoIn?: string; dentro?: string }
+  | { nome: 'nesting'; id?: string; nuovo?: true; dentro?: string }
   | { nome: 'disegno'; id: string }
   | { nome: 'impostazioni' };
 
@@ -27,10 +27,17 @@ export function analizzaHash(hash: string): Rotta {
   if (parti[0] === 'nesting') {
     // #/nesting              → bozza corrente
     // #/nesting/<id>         → lavoro salvato in archivio
-    // #/nesting/nuovo/<cart> → lavoro nuovo dentro una cartella
+    // #/nesting/nuovo        → lavoro NUOVO, nella radice dell'archivio
+    // #/nesting/nuovo/<cart> → lavoro NUOVO dentro una cartella
     // #/nesting/in/<cart>    → bozza corrente, aperta DA una cartella: se non
     //                          è ancora in archivio, quella diventa casa sua
-    if (parti[1] === 'nuovo') return { nome: 'nesting', nuovoIn: parti[2] };
+    //
+    // «nuovo» è una BANDIERA, non si deduce dalla cartella: nella radice la
+    // cartella non c'è, e prima «piano nuovo nella radice» finiva per essere
+    // indistinguibile dalla bozza corrente — il pulsante «Nuovo piano di
+    // taglio» riapriva l'ultimo lavoro invece di cominciarne uno.
+    if (parti[1] === 'nuovo')
+      return parti[2] ? { nome: 'nesting', nuovo: true, dentro: parti[2] } : { nome: 'nesting', nuovo: true };
     if (parti[1] === 'in' && parti[2]) return { nome: 'nesting', dentro: parti[2] };
     if (parti[1]) return { nome: 'nesting', id: parti[1] };
     return { nome: 'nesting' };
@@ -56,7 +63,7 @@ export function urlRotta(r: Rotta): string {
       return `#/preventivo/${r.id}`;
     case 'nesting':
       if (r.id) return `#/nesting/${r.id}`;
-      if (r.nuovoIn) return `#/nesting/nuovo/${r.nuovoIn}`;
+      if (r.nuovo) return r.dentro ? `#/nesting/nuovo/${r.dentro}` : '#/nesting/nuovo';
       if (r.dentro) return `#/nesting/in/${r.dentro}`;
       return '#/nesting';
     case 'disegno':

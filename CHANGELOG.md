@@ -10,6 +10,38 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.59.1 — «Nuovo piano di taglio» ne apriva uno vecchio
+
+Un piano di taglio dato per salvato e poi introvabile. Tre difetti, tutti
+sulla stessa strada.
+
+- **«Nuovo piano di taglio» riapriva l'ultimo lavoro invece di cominciarne
+  uno.** Nell'indirizzo, «nuovo» non era una bandiera: si deduceva dalla
+  cartella. Nella radice dell'archivio la cartella non c'è, e l'indirizzo
+  finiva per essere lo stesso della bozza corrente — cioè il lavoro aperto
+  per ultimo. Si toccava «Nuovo piano di taglio», compariva il piano di
+  prima, si dava l'ok, e l'app diceva «salvato» col nome vecchio: di nuovo
+  non era stato creato niente. Adesso «nuovo» è una bandiera per conto suo e
+  `#/nesting/nuovo` esiste anche senza cartella.
+
+- **«Salvato in archivio» mandava a cercarlo dove non è.** Un piano che sta
+  dentro un sopralluogo non compare fra i lavori sciolti dell'archivio — si
+  trova aprendo il sopralluogo — ed è scritto nel codice da sempre. Il
+  messaggio però diceva «archivio», e chi andava a guardare lì concludeva
+  che il salvataggio non fosse andato a buon fine. Adesso dice in quale
+  sopralluogo è finito, col suo nome.
+
+- **Il primo salvataggio da dentro un sopralluogo perdeva il legame.** La
+  funzione di salvataggio conosceva il progetto e non lo passava: un lavoro
+  scritto per la prima volta da lì nasceva sciolto, e nel sopralluogo non
+  compariva mai. Ora lo passa — ma solo quando lo conosce, perché un lavoro
+  appena aperto non sa ancora di chi è e non deve cancellare un legame che
+  non ha letto.
+
+- **La spunta durante l'apertura scriveva il documento d'esempio sopra il
+  lavoro vero.** Finché il lavoro arriva dal database, a schermo c'è il
+  mobile di prova; il pulsante era già vivo. Adesso aspetta.
+
 ## 1.59.0 — Il piano di taglio parte anche da un foglietto di misure
 
 - **Il piano di taglio nasce anche senza misure quotate.** Prima, su un

@@ -22,9 +22,9 @@ export function App() {
       {rotta.nome === 'preventivo' && <PreventivoPage id={rotta.id} key={rotta.id} />}
       {rotta.nome === 'nesting' && (
         <NestingPage
-          key={rotta.id ?? rotta.nuovoIn ?? 'bozza'}
+          key={rotta.id ?? (rotta.nuovo ? `nuovo:${rotta.dentro ?? ''}` : 'bozza')}
           id={rotta.id}
-          nuovoIn={rotta.nuovoIn}
+          nuovo={rotta.nuovo}
           dentro={rotta.dentro}
         />
       )}

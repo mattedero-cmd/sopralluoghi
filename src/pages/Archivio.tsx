@@ -429,7 +429,7 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
               <button
                 className="btn"
                 onClick={() =>
-                  naviga({ nome: 'nesting', nuovoIn: cartellaId ?? undefined })
+                  naviga({ nome: 'nesting', nuovo: true, dentro: cartellaId ?? undefined })
                 }
               >
                 <Icona nome="griglia" dimensione={20} /> Nuovo piano di taglio

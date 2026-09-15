@@ -14,7 +14,19 @@ describe('indirizzi del nesting', () => {
   });
 
   it('un lavoro nuovo dentro una cartella', () => {
-    expect(analizzaHash('#/nesting/nuovo/cart-1')).toEqual({ nome: 'nesting', nuovoIn: 'cart-1' });
+    expect(analizzaHash('#/nesting/nuovo/cart-1')).toEqual({
+      nome: 'nesting',
+      nuovo: true,
+      dentro: 'cart-1'
+    });
+  });
+
+  it('un lavoro nuovo nella radice: «nuovo» non ha bisogno di una cartella', () => {
+    // era questo il buco: nella radice non c'è cartella, e «piano nuovo»
+    // finiva per essere lo stesso indirizzo della bozza corrente — così il
+    // pulsante «Nuovo piano di taglio» riapriva l'ultimo lavoro
+    expect(analizzaHash('#/nesting/nuovo')).toEqual({ nome: 'nesting', nuovo: true });
+    expect(analizzaHash('#/nesting/nuovo')).not.toEqual(analizzaHash('#/nesting'));
   });
 
   it('lo strumento aperto DA una cartella: la bozza sa dove andrà a finire', () => {
@@ -28,9 +40,14 @@ describe('indirizzi del nesting', () => {
   it('andata e ritorno', () => {
     expect(andataERitorno({ nome: 'nesting' })).toEqual({ nome: 'nesting' });
     expect(andataERitorno({ nome: 'nesting', id: 'x1' })).toEqual({ nome: 'nesting', id: 'x1' });
-    expect(andataERitorno({ nome: 'nesting', nuovoIn: 'c1' })).toEqual({
+    expect(andataERitorno({ nome: 'nesting', nuovo: true })).toEqual({
       nome: 'nesting',
-      nuovoIn: 'c1'
+      nuovo: true
+    });
+    expect(andataERitorno({ nome: 'nesting', nuovo: true, dentro: 'c1' })).toEqual({
+      nome: 'nesting',
+      nuovo: true,
+      dentro: 'c1'
     });
     expect(andataERitorno({ nome: 'nesting', dentro: 'c1' })).toEqual({
       nome: 'nesting',
