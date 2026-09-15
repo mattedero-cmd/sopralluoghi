@@ -10,6 +10,26 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.61.0 — Finita una bobina se ne apre un'altra
+
+- **La bobina non è più una sola.** Prima il rotolo era uno e quello che non
+  ci stava finiva fra i pezzi scartati: per lavorarci bisognava spostare a
+  mano gli avanzi in un'altra essenza e rifare l'impaginazione da capo. In
+  laboratorio non funziona così — finito un rotolo se ne monta un altro — e
+  per ordinare il materiale serve la somma: venticinque metri pieni più nove
+  fa trentaquattro. Adesso i rotoli si aprono come le lastre.
+
+- **Quello che si vede, e quello che si taglia.** A schermo compaiono i metri
+  usati IN TUTTO, quante bobine servono e quanto resta sull'ultima — quella
+  ancora buona. Il PDF e i file di taglio escono un rotolo alla volta,
+  intitolati «Bobina 1 di 2», perché è così che si lavora: si monta il primo
+  rotolo, si taglia, si monta il secondo.
+
+- **L'avviso dei pezzi rimasti fuori dice la verità.** Prima recitava «o sono
+  più larghi del rotolo, o i metri non bastano». I metri adesso non c'entrano
+  più: se un pezzo resta fuori è perché è più largo della fascia, in tutti e
+  due i versi.
+
 ## 1.60.0 — L'importazione di una lista vera, e una lastra in meno
 
 Da un lavoro vero: tre vagoni di un treno, settantacinque righe, centotrenta

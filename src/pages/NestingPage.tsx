@@ -507,9 +507,18 @@ export function NestingPage({
       for (const pc of l.piazzamenti)
         areaPezzi += pc.areaVera ?? pc.larghezzaFinita * pc.altezzaFinita;
     }
+    // ROTOLI, al plurale: finito il primo se ne apre un altro. I metri che
+    // servono per ordinare il materiale sono la somma — venticinque pieni più
+    // nove — non quelli di un rotolo solo.
+    const rotoli = esito.lastre.filter((l) => l.piazzamenti.length > 0);
+    const ultimoM = rotoli.length
+      ? lunghezzaUsata(rotoli[rotoli.length - 1], mat.margine) / 1000
+      : 0;
     return {
       usatiM,
-      rimanentiM: Math.max(0, mat.bobina.metri - usatiM),
+      rotoli: rotoli.length,
+      // quello che resta è sull'ULTIMO rotolo aperto: i precedenti sono finiti
+      rimanentiM: Math.max(0, mat.bobina.metri - ultimoM),
       // resa sul materiale EFFETTIVAMENTE consumato, non sull'intero rotolo
       resa: areaConsumata > 0 ? (areaPezzi / areaConsumata) * 100 : 0,
       segmenti: esito.lastre.length
@@ -947,39 +956,47 @@ export function NestingPage({
         striscia: ritagliUtili(lastra, mat.lastra.larghezza, mat.lastra.altezza)
       }));
     }
-    const rotolo = esito.lastre[0];
-    if (!rotolo || rotolo.piazzamenti.length === 0) return [];
+    // i rotoli possono essere più d'uno, come le lastre: se ne guarda uno
+    // alla volta, ed è anche così che si taglia
+    const rotoli = esito.lastre.filter((l) => l.piazzamenti.length > 0);
+    if (rotoli.length === 0) return [];
     const opzioni = stampa;
-    if (!opzioni.segmenta || !(opzioni.massimoSegmento > 0)) {
-      const usata = Math.max(1, lunghezzaUsata(rotolo, mat.margine));
-      const misure = { larghezza: mat.bobina.larghezza, altezza: usata };
-      return [
-        {
-          lastra: rotolo,
-          titolo: 'Bobina',
+    const diQuanti = (i: number) => (rotoli.length > 1 ? ` ${i + 1} di ${rotoli.length}` : '');
+    return rotoli.flatMap((rotolo, i) => {
+      if (!opzioni.segmenta || !(opzioni.massimoSegmento > 0)) {
+        const usata = Math.max(1, lunghezzaUsata(rotolo, mat.margine));
+        const misure = { larghezza: mat.bobina.larghezza, altezza: usata };
+        return [
+          {
+            lastra: rotolo,
+            titolo: `Bobina${diQuanti(i)}`,
+            misure,
+            striscia: ritagliUtili(rotolo, misure.larghezza, misure.altezza)
+          }
+        ];
+      }
+      const segmenti = segmentaBobina(
+        rotolo,
+        opzioni.massimoSegmento,
+        mat.margine,
+        mat.bobina.larghezza,
+        mat.lama
+      );
+      return segmenti.map((sg, k) => {
+        const misure = {
+          larghezza: mat.bobina.larghezza,
+          altezza: Math.max(1, sg.fine - sg.inizio)
+        };
+        return {
+          lastra: sg.lastra,
+          titolo:
+            rotoli.length > 1
+              ? `Bobina ${i + 1} di ${rotoli.length} — segmento ${k + 1} di ${segmenti.length}`
+              : `Segmento ${k + 1} di ${segmenti.length}`,
           misure,
-          striscia: ritagliUtili(rotolo, misure.larghezza, misure.altezza)
-        }
-      ];
-    }
-    const segmenti = segmentaBobina(
-      rotolo,
-      opzioni.massimoSegmento,
-      mat.margine,
-      mat.bobina.larghezza,
-      mat.lama
-    );
-    return segmenti.map((sg, i) => {
-      const misure = {
-        larghezza: mat.bobina.larghezza,
-        altezza: Math.max(1, sg.fine - sg.inizio)
-      };
-      return {
-        lastra: sg.lastra,
-        titolo: `Segmento ${i + 1} di ${segmenti.length}`,
-        misure,
-        striscia: ritagliUtili(sg.lastra, misure.larghezza, misure.altezza)
-      };
+          striscia: ritagliUtili(sg.lastra, misure.larghezza, misure.altezza)
+        };
+      });
     });
   }, [esito, mat.modo, mat.lastra, mat.bobina.larghezza, mat.margine, mat.lama, stampa]);
 
@@ -1467,17 +1484,28 @@ export function NestingPage({
             <div className="nest-statistiche">
               {consumo ? (
                 <>
+                  {/* i metri che servono per ORDINARE il materiale sono la
+                      somma su tutti i rotoli aperti; la barra si misura sul
+                      totale disponibile, non su un rotolo solo */}
                   <Statistica
-                    etichetta="Metri usati"
+                    etichetta={consumo.rotoli > 1 ? 'Metri usati in tutto' : 'Metri usati'}
                     valore={formattaNumero(Math.round(consumo.usatiM * 100) / 100)}
                     unita="m"
                     barra={{
-                      valore: mat.bobina.metri > 0 ? (consumo.usatiM / mat.bobina.metri) * 100 : 0,
+                      valore:
+                        mat.bobina.metri > 0
+                          ? (consumo.usatiM / (mat.bobina.metri * Math.max(1, consumo.rotoli))) * 100
+                          : 0,
                       buona: true
                     }}
                   />
+                  {consumo.rotoli > 1 && (
+                    <Statistica etichetta="Bobine" valore={String(consumo.rotoli)} />
+                  )}
                   <Statistica
-                    etichetta="Metri rimanenti"
+                    etichetta={
+                      consumo.rotoli > 1 ? 'Rimanenti sull’ultima' : 'Metri rimanenti'
+                    }
                     valore={formattaNumero(Math.round(consumo.rimanentiM * 100) / 100)}
                     unita="m"
                   />
@@ -1553,7 +1581,7 @@ export function NestingPage({
                   {esito.scartati.length === 1 ? 'pezzo non entra' : 'pezzi non entrano'}
                 </strong>{' '}
                 {mat.modo === 'bobina'
-                  ? 'nella bobina: o sono più larghi del rotolo, o i metri disponibili non bastano.'
+                  ? 'nella bobina: sono più larghi del rotolo. I metri non c’entrano — finito un rotolo se ne apre un altro.'
                   : 'nella lastra nemmeno da soli, con abbondanze e margini. Riduci le misure o ingrandisci il supporto.'}
                 <ul>
                   {scartatiRaggruppati.map((s, i) => (

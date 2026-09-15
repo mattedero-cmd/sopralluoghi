@@ -33,7 +33,7 @@ describe('parametriDi', () => {
     expect(p.massimoLastre).toBeUndefined();
   });
 
-  it('la bobina resta una striscia sola: dove spezzarla si decide dopo', () => {
+  it('la bobina è una striscia lunga i suoi metri: dove spezzarla si decide dopo', () => {
     const m = {
       ...materialeNuovo('m1', 'Pelle'),
       modo: 'bobina' as const,
@@ -41,7 +41,10 @@ describe('parametriDi', () => {
     };
     const p = parametriDi(m);
     expect(p.lastra).toEqual({ larghezza: 1400, altezza: 5000 });
-    expect(p.massimoLastre).toBe(1);
+    // e i rotoli possono essere più d'uno: finito il primo se ne apre un
+    // altro, come con le lastre. Un tetto qui vorrebbe dire buttare fuori i
+    // pezzi avanzati invece di dire quanti metri servono.
+    expect(p.massimoLastre).toBeUndefined();
   });
 });
 

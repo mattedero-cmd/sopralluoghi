@@ -91,38 +91,45 @@ function fogliDi(
     }));
   }
 
-  const rotolo = esito.lastre[0];
-  if (!rotolo || rotolo.piazzamenti.length === 0) return [];
+  // i rotoli possono essere più d'uno: finito il primo se ne apre un altro, e
+  // ognuno si stampa per conto suo — si taglia un rotolo alla volta
+  const rotoli = esito.lastre.filter((l) => l.piazzamenti.length > 0);
+  if (rotoli.length === 0) return [];
+  const diQuanti = (i: number) => (rotoli.length > 1 ? ` ${i + 1} di ${rotoli.length}` : '');
 
-  if (!opzioni.segmenta || !(opzioni.massimoSegmento > 0)) {
-    const usata = Math.max(1, lunghezzaUsata(rotolo, m.margine));
-    return [
-      {
-        lastra: rotolo,
-        titolo: 'Bobina',
-        larghezza: m.bobina.larghezza,
-        altezza: usata,
-        daTagliare: usata,
-        oltreMassimo: false
-      }
-    ];
-  }
-
-  const segmenti = segmentaBobina(
-    rotolo,
-    opzioni.massimoSegmento,
-    m.margine,
-    m.bobina.larghezza,
-    m.lama
-  );
-  return segmenti.map((s, i) => ({
-    lastra: s.lastra,
-    titolo: `Segmento ${i + 1} di ${segmenti.length}`,
-    larghezza: m.bobina.larghezza,
-    altezza: Math.max(1, s.fine - s.inizio),
-    daTagliare: s.fine - s.inizio,
-    oltreMassimo: s.oltreMassimo
-  }));
+  return rotoli.flatMap((rotolo, i) => {
+    if (!opzioni.segmenta || !(opzioni.massimoSegmento > 0)) {
+      const usata = Math.max(1, lunghezzaUsata(rotolo, m.margine));
+      return [
+        {
+          lastra: rotolo,
+          titolo: `Bobina${diQuanti(i)}`,
+          larghezza: m.bobina.larghezza,
+          altezza: usata,
+          daTagliare: usata,
+          oltreMassimo: false
+        }
+      ];
+    }
+    const segmenti = segmentaBobina(
+      rotolo,
+      opzioni.massimoSegmento,
+      m.margine,
+      m.bobina.larghezza,
+      m.lama
+    );
+    return segmenti.map((sg, k) => ({
+      lastra: sg.lastra,
+      titolo:
+        rotoli.length > 1
+          ? `Bobina ${i + 1} di ${rotoli.length} — segmento ${k + 1} di ${segmenti.length}`
+          : `Segmento ${k + 1} di ${segmenti.length}`,
+      larghezza: m.bobina.larghezza,
+      altezza: Math.max(1, sg.fine - sg.inizio),
+      daTagliare: sg.fine - sg.inizio,
+      oltreMassimo: sg.oltreMassimo
+    }));
+  });
 }
 
 /** disegno di un foglio come contenuti pdfmake, posizionati sulla pagina */

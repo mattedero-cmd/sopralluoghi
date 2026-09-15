@@ -268,12 +268,19 @@ export function parametriDi(m: MaterialeNesting): ParametriNesting {
   if (m.modo !== 'bobina') {
     return { lastra: { ...m.lastra }, ...comuni };
   }
-  // il rotolo è UNA striscia continua: si impagina sfruttando tutta la
-  // lunghezza, e solo dopo si decide dove spezzarlo (vedi geometry/segmenti)
+  // Il rotolo è UNA striscia continua: si impagina sfruttando tutta la
+  // lunghezza, e solo dopo si decide dove spezzarlo (vedi geometry/segmenti).
+  //
+  // Ma i rotoli possono essere PIÙ D'UNO, esattamente come le lastre. Prima
+  // il tetto era uno solo e quello che non ci stava veniva scartato: in
+  // laboratorio non è così che va — finito un rotolo se ne apre un altro. E
+  // sapere «venticinque metri pieni più nove» è proprio quello che serve per
+  // ordinare il materiale, mentre spostare a mano i pezzi avanzati su una
+  // seconda essenza e rifare l'impaginazione non serve a niente. Vale anche
+  // per il taglio: un SVG per rotolo, si taglia il primo e poi il secondo.
   return {
     lastra: { larghezza: m.bobina.larghezza, altezza: Math.max(1, m.bobina.metri * 1000) },
-    ...comuni,
-    massimoLastre: 1
+    ...comuni
   };
 }
 

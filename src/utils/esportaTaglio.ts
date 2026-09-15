@@ -84,32 +84,37 @@ export function fileSvgTaglio(
       continue;
     }
 
-    const rotolo = esito.lastre[0];
-    if (!rotolo || rotolo.piazzamenti.length === 0) continue;
+    // un file per ROTOLO: finito il primo se ne apre un altro, e chi taglia
+    // monta un rotolo alla volta
+    const rotoli = esito.lastre.filter((l) => l.piazzamenti.length > 0);
+    const diQuanti = (i: number) => (rotoli.length > 1 ? ` ${i + 1} di ${rotoli.length}` : '');
 
-    if (!opzioni.perSegmento || !(opzioni.massimoSegmento > 0)) {
-      // tutto il rotolo in un file: lungo quanto il tratto davvero occupato
-      aggiungi(
+    rotoli.forEach((rotolo, i) => {
+      if (!opzioni.perSegmento || !(opzioni.massimoSegmento > 0)) {
+        // tutto il rotolo in un file: lungo quanto il tratto davvero occupato
+        aggiungi(
+          rotolo,
+          { larghezza: m.bobina.larghezza, altezza: Math.max(1, lunghezzaUsata(rotolo, m.margine)) },
+          `Bobina${diQuanti(i)}`
+        );
+        return;
+      }
+      const segmenti = segmentaBobina(
         rotolo,
-        { larghezza: m.bobina.larghezza, altezza: Math.max(1, lunghezzaUsata(rotolo, m.margine)) },
-        'Bobina'
+        opzioni.massimoSegmento,
+        m.margine,
+        m.bobina.larghezza,
+        m.lama
       );
-      continue;
-    }
-
-    const segmenti = segmentaBobina(
-      rotolo,
-      opzioni.massimoSegmento,
-      m.margine,
-      m.bobina.larghezza,
-      m.lama
-    );
-    segmenti.forEach((sg, i) => {
-      aggiungi(
-        sg.lastra,
-        { larghezza: m.bobina.larghezza, altezza: Math.max(1, sg.fine - sg.inizio) },
-        `Segmento ${i + 1} di ${segmenti.length}`
-      );
+      segmenti.forEach((sg, k) => {
+        aggiungi(
+          sg.lastra,
+          { larghezza: m.bobina.larghezza, altezza: Math.max(1, sg.fine - sg.inizio) },
+          rotoli.length > 1
+            ? `Bobina ${i + 1} di ${rotoli.length} segmento ${k + 1} di ${segmenti.length}`
+            : `Segmento ${k + 1} di ${segmenti.length}`
+        );
+      });
     });
   }
 
