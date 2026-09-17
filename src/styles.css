@@ -4300,3 +4300,23 @@ a {
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* L'abbondanza messa su un lato solo: il contorno tratteggiato non la
+   distingue — il modello è a quattro numeri — quindi lo dice la scritta.
+   Non è un errore, è una cosa da guardare: colore d'attenzione, non di
+   pericolo. */
+.avviso-zoppa {
+  display: block;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: var(--raggio);
+  border: 1px solid var(--attenzione, #d9a441);
+  background: color-mix(in srgb, var(--attenzione, #d9a441) 14%, transparent);
+  color: var(--testo-1);
+  line-height: 1.45;
+}
+
+.avviso-zoppa ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}

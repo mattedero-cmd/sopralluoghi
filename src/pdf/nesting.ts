@@ -9,6 +9,7 @@ import {
   type LastraNesting
 } from '../geometry/nesting';
 import { calcolaNestingAuto } from '../geometry/nestingSagome';
+import { misureForma } from '../geometry/sagome';
 import { frasiRitagli, ritagliUtili, segmentaBobina } from '../geometry/segmenti';
 import { OPZIONI_PDF_PREDEFINITE, type OpzioniPdfNesting } from './opzioni';
 import {
@@ -355,7 +356,26 @@ function distinta(m: MaterialeNesting, esito: EsitoNesting): Content {
         style: 'td',
         color: mancanti > 0 ? '#b3261e' : undefined
       },
-      { text: `${mm(p.larghezza)} × ${mm(p.altezza)}`, style: 'td', alignment: 'right' },
+      {
+        // LE MISURE DELLA FORMA, non i due campi grezzi.
+        //
+        // `larghezza × altezza` su un trapezio rettangolo scrive la base per
+        // l'altezza SINISTRA, che può benissimo essere la più corta: due
+        // finestre sotto falda gemelle e speculari finivano in distinta una
+        // come 860 × 1130 e l'altra come 860 × 1610, pur essendo lo stesso
+        // pezzo ribaltato e pur avendo lo stesso ingombro. Al banco è una
+        // trappola. Qui si scrive quello che scrive il disegno — base, le due
+        // altezze — così la distinta e il piano dicono la stessa cosa.
+        text: misureForma({
+          forma: p.forma,
+          larghezza: p.larghezza,
+          altezza: p.altezza,
+          misura3: p.misura3,
+          vertici: p.vertici
+        }),
+        style: 'td',
+        alignment: 'right'
+      },
       {
         // «2 / 8» dice a colpo d'occhio quante copie sono rimaste fuori
         text: mancanti > 0 ? `${q - mancanti} / ${q}` : String(q),

@@ -10,6 +10,42 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.64.0 — Le gemelle speculari: la distinta le fa leggere, e l'abbondanza zoppa si dice
+
+- **Due gemelle speculari finivano in distinta con numeri diversi.** Stessa
+  base, stesse due altezze scambiate, stesso ingombro — e nella lista del PDF
+  una era `860 × 1130` e l'altra `860 × 1610`. La colpa erano i due campi
+  grezzi del pezzo: su un trapezio rettangolo `altezza` è l'altezza SINISTRA, e
+  quale delle due sia la sinistra dipende solo da come il pezzo è stato girato.
+  Può benissimo essere la più corta, e allora la distinta nasconde proprio la
+  misura che comanda l'ingombro e quindi il materiale.
+
+  Adesso la distinta scrive quello che scrive il disegno — `860×1130|1610`,
+  base e tutte e due le altezze — e le due pagine dello stesso PDF dicono la
+  stessa cosa. Corretta anche la lista di quando si spostano pezzi da
+  un'essenza all'altra, che aveva lo stesso difetto.
+
+- **L'abbondanza messa su un lato solo adesso si dice.** Il contorno
+  tratteggiato sulla foto non la distingue: il modello dell'abbondanza è a
+  quattro numeri — sinistra, destra, sopra, sotto — e su ogni asse disegna
+  quella del lato che comanda l'ingombro, anche dalla parte che non ce l'ha.
+  Misurato: una finestra sotto falda con l'abbondanza solo sull'altezza lunga
+  disegna un contorno **identico** a quella abbondata bene. La dimenticanza si
+  scopre in posa, quando non c'è niente da rifilare.
+
+  Il disegno resta com'è — cambiarlo vorrebbe dire rifare il modello — ma
+  sotto l'interruttore «Mostra abbondanze» compare l'elenco dei pezzi che hanno
+  l'abbondanza su un lato e non sul suo opposto, con il lato detto a parole.
+  Non è marcato come errore: a volte un lato va davvero a filo, contro un muro
+  o dentro una guida. È una cosa da guardare.
+
+- **Il nesting, intanto, fa la cosa giusta — ed è il punto.** Misurato su due
+  gemelle, una abbondata bene e una con cento millimetri dimenticati su un
+  lato: la seconda ha un'area minore di 155.000 mm² (esattamente la striscia
+  che manca), si incastra un filo meglio e consuma **10 cm di bobina in meno**.
+  Il piano di taglio taglia fedelmente un pezzo corto. Quei 10 cm risparmiati
+  sono i 10 cm che mancheranno in posa.
+
 ## 1.63.0 — La partita doppia: un piano impossibile non passa più
 
 - **Una resa sopra il 100% non è un piano stretto: è un piano impossibile.**

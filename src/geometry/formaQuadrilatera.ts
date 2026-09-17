@@ -13,7 +13,7 @@
  * altrimenti la giunzione che si vede sulla foto non è quella che si taglia.
  */
 
-import type { Annotazione, Punto, Unita } from '../db/types';
+import type { Annotazione, Punto, SegmentoQuota, Unita } from '../db/types';
 import {
   abbondanzaTotale,
   quadrilateroQuotaRett,
@@ -540,6 +540,62 @@ export function latiQuadrilatero(
     sinistro: taglio(lato(0, 3)),
     destro: taglio(lato(1, 2))
   };
+}
+
+/**
+ * L'ABBONDANZA ZOPPA: un lato abbondato e il suo opposto no.
+ *
+ * Il modello dell'abbondanza sulla foto è a QUATTRO NUMERI — sinistra, destra,
+ * sopra, sotto — e su ogni asse comanda il lato che determina l'ingombro. È
+ * una semplificazione che regge finché i due lati dello stesso asse sono
+ * trattati uguale, e non regge quando uno è abbondato e l'altro no: il
+ * contorno tratteggiato che si vede sulla foto viene disegnato con
+ * l'abbondanza del lato lungo anche dalla parte del corto, e la dimenticanza
+ * diventa invisibile. Succede facile proprio dove fa più danno: due finestre
+ * sotto falda gemelle, richiamate con lo specchio, e su una delle due altezze
+ * l'abbondanza non è stata messa.
+ *
+ * I dati, quelli, sono giusti: il lato corto esce corto, il pezzo si taglia
+ * corto, e in posa non c'è niente da rifilare. Quello che manca è qualcuno che
+ * lo dica. Questa funzione lo dice: torna i lati che hanno l'abbondanza mentre
+ * il loro opposto ne è senza. Vuoto = niente da segnalare.
+ *
+ * NON è un errore: a volte un lato va davvero a filo — contro un muro, dentro
+ * una guida. È una cosa da guardare, e va detta come tale.
+ */
+export function abbondanzeZoppe(
+  a: Annotazione
+): Array<{ lato: 'alto' | 'basso' | 'sinistro' | 'destro'; abbondato: number; opposto: number }> {
+  if (a.tipo !== 'quotaPoligono' || a.punti.length !== 4 || a.soloEtichetta) return [];
+  const quad = ordinaQuad(a.punti);
+  const indice = quad.map((p) => a.punti.indexOf(p));
+  if (indice.some((i) => i < 0)) return [];
+  const segmenti = segmentiPoligono(a);
+  const lato = (da: number, av: number) =>
+    segmenti.find(
+      (s) => (s.da === indice[da] && s.a === indice[av]) || (s.da === indice[av] && s.a === indice[da])
+    ) ?? null;
+  const quotato = (s: SegmentoQuota | null) => (s && s.valore !== null && s.valore > 0 ? s : null);
+  const coppie: Array<[
+    'alto' | 'basso' | 'sinistro' | 'destro',
+    SegmentoQuota | null,
+    SegmentoQuota | null
+  ]> = [
+    ['alto', quotato(lato(0, 1)), quotato(lato(2, 3))],
+    ['basso', quotato(lato(2, 3)), quotato(lato(0, 1))],
+    ['sinistro', quotato(lato(3, 0)), quotato(lato(1, 2))],
+    ['destro', quotato(lato(1, 2)), quotato(lato(3, 0))]
+  ];
+  const fuori: Array<{ lato: 'alto' | 'basso' | 'sinistro' | 'destro'; abbondato: number; opposto: number }> = [];
+  for (const [nome, mio, suo] of coppie) {
+    // serve che tutti e due i lati siano quotati: un lato non quotato non ha
+    // dimenticato niente, semplicemente non è stato misurato
+    if (!mio || !suo) continue;
+    const a1 = abbondanzaTotale(mio);
+    const a2 = abbondanzaTotale(suo);
+    if (a1 > 0 && a2 <= 0) fuori.push({ lato: nome, abbondato: a1, opposto: 0 });
+  }
+  return fuori;
 }
 
 /** la pannellizzazione applicata a una forma, se c'è e se regge */

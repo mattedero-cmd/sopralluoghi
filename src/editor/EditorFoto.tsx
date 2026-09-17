@@ -58,6 +58,7 @@ import { ModificaEtichetta } from './ModificaEtichetta';
 import { AmbienteQuotaturaTecnica } from './AmbienteQuotaturaTecnica';
 import { AmbientePannelli } from '../components/AmbientePannelli';
 import {
+  abbondanzeZoppe,
   ePannellizzabile,
   formaQuadrilatera,
   pannelliDellaForma
@@ -183,6 +184,14 @@ function pxPerUnita(foto: Foto, unita: Unita): number | null {
 }
 
 /** distanza (px) di un punto dal segmento a–b (per scegliere il lato toccato) */
+/** come si chiama un lato quando lo si dice a voce */
+const LATO_DETTO: Record<'alto' | 'basso' | 'sinistro' | 'destro', string> = {
+  alto: 'sopra',
+  basso: 'sotto',
+  sinistro: 'a sinistra',
+  destro: 'a destra'
+};
+
 function distanzaPuntoSegmento(p: Punto, a: Punto, b: Punto): number {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
@@ -782,6 +791,27 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   }, [salvaOra]);
 
   // entrando in modalità Note, parte dalla prima lettera ancora libera
+  /**
+   * I PEZZI CON L'ABBONDANZA SU UN LATO SOLO.
+   *
+   * Il contorno tratteggiato non li distingue da quelli abbondati bene — il
+   * modello dell'abbondanza è a quattro numeri, e su ogni asse disegna quella
+   * del lato che comanda l'ingombro anche dalla parte che non ce l'ha. Quindi
+   * la dimenticanza si vede solo in posa, quando non c'è niente da rifilare.
+   * Se il disegno non può dirlo, lo dice la scritta.
+   */
+  const zoppe = useMemo(
+    () =>
+      (annotazioni ?? [])
+        .map((a) => ({
+          nome:
+            (a.tipo === 'quotaPoligono' && a.etichetta?.trim()) || 'pezzo senza etichetta',
+          lati: abbondanzeZoppe(a)
+        }))
+        .filter((z) => z.lati.length > 0),
+    [annotazioni]
+  );
+
   useEffect(() => {
     if (strumento !== 'etichetta') return;
     const usate = (annotazioni ?? [])
@@ -5295,6 +5325,27 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               Il contorno verde tratteggiato del pezzo da tagliare, abbondanze comprese. Resta
               acceso anche nel PDF e nelle foto condivise.
             </small>
+            {zoppe.length > 0 && (
+              <small className="avviso-zoppa" role="status">
+                <strong>
+                  {zoppe.length === 1
+                    ? 'Un pezzo ha l’abbondanza su un lato solo'
+                    : `${zoppe.length} pezzi hanno l’abbondanza su un lato solo`}
+                </strong>{' '}
+                — il contorno qui sopra non lo fa vedere: lo disegna con l’abbondanza del lato
+                più lungo anche dalla parte che non ce l’ha. Se è voluto (un lato a filo del
+                muro, dentro una guida) va bene così.
+                <ul>
+                  {zoppe.slice(0, 4).map((z, i) => (
+                    <li key={i}>
+                      <strong>{z.nome}</strong>: {z.lati.map((l) => LATO_DETTO[l.lato]).join(', ')}{' '}
+                      {z.lati.length === 1 ? 'abbondato' : 'abbondati'}, il lato opposto no
+                    </li>
+                  ))}
+                  {zoppe.length > 4 && <li>…e altri {zoppe.length - 4}</li>}
+                </ul>
+              </small>
+            )}
           </div>
           <div className="campo">
             <label>Livelli visibili</label>

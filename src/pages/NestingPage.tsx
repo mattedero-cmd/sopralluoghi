@@ -2593,7 +2593,14 @@ function ModaleTrasferisci({
                 <span className="n">{p.nome || 'senza nome'}</span>
               </label>
               <span className="d">
-                {formattaNumero(p.larghezza)}×{formattaNumero(p.altezza)} mm
+                {/* le misure della FORMA: su un trapezio i due campi grezzi
+                    scrivono la base per l'altezza sinistra, che può essere la
+                    più corta — e due gemelle speculari si leggerebbero con
+                    numeri diversi */}
+                {formaDi(p) === 'rett'
+                  ? `${formattaNumero(p.larghezza)}×${formattaNumero(p.altezza)}`
+                  : misureForma(p)}{' '}
+                mm
               </span>
               <span className="q">
                 <CampoNumero
