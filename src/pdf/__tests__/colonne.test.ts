@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { colonneConsigliate, spezzaInColonne, tagliaLibero } from '../colonne';
+import { COLONNE_MASSIME, colonneConsigliate, spezzaInColonne, tagliaLibero } from '../colonne';
 import { impaginaLastra } from '../disegnoNesting';
 import type { LastraNesting, Piazzamento } from '../../geometry/nesting';
 import type { PuntoSagoma } from '../../geometry/sagome';
@@ -92,6 +92,15 @@ describe('quante colonne convengono', () => {
       );
     const k = colonneConsigliate(LUNGO, A4_PIEDI, 12);
     for (let q = 1; q <= 6; q++) expect(scala(k) + 1e-9).toBeGreaterThanOrEqual(scala(q));
+  });
+
+  it('non va mai oltre tre sezioni, per lungo che sia il rotolo', () => {
+    expect(COLONNE_MASSIME).toBe(3);
+    for (const lungo of [8000, 15000, 30000, 100000]) {
+      const k = colonneConsigliate({ larghezza: 1520, altezza: lungo }, A4_PIEDI, 12);
+      expect(k, `${lungo} mm`).toBeLessThanOrEqual(3);
+      expect(k, `${lungo} mm`).toBeGreaterThanOrEqual(1);
+    }
   });
 
   it('una lastra normale resta tutta intera', () => {
@@ -296,5 +305,79 @@ describe('tutte le colonne alla stessa scala', () => {
     // e nessuna cornice sfonda l'area: la più lunga ci sta per costruzione
     for (const d of disegni)
       expect(d.cornice.altezza).toBeLessThanOrEqual(A4_PIEDI.altezza + 1e-6);
+  });
+});
+
+describe('il pezzo indivisibile tagliato dal capoverso', () => {
+  /** una vetrata da sette metri: qualunque capoverso le passa in mezzo */
+  const VETRATA = P('VETRATA SUD', 0, 0, 1150, 7200);
+  const CODA = P('SOPRALUCE', 0, 7200, 1150, 900);
+  const ROTOLO2: LastraNesting = { piazzamenti: [VETRATA, CODA] };
+  const MISURE2 = { larghezza: 1250, altezza: 8100 };
+
+  it('il pezzo c’è in tutt’e due le colonne e l’area torna', () => {
+    const c = spezzaInColonne(ROTOLO2, MISURE2, 2);
+    const parti = c.flatMap((x) => x.lastra.piazzamenti).filter((pc) => pc.nome === 'VETRATA SUD');
+    expect(parti.length).toBe(2);
+    expect(parti.reduce((s, pc) => s + pc.larghezza * pc.altezza, 0)).toBeCloseTo(1150 * 7200, 3);
+  });
+
+  it('il capoverso è segnato come giunzione, da una parte e dall’altra', () => {
+    const c = spezzaInColonne(ROTOLO2, MISURE2, 2);
+    const taglio = c[0].a;
+    expect(c[0].giunzioni.length).toBe(1);
+    expect(c[1].giunzioni.length).toBe(1);
+    // nella prima colonna il resto del pezzo sta DOPO, nella seconda PRIMA
+    expect(c[0].giunzioni[0].verso).toBe('dopo');
+    expect(c[1].giunzioni[0].verso).toBe('prima');
+    // e la riga sta sul capoverso, larga quanto il pezzo
+    expect(c[0].giunzioni[0].y1).toBeCloseTo(taglio - c[0].da, 6);
+    expect(c[1].giunzioni[0].y1).toBeCloseTo(0, 6);
+    for (const col of c) {
+      const g = col.giunzioni[0];
+      expect(Math.abs(g.x2 - g.x1)).toBeCloseTo(1150, 6);
+      expect(g.y1).toBeCloseTo(g.y2, 6);
+      expect(g.alto).toBeGreaterThan(0);
+    }
+  });
+
+  it('il nome resta uno solo, nella parte più grande', () => {
+    const c = spezzaInColonne(ROTOLO2, MISURE2, 2);
+    const dove = c.filter((x) => x.etichettate.has(VETRATA.chiave));
+    expect(dove.length).toBe(1);
+    // la parte col nome è la più alta delle due
+    const parti = c.map(
+      (x) => x.lastra.piazzamenti.find((pc) => pc.nome === 'VETRATA SUD')?.altezza ?? 0
+    );
+    const conNome = c.indexOf(dove[0]);
+    expect(parti[conNome]).toBe(Math.max(...parti));
+  });
+
+  it('dove il rotolo finisce davvero non c’è nessuna giunzione', () => {
+    const c = spezzaInColonne(ROTOLO, LUNGO, 3);
+    expect(c[0].giunzioni.some((g) => g.verso === 'prima')).toBe(false);
+    expect(c[2].giunzioni.some((g) => g.verso === 'dopo')).toBe(false);
+  });
+
+  it('un pezzo che sta tutto dentro non ha giunzioni', () => {
+    const c = spezzaInColonne({ piazzamenti: [CODA] }, { larghezza: 1250, altezza: 9000 }, 3);
+    expect(c.flatMap((x) => x.giunzioni)).toHaveLength(0);
+  });
+
+  it('su una sagoma storta la giunzione è il lato vero, non tutta la larghezza', () => {
+    // un trapezio che si stringe: sul capoverso il pezzo è più stretto del
+    // suo ingombro, e segnare tutta la larghezza direbbe una bugia
+    const tz = S('FALDA', 0, 0, 1000, 4000, [
+      [0, 0],
+      [1000, 0],
+      [700, 4000],
+      [300, 4000]
+    ]);
+    const c = spezzaInColonne({ piazzamenti: [tz] }, { larghezza: 1000, altezza: 4000 }, 2, 0);
+    const g = c[0].giunzioni[0];
+    expect(g).toBeDefined();
+    // a metà altezza il trapezio si è già stretto da 1000 a 700: segnare la
+    // giunzione larga quanto l'ingombro direbbe una bugia
+    expect(Math.abs(g.x2 - g.x1)).toBeCloseTo(700, 6);
   });
 });

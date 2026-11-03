@@ -10,6 +10,37 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.67.0 — Due colonne, al massimo tre, e il pezzo che non si taglia
+
+- **Massimo tre sezioni.** Il conto che sceglie quante colonne fare si ferma
+  a tre: due è il caso normale (un rotolo da otto metri), tre il massimo (da
+  quindici in su). Oltre, il foglio smetteva di essere un foglio da banco e
+  ogni capoverso in più è un pezzo in più che rischia di essere spezzato.
+
+- **IL PEZZO NON SI TAGLIA DOVE IL FOGLIO VA A CAPO.** Il capoverso è una cosa
+  del disegno, non del materiale: il pezzo è uno e intero, e chi taglia non
+  deve mai credere il contrario. Una vetrata da 7,2 m su un rotolo da 16,6 non
+  lascia scampo — qualunque capoverso le passa in mezzo — e prima il bordo
+  della parte tagliata era un bordo come tutti gli altri: a occhio, una linea
+  di taglio.
+
+  Adesso:
+  - il taglio fra le colonne cerca prima una riga **dove non passa nessun
+    pezzo**, e la finestra di ricerca sale dal 18 al 22% del passo;
+  - se una riga sgombra non c'è, si sceglie il punto che attraversa **il meno
+    possibile**: un capoverso in mezzo a un pezzo si capisce, tre capoversi in
+    mezzo a tre pezzi no;
+  - il lato che cade sul capoverso si disegna **tratteggiato**, perché un
+    contorno interrotto non si legge come una linea di taglio;
+  - **tutt'e due le parti** portano la scritta «continua »» e «« continua»
+    verso la colonna dove sta il resto. Anche quella col nome: chi legge solo
+    quella deve sapere che il pezzo non finisce lì, se no lo misura corto;
+  - il **nome resta uno solo**, nella parte più grande (quella che contiene il
+    centro): due etichette uguali vorrebbero dire due pezzi;
+  - su una sagoma storta la giunzione è il **lato vero** sul capoverso, non
+    tutta la larghezza dell'ingombro: su un trapezio che si stringe da 1000 a
+    700 la riga è lunga 700.
+
 ## 1.66.0 — Il rotolo lungo va a capo
 
 - **Un segmento di bobina da quindici metri era un filo in mezzo al foglio.**

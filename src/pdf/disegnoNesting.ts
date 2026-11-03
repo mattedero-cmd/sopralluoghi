@@ -53,6 +53,19 @@ export interface LineaPdf {
 }
 
 /**
+ * UN LATO CHE NON È UN LATO: dove il rotolo va a capo, il pezzo tagliato in
+ * due mostra un bordo che il materiale non ha. Chi disegna lo segna
+ * tratteggiato e ci scrive accanto da che parte il pezzo continua, perché
+ * quel bordo non è una linea di taglio: il pezzo è uno e intero.
+ */
+export interface GiunzionePdf extends LineaPdf {
+  /** dove sta il resto del pezzo: nella colonna prima o in quella dopo */
+  verso: 'prima' | 'dopo';
+  /** quanto è alta la parte di pezzo che sta da questa parte, in punti */
+  spessore: number;
+}
+
+/**
  * Etichetta scritta per lungo su un pezzo stretto e alto.
  *
  * Sta a parte dalle altre perché il testo dritto e quello girato si disegnano
@@ -85,6 +98,8 @@ export interface DisegnoLastra {
   testi: TestoPdf[];
   /** etichette scritte per lungo sui pezzi stretti */
   ruotate: EtichettaRuotata[];
+  /** i lati che cadono sul capoverso: lì il pezzo continua, non finisce */
+  giunzioni: GiunzionePdf[];
   /** punti per unità di disegno (mm) */
   scala: number;
 }
@@ -122,6 +137,20 @@ export function impaginaLastra(
      */
     margineCima?: boolean;
     margineFondo?: boolean;
+    /**
+     * I lati dei pezzi che cadono sul capoverso, nelle stesse unità dei
+     * piazzamenti. Tornano indietro in punti pagina, da segnare come
+     * giunzioni e non come bordi.
+     */
+    giunzioni?: Array<{
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+      verso: 'prima' | 'dopo';
+      /** quanta parte del pezzo sta da questa parte del capoverso */
+      alto: number;
+    }>;
   }
 ): DisegnoLastra {
   const L = Math.max(1, misure.larghezza);
@@ -264,5 +293,15 @@ export function impaginaLastra(
     }
   }
 
-  return { cornice, margine, pezzi, venatura, testi, ruotate, scala };
+  // le giunzioni, in punti pagina
+  const giunzioni: GiunzionePdf[] = (opzioni?.giunzioni ?? []).map((g) => ({
+    x1: x0 + g.x1 * scala,
+    y1: y0 + g.y1 * scala,
+    x2: x0 + g.x2 * scala,
+    y2: y0 + g.y2 * scala,
+    verso: g.verso,
+    spessore: g.alto * scala
+  }));
+
+  return { cornice, margine, pezzi, venatura, testi, ruotate, giunzioni, scala };
 }

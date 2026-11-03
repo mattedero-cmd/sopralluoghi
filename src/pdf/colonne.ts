@@ -17,16 +17,48 @@
  *    comincia con mezzo pezzo si legge male, e un pezzo spezzato si conta due
  *    volte. Il punto ideale si sposta fino al primo posto libero vicino.
  *
- * 2. Quando un pezzo va tagliato per forza, la sua parte si disegna in tutte
- *    e due le colonne — altrimenti sparirebbe materiale dal disegno — ma il
- *    NOME si scrive una volta sola, nella colonna dove sta il suo centro.
- *    Due etichette uguali in due colonne vorrebbero dire due pezzi.
+ * 2. IL PEZZO NON SI TAGLIA DOVE VA A CAPO. Il capoverso è una cosa del
+ *    foglio, non del materiale: il pezzo è uno e intero, e chi taglia non
+ *    deve mai credere il contrario. Quando il capoverso cade per forza in
+ *    mezzo a un pezzo, la sua parte si disegna in tutte e due le colonne —
+ *    se no sparirebbe materiale dal disegno — ma:
+ *      · il NOME si scrive una volta sola, nella parte più grande (quella
+ *        che contiene il centro): due etichette uguali vorrebbero dire due
+ *        pezzi;
+ *      · il bordo sul capoverso non è un bordo: si segna la GIUNZIONE, che
+ *        chi disegna traccia tratteggiata, e tutt'e due le parti portano una
+ *        freccia verso la colonna dove il pezzo continua.
+ *    Le giunzioni sono i lati del pezzo che cadono sul capoverso: per una
+ *    sagoma storta sono il segmento vero, non tutta la larghezza.
  */
 
 import { fasciaDiPoligono, type PuntoSagoma } from '../geometry/sagome';
 import type { LastraNesting, Piazzamento } from '../geometry/nesting';
 
 const E = 1e-6;
+
+/**
+ * Oltre tre colonne non si va: il foglio deve restare un foglio da banco, e
+ * ogni capoverso in più è un pezzo in più che rischia di essere spezzato in
+ * due. Due è il caso normale, tre il massimo.
+ */
+export const COLONNE_MASSIME = 3;
+
+/**
+ * Un lato di pezzo che cade sul capoverso: lì il pezzo NON finisce, continua
+ * nella colonna che `verso` indica. Le coordinate sono in mm, riferite
+ * all'inizio della colonna come i pezzi.
+ */
+export interface Giunzione {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  /** dove sta il resto del pezzo: nella colonna prima o in quella dopo */
+  verso: 'prima' | 'dopo';
+  /** quanta parte del pezzo sta da QUESTA parte del capoverso, in mm */
+  alto: number;
+}
 
 export interface Colonna {
   /** il tratto di lastra, in mm dall'inizio del foglio */
@@ -36,6 +68,8 @@ export interface Colonna {
   lastra: LastraNesting;
   /** le chiavi dei pezzi da ETICHETTARE qui: il nome si scrive una volta sola */
   etichettate: Set<string>;
+  /** i lati che cadono sul capoverso: non sono bordi, sono giunzioni */
+  giunzioni: Giunzione[];
 }
 
 /**
@@ -44,13 +78,13 @@ export interface Colonna {
  * Si sceglie la divisione che fa il disegno PIÙ GRANDE: più colonne vuol dire
  * colonne più strette (peggio) ma tratti più corti (meglio), e l'optimum sta
  * dove le due cose si incrociano. Invece di indovinarlo si provano tutte le
- * divisioni fino a sei e si tiene quella con la scala maggiore.
+ * divisioni ammesse e si tiene quella con la scala maggiore.
  */
 export function colonneConsigliate(
   misure: { larghezza: number; altezza: number },
   area: { larghezza: number; altezza: number },
   vuoto: number,
-  massimo = 6
+  massimo = COLONNE_MASSIME
 ): number {
   const L = Math.max(1, misure.larghezza);
   const A = Math.max(1, misure.altezza);
@@ -76,25 +110,29 @@ const attraversa = (pc: Piazzamento, y: number) => pc.y < y - E && pc.y + pc.alt
  * Il punto di taglio più vicino a `ideale` dove non passa nessun pezzo.
  *
  * Si guardano gli inizi e le fini dei pezzi dentro la finestra: è lì che il
- * disegno cambia, e quindi lì che può esserci una riga sgombra. Se non ce n'è
- * nessuna si taglia all'ideale e pazienza — meglio un pezzo spezzato che un
- * rotolo illeggibile.
+ * disegno cambia, e quindi lì che può esserci una riga sgombra.
+ *
+ * Se una riga sgombra non c'è — e su un pezzo lungo quanto mezza colonna non
+ * c'è davvero — si sceglie il punto che ne attraversa IL MENO POSSIBILE, e a
+ * parità il più vicino all'ideale: un capoverso in mezzo a un pezzo si
+ * capisce, tre capoversi in mezzo a tre pezzi no.
  */
 export function tagliaLibero(
   piazzamenti: Piazzamento[],
   ideale: number,
   finestra: number
 ): number {
-  if (!piazzamenti.some((pc) => attraversa(pc, ideale))) return ideale;
-  const candidati = new Set<number>();
+  const quanti = (y: number) => piazzamenti.reduce((n, pc) => n + (attraversa(pc, y) ? 1 : 0), 0);
+  if (quanti(ideale) === 0) return ideale;
+  const candidati = new Set<number>([ideale]);
   for (const pc of piazzamenti) {
     for (const y of [pc.y, pc.y + pc.altezza])
       if (Math.abs(y - ideale) <= finestra) candidati.add(y);
   }
-  const buoni = [...candidati]
-    .filter((y) => !piazzamenti.some((pc) => attraversa(pc, y)))
-    .sort((p, q) => Math.abs(p - ideale) - Math.abs(q - ideale));
-  return buoni.length ? buoni[0] : ideale;
+  return [...candidati].sort((p, q) => {
+    const d = quanti(p) - quanti(q);
+    return d !== 0 ? d : Math.abs(p - ideale) - Math.abs(q - ideale);
+  })[0];
 }
 
 /** il cerchio come poligono, per poterlo tagliare a fette */
@@ -107,13 +145,36 @@ function cerchioPoligono(pc: Piazzamento): PuntoSagoma[] {
   });
 }
 
+/** i lati del pezzo tagliato che stanno sul capoverso, non sul suo contorno */
+function giunzioniDi(fetta: PuntoSagoma[], da: number, a: number, alto: number): Giunzione[] {
+  const fuori: Giunzione[] = [];
+  for (let i = 0; i < fetta.length; i++) {
+    const p = fetta[i];
+    const q = fetta[(i + 1) % fetta.length];
+    if (Math.abs(p[0] - q[0]) < E) continue;
+    for (const [quota, verso] of [
+      [da, 'prima'],
+      [a, 'dopo']
+    ] as Array<[number, 'prima' | 'dopo']>) {
+      if (Math.abs(p[1] - quota) < 1e-4 && Math.abs(q[1] - quota) < 1e-4) {
+        fuori.push({ x1: p[0], y1: p[1] - da, x2: q[0], y2: q[1] - da, verso, alto });
+      }
+    }
+  }
+  return fuori;
+}
+
 /** il pezzo ritagliato alla fascia [da, a], con le y riferite a `da` */
-function ritaglia(pc: Piazzamento, da: number, a: number): Piazzamento | null {
+function ritaglia(
+  pc: Piazzamento,
+  da: number,
+  a: number
+): { pezzo: Piazzamento; giunzioni: Giunzione[] } | null {
   const cima = pc.y;
   const fondo = pc.y + pc.altezza;
   if (fondo <= da + E || cima >= a - E) return null;
-  // tutto dentro: basta spostarlo
-  if (cima >= da - E && fondo <= a + E) return { ...pc, y: pc.y - da };
+  // tutto dentro: basta spostarlo, e non c'è nessuna giunzione
+  if (cima >= da - E && fondo <= a + E) return { pezzo: { ...pc, y: pc.y - da }, giunzioni: [] };
 
   const poly: PuntoSagoma[] | null = pc.punti
     ? pc.punti.map((q): PuntoSagoma => [pc.x + q[0], pc.y + q[1]])
@@ -126,7 +187,26 @@ function ritaglia(pc: Piazzamento, da: number, a: number): Piazzamento | null {
     const y2 = Math.max(cima, da);
     const f2 = Math.min(fondo, a);
     if (f2 - y2 <= E) return null;
-    return { ...pc, y: y2 - da, altezza: f2 - y2 };
+    const giunzioni: Giunzione[] = [];
+    if (y2 > cima + E)
+      giunzioni.push({
+        x1: pc.x,
+        y1: 0,
+        x2: pc.x + pc.larghezza,
+        y2: 0,
+        verso: 'prima',
+        alto: f2 - y2
+      });
+    if (f2 < fondo - E)
+      giunzioni.push({
+        x1: pc.x,
+        y1: f2 - da,
+        x2: pc.x + pc.larghezza,
+        y2: f2 - da,
+        verso: 'dopo',
+        alto: f2 - y2
+      });
+    return { pezzo: { ...pc, y: y2 - da, altezza: f2 - y2 }, giunzioni };
   }
 
   const fetta = fasciaDiPoligono(poly, 1, da, a);
@@ -139,14 +219,17 @@ function ritaglia(pc: Piazzamento, da: number, a: number): Piazzamento | null {
   const altezza = Math.max(...ys) - y0;
   if (larghezza <= E || altezza <= E) return null;
   return {
-    ...pc,
-    // il cerchio tagliato non è più un cerchio: da qui in poi è il suo poligono
-    forma: pc.forma === 'cerchio' ? undefined : pc.forma,
-    x: x0,
-    y: y0 - da,
-    larghezza,
-    altezza,
-    punti: fetta.map((q): PuntoSagoma => [q[0] - x0, q[1] - y0])
+    pezzo: {
+      ...pc,
+      // il cerchio tagliato non è più un cerchio: da qui in poi è il suo poligono
+      forma: pc.forma === 'cerchio' ? undefined : pc.forma,
+      x: x0,
+      y: y0 - da,
+      larghezza,
+      altezza,
+      punti: fetta.map((q): PuntoSagoma => [q[0] - x0, q[1] - y0])
+    },
+    giunzioni: giunzioniDi(fetta, da, a, altezza)
   };
 }
 
@@ -163,7 +246,7 @@ export function spezzaInColonne(
   lastra: LastraNesting,
   misure: { larghezza: number; altezza: number },
   quante: number,
-  finestra = 0.18
+  finestra = 0.22
 ): Colonna[] {
   const A = Math.max(1, misure.altezza);
   const k = Math.max(1, Math.round(quante));
@@ -173,7 +256,8 @@ export function spezzaInColonne(
         da: 0,
         a: A,
         lastra,
-        etichettate: new Set(lastra.piazzamenti.map((pc) => pc.chiave))
+        etichettate: new Set(lastra.piazzamenti.map((pc) => pc.chiave)),
+        giunzioni: []
       }
     ];
   }
@@ -193,18 +277,26 @@ export function spezzaInColonne(
     const a = tagli[i + 1];
     const pezzi: Piazzamento[] = [];
     const etichettate = new Set<string>();
+    const giunzioni: Giunzione[] = [];
     for (const pc of lastra.piazzamenti) {
       const tagliato = ritaglia(pc, da, a);
       if (!tagliato) continue;
-      pezzi.push(tagliato);
-      // il nome va dove sta il centro del pezzo intero; un pezzo che comincia
-      // prima della prima colonna o finisce dopo l'ultima il nome lo prende
-      // comunque, se no resta muto
+      pezzi.push(tagliato.pezzo);
+      // una giunzione verso la colonna prima della prima, o dopo l'ultima, non
+      // esiste: lì il pezzo finisce davvero, è il foglio che comincia dopo
+      for (const g of tagliato.giunzioni) {
+        if (g.verso === 'prima' && i === 0) continue;
+        if (g.verso === 'dopo' && i === k - 1) continue;
+        giunzioni.push(g);
+      }
+      // il nome va nella parte più grande, che è quella dove cade il centro;
+      // un pezzo che comincia prima della prima colonna o finisce dopo
+      // l'ultima il nome lo prende comunque, se no resta muto
       const c = centro(pc);
       const primo = i === 0;
       const ultimo = i === k - 1;
       if ((c >= da - E || primo) && (c < a - E || ultimo)) etichettate.add(pc.chiave);
     }
-    return { da, a, lastra: { piazzamenti: pezzi }, etichettate };
+    return { da, a, lastra: { piazzamenti: pezzi }, etichettate, giunzioni };
   });
 }

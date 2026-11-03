@@ -174,3 +174,41 @@ describe('niente finisce sulla pagina dopo', () => {
     }
   });
 });
+
+describe('il pezzo che il capoverso taglia in due', () => {
+  /** una vetrata da sette metri: nessun capoverso può evitarla */
+  const vetrate = [
+    { id: 'V1', nome: 'VETRATA SUD', larghezza: 1150, altezza: 7200, quantita: 1, ruotabile: false, tinta: 10 },
+    { id: 'V2', nome: 'VETRATA NORD', larghezza: 1150, altezza: 4300, quantita: 1, ruotabile: false, tinta: 40 },
+    { id: 'P1', nome: 'PORTA 1', larghezza: 900, altezza: 2100, quantita: 2, ruotabile: false, tinta: 80 }
+  ] as never[];
+  const doc = {
+    versione: 2, nome: 'Vetrate', attivo: 'm1', materiali: [materiale(vetrate, 'bobina')]
+  } as unknown as DocumentoNesting;
+  const pagina = () => fogli(blocchi(contenutoNesting(doc, INTERO)))[0];
+
+  const testi = (p: Blocco[]) =>
+    p.flatMap((b) => ((b.columns as Blocco[] | undefined) ?? []).map((c) => String(c.text ?? '')));
+
+  it('il nome del pezzo si scrive una volta sola', () => {
+    const quante = testi(pagina()).filter((t) => t === 'VETRATA SUD').length;
+    expect(quante, 'due nomi uguali vorrebbero dire due pezzi').toBe(1);
+  });
+
+  it('tutt’e due le parti dicono da che parte il pezzo continua', () => {
+    const t = testi(pagina());
+    expect(t).toContain('continua »');
+    expect(t).toContain('« continua');
+  });
+
+  it('il bordo sul capoverso è segnato come giunzione, non come taglio', () => {
+    const canvas = (pagina().find((b) => Array.isArray(b.canvas))?.canvas as Blocco[]) ?? [];
+    const giunzioni = canvas.filter((l) => l.type === 'line' && l.dash);
+    expect(giunzioni.length).toBeGreaterThanOrEqual(2);
+    for (const g of giunzioni) {
+      // orizzontale, che è come corre il capoverso
+      expect(g.y1).toBeCloseTo(g.y2 as number, 6);
+      expect(Math.abs((g.x2 as number) - (g.x1 as number))).toBeGreaterThan(1);
+    }
+  });
+});

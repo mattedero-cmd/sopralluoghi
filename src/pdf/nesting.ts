@@ -226,6 +226,7 @@ function paginaFoglio(m: MaterialeNesting, foglio: Foglio): Content[] {
         margineFondo: i === colonne.length - 1,
         venatura: m.venatura,
         scala,
+        giunzioni: c.giunzioni,
         conEtichetta: (pc) => c.etichettate.has(pc.chiave)
       }
     )
@@ -237,7 +238,8 @@ function paginaFoglio(m: MaterialeNesting, foglio: Foglio): Content[] {
     pezzi: disegni.flatMap((x) => x.pezzi),
     venatura: disegni.flatMap((x) => x.venatura),
     testi: disegni.flatMap((x) => x.testi),
-    ruotate: disegni.flatMap((x) => x.ruotate)
+    ruotate: disegni.flatMap((x) => x.ruotate),
+    giunzioni: disegni.flatMap((x) => x.giunzioni)
   };
 
   const disegno: Content = {
@@ -310,6 +312,20 @@ function paginaFoglio(m: MaterialeNesting, foglio: Foglio): Content[] {
         y2: l.y2,
         lineColor: '#7d6a54',
         lineWidth: 0.25
+      })),
+      // LA GIUNZIONE NON È UN TAGLIO. Dove il rotolo va a capo il pezzo
+      // mostra un bordo che il materiale non ha: ci si passa sopra una riga
+      // bianca a trattini, e del bordo pieno restano i trattini del pezzo.
+      // Un contorno interrotto non si legge come una linea di taglio.
+      ...d.giunzioni.map((g) => ({
+        type: 'line' as const,
+        x1: g.x1,
+        y1: g.y1,
+        x2: g.x2,
+        y2: g.y2,
+        lineColor: '#ffffff',
+        lineWidth: 1.4,
+        dash: { length: 2.2, space: 2.2 }
       }))
     ]
   };
@@ -367,6 +383,37 @@ function paginaFoglio(m: MaterialeNesting, foglio: Foglio): Content[] {
     ]
   }));
 
+  /**
+   * «CONTINUA»: la freccia verso la colonna dove sta il resto del pezzo.
+   *
+   * Tutt'e due le parti la portano, non solo quella senza nome: chi legge la
+   * parte col nome deve sapere che il pezzo non finisce lì, se no lo misura
+   * corto. Dove la parte è troppo sottile per scriverci dentro resta la
+   * giunzione tratteggiata, che da sola dice già che quello non è un bordo.
+   */
+  const CORPO_SEGUE = 6;
+  const LARGA_SEGUE = 44;
+  const continua: Content[] = d.giunzioni
+    .filter((g) => g.spessore >= CORPO_SEGUE * 1.9 && Math.abs(g.x2 - g.x1) >= LARGA_SEGUE * 0.8)
+    .map((g) => ({
+      absolutePosition: {
+        x: (g.x1 + g.x2) / 2 - LARGA_SEGUE / 2,
+        // dentro il pezzo, non fuori: sotto la riga se il pezzo scende, sopra
+        // se sale
+        y: g.verso === 'prima' ? g.y1 + 2.5 : g.y1 - 2.5 - CORPO_SEGUE * 1.2
+      },
+      columns: [
+        {
+          width: LARGA_SEGUE,
+          text: g.verso === 'prima' ? '« continua' : 'continua »',
+          fontSize: CORPO_SEGUE,
+          color: '#5a6472',
+          alignment: 'center' as const,
+          noWrap: true
+        }
+      ]
+    }));
+
   return [
     {
       pageBreak: 'before',
@@ -392,6 +439,7 @@ function paginaFoglio(m: MaterialeNesting, foglio: Foglio): Content[] {
     disegno,
     ...etichette,
     ...ruotate,
+    ...continua,
     ...targhette(colonne, disegni, largaColonna, area)
   ];
 }
