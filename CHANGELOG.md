@@ -10,6 +10,42 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.65.0 — La didascalia non finisce più sulla pagina dopo
+
+- **L'elenco dei pezzi di una lastra si stampava sopra il titolo di quella
+  successiva.** Sotto ogni disegno c'è la lista dei suoi pezzi, appoggiata a
+  una posizione ASSOLUTA — subito sotto il disegno, perché una lastra bassa e
+  larga non lasci mezza pagina bianca. Ma un blocco assoluto che non ci sta
+  pdfmake non lo taglia: lo fa continuare sulla pagina dopo, e lì casca
+  sull'intestazione della lastra successiva.
+
+  Misurato con pdfmake sul foglio vero: la didascalia di diciotto pannelli è
+  550 caratteri, e sotto un disegno a tutta altezza restavano **dodici punti**
+  — una riga. Il documento usciva con una pagina in più e con l'elenco di una
+  lastra stampato sopra il titolo di un'altra.
+
+  Adesso lo spazio si conta prima e il testo si fa stare: quello che non ci
+  sta diventa «…e altri N». Non si perde niente di essenziale — ogni pezzo
+  porta il suo nome scritto dentro, nel disegno, e la distinta completa sta in
+  testa al documento. Sul lavoro del cantiere: **da 13 pagine a 12**, e nessun
+  testo sopra l'intestazione.
+
+- **Più aria sotto il disegno**: la fascia in fondo alla pagina passa da 76 a
+  94 punti, cioè da una riga di didascalia a due o tre. Il disegno perde il
+  2,7% di altezza.
+
+- **Quanto ci sta si conta pesando i caratteri, non a media.** Su Roboto un
+  carattere va da 0,20 del punto a 0,89 della W: tarato sulla media si sfonda
+  su un nome tutto maiuscolo, tarato sulla W si tronca a metà di tutto. Ogni
+  classe di caratteri ha il suo peso, misurato sul font vero e arrotondato per
+  eccesso — stimare largo fa perdere una voce, stimare stretto manda l'elenco
+  nella pagina dopo. Provato con pdfmake su 360 combinazioni di nomi (da una
+  lettera a quarantasei, comprese le W di fila), pagine in piedi e coricate,
+  disegni da un decimo a tutta altezza: **nessuna trabocca**.
+
+- **Anche la didascalia dice le misure della forma**, come la distinta dalla
+  1.64.0: un trapezio porta tutte e due le altezze invece della sola sinistra.
+
 ## 1.64.0 — Le gemelle speculari: la distinta le fa leggere, e l'abbondanza zoppa si dice
 
 - **Due gemelle speculari finivano in distinta con numeri diversi.** Stessa

@@ -53,7 +53,17 @@ const A4 = { corto: 595.28, lungo: 841.89 };
 const MARGINI: [number, number, number, number] = [40, 50, 40, 50];
 /** il disegno comincia sotto l'intestazione e lascia spazio alla didascalia */
 const Y_DISEGNO = 100;
-const SOTTO_DISEGNO = 76;
+/**
+ * Quanto si tiene libero in fondo alla pagina. Con 76 restavano DODICI punti
+ * fra il disegno a tutta altezza e il margine inferiore: una riga di
+ * didascalia, e su una lastra da più di quattro o cinque pezzi non bastava.
+ * Adesso ne restano una trentina, cioè tre righe, e quello che non ci sta
+ * viene troncato invece di finire sulla pagina dopo.
+ */
+const SOTTO_DISEGNO = 94;
+/** corpo della didascalia sotto il disegno, e la sua interlinea */
+const CORPO_DIDASCALIA = 8;
+const INTERLINEA = 1.2;
 
 /**
  * Area del disegno sulla pagina. Una lastra larga si legge molto meglio su
@@ -299,20 +309,49 @@ function paginaFoglio(m: MaterialeNesting, foglio: Foglio): Content[] {
     disegno,
     ...etichette,
     ...ruotate,
-    {
-      // la didascalia sta subito sotto il disegno, non a un'altezza fissa:
-      // una lastra bassa e larga non deve lasciare mezza pagina bianca
-      absolutePosition: { x: MARGINI[0], y: area.y + d.cornice.altezza + 14 },
-      columns: [
-        {
-          width: area.larghezza,
-          text: riassuntoLastra(lastra),
-          fontSize: 8,
-          color: '#3a424c'
-        }
-      ]
-    }
+    didascalia(lastra, area, d.cornice.altezza, orizzontale)
   ];
+}
+
+/**
+ * LA DIDASCALIA SOTTO IL DISEGNO, troncata a quanto ci sta.
+ *
+ * Sta a una posizione ASSOLUTA — subito sotto il disegno, perché una lastra
+ * bassa e larga non lasci mezza pagina bianca — e un blocco assoluto che non
+ * ci sta pdfmake non lo taglia: lo fa continuare sulla pagina dopo, dove
+ * casca sopra l'intestazione della lastra successiva. Quindi lo spazio si
+ * conta prima, e il testo si fa stare.
+ */
+function didascalia(
+  lastra: LastraNesting,
+  area: AreaPagina,
+  altezzaCornice: number,
+  orizzontale: boolean
+): Content {
+  const y = area.y + altezzaCornice + 14;
+  const fondo = (orizzontale ? A4.corto : A4.lungo) - MARGINI[3];
+  // UNA RIGA DI MENO di quelle che il conto promette. Misurato con pdfmake:
+  // in trenta punti il conto dice tre righe e ce ne stanno due, in dodici ne
+  // dice una e ne sta una. La prima riga costa più delle altre — ascendente,
+  // discendente, il filo che il blocco si prende — e quel sovrapprezzo non si
+  // modella: si paga.
+  const righe = Math.max(1, Math.floor((fondo - y) / (CORPO_DIDASCALIA * INTERLINEA)) - 1);
+  return {
+    absolutePosition: { x: MARGINI[0], y },
+    columns: [
+      {
+        width: area.larghezza,
+        text: riassuntoLastra(lastra, {
+          larghezza: area.larghezza,
+          righe,
+          corpo: CORPO_DIDASCALIA
+        }),
+        fontSize: CORPO_DIDASCALIA,
+        lineHeight: INTERLINEA,
+        color: '#3a424c'
+      }
+    ]
+  };
 }
 
 /** distinta di taglio di un materiale */
