@@ -44,8 +44,95 @@ export interface CorpiEtichetta {
   minimo: number;
 }
 
-/** rapporto medio larghezza/corpo di un carattere del font di sistema */
-const LARGHEZZA_CARATTERE = 0.58;
+/**
+ * QUANTO È LARGO UN CARATTERE, a corpo 1.
+ *
+ * Una media sola non basta. Con 0,58 per carattere — la media di una frase
+ * mista — «PANNELLO» risultava largo 4,64 e ne misura 4,95: il nome usciva
+ * dalla sua cassa, e pdfmake, che una cassa stretta la manda a capo da sé,
+ * stampava «PANNELL» con la «O» sopra la riga della misura. Le maiuscole
+ * sono larghe, le «illi» no, e una media le tratta uguali.
+ *
+ * Quindi si pesa carattere per carattere. I numeri sono MISURATI sui file
+ * veri del font (Roboto normale e medio, col motore di pdfkit), presi al più
+ * largo dei due — il nome si scrive in neretto, la misura no — e arrotondati
+ * per eccesso al centesimo. Il conto per somma ignora la crenatura, che può
+ * solo stringere: sui nomi da cantiere la stima viene larga dallo 0,4 al 3,3
+ * per cento, e largo vuol dire una scritta un filo più piccola, mai una
+ * scritta che sborda.
+ */
+const LARGHEZZE: Array<[string, number]> = [
+  ["'", 0.18],
+  ['’', 0.22],
+  [',', 0.23],
+  [';', 0.24],
+  [' |', 0.25],
+  ['ijl', 0.26],
+  ['!:ìíîï', 0.27],
+  ['.[]', 0.28],
+  ['IÌÍÎÏ·', 0.29],
+  ['"`', 0.33],
+  ['-t{}', 0.34],
+  ['()', 0.35],
+  ['fr', 0.36],
+  ['“”°', 0.39],
+  ['/\\', 0.42],
+  ['^', 0.43],
+  ['*⌀', 0.45],
+  ['_', 0.46],
+  ['?yýÿ', 0.49],
+  ['v', 0.5],
+  ['<xz', 0.51],
+  ['s', 0.52],
+  ['>ckç', 0.53],
+  ['e×èéêë', 0.54],
+  ['Laàáâãäå', 0.55],
+  ['FJhnuñùúûü', 0.56],
+  ['$+0123456789=EbdgpqÈÉÊËø', 0.57],
+  ['oòóôõö÷þ', 0.58],
+  ['ð', 0.59],
+  ['STZÞ', 0.61],
+  ['#YÝß', 0.62],
+  ['R', 0.63],
+  ['BKPX', 0.64],
+  ['&V', 0.65],
+  ['CDUÇÙÚÛÜ–', 0.66],
+  ['AÀÁÂÃÄÅ', 0.67],
+  ['Ð', 0.68],
+  ['GOQ~ÒÓÔÕÖØ', 0.69],
+  ['…', 0.71],
+  ['HNÑ', 0.72],
+  ['%', 0.74],
+  ['w', 0.76],
+  ['—', 0.79],
+  ['æ', 0.85],
+  ['Mm', 0.88],
+  ['W', 0.89],
+  ['@', 0.9],
+  ['Æ', 0.94]
+];
+
+const PESO = new Map<string, number>();
+for (const [caratteri, larghezza] of LARGHEZZE) {
+  for (const c of caratteri) PESO.set(c, larghezza);
+}
+/** un carattere che non conosciamo vale come il più largo che conosciamo */
+const PESO_IGNOTO = 0.94;
+
+/** larghezza di un testo a corpo 1 */
+export function larghezzaStimata(testo: string): number {
+  let somma = 0;
+  for (const c of testo) somma += PESO.get(c) ?? PESO_IGNOTO;
+  return somma;
+}
+
+/** larghezza media dei caratteri di QUESTO testo: serve a contare le righe */
+const mediaDi = (testo: string) => (testo.length ? larghezzaStimata(testo) / testo.length : 0.58);
+
+/** la riga più larga di un blocco: è quella che decide se ci sta */
+const piuLarga = (righe: string[]) =>
+  righe.reduce((m, r) => Math.max(m, larghezzaStimata(r)), 0);
+
 /** interlinea: quanto spazio verticale serve per una riga di testo */
 const INTERLINEA = 1.15;
 /** la misura è scritta un filo più piccola del nome */
@@ -170,12 +257,11 @@ function pianoNelVerso(
   const lungo = lungoPezzo * 0.96;
   const alto = altoPezzo * 0.98;
 
-  const larghezzaTesto = (corpo: number, testo: string) =>
-    corpo * LARGHEZZA_CARATTERE * testo.length;
+  const larghezzaTesto = (corpo: number, testo: string) => corpo * larghezzaStimata(testo);
 
-  /** quanti caratteri stanno su una riga con questo corpo */
-  const caratteri = (corpo: number) =>
-    Math.floor(lungo / (LARGHEZZA_CARATTERE * corpo) + 1e-6);
+  /** quanti caratteri di QUESTO testo stanno su una riga con questo corpo */
+  const caratteri = (corpo: number, testo: string) =>
+    Math.floor(lungo / (corpo * mediaDi(testo)) + 1e-6);
 
   /**
    * IL NOME INTERO, MANDATO A CAPO, col corpo più grande possibile.
@@ -203,13 +289,17 @@ function pianoNelVerso(
       for (let c = Math.max(1, Math.ceil(testo.length / k)); c <= testo.length; c++) {
         const prova = spezzaParole(testo, c);
         if (!prova || prova.length > k) continue;
-        const corpo = Math.min(perAltezza, lungo / (LARGHEZZA_CARATTERE * c));
+        const corpo = Math.min(perAltezza, lungo / piuLarga(prova));
         if (corpo < corpi.minimo) break;
         // col corpo davvero usato le righe possono stare più larghe di così:
         // si rispezza, per non lasciare un a capo dove non serviva
-        const finali = spezzaParole(testo, caratteri(corpo));
+        const finali = spezzaParole(testo, caratteri(corpo, testo));
         const righe = finali && finali.length <= k ? finali : prova;
-        if (!migliore || corpo > migliore.corpo + 1e-9) migliore = { righe, corpo };
+        // e col nuovo taglio si rifà il conto: comanda la riga più larga, che
+        // dopo il rispezzo può non essere più quella di prima
+        const vero = Math.min(perAltezza, lungo / piuLarga(righe));
+        if (vero < corpi.minimo) break;
+        if (!migliore || vero > migliore.corpo + 1e-9) migliore = { righe, corpo: vero };
         break;
       }
     }
@@ -223,17 +313,22 @@ function pianoNelVerso(
    */
   const scegliCorpo = (testo: string, righe: number) => {
     const perAltezza = Math.min(corpi.massimo, alto / (righe * INTERLINEA));
-    const perLarghezza = lungo / (LARGHEZZA_CARATTERE * Math.max(1, testo.length));
+    const perLarghezza = lungo / Math.max(1e-6, larghezzaStimata(testo));
     return Math.min(perAltezza, Math.max(perLarghezza, corpi.comodo));
   };
 
   /** il testo com'è, troncato con l'ellissi, oppure null se non ci sta */
   const adatta = (testo: string, corpo: number): string | null => {
-    // il +1e-6 evita che un testo che ci sta esatto venga troncato per un
+    // l'1e-6 evita che un testo che ci sta esatto venga troncato per un
     // arrotondamento in virgola mobile
-    const quanti = caratteri(corpo);
-    if (quanti >= testo.length) return testo;
-    return quanti - 1 >= 2 ? testo.slice(0, quanti - 1).trimEnd() + '…' : null;
+    if (larghezzaTesto(corpo, testo) <= lungo + 1e-6) return testo;
+    // si leva una lettera alla volta finché il moncone con i puntini ci sta
+    let resta = testo;
+    while (resta.length > 0 && larghezzaTesto(corpo, `${resta.trimEnd()}…`) > lungo + 1e-6) {
+      resta = resta.slice(0, -1);
+    }
+    const tagliato = resta.trimEnd();
+    return tagliato.length >= 2 ? `${tagliato}…` : null;
   };
 
   if (nome) {

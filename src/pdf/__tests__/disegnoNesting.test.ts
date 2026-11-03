@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { impaginaLastra, riassuntoLastra } from '../disegnoNesting';
+import { impaginaLastra } from '../disegnoNesting';
 import { calcolaNesting } from '../../geometry/nesting';
 import { hslEsa, tintaSfondoEsa } from '../../utils/tinte';
 
@@ -138,14 +138,6 @@ describe('impaginaLastra', () => {
     const dd = impaginaLastra(strisce.lastre[0], { larghezza: 1000, altezza: 2200 }, AREA);
     expect(dd.cornice.altezza).toBeLessThanOrEqual(AREA.altezza + 0.001);
     expect(dd.cornice.larghezza).toBeLessThanOrEqual(AREA.larghezza + 0.001);
-  });
-});
-
-describe('riassuntoLastra', () => {
-  it('raggruppa i pezzi per nome e misura', () => {
-    const r = riassuntoLastra(esito.lastre[0]);
-    expect(r).toMatch(/×\s*Anta 597×720/);
-    expect(r).toContain('·');
   });
 });
 

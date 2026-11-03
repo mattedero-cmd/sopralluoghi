@@ -1,7 +1,8 @@
 import type { Content, TDocumentDefinitions, TableCell } from 'pdfmake/interfaces';
 import { pdfMake, COLORI_PDF } from './engine';
 import { leggiImpostazioni } from '../db/repository';
-import { impaginaLastra, riassuntoLastra, type AreaPagina } from './disegnoNesting';
+import { impaginaLastra, type AreaPagina, type DisegnoLastra } from './disegnoNesting';
+import { colonneConsigliate, spezzaInColonne, type Colonna } from './colonne';
 import {
   lunghezzaUsata,
   riepilogaNesting,
@@ -20,6 +21,7 @@ import {
   type DocumentoNesting,
   type MaterialeNesting
 } from '../utils/documentoNesting';
+import { larghezzaStimata } from '../utils/etichettaNesting';
 import { formattaData, formattaNumero } from '../utils/format';
 import { tintaSfondoEsa, tintaBordoEsa } from '../utils/tinte';
 
@@ -51,19 +53,21 @@ const A4 = { corto: 595.28, lungo: 841.89 };
 // gli stessi margini dei report e dei preventivi: i documenti dell'app si
 // riconoscono come una famiglia
 const MARGINI: [number, number, number, number] = [40, 50, 40, 50];
-/** il disegno comincia sotto l'intestazione e lascia spazio alla didascalia */
+/** il disegno comincia sotto l'intestazione */
 const Y_DISEGNO = 100;
 /**
- * Quanto si tiene libero in fondo alla pagina. Con 76 restavano DODICI punti
- * fra il disegno a tutta altezza e il margine inferiore: una riga di
- * didascalia, e su una lastra da più di quattro o cinque pezzi non bastava.
- * Adesso ne restano una trentina, cioè tre righe, e quello che non ci sta
- * viene troncato invece di finire sulla pagina dopo.
+ * Quanto si tiene libero in fondo alla pagina: il margine (50) più una riga
+ * per la targhetta sotto le colonne. Qui c'era l'elenco dei pezzi, che voleva
+ * tre righe e un conto per non finire sulla pagina dopo; adesso che il
+ * disegno si legge l'elenco non serve, e quello spazio torna al disegno.
  */
-const SOTTO_DISEGNO = 94;
-/** corpo della didascalia sotto il disegno, e la sua interlinea */
-const CORPO_DIDASCALIA = 8;
-const INTERLINEA = 1.2;
+const SOTTO_DISEGNO = 68;
+/** lo spazio fra una colonna e l'altra, e il corpo della sua targhetta */
+const VUOTO_COLONNA = 12;
+const CORPO_TARGHETTA = 7;
+/** corpo del sottotitolo, e quanto si può scendere per non mandarlo a capo */
+const CORPO_SOTTOTITOLO = 10;
+const CORPO_SOTTOTITOLO_MINIMO = 7;
 
 /**
  * Area del disegno sulla pagina. Una lastra larga si legge molto meglio su
@@ -143,6 +147,36 @@ function fogliDi(
   });
 }
 
+/**
+ * UNA RIGA DI SOTTOTITOLO CHE NON VA MAI A CAPO.
+ *
+ * Il disegno comincia a una quota FISSA sotto l'intestazione, quindi una
+ * riga che va a capo si infila sotto la cornice e sparisce: su un foglio con
+ * tre ritagli buoni la coda — «e 236×1.477 mm» — finiva nascosta dietro il
+ * primo pezzo. Qui la riga si misura prima: se non ci sta si rimpicciolisce
+ * fino a sette punti, e solo se nemmeno così ci sta si tronca. Meglio una
+ * riga un filo più piccola che una riga che non si vede.
+ */
+function rigaSottotitolo(testo: string, larghezza: number, dove: 'left' | 'right'): Content {
+  const peso = Math.max(1e-6, larghezzaStimata(testo));
+  const corpo = Math.max(CORPO_SOTTOTITOLO_MINIMO, Math.min(CORPO_SOTTOTITOLO, larghezza / peso));
+  let scritto = testo;
+  // sotto il minimo non si scende: da lì in poi si leva testo
+  if (peso * corpo > larghezza + 1e-6) {
+    while (scritto.length > 1 && larghezzaStimata(`${scritto}…`) * corpo > larghezza) {
+      scritto = scritto.slice(0, -1);
+    }
+    scritto = `${scritto.trimEnd()}…`;
+  }
+  return {
+    text: scritto,
+    style: 'sottotitolo',
+    fontSize: corpo,
+    alignment: dove,
+    noWrap: true
+  };
+}
+
 /** disegno di un foglio come contenuti pdfmake, posizionati sulla pagina */
 function paginaFoglio(m: MaterialeNesting, foglio: Foglio): Content[] {
   const lastra = foglio.lastra;
@@ -161,38 +195,80 @@ function paginaFoglio(m: MaterialeNesting, foglio: Foglio): Content[] {
 
   const orizzontale = disegnate.larghezza >= disegnate.altezza;
   const area = areaPagina(orizzontale);
-  const d = impaginaLastra(lastra, disegnate, area, {
-    margine: m.margine,
-    venatura: m.venatura
-  });
+
+  // IL ROTOLO VA A CAPO. Un segmento lungo venti metri e largo uno, disegnato
+  // intero, è un filo dove i nomi non si leggono: si spezza in colonne
+  // affiancate, come il testo di un giornale.
+  const quante = colonneConsigliate(disegnate, area, VUOTO_COLONNA);
+  const colonne = spezzaInColonne(lastra, disegnate, quante);
+  const largaColonna = (area.larghezza - (quante - 1) * VUOTO_COLONNA) / quante;
+  // TUTTE LE COLONNE ALLA STESSA SCALA. I tagli non cadono a distanze uguali
+  // — si spostano per non spezzare un pezzo — e lasciando che ognuna si
+  // scalasse da sé un pezzo finiva disegnato più grande nella colonna accanto
+  // a quella del suo gemello. La scala la detta la colonna più lunga.
+  const piuLunga = Math.max(...colonne.map((c) => c.a - c.da));
+  const scala = Math.min(largaColonna / Math.max(1, disegnate.larghezza), area.altezza / piuLunga);
+  const disegni = colonne.map((c, i) =>
+    impaginaLastra(
+      c.lastra,
+      { larghezza: disegnate.larghezza, altezza: c.a - c.da },
+      {
+        x: area.x + i * (largaColonna + VUOTO_COLONNA),
+        y: area.y,
+        larghezza: largaColonna,
+        altezza: area.altezza
+      },
+      {
+        margine: m.margine,
+        // il bordo del margine c'è solo dove il rotolo comincia e dove
+        // finisce davvero: fra una colonna e l'altra non c'è nessun bordo
+        margineCima: i === 0,
+        margineFondo: i === colonne.length - 1,
+        venatura: m.venatura,
+        scala,
+        conEtichetta: (pc) => c.etichettate.has(pc.chiave)
+      }
+    )
+  );
+  // le cornici restano separate (una per colonna), tutto il resto si disegna
+  // in un pezzo solo: pezzi, venatura ed etichette portano già la loro
+  // posizione sulla pagina
+  const d = {
+    pezzi: disegni.flatMap((x) => x.pezzi),
+    venatura: disegni.flatMap((x) => x.venatura),
+    testi: disegni.flatMap((x) => x.testi),
+    ruotate: disegni.flatMap((x) => x.ruotate)
+  };
 
   const disegno: Content = {
     absolutePosition: { x: 0, y: 0 },
     canvas: [
-      {
-        type: 'rect',
-        x: d.cornice.x,
-        y: d.cornice.y,
-        w: d.cornice.larghezza,
-        h: d.cornice.altezza,
-        color: d.cornice.riempimento,
-        lineColor: d.cornice.bordo,
-        lineWidth: d.cornice.spessore
-      },
-      ...(d.margine
-        ? [
-            {
-              type: 'rect' as const,
-              x: d.margine.x,
-              y: d.margine.y,
-              w: d.margine.larghezza,
-              h: d.margine.altezza,
-              lineColor: d.margine.bordo,
-              lineWidth: d.margine.spessore,
-              dash: { length: 3, space: 2 }
-            }
-          ]
-        : []),
+      ...disegni.map((x) => ({
+        type: 'rect' as const,
+        x: x.cornice.x,
+        y: x.cornice.y,
+        w: x.cornice.larghezza,
+        h: x.cornice.altezza,
+        color: x.cornice.riempimento,
+        lineColor: x.cornice.bordo,
+        lineWidth: x.cornice.spessore
+      })),
+      ...disegni.flatMap((x) =>
+        x.margine
+          ? [
+              {
+                type: 'rect' as const,
+                x: x.margine.x,
+                y: x.margine.y,
+                w: x.margine.larghezza,
+                h: x.margine.altezza,
+                lineColor: x.margine.bordo,
+                lineWidth: x.margine.spessore,
+                dash: { length: 3, space: 2 }
+              }
+            ]
+          : []
+      ),
       // la sagoma vera quando c'è: il PDF mostra il taglio, non l'ingombro
       ...d.pezzi.map((p) =>
         p.raggio
@@ -269,7 +345,13 @@ function paginaFoglio(m: MaterialeNesting, foglio: Foglio): Content[] {
   });
 
   // il testo va centrato nella larghezza del PEZZO, non della pagina: solo una
-  // colonna di larghezza fissa dà quel controllo a pdfmake
+  // colonna di larghezza fissa dà quel controllo a pdfmake.
+  //
+  // `noWrap` perché le righe le ha già decise il motore delle etichette, che
+  // le colloca una sotto l'altra: se pdfmake ne mandasse una a capo per conto
+  // suo, la coda finirebbe sopra la riga successiva — «PANNELL» con la «O»
+  // stampata sulla misura. Che ci stiano lo garantisce il motore, che misura
+  // il testo carattere per carattere.
   const etichette: Content[] = d.testi.map((t) => ({
     absolutePosition: { x: t.x, y: t.y },
     columns: [
@@ -279,7 +361,8 @@ function paginaFoglio(m: MaterialeNesting, foglio: Foglio): Content[] {
         fontSize: t.corpo,
         bold: t.grassetto,
         color: t.colore,
-        alignment: 'center'
+        alignment: 'center',
+        noWrap: true
       }
     ]
   }));
@@ -295,63 +378,57 @@ function paginaFoglio(m: MaterialeNesting, foglio: Foglio): Content[] {
     },
     {
       columns: [
-        { text: sottotitolo, style: 'sottotitolo' },
-        {
-          text: avanzo
+        rigaSottotitolo(sottotitolo, (area.larghezza - VUOTO_COLONNA) / 2, 'left'),
+        rigaSottotitolo(
+          avanzo
             ? `${lastra.piazzamenti.length} pezzi · ${avanzo}`
             : `${lastra.piazzamenti.length} pezzi`,
-          style: 'sottotitolo',
-          alignment: 'right'
-        }
+          (area.larghezza - VUOTO_COLONNA) / 2,
+          'right'
+        )
       ],
       margin: [0, 2, 0, 0]
     },
     disegno,
     ...etichette,
     ...ruotate,
-    didascalia(lastra, area, d.cornice.altezza, orizzontale)
+    ...targhette(colonne, disegni, largaColonna, area)
   ];
 }
 
 /**
- * LA DIDASCALIA SOTTO IL DISEGNO, troncata a quanto ci sta.
+ * LE TARGHETTE SOTTO LE COLONNE.
  *
- * Sta a una posizione ASSOLUTA — subito sotto il disegno, perché una lastra
- * bassa e larga non lasci mezza pagina bianca — e un blocco assoluto che non
- * ci sta pdfmake non lo taglia: lo fa continuare sulla pagina dopo, dove
- * casca sopra l'intestazione della lastra successiva. Quindi lo spazio si
- * conta prima, e il testo si fa stare.
+ * Quando il rotolo va a capo, ogni colonna è un tratto diverso dello stesso
+ * foglio, e senza dirlo si leggono come fogli distinti: la targhetta scrive
+ * da dove a dove va, in metri, così che al banco si sappia dove si è.
+ *
+ * Con una colonna sola non serve: il tratto è tutto il foglio, e lo dice già
+ * il sottotitolo.
  */
-function didascalia(
-  lastra: LastraNesting,
-  area: AreaPagina,
-  altezzaCornice: number,
-  orizzontale: boolean
-): Content {
-  const y = area.y + altezzaCornice + 14;
-  const fondo = (orizzontale ? A4.corto : A4.lungo) - MARGINI[3];
-  // UNA RIGA DI MENO di quelle che il conto promette. Misurato con pdfmake:
-  // in trenta punti il conto dice tre righe e ce ne stanno due, in dodici ne
-  // dice una e ne sta una. La prima riga costa più delle altre — ascendente,
-  // discendente, il filo che il blocco si prende — e quel sovrapprezzo non si
-  // modella: si paga.
-  const righe = Math.max(1, Math.floor((fondo - y) / (CORPO_DIDASCALIA * INTERLINEA)) - 1);
-  return {
-    absolutePosition: { x: MARGINI[0], y },
+function targhette(
+  colonne: Colonna[],
+  disegni: DisegnoLastra[],
+  largaColonna: number,
+  area: AreaPagina
+): Content[] {
+  if (colonne.length < 2) return [];
+  const metri = (v: number) => formattaNumero(Math.round(v) / 1000);
+  return colonne.map((c, i) => ({
+    absolutePosition: {
+      x: area.x + i * (largaColonna + VUOTO_COLONNA),
+      y: disegni[i].cornice.y + disegni[i].cornice.altezza + 4
+    },
     columns: [
       {
-        width: area.larghezza,
-        text: riassuntoLastra(lastra, {
-          larghezza: area.larghezza,
-          righe,
-          corpo: CORPO_DIDASCALIA
-        }),
-        fontSize: CORPO_DIDASCALIA,
-        lineHeight: INTERLINEA,
-        color: '#3a424c'
+        width: largaColonna,
+        text: `da ${metri(c.da)} a ${metri(c.a)} m`,
+        fontSize: CORPO_TARGHETTA,
+        color: '#5a6472',
+        alignment: 'center' as const
       }
     ]
-  };
+  }));
 }
 
 /** distinta di taglio di un materiale */
@@ -544,7 +621,6 @@ export async function generaPdfNesting(
     Boolean
   );
 
-  // copertina come quella dei report: stesso impianto, stesso ritmo
   // copertina come quella dei report: stesso impianto, stesso ritmo
   const copertina: Content[] = [
     { text: 'PIANO DI TAGLIO', style: 'copertinaTipo', margin: [0, 120, 0, 8] },

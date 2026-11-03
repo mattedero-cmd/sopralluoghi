@@ -7,7 +7,7 @@
  * dentro il proprio rettangolo, senza generare un PDF.
  */
 
-import type { LastraNesting } from '../geometry/nesting';
+import type { LastraNesting, Piazzamento } from '../geometry/nesting';
 import { pianoEtichetta, righeEtichetta } from '../utils/etichettaNesting';
 import { ancoraEtichetta, misureForma } from '../geometry/sagome';
 import { tintaBordoEsa, tintaSfondoEsa } from '../utils/tinte';
@@ -96,11 +96,37 @@ export function impaginaLastra(
   lastra: LastraNesting,
   misure: { larghezza: number; altezza: number },
   area: AreaPagina,
-  opzioni?: { margine?: number; venatura?: 'nessuna' | 'orizzontale' | 'verticale' }
+  opzioni?: {
+    margine?: number;
+    venatura?: 'nessuna' | 'orizzontale' | 'verticale';
+    /**
+     * Quali pezzi portano il nome scritto. Serve al rotolo spezzato in
+     * colonne: un pezzo tagliato in due si disegna in tutte e due, ma il nome
+     * si scrive una volta sola — due etichette uguali vorrebbero dire due
+     * pezzi.
+     */
+    conEtichetta?: (pc: Piazzamento) => boolean;
+    /**
+     * Punti per mm imposti da fuori. Serve al rotolo spezzato in colonne:
+     * i tratti non sono lunghi uguali, e se ognuno si scalasse da sé lo
+     * stesso pezzo risulterebbe disegnato più grande in una colonna che
+     * nell'altra. Senza, la scala è quella che fa stare il foglio nell'area.
+     */
+    scala?: number;
+    /**
+     * Il bordo del margine si disegna in cima e in fondo? Su un rotolo
+     * spezzato in colonne il margine del materiale c'è solo all'inizio e
+     * alla fine del rotolo VERO: in mezzo, dove una colonna finisce e
+     * ricomincia l'altra, non c'è nessun bordo, e disegnarcelo farebbe
+     * sembrare ogni colonna un foglio a sé.
+     */
+    margineCima?: boolean;
+    margineFondo?: boolean;
+  }
 ): DisegnoLastra {
   const L = Math.max(1, misure.larghezza);
   const A = Math.max(1, misure.altezza);
-  const scala = Math.min(area.larghezza / L, area.altezza / A);
+  const scala = opzioni?.scala ?? Math.min(area.larghezza / L, area.altezza / A);
   // il foglio sta al centro dell'area, in alto
   const x0 = area.x + (area.larghezza - L * scala) / 2;
   const y0 = area.y;
@@ -116,13 +142,17 @@ export function impaginaLastra(
   };
 
   const mg = Math.max(0, opzioni?.margine ?? 0);
+  // dove non c'è bordo il tratteggio va a coincidere con la cornice, e lì si
+  // confonde con essa: è il modo di non disegnare una riga che non esiste
+  const cima = opzioni?.margineCima === false ? 0 : mg;
+  const fondo = opzioni?.margineFondo === false ? 0 : mg;
   const margine =
-    mg > 0 && L - 2 * mg > 0 && A - 2 * mg > 0
+    mg > 0 && L - 2 * mg > 0 && A - cima - fondo > 0
       ? {
           x: x0 + mg * scala,
-          y: y0 + mg * scala,
+          y: y0 + cima * scala,
           larghezza: (L - 2 * mg) * scala,
-          altezza: (A - 2 * mg) * scala,
+          altezza: (A - cima - fondo) * scala,
           bordo: '#b9c0c8',
           spessore: 0.5,
           tratteggio: true
@@ -169,6 +199,8 @@ export function impaginaLastra(
         venatura.push({ x1: rx, y1: y, x2: rx + rw, y2: y });
       }
     }
+
+    if (opzioni?.conEtichetta && !opzioni.conEtichetta(pc)) continue;
 
     const misura = misureForma({
       forma: pc.forma,
@@ -233,111 +265,4 @@ export function impaginaLastra(
   }
 
   return { cornice, margine, pezzi, venatura, testi, ruotate, scala };
-}
-
-/** i pezzi di una lastra raccolti per nome e misura, per la didascalia */
-/**
- * QUANTO È LARGO UN CARATTERE, a corpo 1, su Roboto.
- *
- * Serve per sapere quanto testo ci sta prima di scriverlo, e una media sola
- * non basta: su Roboto si va da 0,20 del punto a 0,89 della W. Tarato sulla
- * media si tronca giusto sui nomi normali e si sfonda su «PARETE WWW», tarato
- * sulla W si tronca a metà di tutto. Quindi si pesa carattere per carattere,
- * con i numeri misurati sul font vero, e si arrotonda ogni classe PER ECCESSO:
- * stimare largo fa perdere una voce, stimare stretto fa finire l'elenco sulla
- * pagina dopo, sopra l'intestazione della lastra successiva.
- */
-const PESO_CARATTERE: Array<[RegExp, number]> = [
-  [/[MW]/, 0.89],
-  [/[mw]/, 0.88],
-  [/[I]/, 0.28],
-  [/[A-Z\u00C0-\u00DE]/, 0.76],
-  [/[0-9]/, 0.57],
-  [/[fijlrt]/, 0.35],
-  [/[a-z\u00E0-\u00FE]/, 0.57],
-  [/[ .,·]/, 0.27],
-  [/[×]/, 0.54]
-];
-/** tutto il resto: la più larga delle classi note, per non sbagliare in meno */
-const PESO_IGNOTO = 0.89;
-
-/** larghezza stimata del testo, a corpo 1 */
-export function larghezzaStimata(testo: string): number {
-  let somma = 0;
-  for (const c of testo) {
-    const p = PESO_CARATTERE.find(([re]) => re.test(c));
-    somma += p ? p[1] : PESO_IGNOTO;
-  }
-  return somma;
-}
-
-/**
- * Una riga non si riempie mai fino in fondo: l'ultima parola che non ci sta va
- * a capo e lascia un buco. Questo è il margine che si tiene per quel buco.
- */
-const RESA_DI_RIGA = 0.9;
-
-/**
- * I pezzi di una lastra, in una riga di testo.
- *
- * Con `dentro` la riga si TRONCA per starci: la didascalia è appoggiata a una
- * posizione assoluta sotto il disegno, e pdfmake, quando un blocco assoluto
- * non ci sta, non lo taglia — lo fa continuare sulla pagina dopo, dove va a
- * finire sopra l'intestazione della lastra successiva. Misurato su un foglio
- * da diciotto pannelli: la didascalia è 550 caratteri, lo spazio sotto il
- * disegno ne regge una riga, e il PDF usciva con l'elenco di una lastra
- * stampato sopra il titolo di quella dopo.
- *
- * Troncare non perde niente di essenziale: ogni pezzo porta il suo nome
- * scritto dentro, nel disegno qui sopra, e la distinta completa sta in testa
- * al documento.
- */
-export function riassuntoLastra(
-  lastra: LastraNesting,
-  dentro?: { larghezza: number; righe: number; corpo: number }
-): string {
-  const mappa = new Map<string, { testo: string; n: number }>();
-  for (const pc of lastra.piazzamenti) {
-    // le misure della FORMA, come nella distinta e come nel disegno: su un
-    // trapezio «larghezzaFinita × altezzaFinita» scrive la base per l'altezza
-    // sinistra, che può essere la più corta, e due gemelle speculari si
-    // leggerebbero con numeri diversi
-    const misura = misureForma({
-      forma: pc.forma,
-      larghezza: pc.larghezzaFinita,
-      altezza: pc.altezzaFinita,
-      misura3: pc.misura3Finita,
-      vertici: pc.verticiFiniti
-    });
-    const chiave = `${pc.nome}|${misura}`;
-    const v = mappa.get(chiave) ?? { testo: `${pc.nome || 'pezzo'} ${misura}`, n: 0 };
-    v.n++;
-    mappa.set(chiave, v);
-  }
-  const voci = [...mappa.values()].map((v) => `${v.n}× ${v.testo}`);
-  const SEP = '   ·   ';
-  if (!dentro || voci.length === 0) return voci.join(SEP);
-
-  const spazio =
-    (Math.max(0, dentro.larghezza) * Math.max(1, dentro.righe) * RESA_DI_RIGA) /
-    Math.max(1e-6, dentro.corpo);
-  const sep = larghezzaStimata(SEP);
-
-  let usati = 0;
-  let quante = 0;
-  for (const v of voci) {
-    const costo = (quante === 0 ? 0 : sep) + larghezzaStimata(v);
-    // la coda «…e altri N» deve starci anche lei, se serve
-    const coda =
-      quante + 1 < voci.length ? sep + larghezzaStimata(`…e altri ${voci.length - quante - 1}`) : 0;
-    if (usati + costo + coda > spazio) break;
-    usati += costo;
-    quante++;
-  }
-  // almeno un pezzo si nomina sempre: una didascalia vuota non dice niente,
-  // e una riga sola ci sta per costruzione
-  if (quante === 0) quante = 1;
-  if (quante >= voci.length) return voci.join(SEP);
-  const restano = voci.length - quante;
-  return `${voci.slice(0, quante).join(SEP)}${SEP}…e altri ${restano}`;
 }

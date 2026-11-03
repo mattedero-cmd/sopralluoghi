@@ -10,6 +10,64 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.66.0 — Il rotolo lungo va a capo
+
+- **Un segmento di bobina da quindici metri era un filo in mezzo al foglio.**
+  Disegnato intero su un A4, un rotolo largo 1,25 m e lungo 15,35 m diventa
+  una striscia alta venti centimetri e larga cinque: i pezzi sono
+  striscioline, i nomi non ci stanno e il resto della pagina è bianco. Al
+  banco quel foglio non dice niente.
+
+  Adesso il rotolo **va a capo in colonne affiancate**, come il testo di un
+  giornale: la prima colonna è il primo tratto, la seconda riprende da dove
+  finisce la prima, e sotto ognuna c'è scritto che tratto è — «da 4,71 a
+  10,13 m». Quante colonne lo decide il conto: si provano tutte le divisioni
+  fino a sei e si tiene quella che fa il disegno più grande, quindi una lastra
+  normale resta una sola e un rotolo lungo si spezza in tre.
+
+  Misurato sul foglio del cantiere, 15,35 m su bobina da 1250: il disegno
+  passa da **0,042 a 0,124 punti per millimetro — 2,9 volte più grande** — e i
+  nomi scritti dentro i pezzi passano da 12 su 18 (corpo da 6 a 9, più 6
+  scritti per lungo perché larghi non ci stavano) a **17 su 18, tutti al corpo
+  massimo**, con uno solo scritto per lungo: quello davvero stretto e alto.
+
+- **Via l'elenco dei pezzi sotto il disegno.** Serviva quando i nomi nel
+  disegno non si leggevano; adesso si leggono, e la distinta completa resta in
+  testa al documento. La fascia in fondo alla pagina torna da 94 a 68 punti e
+  quello spazio va al disegno.
+
+- **Il taglio fra una colonna e l'altra cade dove non passa nessun pezzo**,
+  quando si può: il punto ideale si sposta fino alla prima riga sgombra
+  vicina. Se un pezzo va spezzato per forza, la sua parte si disegna in tutte
+  e due le colonne — se no sparirebbe materiale dal disegno — ma il **nome si
+  scrive una volta sola**, nella colonna dove sta il suo centro: due etichette
+  uguali vorrebbero dire due pezzi. Il cerchio tagliato smette di essere un
+  cerchio e diventa la sua sagoma, se no mezzo cerchio si ridisegnerebbe
+  intero.
+
+- **Tutte le colonne alla stessa scala.** I tagli non cadono a distanze
+  uguali — si spostano per non spezzare i pezzi — e lasciando che ogni colonna
+  si scalasse da sé lo stesso pezzo sarebbe venuto più grande in una colonna
+  che in quella accanto.
+
+- **I nomi non si stampano più sopra la misura.** «PANNELLO 11» usciva come
+  «PANNELL» con la «O» stampata sulla riga della misura: il motore delle
+  etichette misurava i caratteri a media (0,58 del corpo l'uno), e «PANNELLO»
+  di media ne misura 0,62 — la cassa veniva stretta e pdfmake la riga la
+  mandava a capo da sé. Adesso i caratteri si pesano **uno per uno, con le
+  larghezze misurate sui file veri del font**, presi al più largo fra tondo e
+  neretto: sui nomi da cantiere la stima viene larga dallo 0,4 al 3,3 per
+  cento, e larga vuol dire una scritta un filo più piccola, mai una scritta
+  che sborda. Lo stesso conto serve a mandare a capo i nomi lunghi, che adesso
+  escono più grandi: righe strette di lettere strette non vengono più trattate
+  come righe di maiuscole.
+
+- **Il sottotitolo del foglio non va più a capo.** Con tre ritagli buoni da
+  dichiarare, la coda — «e 236×1.477 mm» — finiva su una seconda riga, che il
+  disegno (appoggiato a una quota fissa) copriva. Adesso la riga si misura
+  prima: se non ci sta si rimpicciolisce fino a sette punti, e solo se nemmeno
+  così ci sta si tronca.
+
 ## 1.65.0 — La didascalia non finisce più sulla pagina dopo
 
 - **L'elenco dei pezzi di una lastra si stampava sopra il titolo di quella

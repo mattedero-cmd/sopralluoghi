@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pianoEtichetta, righeEtichetta } from '../etichettaNesting';
+import { larghezzaStimata, pianoEtichetta, righeEtichetta } from '../etichettaNesting';
 
 // corpi tipici (in mm di disegno) su una lastra da 2500 mm larga ~390 px:
 // 1 px di schermo ≈ 6,4 mm
@@ -11,7 +11,9 @@ function dentro(l: number, a: number, p: ReturnType<typeof pianoEtichetta>) {
   const lungo = p.ruotata ? a : l;
   const alto = p.ruotata ? l : a;
   const righe = righeEtichetta(p);
-  const piuLargo = Math.max(...righe.map((r) => r.corpo * 0.58 * r.testo.length));
+  // la riga si misura carattere per carattere, come fa il motore: una media
+  // per tutti direbbe che «Anta» è largo quanto «ANTA», e non è vero
+  const piuLargo = Math.max(...righe.map((r) => r.corpo * larghezzaStimata(r.testo)));
   const altezzaTesto = righe.reduce((s, r) => s + r.corpo * 1.15, 0);
   return piuLargo <= lungo && altezzaTesto <= alto;
 }
@@ -192,5 +194,49 @@ describe('righeEtichetta', () => {
     expect(righe[righe.length - 1].testo).toBe('800×600');
     expect(righe[righe.length - 1].forte).toBe(false);
     for (let i = 1; i < righe.length; i++) expect(righe[i].dy).toBeGreaterThan(righe[i - 1].dy);
+  });
+});
+
+describe('la larghezza dei caratteri', () => {
+  /**
+   * I pesi sono misurati sui file veri del font, col motore di pdfkit, presi
+   * al più largo fra Roboto normale e medio e arrotondati per eccesso. Qui si
+   * ferma il caso contrario: un peso stimato IN MENO del vero farebbe sbordare
+   * il nome dalla sua cassa, e pdfmake una cassa stretta la manda a capo da
+   * sé — è così che «PANNELLO 11» usciva con la «O» stampata sopra la misura.
+   */
+  const MISURATI: Array<[string, number]> = [
+    ['W', 0.8872],
+    ['M', 0.8745],
+    ['m', 0.877],
+    ['I', 0.2832],
+    ['A', 0.6631],
+    ['l', 0.2549],
+    [' ', 0.2485],
+    ['.', 0.2778],
+    ['·', 0.2832],
+    ['×', 0.5337],
+    ['5', 0.5684],
+    ['PANNELLO', 4.9478],
+    ['PANNELLO 11', 6.333],
+    ['1220×1100', 5.0791],
+    ['FINESTRA A VASISTAS', 10.374],
+    ['Fianco laterale destro mobile', 12.9653]
+  ];
+
+  it('non è mai stimata in meno del vero', () => {
+    for (const [testo, vero] of MISURATI) {
+      expect(larghezzaStimata(testo), `«${testo}»`).toBeGreaterThanOrEqual(vero - 1e-9);
+    }
+  });
+
+  it('e nemmeno troppo in più: una stima larga scrive piccolo', () => {
+    for (const [testo, vero] of MISURATI) {
+      expect(larghezzaStimata(testo), `«${testo}»`).toBeLessThanOrEqual(vero * 1.05 + 0.005);
+    }
+  });
+
+  it('un carattere mai visto vale come il più largo che si conosce', () => {
+    expect(larghezzaStimata('\u2603')).toBeGreaterThanOrEqual(larghezzaStimata('W'));
   });
 });
