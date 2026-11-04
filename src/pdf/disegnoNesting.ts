@@ -63,6 +63,10 @@ export interface GiunzionePdf extends LineaPdf {
   verso: 'prima' | 'dopo';
   /** quanto è alta la parte di pezzo che sta da questa parte, in punti */
   spessore: number;
+  /** di che pezzo è, e quale delle sue parti sta da questa parte */
+  nome: string;
+  parte: number;
+  parti: number;
 }
 
 /**
@@ -150,6 +154,9 @@ export function impaginaLastra(
       verso: 'prima' | 'dopo';
       /** quanta parte del pezzo sta da questa parte del capoverso */
       alto: number;
+      nome: string;
+      parte: number;
+      parti: number;
     }>;
   }
 ): DisegnoLastra {
@@ -300,7 +307,10 @@ export function impaginaLastra(
     x2: x0 + g.x2 * scala,
     y2: y0 + g.y2 * scala,
     verso: g.verso,
-    spessore: g.alto * scala
+    spessore: g.alto * scala,
+    nome: g.nome,
+    parte: g.parte,
+    parti: g.parti
   }));
 
   return { cornice, margine, pezzi, venatura, testi, ruotate, giunzioni, scala };

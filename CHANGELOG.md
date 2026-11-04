@@ -10,6 +10,28 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.68.0 — Si va a capo oltre i cinque metri, e il taglio si vede
+
+- **Sotto i cinque metri il foglio resta intero.** Prima il conto delle
+  colonne guardava solo la scala e mandava a capo già dai tre metri e mezzo.
+  Adesso c'è una soglia da banco: fino a cinque metri il disegno si guarda
+  tutto insieme e non si spezza niente; oltre, si va a capo — due colonne fino
+  a una decina di metri, tre oltre, mai più di tre. Un capoverso in meno è un
+  pezzo in meno che rischia di essere tagliato in due.
+
+- **Dove il foglio taglia un pezzo adesso si vede.** Il tratteggio chiaro di
+  prima era troppo discreto. Adesso il bordo pieno viene cancellato con una
+  riga bianca — lì il pezzo non finisce — e al suo posto va un **tratteggio
+  nero**, che non somiglia a nessun altro bordo del disegno.
+
+- **E c'è scritto in parole: «VETRATA SUD · parte 1 di 2 »».** La scritta sta
+  su tutt'e due le parti e porta il nome del pezzo, così la parte di là non
+  resta anonima e nessuno la scambia per un secondo pezzo: «parte 1 di 2» dice
+  in tre parole che il pezzo è uno e che lì il disegno l'ha spezzato. La
+  freccia indica la colonna dove sta il resto. Se la fetta è troppo stretta
+  per il nome si scrive «parte 1 di 2», poi «1 di 2», e se non ci sta nemmeno
+  quello resta il tratteggio.
+
 ## 1.67.0 — Due colonne, al massimo tre, e il pezzo che non si taglia
 
 - **Massimo tre sezioni.** Il conto che sceglie quante colonne fare si ferma

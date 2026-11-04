@@ -45,6 +45,15 @@ const E = 1e-6;
 export const COLONNE_MASSIME = 3;
 
 /**
+ * Sotto i cinque metri il foglio si legge intero e non si va a capo.
+ *
+ * È una misura da banco, non un conto: cinque metri di rotolo su un A4 sono
+ * ancora un disegno che si guarda tutto insieme, e un capoverso in meno è un
+ * pezzo in meno che rischia di essere spezzato in due.
+ */
+export const LUNGHEZZA_CAPOVERSO = 5000;
+
+/**
  * Un lato di pezzo che cade sul capoverso: lì il pezzo NON finisce, continua
  * nella colonna che `verso` indica. Le coordinate sono in mm, riferite
  * all'inizio della colonna come i pezzi.
@@ -58,6 +67,11 @@ export interface Giunzione {
   verso: 'prima' | 'dopo';
   /** quanta parte del pezzo sta da QUESTA parte del capoverso, in mm */
   alto: number;
+  /** il pezzo a cui appartiene: la giunzione lo deve dire, non nasconderlo */
+  nome: string;
+  /** quale parte è questa, e in quante parti il foglio ha spezzato il pezzo */
+  parte: number;
+  parti: number;
 }
 
 export interface Colonna {
@@ -75,7 +89,8 @@ export interface Colonna {
 /**
  * Quante colonne convengono.
  *
- * Si sceglie la divisione che fa il disegno PIÙ GRANDE: più colonne vuol dire
+ * Oltre i cinque metri — sotto si legge intero — si sceglie la divisione che
+ * fa il disegno PIÙ GRANDE: più colonne vuol dire
  * colonne più strette (peggio) ma tratti più corti (meglio), e l'optimum sta
  * dove le due cose si incrociano. Invece di indovinarlo si provano tutte le
  * divisioni ammesse e si tiene quella con la scala maggiore.
@@ -88,6 +103,8 @@ export function colonneConsigliate(
 ): number {
   const L = Math.max(1, misure.larghezza);
   const A = Math.max(1, misure.altezza);
+  // sotto i cinque metri si legge intero: non si va a capo
+  if (A <= LUNGHEZZA_CAPOVERSO) return 1;
   let meglio = 1;
   let scalaMeglio = 0;
   for (let k = 1; k <= Math.max(1, massimo); k++) {
@@ -146,7 +163,13 @@ function cerchioPoligono(pc: Piazzamento): PuntoSagoma[] {
 }
 
 /** i lati del pezzo tagliato che stanno sul capoverso, non sul suo contorno */
-function giunzioniDi(fetta: PuntoSagoma[], da: number, a: number, alto: number): Giunzione[] {
+function giunzioniDi(
+  fetta: PuntoSagoma[],
+  da: number,
+  a: number,
+  alto: number,
+  quale: { nome: string; parte: number; parti: number }
+): Giunzione[] {
   const fuori: Giunzione[] = [];
   for (let i = 0; i < fetta.length; i++) {
     const p = fetta[i];
@@ -157,7 +180,7 @@ function giunzioniDi(fetta: PuntoSagoma[], da: number, a: number, alto: number):
       [a, 'dopo']
     ] as Array<[number, 'prima' | 'dopo']>) {
       if (Math.abs(p[1] - quota) < 1e-4 && Math.abs(q[1] - quota) < 1e-4) {
-        fuori.push({ x1: p[0], y1: p[1] - da, x2: q[0], y2: q[1] - da, verso, alto });
+        fuori.push({ x1: p[0], y1: p[1] - da, x2: q[0], y2: q[1] - da, verso, alto, ...quale });
       }
     }
   }
@@ -168,7 +191,8 @@ function giunzioniDi(fetta: PuntoSagoma[], da: number, a: number, alto: number):
 function ritaglia(
   pc: Piazzamento,
   da: number,
-  a: number
+  a: number,
+  quale: { nome: string; parte: number; parti: number }
 ): { pezzo: Piazzamento; giunzioni: Giunzione[] } | null {
   const cima = pc.y;
   const fondo = pc.y + pc.altezza;
@@ -195,7 +219,8 @@ function ritaglia(
         x2: pc.x + pc.larghezza,
         y2: 0,
         verso: 'prima',
-        alto: f2 - y2
+        alto: f2 - y2,
+        ...quale
       });
     if (f2 < fondo - E)
       giunzioni.push({
@@ -204,7 +229,8 @@ function ritaglia(
         x2: pc.x + pc.larghezza,
         y2: f2 - da,
         verso: 'dopo',
-        alto: f2 - y2
+        alto: f2 - y2,
+        ...quale
       });
     return { pezzo: { ...pc, y: y2 - da, altezza: f2 - y2 }, giunzioni };
   }
@@ -229,7 +255,7 @@ function ritaglia(
       altezza,
       punti: fetta.map((q): PuntoSagoma => [q[0] - x0, q[1] - y0])
     },
-    giunzioni: giunzioniDi(fetta, da, a, altezza)
+    giunzioni: giunzioniDi(fetta, da, a, altezza, quale)
   };
 }
 
@@ -272,6 +298,19 @@ export function spezzaInColonne(
   }
   tagli.push(A);
 
+  // IN QUANTE PARTI IL FOGLIO SPEZZA OGNI PEZZO. Si conta prima, perché la
+  // scritta sulla giunzione lo deve dire: «parte 1 di 2» è il modo più corto
+  // di far capire che quel pezzo è uno solo e che lì il disegno l'ha tagliato.
+  const quanteParti = new Map<string, number>();
+  for (const pc of lastra.piazzamenti) {
+    let n = 0;
+    for (let i = 0; i < k; i++) {
+      if (pc.y < tagli[i + 1] - E && pc.y + pc.altezza > tagli[i] + E) n++;
+    }
+    quanteParti.set(pc.chiave, Math.max(1, n));
+  }
+  const fatte = new Map<string, number>();
+
   return Array.from({ length: k }, (_, i) => {
     const da = tagli[i];
     const a = tagli[i + 1];
@@ -279,8 +318,11 @@ export function spezzaInColonne(
     const etichettate = new Set<string>();
     const giunzioni: Giunzione[] = [];
     for (const pc of lastra.piazzamenti) {
-      const tagliato = ritaglia(pc, da, a);
+      const parti = quanteParti.get(pc.chiave) ?? 1;
+      const parte = (fatte.get(pc.chiave) ?? 0) + 1;
+      const tagliato = ritaglia(pc, da, a, { nome: pc.nome, parte, parti });
       if (!tagliato) continue;
+      fatte.set(pc.chiave, parte);
       pezzi.push(tagliato.pezzo);
       // una giunzione verso la colonna prima della prima, o dopo l'ultima, non
       // esiste: lì il pezzo finisce davvero, è il foglio che comincia dopo

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { COLONNE_MASSIME, colonneConsigliate, spezzaInColonne, tagliaLibero } from '../colonne';
+import {
+  COLONNE_MASSIME,
+  LUNGHEZZA_CAPOVERSO,
+  colonneConsigliate,
+  spezzaInColonne,
+  tagliaLibero
+} from '../colonne';
 import { impaginaLastra } from '../disegnoNesting';
 import type { LastraNesting, Piazzamento } from '../../geometry/nesting';
 import type { PuntoSagoma } from '../../geometry/sagome';
@@ -92,6 +98,21 @@ describe('quante colonne convengono', () => {
       );
     const k = colonneConsigliate(LUNGO, A4_PIEDI, 12);
     for (let q = 1; q <= 6; q++) expect(scala(k) + 1e-9).toBeGreaterThanOrEqual(scala(q));
+  });
+
+  it('sotto i cinque metri il foglio si legge intero', () => {
+    expect(LUNGHEZZA_CAPOVERSO).toBe(5000);
+    for (const corto of [1200, 3000, 4200, 4900, 5000]) {
+      const k = colonneConsigliate({ larghezza: 1250, altezza: corto }, A4_PIEDI, 12);
+      expect(k, `${corto} mm`).toBe(1);
+    }
+  });
+
+  it('oltre i cinque metri va a capo', () => {
+    for (const lungo of [5200, 6000, 8000, 12000]) {
+      const k = colonneConsigliate({ larghezza: 1250, altezza: lungo }, A4_PIEDI, 12);
+      expect(k, `${lungo} mm`).toBeGreaterThan(1);
+    }
   });
 
   it('non va mai oltre tre sezioni, per lungo che sia il rotolo', () => {

@@ -313,10 +313,10 @@ function paginaFoglio(m: MaterialeNesting, foglio: Foglio): Content[] {
         lineColor: '#7d6a54',
         lineWidth: 0.25
       })),
-      // LA GIUNZIONE NON È UN TAGLIO. Dove il rotolo va a capo il pezzo
-      // mostra un bordo che il materiale non ha: ci si passa sopra una riga
-      // bianca a trattini, e del bordo pieno restano i trattini del pezzo.
-      // Un contorno interrotto non si legge come una linea di taglio.
+      // DOVE IL FOGLIO HA TAGLIATO IL PEZZO si deve vedere. Il bordo pieno
+      // si cancella con una riga bianca — lì il pezzo non finisce — e al suo
+      // posto va un tratteggio scuro, che non somiglia a nessun altro bordo
+      // del disegno. Sopra ci si scrive che parte è.
       ...d.giunzioni.map((g) => ({
         type: 'line' as const,
         x1: g.x1,
@@ -324,8 +324,17 @@ function paginaFoglio(m: MaterialeNesting, foglio: Foglio): Content[] {
         x2: g.x2,
         y2: g.y2,
         lineColor: '#ffffff',
-        lineWidth: 1.4,
-        dash: { length: 2.2, space: 2.2 }
+        lineWidth: 2.2
+      })),
+      ...d.giunzioni.map((g) => ({
+        type: 'line' as const,
+        x1: g.x1,
+        y1: g.y1,
+        x2: g.x2,
+        y2: g.y2,
+        lineColor: '#1d2229',
+        lineWidth: 0.9,
+        dash: { length: 3, space: 2.4 }
       }))
     ]
   };
@@ -384,35 +393,53 @@ function paginaFoglio(m: MaterialeNesting, foglio: Foglio): Content[] {
   }));
 
   /**
-   * «CONTINUA»: la freccia verso la colonna dove sta il resto del pezzo.
+   * «PARTE 1 DI 2»: che il foglio abbia tagliato il pezzo si deve capire.
    *
-   * Tutt'e due le parti la portano, non solo quella senza nome: chi legge la
+   * Tutt'e due le parti lo dicono, non solo quella senza nome: chi legge la
    * parte col nome deve sapere che il pezzo non finisce lì, se no lo misura
-   * corto. Dove la parte è troppo sottile per scriverci dentro resta la
-   * giunzione tratteggiata, che da sola dice già che quello non è un bordo.
+   * corto. Il nome ci va dentro quando ci sta — così la parte di là non è
+   * anonima — e la freccia indica la colonna dove sta il resto.
+   *
+   * Dove la fetta è troppo sottile per scriverci resta il tratteggio, che da
+   * solo dice già che lì il disegno taglia e il materiale no.
    */
   const CORPO_SEGUE = 6;
-  const LARGA_SEGUE = 44;
-  const continua: Content[] = d.giunzioni
-    .filter((g) => g.spessore >= CORPO_SEGUE * 1.9 && Math.abs(g.x2 - g.x1) >= LARGA_SEGUE * 0.8)
-    .map((g) => ({
+  const continua: Content[] = [];
+  for (const g of d.giunzioni) {
+    const larga = Math.abs(g.x2 - g.x1);
+    // dentro il pezzo ci dev'essere posto per scriverci: se la fetta è un
+    // filo resta il tratteggio, che da solo dice già che lì il foglio taglia
+    if (g.spessore < CORPO_SEGUE * 2.1) continue;
+    const avanti = g.verso === 'dopo';
+    const testo = [
+      `${g.nome} · parte ${g.parte} di ${g.parti}`,
+      `${g.nome} · ${g.parte} di ${g.parti}`,
+      `parte ${g.parte} di ${g.parti}`,
+      `${g.parte} di ${g.parti}`
+    ]
+      .map((t) => (avanti ? `${t} »` : `« ${t}`))
+      .find((t) => larghezzaStimata(t) * CORPO_SEGUE <= larga - 4);
+    if (!testo) continue;
+    continua.push({
       absolutePosition: {
-        x: (g.x1 + g.x2) / 2 - LARGA_SEGUE / 2,
+        x: Math.min(g.x1, g.x2),
         // dentro il pezzo, non fuori: sotto la riga se il pezzo scende, sopra
         // se sale
-        y: g.verso === 'prima' ? g.y1 + 2.5 : g.y1 - 2.5 - CORPO_SEGUE * 1.2
+        y: avanti ? g.y1 - 2.5 - CORPO_SEGUE * 1.2 : g.y1 + 2.5
       },
       columns: [
         {
-          width: LARGA_SEGUE,
-          text: g.verso === 'prima' ? '« continua' : 'continua »',
+          width: larga,
+          text: testo,
           fontSize: CORPO_SEGUE,
-          color: '#5a6472',
+          bold: true,
+          color: '#1d2229',
           alignment: 'center' as const,
           noWrap: true
         }
       ]
-    }));
+    });
+  }
 
   return [
     {

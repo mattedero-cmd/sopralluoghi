@@ -195,10 +195,19 @@ describe('il pezzo che il capoverso taglia in due', () => {
     expect(quante, 'due nomi uguali vorrebbero dire due pezzi').toBe(1);
   });
 
-  it('tutt’e due le parti dicono da che parte il pezzo continua', () => {
+  it('tutt’e due le parti dicono che è un pezzo solo, tagliato dal foglio', () => {
     const t = testi(pagina());
-    expect(t).toContain('continua »');
-    expect(t).toContain('« continua');
+    // «parte 1 di 2» dice in tre parole che il pezzo è uno e che lì il
+    // disegno l'ha spezzato; la freccia dice da che parte sta il resto
+    const prima = t.find((x) => x.includes('parte 1 di 2') || x.includes('1 di 2'));
+    const dopo = t.find((x) => x.includes('parte 2 di 2') || x.includes('2 di 2'));
+    expect(prima, 'la prima parte non lo dice').toBeDefined();
+    expect(dopo, 'la seconda parte non lo dice').toBeDefined();
+    expect(prima!.endsWith(' »'), `«${prima}» deve mandare avanti`).toBe(true);
+    expect(dopo!.startsWith('« '), `«${dopo}» deve mandare indietro`).toBe(true);
+    // e il nome ci sta: la parte di là non resta anonima
+    expect(prima).toContain('VETRATA SUD');
+    expect(dopo).toContain('VETRATA SUD');
   });
 
   it('il bordo sul capoverso è segnato come giunzione, non come taglio', () => {
