@@ -10,6 +10,34 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.71.0 — Si dividono in teli anche i trapezi
+
+- **«Dividi in teli» non è più solo per i rettangoli.** Una finestra sotto
+  falda — «C1 Trapezio 3180 × 1690 | 2640» — in bobina non entra in nessun
+  modo, e l'unica porta per spezzarla era riservata ai rettangoli: restava
+  lì, segnata in rosso, e bisognava rifare il conto a mano. Adesso si divide
+  tutto quello che ha una sagoma a lati dritti: trapezi, triangoli,
+  quadrilateri fuori squadra. Il cerchio no — una sua fascia avrebbe i lati
+  curvi, che il piano di taglio non sa descrivere.
+
+- **IL TELO DI UN TRAPEZIO È UN TRAPEZIO.** Tagliarlo squadrato vorrebbe dire
+  buttare il triangolo che avanza e, soprattutto, scoprire in posa che il
+  telo non copre dove la falda scende. Si ritaglia la sagoma vera, fascia per
+  fascia, e ogni telo si ripresenta con le SUE due altezze, lette sulla falda
+  in quel punto: 1370 × 1690 | 2099, poi 1370 × 2096 | 2506, poi 460 × 2503 |
+  2640. Dove due teli si toccano l'altezza combacia, e la somma dei teli rifà
+  esattamente il pezzo di partenza (più il sormonto, che è materiale in più e
+  non in meno).
+
+- **L'ambiente di pannellizzazione mostra la sagoma vera**, non più il suo
+  riquadro: le giunzioni si vedono arrivare fin sotto l'obliquo e si
+  spostano col dito dove si vogliono. Quando la fetta esce rettangolare si
+  chiama rettangolo, quando esce storta viaggia coi suoi vertici.
+
+- Il riconoscimento della forma di una fetta è ora **lo stesso** per il
+  sopralluogo e per il piano di taglio: lo stesso pezzo non può chiamarsi in
+  due modi a seconda di dove lo si guarda.
+
 ## 1.70.0 — Anche il meno nella calcolatrice
 
 - **Accanto al «+» c'è il «−».** Una misura è spesso un tutto a cui si leva

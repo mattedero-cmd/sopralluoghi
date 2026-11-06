@@ -26,7 +26,7 @@ import {
 } from './formaQuadrilatera';
 import {
   fasciaDiPoligono,
-  poligonoConvesso,
+  misureDelRitaglio,
   sagomaSpeculare,
   type FormaPezzo
 } from './sagome';
@@ -382,43 +382,22 @@ export interface PannelloTaglio {
 
 
 /**
- * Il telo ritagliato, detto nella lingua più semplice che lo descrive.
+ * Il telo ritagliato, nelle misure con cui il taglio lo chiama.
  *
- * Tagliando un trapezio rettangolo con una fascia verticale escono altri
- * trapezi rettangoli — base in basso, due lati verticali, sopra la falda — e
- * conviene dirlo così: l'etichetta diventa «base × h sx | h dx», che è come
- * si scrive sul telo prima di posarlo. Negli altri casi (fascia orizzontale,
- * elemento fuori squadro) il telo è un quadrilatero qualunque e viaggia coi
- * suoi vertici.
+ * Il riconoscimento della forma sta in `misureDelRitaglio`, che è lo stesso
+ * per il sopralluogo e per il piano di taglio: lo stesso pezzo non può
+ * chiamarsi in due modi a seconda di dove lo si guarda.
  */
 function sagomaDelTelo(poly: Array<[number, number]>): SagomaTaglio | null {
-  if (poly.length < 3) return null;
-  const xs = poly.map((q) => q[0]);
-  const ys = poly.map((q) => q[1]);
-  const minX = Math.min(...xs);
-  const minY = Math.min(...ys);
-  const vertici = poly.map((q): [number, number] => [
-    Math.round((q[0] - minX) * 1e6) / 1e6,
-    Math.round((q[1] - minY) * 1e6) / 1e6
-  ]);
-  const W = Math.max(...vertici.map((q) => q[0]));
-  const H = Math.max(...vertici.map((q) => q[1]));
-  if (!(W > 0 && H > 0)) return null;
-  if (vertici.length === 4) {
-    const vicino = (a: number, b: number) => Math.abs(a - b) < 1e-6;
-    const sinistri = vertici.filter((q) => vicino(q[0], 0));
-    const destri = vertici.filter((q) => vicino(q[0], W));
-    if (sinistri.length === 2 && destri.length === 2) {
-      const bassoSx = sinistri.find((q) => vicino(q[1], H));
-      const bassoDx = destri.find((q) => vicino(q[1], H));
-      const altoSx = sinistri.find((q) => !vicino(q[1], H));
-      const altoDx = destri.find((q) => !vicino(q[1], H));
-      if (bassoSx && bassoDx && altoSx && altoDx) {
-        return { forma: 'trapezioR', d1: W, d2: H - altoSx[1], d3: H - altoDx[1] };
-      }
-    }
-  }
-  return poligonoConvesso(vertici) ? { forma: 'quad', d1: W, d2: H, vertici } : null;
+  const m = misureDelRitaglio(poly);
+  if (!m) return null;
+  return {
+    forma: m.forma ?? 'quad',
+    d1: m.larghezza,
+    d2: m.altezza,
+    d3: m.misura3,
+    vertici: m.vertici?.map((q): [number, number] => [q[0], q[1]])
+  };
 }
 
 /**

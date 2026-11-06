@@ -327,6 +327,47 @@ export function poligonoSagoma(p: MisureForma): PuntoSagoma[] | null {
 }
 
 /**
+ * LE MISURE DI UNA FETTA, dette nella lingua più semplice che la descrive.
+ *
+ * Tagliando un trapezio rettangolo con una fascia verticale escono altri
+ * trapezi rettangoli — base in basso, due lati verticali, sopra la falda — e
+ * conviene dirlo così: l'etichetta diventa «base × h sx | h dx», che è come
+ * si scrive sul telo prima di posarlo. Se i due lati vengono uguali la fetta
+ * è un rettangolo e si chiama rettangolo. Negli altri casi (fascia
+ * orizzontale, elemento fuori squadro) è un quadrilatero qualunque e viaggia
+ * coi suoi vertici.
+ *
+ * Serve a chi divide in teli: al sopralluogo e al piano di taglio, che devono
+ * dare lo stesso nome allo stesso pezzo.
+ */
+export function misureDelRitaglio(poly: PuntoSagoma[]): MisureForma | null {
+  if (poly.length < 3) return null;
+  const vertici = verticiNormalizzati(poly);
+  const W = Math.max(...vertici.map((q) => q[0]));
+  const H = Math.max(...vertici.map((q) => q[1]));
+  if (!(W > 0 && H > 0)) return null;
+  if (vertici.length === 4) {
+    const vicino = (a: number, b: number) => Math.abs(a - b) < 1e-6;
+    const sinistri = vertici.filter((q) => vicino(q[0], 0));
+    const destri = vertici.filter((q) => vicino(q[0], W));
+    if (sinistri.length === 2 && destri.length === 2) {
+      const bassoSx = sinistri.find((q) => vicino(q[1], H));
+      const bassoDx = destri.find((q) => vicino(q[1], H));
+      const altoSx = sinistri.find((q) => !vicino(q[1], H));
+      const altoDx = destri.find((q) => !vicino(q[1], H));
+      if (bassoSx && bassoDx && altoSx && altoDx) {
+        const hSx = H - altoSx[1];
+        const hDx = H - altoDx[1];
+        return vicino(hSx, hDx)
+          ? { forma: 'rett', larghezza: W, altezza: H }
+          : { forma: 'trapezioR', larghezza: W, altezza: hSx, misura3: hDx };
+      }
+    }
+  }
+  return poligonoConvesso(vertici) ? { forma: 'quad', larghezza: W, altezza: H, vertici } : null;
+}
+
+/**
  * RITAGLIA un poligono convesso con una fascia sull'asse dato.
  *
  * È il taglio di un telo: la sagoma intera entra, esce il pezzo compreso fra

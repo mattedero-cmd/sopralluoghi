@@ -4,7 +4,7 @@ import { Modale, StatoApp } from '../components/comuni';
 import { Icona } from '../components/Icona';
 import { CampoNumero } from '../components/CampoNumero';
 import { AmbientePannelli } from '../components/AmbientePannelli';
-import { pannelliDi, type Pannellizzazione } from '../geometry/pannelli';
+import { teliDelPezzo, type Pannellizzazione } from '../geometry/pannelli';
 import { codicePannello } from '../geometry/nomenclatura';
 import { nuovoId } from '../utils/id';
 import {
@@ -21,8 +21,10 @@ import {
   etichetteMisure,
   formaDi,
   haSagome,
+  ingombroForma,
   servemisura3,
   misureForma,
+  poligonoSagoma,
   prossimoVerso,
   versiAMano,
   FORME,
@@ -119,6 +121,17 @@ function FasceBobina({ valore, onSceglie }: { valore: number; onSceglie: (v: num
 
 /** misure del piano di taglio: millimetri con un decimale, come le inserisce l'utente */
 const arrotondaMm = (v: number) => Math.round(v * 10) / 10;
+
+/**
+ * SI PUÒ DIVIDERE IN TELI?
+ *
+ * Tutto quello che ha una sagoma a lati dritti: il rettangolo come sempre, ma
+ * anche il trapezio sotto falda, il triangolo del sottotetto, il
+ * quadrilatero fuori squadro del rilievo. Il cerchio no — un cerchio non ha
+ * un poligono, e una sua fascia avrebbe i lati curvi, che il piano di taglio
+ * non sa descrivere.
+ */
+const siDivide = (p: PezzoNesting) => poligonoSagoma(p) !== null;
 
 /** larghezza in pixel di un elemento, per dimensionare i testi dell'SVG */
 function useLarghezza() {
@@ -542,19 +555,19 @@ export function NestingPage({
     setInPannelli(null);
     const pezzo = mat.pezzi.find((x) => x.id === id);
     if (!pezzo || !p || p.giunti.length === 0) return;
-    const verticale = p.asse === 'verticale';
-    const teli = pannelliDi(
-      verticale ? pezzo.larghezza : pezzo.altezza,
-      verticale ? pezzo.altezza : pezzo.larghezza,
-      p
-    );
+    // i teli con la loro forma vera: su un trapezio sotto falda sono altri
+    // trapezi, non rettangoli (vedi geometry/pannelli)
+    const teli = teliDelPezzo(pezzo, p);
     if (teli.length <= 1) return;
     const nati = teli.map((t, i) => ({
       ...pezzo,
+      forma: t.forma,
+      larghezza: arrotondaMm(t.larghezza),
+      altezza: arrotondaMm(t.altezza),
+      misura3: t.misura3 === undefined ? undefined : arrotondaMm(t.misura3),
+      vertici: t.vertici?.map((q): [number, number] => [arrotondaMm(q[0]), arrotondaMm(q[1])]),
       id: nuovoId(),
       nome: codicePannello(pezzo.nome || 'Pezzo', i),
-      larghezza: arrotondaMm(verticale ? t.larghezza : t.altezza),
-      altezza: arrotondaMm(verticale ? t.altezza : t.larghezza),
       tinta: prossimaTinta(mat.pezzi.length + i)
     }));
     const posizione = mat.pezzi.findIndex((x) => x.id === id);
@@ -1269,7 +1282,7 @@ export function NestingPage({
             >
               Annulla
             </button>
-            {selezionati.length === 1 && formaDi(selezionati[0]) === 'rett' && (
+            {selezionati.length === 1 && siDivide(selezionati[0]) && (
               <button className="btn piccolo" onClick={() => setInPannelli(selezionati[0].id)}>
                 Dividi in teli…
               </button>
@@ -1454,7 +1467,7 @@ export function NestingPage({
                       : `${fuori} ${fuori === 1 ? 'copia' : 'copie'} su ${totale} non ${
                           fuori === 1 ? 'entra' : 'entrano'
                         }`}
-                    {formaDi(p) === 'rett' && (
+                    {siDivide(p) && (
                       <button className="btn piccolo" onClick={() => setInPannelli(p.id)}>
                         <Icona nome="griglia" dimensione={15} /> Dividi in teli
                       </button>
@@ -1767,8 +1780,12 @@ export function NestingPage({
             <AmbientePannelli
               forma={{
                 nome: pezzo.nome || 'Pezzo',
-                larghezza: pezzo.larghezza,
-                altezza: pezzo.altezza,
+                // l'ambiente lavora sul RIQUADRO della sagoma e sulla sagoma
+                // stessa: su un trapezio sotto falda l'altezza del pezzo è il
+                // lato sinistro, non quella del riquadro
+                larghezza: ingombroForma(pezzo).larghezza,
+                altezza: ingombroForma(pezzo).altezza,
+                vertici: (poligonoSagoma(pezzo) ?? []).map(([x, y]) => ({ x, y })),
                 unita: 'mm',
                 massimo: Math.max(0, arrotondaMm(fascia)),
                 fonteMassimo:

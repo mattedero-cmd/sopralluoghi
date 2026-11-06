@@ -26,6 +26,15 @@
  * - il sormonto si aggiunge attorno al giunto secondo il verso.
  */
 
+import {
+  fasciaDiPoligono,
+  formaDi,
+  ingombroForma,
+  misureDelRitaglio,
+  poligonoSagoma,
+  type MisureForma
+} from './sagome';
+
 /** dove cadono le linee di giunzione */
 export type AssePannelli = 'verticale' | 'orizzontale';
 
@@ -335,4 +344,45 @@ export function normalizzaPannellizzazione(
 /** «1/3», «2/3»… come si scrive su un telo prima di arrotolarlo */
 export function etichettaPannello(indice: number, totale: number): string {
   return `${indice}/${totale}`;
+}
+
+/**
+ * I TELI DI UN PEZZO, CON LA LORO FORMA VERA.
+ *
+ * `pannelliDi` divide una lunghezza e dice quanto è largo ogni telo: basta
+ * finché il pezzo è un rettangolo. Un telo di un trapezio sotto falda, però,
+ * NON è un rettangolo — è il pezzo di trapezio compreso fra le sue due
+ * giunzioni — e tagliarlo squadrato vuol dire buttare il triangolo che avanza
+ * e ritrovarsi in posa un telo che non copre.
+ *
+ * Qui la sagoma vera si ritaglia fascia per fascia, e ogni fetta si ripresenta
+ * nella lingua più semplice che la descrive: «base × h sx | h dx» quando resta
+ * un trapezio rettangolo, i vertici quando è un quadrilatero qualunque.
+ *
+ * Si divide sempre il RIQUADRO della sagoma: su un trapezio rettangolo
+ * l'altezza del pezzo è il lato sinistro, che è più corto del riquadro quando
+ * la falda sale. Vuoto se non c'è niente da dividere.
+ */
+export function teliDelPezzo(pezzo: MisureForma, pann: Pannellizzazione): MisureForma[] {
+  const verticale = pann.asse === 'verticale';
+  const ing = ingombroForma(pezzo);
+  const lungo = verticale ? ing.larghezza : ing.altezza;
+  const traverso = verticale ? ing.altezza : ing.larghezza;
+  const teli = pannelliDi(lungo, traverso, pann);
+  if (teli.length <= 1) return [];
+  // il rettangolo resta la strada di sempre: la sua fetta è un rettangolo
+  const poly = formaDi(pezzo) === 'rett' ? null : poligonoSagoma(pezzo);
+  const asse: 0 | 1 = verticale ? 0 : 1;
+  return teli.map((t) => {
+    if (poly) {
+      const fetta = fasciaDiPoligono(poly, asse, t.inizio, t.fine);
+      const m = fetta.length >= 3 ? misureDelRitaglio(fetta) : null;
+      if (m) return m;
+    }
+    return {
+      forma: 'rett' as const,
+      larghezza: verticale ? t.larghezza : t.altezza,
+      altezza: verticale ? t.altezza : t.larghezza
+    };
+  });
 }

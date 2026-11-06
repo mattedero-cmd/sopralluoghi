@@ -4,6 +4,7 @@ import { Icona } from './Icona';
 import { CampoNumero } from './CampoNumero';
 import { applicaOmografia, calcolaOmografia } from '../geometry/omografia';
 import { quadConvesso } from '../geometry/punti';
+import { poligonoConvesso } from '../geometry/sagome';
 import { bordiSagoma, fasciaSagoma, sagomaDiTaglioQuad } from '../geometry/formaQuadrilatera';
 import {
   giuntiAutomatici,
@@ -77,6 +78,15 @@ const MODI = [
   { id: 'uguali' as const, nome: 'Parti uguali' }
 ];
 
+/**
+ * La sagoma vale se è un poligono convesso: quattro angoli come la finestra
+ * sotto falda, ma anche tre come un triangolo di sottotetto. Convesso perché
+ * il ritaglio a fasce conta su questo — una fascia di un poligono concavo
+ * potrebbe uscire in due pezzi staccati, e un telo in due pezzi non è un telo.
+ */
+const sagomaValida = (punti: Punto[]) =>
+  poligonoConvesso(punti.map((p): [number, number] => [p.x, p.y]));
+
 /** quanto vicino al giunto bisogna toccare per prenderlo, in pixel di schermo */
 const PRESA = 26;
 
@@ -145,7 +155,7 @@ export function AmbientePannelli({
   const numero = pannelli.length;
   const troppoLarghi = massimo > 0 ? pannelli.filter((p) => p.larghezza > massimo + 1e-6) : [];
   /** vero quando l'elemento ha una sagoma sua, e non è il solito rettangolo */
-  const conSagoma = !!(forma.vertici && forma.vertici.length === 4 && quadConvesso(forma.vertici));
+  const conSagoma = !!(forma.vertici && sagomaValida(forma.vertici));
 
   /* --- ridistribuzione automatica ---------------------------------- */
 
@@ -233,7 +243,7 @@ export function AmbientePannelli({
    */
   const sagoma = useMemo<Punto[]>(() => {
     const v = forma.vertici;
-    if (v && v.length === 4 && quadConvesso(v)) return v;
+    if (v && sagomaValida(v)) return v;
     return [
       { x: 0, y: 0 },
       { x: L, y: 0 },
