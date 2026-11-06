@@ -137,6 +137,7 @@ import {
   formattaNumero,
   inMillimetri
 } from '../utils/format';
+import { InputMisura } from '../components/InputMisura';
 import { condividiOScarica, nomeFileSicuro } from '../utils/share';
 import { nuovoId } from '../utils/id';
 import { renderFotoAnnotata, renderFotoPulita } from '../render/renderAnnotata';
@@ -6838,12 +6839,12 @@ function EditorQuota({
         <div className="campo">
           <label>Misura</label>
           <div style={{ display: 'flex', gap: 8 }}>
-            <input
+            <InputMisura
               autoFocus
-              inputMode="decimal"
-              value={testoVal}
-              onChange={(e) => setTestoVal(e.target.value)}
+              valore={testoVal}
+              onCambia={setTestoVal}
               placeholder="es. 100"
+              style={{ flex: 1 }}
             />
             <select value={unita} onChange={(e) => setUnita(e.target.value as Unita)} style={{ width: 90 }}>
               <option value="mm">mm</option>
@@ -6891,20 +6892,18 @@ function EditorQuota({
             <span style={{ minWidth: 64, color: 'var(--testo-2)', fontSize: 13, textTransform: 'capitalize' }}>
               {versoA}
             </span>
-            <input
-              inputMode="decimal"
-              value={abbInizio}
-              onChange={(e) => setAbbInizio(e.target.value)}
+            <InputMisura
+              valore={abbInizio}
+              onCambia={setAbbInizio}
               placeholder="0"
               style={{ flex: 1 }}
             />
             <span style={{ minWidth: 64, color: 'var(--testo-2)', fontSize: 13, textTransform: 'capitalize' }}>
               {versoB}
             </span>
-            <input
-              inputMode="decimal"
-              value={abbFine}
-              onChange={(e) => setAbbFine(e.target.value)}
+            <InputMisura
+              valore={abbFine}
+              onCambia={setAbbFine}
               placeholder="0"
               style={{ flex: 1 }}
             />
@@ -7150,11 +7149,10 @@ function EditorCerchio({
                 </button>
               ))}
             </span>
-            <input
+            <InputMisura
               autoFocus
-              inputMode="decimal"
-              value={testoVal}
-              onChange={(e) => setTestoVal(e.target.value)}
+              valore={testoVal}
+              onCambia={setTestoVal}
               placeholder="es. 50"
               style={{ flex: 1 }}
             />
@@ -7186,7 +7184,7 @@ function EditorCerchio({
         </div>
         <div className="campo">
           <label>Abbondanza per il taglio (tutt'intorno)</label>
-          <input inputMode="decimal" value={margine} onChange={(e) => setMargine(e.target.value)} placeholder="0" />
+          <InputMisura valore={margine} onCambia={setMargine} placeholder="0" />
           {diametroTaglio !== null && margineN > 0 && (
             <span style={{ color: 'var(--ok)', fontSize: 13, fontWeight: 700, marginTop: 6 }}>
               Diametro da tagliare: {formattaNumero(diametroTaglio)} {unita}
@@ -7386,11 +7384,10 @@ function EditorAngolo({
         <div className="campo">
           <label>Ampiezza</label>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input
+            <InputMisura
               autoFocus
-              inputMode="decimal"
-              value={testoVal}
-              onChange={(e) => setTestoVal(e.target.value)}
+              valore={testoVal}
+              onCambia={setTestoVal}
               placeholder="es. 90"
               style={{ flex: 1 }}
             />
@@ -8707,6 +8704,8 @@ function CampoMisura({
 }) {
   const [testo, setTesto] = useState(valore === null ? '' : String(valore).replace('.', ','));
   const valoreRef = useRef(valore);
+  const mioRef = useRef<HTMLInputElement>(null);
+  const campo = inputRef ?? mioRef;
   useEffect(() => {
     // si risincronizza quando il valore cambia dall'esterno (es. ricalcolo auto)
     if (valore !== valoreRef.current) {
@@ -8715,24 +8714,23 @@ function CampoMisura({
     }
   }, [valore]);
 
+  const scrivi = (t: string) => {
+    setTesto(t);
+    const v = analizzaMisura(t);
+    if (t.trim() !== '' && v === null) return; // conto a metà o input non valido: non salvare
+    valoreRef.current = v;
+    onValore(v);
+  };
+
   return (
     <>
-      <input
-        ref={inputRef}
-        className="input-misura"
-        type="text"
-        inputMode="decimal"
+      <InputMisura
+        inputRef={campo}
+        classe="input-misura"
         placeholder="misura"
-        aria-label="Valore della misura"
-        value={testo}
-        onChange={(e) => {
-          const t = e.target.value;
-          setTesto(t);
-          const v = analizzaMisura(t);
-          if (t.trim() !== '' && v === null) return; // input non valido: non salvare
-          valoreRef.current = v;
-          onValore(v);
-        }}
+        etichetta="Valore della misura"
+        valore={testo}
+        onCambia={scrivi}
       />
       {calcolabile &&
         (valoreAuto ? (
@@ -9243,7 +9241,7 @@ function SchedaScala({
       <div className="campo">
         <label>Lunghezza reale del segmento *</label>
         <div style={{ display: 'flex', gap: 8 }}>
-          <input autoFocus inputMode="decimal" value={testo} onChange={(e) => setTesto(e.target.value)} placeholder="es. 80" />
+          <InputMisura autoFocus valore={testo} onCambia={setTesto} placeholder="es. 80" style={{ flex: 1 }} />
           <select value={unita} onChange={(e) => setUnita(e.target.value as Unita)} style={{ width: 110 }}>
             <option value="mm">mm</option>
             <option value="cm">cm</option>
@@ -9399,11 +9397,11 @@ function SchedaPiano({
       </div>
       <div className="campo">
         <label>Larghezza reale (lato alto) *</label>
-        <input autoFocus inputMode="decimal" value={testoL} onChange={(e) => setTestoL(e.target.value)} placeholder="es. 90" />
+        <InputMisura autoFocus valore={testoL} onCambia={setTestoL} placeholder="es. 90" />
       </div>
       <div className="campo">
         <label>Altezza reale (lato destro) *</label>
-        <input inputMode="decimal" value={testoA} onChange={(e) => setTestoA(e.target.value)} placeholder="es. 210" />
+        <InputMisura valore={testoA} onCambia={setTestoA} placeholder="es. 210" />
       </div>
       <div className="campo">
         <label>Unità</label>
@@ -10151,19 +10149,17 @@ function SchedaParete({
       <div className="campo">
         <label>Misure reali del riquadro</label>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <input
-            inputMode="decimal"
-            value={testoL}
-            onChange={(e) => setTestoL(e.target.value)}
-            aria-label="Larghezza reale"
+          <InputMisura
+            valore={testoL}
+            onCambia={setTestoL}
+            etichetta="Larghezza reale"
             style={{ flex: 1, minWidth: 0 }}
           />
           <span style={{ color: 'var(--testo-2)' }}>×</span>
-          <input
-            inputMode="decimal"
-            value={testoA}
-            onChange={(e) => setTestoA(e.target.value)}
-            aria-label="Altezza reale"
+          <InputMisura
+            valore={testoA}
+            onCambia={setTestoA}
+            etichetta="Altezza reale"
             style={{ flex: 1, minWidth: 0 }}
           />
           <select

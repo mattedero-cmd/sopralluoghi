@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { analizzaMisura } from '../utils/format';
 
 /**
  * Campo numerico che si lascia MODIFICARE davvero.
@@ -7,6 +8,9 @@ import { useEffect, useState } from 'react';
  * l'ultima cifra: svuotandolo il valore tornerebbe subito al minimo. Qui il
  * testo digitato vive per conto suo, il valore esce solo quando è valido e la
  * normalizzazione avviene all'uscita dal campo.
+ *
+ * Il numero si può anche FARE: «100+124+113» vale 337, e uscendo dal campo
+ * resta scritto il totale (vedi `analizzaMisura`).
  */
 export function CampoNumero({
   valore,
@@ -46,13 +50,13 @@ export function CampoNumero({
       onChange={(e) => {
         const t = e.target.value;
         setTesto(t); // si può svuotare: nessuna correzione mentre si scrive
-        const n = parseFloat(t.replace(',', '.'));
-        if (Number.isFinite(n) && n >= min) onCambia(intero ? Math.round(n) : n);
+        const n = analizzaMisura(t);
+        if (n !== null && n >= min) onCambia(intero ? Math.round(n) : n);
       }}
       onBlur={() => {
         setInModifica(false);
-        const n = parseFloat(testo.replace(',', '.'));
-        const v = Number.isFinite(n) ? Math.max(min, intero ? Math.round(n) : n) : min;
+        const n = analizzaMisura(testo);
+        const v = n !== null ? Math.max(min, intero ? Math.round(n) : n) : min;
         // entrare e uscire da un campo senza toccarlo non è una modifica: chi
         // ascolta può fare cose serie — ridistribuire dei teli, per dire — e
         // non deve farle per un dito appoggiato di passaggio

@@ -10,6 +10,7 @@ import {
   type ID,
   type Impostazioni,
   type LavoroNesting,
+  type PianoProspettiva,
   type Preventivo,
   type Progetto,
   type Sezione
@@ -262,6 +263,108 @@ export async function eliminaProgetto(id: ID): Promise<void> {
 }
 
 /**
+ * COPIA UN GRUPPO DI FOTO, LEGAMI COMPRESI.
+ *
+ * Una foto non è sola: può essere il DETTAGLIO di un'altra (e allora punta
+ * alla sua etichetta), può essere la PIANTA ricalcata su un'altra, e il suo
+ * piano prospettico può seguire le forme da cui è nato. Copiare le foto
+ * lasciando gli id vecchi fa puntare le copie agli originali — la pianta
+ * copiata resterebbe attaccata alla foto di prima, in un altro progetto — e
+ * nessuno se ne accorge finché non si guarda il report.
+ *
+ * Qui gli id si rifanno tutti e i riferimenti si riscrivono: quelli interni
+ * al gruppo seguono le copie, quelli che escono dal gruppo si sciolgono.
+ */
+async function copiaFoto(
+  originali: Foto[],
+  aProgettoId: ID,
+  sezioneDi: (f: Foto) => ID | undefined,
+  daOrdine: number
+): Promise<EsitoTrasloco> {
+  const nuoveFoto = new Map<ID, ID>(originali.map((f) => [f.id, nuovoId()]));
+  const nuoveAnn = new Map<ID, ID>();
+  const annPerFoto = new Map<ID, Annotazione[]>();
+  for (const f of originali) {
+    const ann = await db.annotazioni.where('fotoId').equals(f.id).toArray();
+    annPerFoto.set(f.id, ann);
+    for (const a of ann) nuoveAnn.set(a.id, nuovoId());
+  }
+
+  let ordine = daOrdine;
+  let legamiSciolti = 0;
+  for (const f of originali) {
+    const id = nuoveFoto.get(f.id) as ID;
+    const copia: Foto = {
+      ...f,
+      id,
+      progettoId: aProgettoId,
+      sezioneId: sezioneDi(f),
+      ordine: ordine++,
+      creataIl: ora(),
+      modificataIl: ora()
+    };
+    legamiSciolti += riscriviLegami(
+      copia,
+      (vecchio) => nuoveFoto.get(vecchio),
+      (vecchio) => nuoveAnn.get(vecchio)
+    );
+    await db.foto.add(copia);
+    await db.annotazioni.bulkAdd(
+      (annPerFoto.get(f.id) ?? []).map((a) => ({
+        ...a,
+        id: nuoveAnn.get(a.id) as ID,
+        fotoId: id
+      }))
+    );
+  }
+  return { foto: originali.length, legamiSciolti };
+}
+
+/**
+ * Riscrive i riferimenti di una foto, in loco.
+ *
+ * `foto(id)` e `ann(id)` dicono dove è finito un vecchio id: `undefined`
+ * significa «fuori dal gruppo», e allora il legame si scioglie invece di
+ * restare appeso a un id che in questo progetto non esiste.
+ */
+function riscriviLegami(
+  f: Foto,
+  foto: (id: ID) => ID | undefined,
+  ann: (id: ID) => ID | undefined
+): number {
+  let sciolti = 0;
+  if (f.dettaglioDi) {
+    const principale = foto(f.dettaglioDi.fotoId);
+    if (principale === undefined) {
+      delete f.dettaglioDi;
+      sciolti++;
+    } else {
+      f.dettaglioDi = {
+        ...f.dettaglioDi,
+        fotoId: principale,
+        etichettaId: ann(f.dettaglioDi.etichettaId) ?? f.dettaglioDi.etichettaId
+      };
+    }
+  }
+  if (f.piantaDi !== undefined) {
+    const sorgente = foto(f.piantaDi);
+    if (sorgente === undefined) {
+      delete f.piantaDi;
+      sciolti++;
+    } else {
+      f.piantaDi = sorgente;
+    }
+  }
+  // il piano prospettico segue le forme da cui è nato: anche quelle hanno
+  // cambiato id
+  const rifai = (p: PianoProspettiva): PianoProspettiva =>
+    p.origini ? { ...p, origini: p.origini.map((o) => ann(o) ?? o) } : p;
+  if (f.piano) f.piano = rifai(f.piano);
+  if (f.piani) f.piani = f.piani.map(rifai);
+  return sciolti;
+}
+
+/**
  * Duplica un progetto come modello: copia dati, foto e annotazioni
  * con nuovi id, mantenendo tutte le relazioni.
  */
@@ -279,15 +382,229 @@ export async function duplicaProgetto(id: ID, nuovoNome?: string): Promise<Proge
       };
       await db.progetti.add(copia);
       const fotoOrig = await db.foto.where('progettoId').equals(id).toArray();
-      for (const f of fotoOrig) {
-        const nuovaFotoId = nuovoId();
-        const annOrig = await db.annotazioni.where('fotoId').equals(f.id).toArray();
-        await db.foto.add({ ...f, id: nuovaFotoId, progettoId: copia.id });
-        await db.annotazioni.bulkAdd(
-          annOrig.map((a) => ({ ...a, id: nuovoId(), fotoId: nuovaFotoId }))
-        );
-      }
+      // le sezioni del progetto copiato sono le stesse: le foto le ritrovano
+      await copiaFoto(fotoOrig, copia.id, (f) => f.sezioneId, 0);
       return copia;
+    })
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Traslochi: foto e sezioni che cambiano progetto
+// ---------------------------------------------------------------------------
+
+/** cos'è successo in un trasloco, per dirlo a chi l'ha chiesto */
+export interface EsitoTrasloco {
+  /** quante foto sono state spostate o copiate */
+  foto: number;
+  /** quanti legami fra foto si sono dovuti sciogliere */
+  legamiSciolti: number;
+}
+
+/** l'ordine da dare alla prossima foto di un progetto: in fondo alla fila */
+async function ordineInCoda(progettoId: ID): Promise<number> {
+  const foto = await db.foto.where('progettoId').equals(progettoId).toArray();
+  return foto.reduce((max, f) => Math.max(max, f.ordine + 1), 0);
+}
+
+/**
+ * La sezione del progetto di arrivo che corrisponde a quella di partenza.
+ *
+ * Se ce n'è già una con lo stesso nome le foto vanno lì — spostare «Piano 1»
+ * in un progetto che ha già il suo «Piano 1» non deve lasciare due sezioni
+ * identiche — altrimenti la sezione si crea.
+ */
+async function sezioneGemella(aProgettoId: ID, modello: Sezione | null): Promise<ID | undefined> {
+  if (!modello) return undefined;
+  const dest = await db.progetti.get(aProgettoId);
+  if (!dest) return undefined;
+  const sezioni = dest.sezioni ?? [];
+  const uguale = (a: string, b: string) =>
+    a.trim().toLocaleLowerCase('it') === b.trim().toLocaleLowerCase('it');
+  const gia = sezioni.find((s) => uguale(s.nome, modello.nome));
+  if (gia) return gia.id;
+  const nuova: Sezione = {
+    id: nuovoId(),
+    nome: modello.nome,
+    etichetta: modello.etichetta,
+    ordine: sezioni.length
+  };
+  await db.progetti.update(aProgettoId, {
+    sezioni: [...sezioni, nuova],
+    modificatoIl: ora()
+  });
+  return nuova.id;
+}
+
+/**
+ * SCIOGLIE I LEGAMI CHE IL TRASLOCO LASCEREBBE NEL VUOTO.
+ *
+ * Una foto di dettaglio punta a un'altra foto dello STESSO progetto, e una
+ * pianta ricalcata alla foto da cui è nata. Portandone via una sola, il
+ * legame punterebbe fuori: qui le due foto tornano autonome, di qua e di là.
+ * È la stessa regola di `eliminaFoto` — mai un riferimento a vuoto — e vale
+ * nei due sensi: chi parte lascia il legame verso chi resta, chi resta lo
+ * lascia verso chi parte.
+ */
+async function sciogliLegamiTrasloco(mosse: Foto[], daProgettoId: ID): Promise<number> {
+  const parte = new Set(mosse.map((f) => f.id));
+  let sciolti = 0;
+  const scollega = async (f: Foto, verso: (id: ID) => boolean) => {
+    const copia = { ...f };
+    let tocco = false;
+    if (copia.dettaglioDi && verso(copia.dettaglioDi.fotoId)) {
+      delete copia.dettaglioDi;
+      tocco = true;
+    }
+    if (copia.piantaDi !== undefined && verso(copia.piantaDi)) {
+      delete copia.piantaDi;
+      tocco = true;
+    }
+    if (!tocco) return;
+    // `put` e non `update`: togliere un campo è l'unica cosa che l'update
+    // non fa in modo ovvio, e qui il campo deve proprio sparire
+    await db.foto.put({ ...copia, modificataIl: ora() });
+    sciolti++;
+  };
+  for (const f of mosse) await scollega(f, (id) => !parte.has(id));
+  const rimaste = await db.foto.where('progettoId').equals(daProgettoId).toArray();
+  for (const r of rimaste) {
+    if (parte.has(r.id)) continue;
+    await scollega(r, (id) => parte.has(id));
+  }
+  return sciolti;
+}
+
+/** le foto di una sezione; con `null` quelle che stanno fuori da ogni sezione */
+async function fotoDellaSezione(progettoId: ID, sezioneId: ID | null): Promise<Foto[]> {
+  const p = await db.progetti.get(progettoId);
+  const valide = new Set((p?.sezioni ?? []).map((s) => s.id));
+  const tutte = await db.foto.where('progettoId').equals(progettoId).toArray();
+  const ordinate = tutte.sort((a, b) => a.ordine - b.ordine);
+  if (sezioneId !== null) return ordinate.filter((f) => f.sezioneId === sezioneId);
+  // «senza sezione» è il gruppo che si vede in pagina: le piante stanno in un
+  // gruppo loro e non si portano via insieme alle foto
+  return ordinate.filter((f) => !f.ePianta && (!f.sezioneId || !valide.has(f.sezioneId)));
+}
+
+/**
+ * Sposta UNA foto in un altro progetto (e, volendo, in una sua sezione).
+ *
+ * Succede: si scattano venti foto nel progetto sbagliato e ci si accorge
+ * dopo. La foto si porta dietro tutto — annotazioni, misure, piani — e in
+ * arrivo si mette in fondo alla fila.
+ */
+export async function spostaFotoInProgetto(
+  fotoId: ID,
+  aProgettoId: ID,
+  aSezioneId: ID | null = null
+): Promise<EsitoTrasloco> {
+  return scrivi('spostare la foto in un altro progetto', () =>
+    db.transaction('rw', [db.progetti, db.foto], async () => {
+      const f = await db.foto.get(fotoId);
+      if (!f) throw new Error('Foto non trovata.');
+      const dest = await db.progetti.get(aProgettoId);
+      if (!dest) throw new Error('Progetto di destinazione non trovato.');
+      const sezione = (dest.sezioni ?? []).some((s) => s.id === aSezioneId)
+        ? (aSezioneId as ID)
+        : undefined;
+      if (f.progettoId === aProgettoId) {
+        // stesso progetto: è solo un cambio di sezione
+        await db.foto.update(fotoId, { sezioneId: sezione, modificataIl: ora() });
+        return { foto: 1, legamiSciolti: 0 };
+      }
+      const legamiSciolti = await sciogliLegamiTrasloco([f], f.progettoId);
+      await db.foto.update(fotoId, {
+        progettoId: aProgettoId,
+        sezioneId: sezione,
+        ordine: await ordineInCoda(aProgettoId),
+        modificataIl: ora()
+      });
+      await db.progetti.update(f.progettoId, { modificatoIl: ora() });
+      await db.progetti.update(aProgettoId, { modificatoIl: ora() });
+      return { foto: 1, legamiSciolti };
+    })
+  );
+}
+
+/**
+ * Sposta un'intera sezione in un altro progetto, con tutte le sue foto.
+ *
+ * Nel progetto di arrivo la sezione si ricrea com'era (o si riusa quella con
+ * lo stesso nome, se c'è già) e in partenza sparisce. Con `sezioneId` a null
+ * si spostano le foto che non stanno in nessuna sezione.
+ */
+export async function spostaSezioneInProgetto(
+  daProgettoId: ID,
+  sezioneId: ID | null,
+  aProgettoId: ID
+): Promise<EsitoTrasloco> {
+  return scrivi('spostare la sezione in un altro progetto', () =>
+    db.transaction('rw', [db.progetti, db.foto], async () => {
+      if (daProgettoId === aProgettoId) throw new Error('La sezione è già in questo progetto.');
+      const da = await db.progetti.get(daProgettoId);
+      const a = await db.progetti.get(aProgettoId);
+      if (!da || !a) throw new Error('Progetto non trovato.');
+      const modello = (da.sezioni ?? []).find((s) => s.id === sezioneId) ?? null;
+      if (sezioneId !== null && !modello) throw new Error('Sezione non trovata.');
+
+      const mosse = await fotoDellaSezione(daProgettoId, sezioneId);
+      const legamiSciolti = await sciogliLegamiTrasloco(mosse, daProgettoId);
+      const sezione = await sezioneGemella(aProgettoId, modello);
+      let ordine = await ordineInCoda(aProgettoId);
+      for (const f of mosse) {
+        await db.foto.update(f.id, {
+          progettoId: aProgettoId,
+          sezioneId: sezione,
+          ordine: ordine++,
+          modificataIl: ora()
+        });
+      }
+      // la sezione svuotata non resta in giro: le sue foto sono tutte partite
+      if (modello) {
+        await db.progetti.update(daProgettoId, {
+          sezioni: (da.sezioni ?? []).filter((s) => s.id !== modello.id)
+        });
+      }
+      await db.progetti.update(daProgettoId, { modificatoIl: ora() });
+      await db.progetti.update(aProgettoId, { modificatoIl: ora() });
+      return { foto: mosse.length, legamiSciolti };
+    })
+  );
+}
+
+/**
+ * Duplica un'intera sezione in un altro progetto: le foto restano anche qui.
+ *
+ * Serve per i lavori che si somigliano — lo stesso stabile, due committenti —
+ * dove il rilievo di partenza è lo stesso e da lì in poi le strade si
+ * dividono.
+ */
+export async function duplicaSezioneInProgetto(
+  daProgettoId: ID,
+  sezioneId: ID | null,
+  aProgettoId: ID
+): Promise<EsitoTrasloco> {
+  return scrivi('duplicare la sezione in un altro progetto', () =>
+    db.transaction('rw', [db.progetti, db.foto, db.annotazioni], async () => {
+      const da = await db.progetti.get(daProgettoId);
+      const a = await db.progetti.get(aProgettoId);
+      if (!da || !a) throw new Error('Progetto non trovato.');
+      const modello = (da.sezioni ?? []).find((s) => s.id === sezioneId) ?? null;
+      if (sezioneId !== null && !modello) throw new Error('Sezione non trovata.');
+
+      const originali = await fotoDellaSezione(daProgettoId, sezioneId);
+      const sezione = await sezioneGemella(aProgettoId, modello);
+      // i legami interni alla sezione seguono le copie; quelli che uscivano
+      // dalla sezione si sciolgono, e `copiaFoto` li conta
+      const esito = await copiaFoto(
+        originali,
+        aProgettoId,
+        () => sezione,
+        await ordineInCoda(aProgettoId)
+      );
+      await db.progetti.update(aProgettoId, { modificatoIl: ora() });
+      return esito;
     })
   );
 }

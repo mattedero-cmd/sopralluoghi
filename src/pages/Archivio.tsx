@@ -899,14 +899,26 @@ function FormProgetto({ cartellaId, onChiudi }: { cartellaId: string | null; onC
 /** Albero cartelle per scegliere una destinazione di spostamento */
 export function SelettoreCartella({
   escludiCartellaId,
+  escludiProgettoId,
   soloCartelle,
+  soloProgetti,
+  titolo,
   onChiudi,
   onScegli
 }: {
   escludiCartellaId?: string;
+  /** il progetto da cui si parte: non può essere anche quello d'arrivo */
+  escludiProgettoId?: string;
   /** vero quando la cosa da spostare è una cartella o un progetto: quelli
    *  stanno solo dentro cartelle, non dentro un altro progetto */
   soloCartelle?: boolean;
+  /**
+   * Vero quando si deve scegliere UN PROGETTO e non una cartella: serve a
+   * spostare foto e sezioni da un sopralluogo all'altro. Le cartelle restano
+   * scritte, ma come indicazione di strada: non si possono toccare.
+   */
+  soloProgetti?: boolean;
+  titolo?: string;
   onChiudi: () => void;
   onScegli: (dove: Destinazione) => Promise<void> | void;
 }) {
@@ -938,7 +950,7 @@ export function SelettoreCartella({
     const righe: Riga[] = [];
     const progettiDi = (cartellaId: string | null) =>
       (progetti ?? [])
-        .filter((p) => (p.cartellaId ?? null) === cartellaId)
+        .filter((p) => (p.cartellaId ?? null) === cartellaId && p.id !== escludiProgettoId)
         .sort((a, b) => a.nome.localeCompare(b.nome, 'it'));
     const aggiungi = (parentId: string | null, livello: number) => {
       cartelle
@@ -953,29 +965,40 @@ export function SelettoreCartella({
     aggiungi(null, 0);
     for (const p of progettiDi(null)) righe.push({ tipo: 'progetto', p, livello: 0 });
     return righe;
-  }, [cartelle, progetti, escludiCartellaId]);
+  }, [cartelle, progetti, escludiCartellaId, escludiProgettoId]);
 
   const scegli = async (dove: Destinazione) => {
     await onScegli(dove);
     onChiudi();
   };
 
+  const soloCartelleVuote = soloProgetti && !albero.some((r) => r.tipo === 'progetto');
+
   return (
-    <Modale titolo="Sposta in…" onChiudi={onChiudi}>
-      <button className="scheda" onClick={() => scegli({ cartellaId: null, progettoId: null })}>
-        <span className="glifo neutro">
-          <Icona nome="archivio" dimensione={20} />
-        </span>
-        <span className="corpo">
-          <div className="titolo">Archivio (radice)</div>
-        </span>
-      </button>
+    <Modale titolo={titolo ?? 'Sposta in…'} onChiudi={onChiudi}>
+      {!soloProgetti && (
+        <button className="scheda" onClick={() => scegli({ cartellaId: null, progettoId: null })}>
+          <span className="glifo neutro">
+            <Icona nome="archivio" dimensione={20} />
+          </span>
+          <span className="corpo">
+            <div className="titolo">Archivio (radice)</div>
+          </span>
+        </button>
+      )}
+      {soloCartelleVuote && (
+        <p className="aiuto">
+          Non c’è nessun altro sopralluogo dove spostare: creane uno
+          dall’archivio e riprova.
+        </p>
+      )}
       {albero.map((r) =>
         r.tipo === 'cartella' ? (
           <button
             key={r.c.id}
             className="scheda"
             style={{ marginLeft: r.livello * 18 }}
+            disabled={soloProgetti}
             onClick={() => scegli({ cartellaId: r.c.id, progettoId: null })}
           >
             <span className="glifo neutro">

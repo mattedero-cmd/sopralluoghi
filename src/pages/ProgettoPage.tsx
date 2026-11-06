@@ -10,6 +10,7 @@ import {
   creaPianta,
   creaPiantaDaFoto,
   creaSezione,
+  duplicaSezioneInProgetto,
   eliminaFoto,
   eliminaSezione,
   eliminaDisegno,
@@ -18,12 +19,15 @@ import {
   rinominaDisegno,
   rinominaNesting,
   salvaDisegno,
-  salvaNesting
+  salvaNesting,
+  spostaFotoInProgetto,
+  spostaSezioneInProgetto
 } from '../db/repository';
 import { nuovoId } from '../utils/id';
 import type { Sezione } from '../db/types';
 import type { OpzioniReport } from '../pdf/report';
 import { SelettoreCliente } from './ClientiPage';
+import { SelettoreCartella } from './Archivio';
 import { fotoIllegibile, importaFoto } from '../utils/image';
 import { chiediFotocamera, Panoramica } from '../components/Panoramica';
 import { naviga } from '../router';
@@ -123,6 +127,20 @@ export function ProgettoPage({ id }: { id: string }) {
   const [opzioniPdfAperte, setOpzioniPdfAperte] = useState(false);
   /** sezione in creazione/modifica: {} = nuova, una Sezione = modifica */
   const [sezioneInModifica, setSezioneInModifica] = useState<Sezione | 'nuova' | null>(null);
+  /**
+   * TRASLOCHI FRA PROGETTI. Si scelgono in due tempi: prima il progetto
+   * d'arrivo, poi — se ne ha — la sezione dove posare le foto.
+   */
+  const [fotoDaSpostare, setFotoDaSpostare] = useState<Foto | null>(null);
+  const [sezioniArrivo, setSezioniArrivo] = useState<{
+    foto: Foto;
+    progetto: Progetto;
+  } | null>(null);
+  const [sezioneDaTraslocare, setSezioneDaTraslocare] = useState<{
+    id: string | null;
+    nome: string;
+    modo: 'sposta' | 'duplica';
+  } | null>(null);
   /** foto da assegnare a una sezione (apre il selettore) */
   const [assegnaFoto, setAssegnaFoto] = useState<Foto | null>(null);
   const inputCamera = useRef<HTMLInputElement>(null);
@@ -391,6 +409,11 @@ export function ProgettoPage({ id }: { id: string }) {
               }
             ]),
         { testo: 'Sposta in sezione…', icona: 'sposta', onClick: () => setAssegnaFoto(f) },
+        {
+          testo: 'Sposta in un altro sopralluogo…',
+          icona: 'sposta',
+          onClick: () => setFotoDaSpostare(f)
+        },
         {
           testo: 'Elimina foto…',
           icona: 'cestino',
@@ -671,6 +694,16 @@ export function ProgettoPage({ id }: { id: string }) {
         { testo: 'Scatta foto qui', icona: 'fotocamera', onClick: () => aggiungiA(s.id, 'camera') },
         { testo: 'Galleria / file qui', icona: 'immagine', onClick: () => aggiungiA(s.id, 'galleria') },
         {
+          testo: 'Sposta in un altro sopralluogo…',
+          icona: 'sposta',
+          onClick: () => setSezioneDaTraslocare({ id: s.id, nome: s.nome, modo: 'sposta' })
+        },
+        {
+          testo: 'Duplica in un altro sopralluogo…',
+          icona: 'duplica',
+          onClick: () => setSezioneDaTraslocare({ id: s.id, nome: s.nome, modo: 'duplica' })
+        },
+        {
           testo: 'Elimina sezione…',
           icona: 'cestino',
           pericolo: true,
@@ -680,6 +713,75 @@ export function ProgettoPage({ id }: { id: string }) {
               messaggio: 'Le foto NON vengono eliminate: tornano “senza sezione”.',
               onConferma: () => void eliminaSezione(progetto.id, s.id)
             })
+        }
+      ]
+    });
+  };
+
+  /** porta una foto in un altro sopralluogo e lo dice com'è andata */
+  const traslocaFoto = async (f: Foto, arrivo: Progetto, sezioneId: string | null) => {
+    try {
+      const esito = await spostaFotoInProgetto(f.id, arrivo.id, sezioneId);
+      mostraToast(
+        'successo',
+        `Foto spostata in "${arrivo.nome}".` +
+          (esito.legamiSciolti > 0
+            ? ` ${esito.legamiSciolti} collegamento${esito.legamiSciolti === 1 ? '' : 'i'} fra foto si è sciolto: le foto restano, il legame no.`
+            : '')
+      );
+    } catch (e) {
+      mostraToast('errore', e instanceof Error ? e.message : 'Spostamento non riuscito.');
+    }
+  };
+
+  /** porta (o copia) un'intera sezione in un altro sopralluogo */
+  const traslocaSezione = async (
+    t: { id: string | null; nome: string; modo: 'sposta' | 'duplica' },
+    aProgettoId: string
+  ) => {
+    try {
+      const arrivo = await db.progetti.get(aProgettoId);
+      const esito =
+        t.modo === 'sposta'
+          ? await spostaSezioneInProgetto(progetto.id, t.id, aProgettoId)
+          : await duplicaSezioneInProgetto(progetto.id, t.id, aProgettoId);
+      const verbo = t.modo === 'sposta' ? 'spostate' : 'duplicate';
+      mostraToast(
+        'successo',
+        esito.foto === 0
+          ? 'Non c’era nessuna foto da spostare.'
+          : `${esito.foto} ${esito.foto === 1 ? 'foto' : 'foto'} ${verbo} in "${arrivo?.nome ?? 'il sopralluogo'}".` +
+            (esito.legamiSciolti > 0
+              ? ` ${esito.legamiSciolti} collegamento${esito.legamiSciolti === 1 ? '' : 'i'} fra foto si è sciolto.`
+              : '')
+      );
+    } catch (e) {
+      mostraToast('errore', e instanceof Error ? e.message : 'Operazione non riuscita.');
+    }
+  };
+
+  /**
+   * Il menu del gruppo «senza sezione». Non è una sezione vera, ma è lì che
+   * finiscono le foto importate di fretta — ed è il caso più comune di
+   * sopralluogo sbagliato: ci vogliono le stesse porte delle sezioni.
+   */
+  const apriMenuSenzaSezione = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const quante = fotoDi(null).length;
+    const nome = sezioni.length > 0 ? 'Senza sezione' : 'Tutte le foto';
+    setMenu({
+      pos: { x: e.clientX, y: e.clientY },
+      titolo: `${quante} ${quante === 1 ? 'foto' : 'foto'}`,
+      voci: [
+        {
+          testo: 'Sposta tutte in un altro sopralluogo…',
+          icona: 'sposta',
+          onClick: () => setSezioneDaTraslocare({ id: null, nome, modo: 'sposta' })
+        },
+        {
+          testo: 'Duplica tutte in un altro sopralluogo…',
+          icona: 'duplica',
+          onClick: () => setSezioneDaTraslocare({ id: null, nome, modo: 'duplica' })
         }
       ]
     });
@@ -886,6 +988,15 @@ export function ProgettoPage({ id }: { id: string }) {
                     {sezioni.length > 0 ? 'Senza sezione' : 'Tutte le foto'}
                     <span className="conta-sezione">{fotoDi(null).length}</span>
                   </h3>
+                  {fotoDi(null).length > 0 && (
+                    <button
+                      className="btn icona"
+                      aria-label="Azioni foto senza sezione"
+                      onClick={(e) => apriMenuSenzaSezione(e)}
+                    >
+                      ⋮
+                    </button>
+                  )}
                 </div>
                 {fotoDi(null).length > 0 && grigliaFoto(fotoDi(null))}
                 {barraAggiungi(null)}
@@ -1041,6 +1152,57 @@ export function ProgettoPage({ id }: { id: string }) {
           }}
         />
       )}
+      {/* UNA FOTO CHE CAMBIA SOPRALLUOGO: prima dove, poi in quale sezione */}
+      {fotoDaSpostare && (
+        <SelettoreCartella
+          soloProgetti
+          escludiProgettoId={progetto.id}
+          titolo="Sposta la foto nel sopralluogo…"
+          onChiudi={() => setFotoDaSpostare(null)}
+          onScegli={async (dove) => {
+            if (!dove.progettoId) return;
+            const f = fotoDaSpostare;
+            setFotoDaSpostare(null);
+            const arrivo = await db.progetti.get(dove.progettoId);
+            if (!arrivo) return;
+            // se di là ci sono sezioni si chiede dove posarla, se no si va
+            if ((arrivo.sezioni ?? []).length > 0) setSezioniArrivo({ foto: f, progetto: arrivo });
+            else await traslocaFoto(f, arrivo, null);
+          }}
+        />
+      )}
+      {sezioniArrivo && (
+        <SelettoreSezione
+          sezioni={[...(sezioniArrivo.progetto.sezioni ?? [])].sort((a, b) => a.ordine - b.ordine)}
+          attuale={null}
+          titolo={`Dove, in "${sezioniArrivo.progetto.nome}"`}
+          onChiudi={() => setSezioniArrivo(null)}
+          onScegli={async (sid) => {
+            const { foto: f, progetto: arrivo } = sezioniArrivo;
+            setSezioniArrivo(null);
+            await traslocaFoto(f, arrivo, sid);
+          }}
+        />
+      )}
+      {/* UNA SEZIONE INTERA che cambia sopralluogo, spostata o copiata */}
+      {sezioneDaTraslocare && (
+        <SelettoreCartella
+          soloProgetti
+          escludiProgettoId={progetto.id}
+          titolo={
+            sezioneDaTraslocare.modo === 'sposta'
+              ? `Sposta "${sezioneDaTraslocare.nome}" nel sopralluogo…`
+              : `Duplica "${sezioneDaTraslocare.nome}" nel sopralluogo…`
+          }
+          onChiudi={() => setSezioneDaTraslocare(null)}
+          onScegli={async (dove) => {
+            if (!dove.progettoId) return;
+            const t = sezioneDaTraslocare;
+            setSezioneDaTraslocare(null);
+            await traslocaSezione(t, dove.progettoId);
+          }}
+        />
+      )}
       {rinominaAllegato && (
         <Modale titolo="Rinomina" onChiudi={() => setRinominaAllegato(null)}>
           <div className="campo">
@@ -1169,16 +1331,18 @@ function FormSezione({
 function SelettoreSezione({
   sezioni,
   attuale,
+  titolo,
   onChiudi,
   onScegli
 }: {
   sezioni: Sezione[];
   attuale: string | null;
+  titolo?: string;
   onChiudi: () => void;
   onScegli: (sezioneId: string | null) => void | Promise<void>;
 }) {
   return (
-    <Modale titolo="Sposta in sezione" onChiudi={onChiudi} centro>
+    <Modale titolo={titolo ?? 'Sposta in sezione'} onChiudi={onChiudi} centro>
       <button className="scheda" onClick={() => void onScegli(null)}>
         <span className="corpo">
           <div className="titolo">Senza sezione</div>

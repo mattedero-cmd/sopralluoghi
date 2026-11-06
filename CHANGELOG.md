@@ -10,6 +10,58 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.69.0 — La calcolatrice nel campo della misura, e le foto che cambiano sopralluogo
+
+- **La misura si può FARE, non solo scrivere.** Al banco una misura viene
+  quasi sempre a pezzi — 100 di qua, 124 di là, 113 di là ancora — e metterla
+  insieme voleva dire uscire dall'app, cercare la calcolatrice e tornare col
+  totale. Adesso il conto si scrive nel campo: «100+124+113» vale 337, il
+  totale compare in verde di fianco mentre si scrive, e uscendo dal campo
+  resta scritto il numero.
+
+  Vale in tutti i campi dove si batte una misura: valore della quota,
+  abbondanze, raggio e diametro, ampiezza dell'angolo, calibrazione di scala,
+  rettangolo di riferimento, piano prospettico — e anche nei campi numerici
+  del piano di taglio e dei preventivi.
+
+  Si accettano + − × ÷ e le parentesi, con la virgola o il punto. La «x» NON
+  moltiplica: «120x80», in cantiere, è un rettangolo, non 9600. Un conto a
+  metà non vale un numero: mentre si scrive, il campo passa per «100+» e lì
+  non salva 100. E non c'è nessuna `eval`: è un parser di quaranta righe, che
+  si legge e si prova.
+
+- **IL TASTO «+» di fianco al campo.** Sul telefono il campo misura apre la
+  tastiera numerica, che il segno più non ce l'ha: senza quel tasto la
+  calcolatrice non si potrebbe nemmeno usare. È anche il modo in cui chi non
+  lo sa scopre che c'è.
+
+- **Le foto si spostano da un sopralluogo all'altro.** Capita di scattare una
+  serie di foto nel progetto sbagliato e accorgersene dopo; finché non si
+  potevano spostare, l'unica strada era rifare il lavoro. Adesso dal menu
+  della foto c'è «Sposta in un altro sopralluogo…»: si sceglie il sopralluogo
+  e, se ne ha, la sezione dove posarla. La foto si porta dietro tutto —
+  annotazioni, misure, piani — e in arrivo si mette in fondo alla fila.
+
+- **E si sposta o si duplica un'intera sezione.** Dal menu della sezione:
+  «Sposta in un altro sopralluogo…» porta via la sezione con tutte le sue
+  foto (di là si ricrea com'era, o si riusa quella con lo stesso nome se c'è
+  già), «Duplica…» ne fa una copia e lascia gli originali al loro posto.
+  Le stesse due porte stanno sul gruppo «Senza sezione», che è dove finiscono
+  le foto importate di fretta — il caso più comune di sopralluogo sbagliato.
+
+- **Mai un collegamento appeso nel vuoto.** Una foto di dettaglio punta a
+  un'altra foto dello stesso sopralluogo, una pianta alla foto da cui è nata,
+  un piano prospettico alle forme da cui è stato ricavato. Portandone via una
+  sola, l'altro capo resterebbe di là: nello spostamento il legame si scioglie
+  — le due foto restano, il collegamento no — e l'app dice quanti ne ha
+  sciolti. In una copia, invece, i legami seguono le copie.
+
+- **Corretto un difetto che c'era già nel «duplica progetto»**: le foto
+  copiate tenevano i riferimenti vecchi, così la pianta duplicata restava
+  attaccata alla foto del progetto di partenza e il piano prospettico copiato
+  seguiva le forme dell'originale. Adesso gli id si rifanno tutti e i
+  riferimenti si riscrivono.
+
 ## 1.68.0 — Si va a capo oltre i cinque metri, e il taglio si vede
 
 - **Sotto i cinque metri il foglio resta intero.** Prima il conto delle

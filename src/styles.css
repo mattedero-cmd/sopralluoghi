@@ -2214,6 +2214,36 @@ h2 {
   font-weight: 700;
 }
 
+/* IL CAMPO MISURA CON LA CALCOLATRICE: campo, tasto «+» e totale del conto.
+   Si comporta come l'input che ha sostituito — prende lo spazio che gli dà
+   chi lo mette in riga — e il tasto resta della misura del dito. */
+.campo-misura {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.campo-misura > input {
+  flex: 1;
+  min-width: 0;
+}
+.btn.piu-misura {
+  min-height: 44px;
+  min-width: 42px;
+  padding: 0 10px;
+  font-size: 19px;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+/* il totale del conto scritto nel campo misura: «100+124+113  = 337» */
+.totale-conto {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ok);
+  white-space: nowrap;
+}
+
 .palette {
   display: flex;
   gap: 8px;
