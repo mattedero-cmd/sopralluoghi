@@ -21,7 +21,7 @@
 
 import type { LastraNesting, Piazzamento } from './nesting';
 import { corsaLibera, fermata } from './scorrimento';
-import { coppiaPiuStretta } from './distanzaPoligoni';
+import { sovrapposizioni } from './controlloPiano';
 
 /**
  * Lunghezza di riferimento di un blocco maneggevole al banco (mm).
@@ -237,7 +237,14 @@ function assestaSegmento(
     // sopra è stato sbagliato una volta e nessuno se n'è accorto fino al banco
     // di taglio — questo controllo costa un pugno di confronti per segmento ed
     // è l'unica cosa che sta fra un errore di calcolo e il materiale tagliato.
-    if (c !== lastra && coppiaPiuStretta({ lastre: [c] }).minima < contesto.lama - 0.01) continue;
+    //
+    // La domanda la fa `sovrapposizioni`, che è quella che la sa fare giusta.
+    // Scritta qui a mano era «la coppia più stretta dista almeno una lama?», e
+    // CON LA LAMA A ZERO — come lavora chi taglia pellicola in bobina — quella
+    // domanda diventa «la distanza è almeno zero?», che è sempre vera: due
+    // pezzi caduti uno DENTRO l'altro passavano il controllo e arrivavano al
+    // banco. Due pezzi accavallati sono sbagliati con qualunque lama.
+    if (c !== lastra && sovrapposizioni(c, contesto.lama).length > 0) continue;
     const r = strisciaResidua(c, contesto.larghezza, lunghezza);
     // a parità di ritaglio si tiene la prima, cioè la disposizione originale
     const valore = r ? r.larghezza * r.lunghezza : 0;

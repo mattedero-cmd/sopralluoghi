@@ -93,7 +93,15 @@ const baricentro = (punti: Punto[]): Punto => ({
   y: punti.reduce((s, p) => s + p.y, 0) / punti.length
 });
 
-function omografiaDiFoto(
+/**
+ * Il piano di riferimento che copre questi punti, pronto da applicare.
+ *
+ * Esportata perché non serve solo a MISURARE: chi deve ricostruire una figura
+ * ha bisogno dei punti del disegno RADDRIZZATI, cioè come stanno sul muro
+ * senza la prospettiva della foto — e quelli si ottengono solo passando i
+ * punti per questa omografia.
+ */
+export function omografiaDiFoto(
   foto: CalibrazioneFoto,
   dove?: Punto | Punto[]
 ): { H: Omografia; piano: PianoProspettiva } | null {

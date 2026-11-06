@@ -24,7 +24,8 @@
 
 import type { Foto, Punto, QuotaPoligono, Unita } from '../db/types';
 import { abbondanzaTotale, segmentiPoligono } from '../db/types';
-import { distanzaReale } from './calibrazione';
+import { distanzaReale, omografiaDiFoto } from './calibrazione';
+import { applicaOmografia } from './omografia';
 import { daMillimetri, inMillimetri } from '../utils/format';
 
 /** quel poco della foto che serve a misurare: la scala e il piano */
@@ -88,6 +89,112 @@ export function poligonoDaLati(lati: number[], diagonali: number[]): PuntoSagoma
     Math.round((maxY - q[1]) * 1e6) / 1e6
   ]);
   return poligonoConvesso(punti) ? punti : null;
+}
+
+
+/**
+ * IL VERSO DELLA FIGURA LO DÀ IL DISEGNO.
+ *
+ * `poligonoDaLati` qui sopra appoggia il lato 0 sull'asse e costruisce da lì:
+ * la FORMA che esce è giusta, il VERSO è quello che càpita — dipende da quale
+ * lato è stato disegnato per primo. La stessa parete, disegnata partendo dallo
+ * spigolo accanto, usciva ruotata di un quarto di giro; partendo dalla falda
+ * usciva INCLINATA di venti gradi, e il suo riquadro passava da 400×345 a
+ * 494×348 centimetri.
+ *
+ * Non è un dettaglio estetico. Il riquadro gonfiato manda il pezzo fuori
+ * misura dal supporto, i teli vengono tagliati lungo le verticali del
+ * riquadro — che su una parete inclinata non sono le verticali del MURO, e le
+ * giunzioni escono in diagonale — e un trapezio girato non si riconosce più
+ * come trapezio: diventa una sagoma qualunque, descritta per vertici. Era
+ * esattamente quello che si vedeva nel piano di taglio dell'hotel: un telo
+ * largo 1350 con il lato di fondo da 1362,5, cioè in diagonale.
+ *
+ * Quindi: le misure fanno la forma, il disegno la gira. Si cerca la rotazione
+ * che sovrappone meglio la figura ricostruita ai punti del disegno — il conto
+ * in forma chiusa, non a tentativi — e prima si controlla il VERSO DI GIRO: se
+ * la figura è venuta rovesciata la si specchia, perché un pezzo specchiato si
+ * applica sulla faccia sbagliata del muro ed è un errore che non si recupera.
+ */
+function versoDelDisegno(
+  vertici: PuntoSagoma[],
+  riferimento: PuntoSagoma[]
+): PuntoSagoma[] {
+  if (vertici.length !== riferimento.length || vertici.length < 3) return vertici;
+
+  /** l'area con il segno: dice da che parte gira il poligono */
+  const giro = (p: PuntoSagoma[]) => {
+    let doppia = 0;
+    for (let i = 0; i < p.length; i++) {
+      const a = p[i];
+      const b = p[(i + 1) % p.length];
+      doppia += a[0] * b[1] - b[0] * a[1];
+    }
+    return doppia;
+  };
+
+  // se gira al contrario del disegno la figura è il ROVESCIO di quella giusta
+  let fig = giro(vertici) * giro(riferimento) < 0
+    ? vertici.map(([x, y]): PuntoSagoma => [-x, y])
+    : vertici.slice();
+
+  const medio = (p: PuntoSagoma[]) => [
+    p.reduce((s, q) => s + q[0], 0) / p.length,
+    p.reduce((s, q) => s + q[1], 0) / p.length
+  ];
+  const [fx, fy] = medio(fig);
+  const [rx, ry] = medio(riferimento);
+
+  // la rotazione che sovrappone meglio le due nuvole di punti: l'angolo che
+  // annulla la derivata della somma degli scarti al quadrato
+  let sen = 0;
+  let cos = 0;
+  for (let i = 0; i < fig.length; i++) {
+    const ax = fig[i][0] - fx;
+    const ay = fig[i][1] - fy;
+    const bx = riferimento[i][0] - rx;
+    const by = riferimento[i][1] - ry;
+    sen += ax * by - ay * bx;
+    cos += ax * bx + ay * by;
+  }
+  if (sen !== 0 || cos !== 0) {
+    const n = Math.hypot(sen, cos);
+    const c = cos / n;
+    const s = sen / n;
+    fig = fig.map(([x, y]): PuntoSagoma => [
+      (x - fx) * c - (y - fy) * s,
+      (x - fx) * s + (y - fy) * c
+    ]);
+  }
+
+  // appoggiata di nuovo in (0,0), e i millesimi di millimetro buttati: sono
+  // il residuo del conto, non una misura
+  const minX = Math.min(...fig.map((q) => q[0]));
+  const minY = Math.min(...fig.map((q) => q[1]));
+  return fig.map((q): PuntoSagoma => [
+    Math.round((q[0] - minX) * 1e6) / 1e6,
+    Math.round((q[1] - minY) * 1e6) / 1e6
+  ]);
+}
+
+/**
+ * I PUNTI DEL DISEGNO COME STANNO SUL MURO.
+ *
+ * Con il piano di riferimento si passano per l'omografia e la prospettiva
+ * sparisce: quello che resta è la parete vista di fronte, ed è il riferimento
+ * giusto per girare la figura. Senza piano restano i pixel della foto, che
+ * vanno bene lo stesso — una foto si scatta più o meno in piano, e comunque è
+ * il disegno che l'artigiano ha davanti agli occhi.
+ */
+function disegnoRaddrizzato(q: QuotaPoligono, foto: CalibFoto | null): PuntoSagoma[] {
+  const grezzi = q.punti.map((p): PuntoSagoma => [p.x, p.y]);
+  if (!foto) return grezzi;
+  const piano = omografiaDiFoto(foto, q.punti);
+  if (!piano) return grezzi;
+  return q.punti.map((p) => {
+    const r = applicaOmografia(piano.H, p);
+    return [r.x, r.y] as PuntoSagoma;
+  });
 }
 
 /** la misura scritta su un segmento, abbondanze comprese */
@@ -179,8 +286,10 @@ export function sagomaPoligonoQuotato(
     diagonali.push(v);
   }
 
-  const vertici = poligonoDaLati(latiVeri, diagonali);
-  if (!vertici) return null;
+  const grezzi = poligonoDaLati(latiVeri, diagonali);
+  if (!grezzi) return null;
+  // la forma è fatta: ora la si gira come sta sul muro
+  const vertici = versoDelDisegno(grezzi, disegnoRaddrizzato(q, foto));
   const larghezza = Math.max(...vertici.map((p) => p[0]));
   const altezza = Math.max(...vertici.map((p) => p[1]));
   if (!(larghezza > 0 && altezza > 0)) return null;

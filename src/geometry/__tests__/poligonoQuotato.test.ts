@@ -104,6 +104,110 @@ describe('il pentagono della camera 307', () => {
   });
 });
 
+
+/**
+ * DA QUALUNQUE SPIGOLO SI COMINCI A DISEGNARE, LA PARETE È QUELLA.
+ *
+ * Il costruttore appoggia il primo lato sull'asse: la forma che esce è giusta,
+ * il verso era quello che càpita. La stessa camera, disegnata partendo dallo
+ * spigolo accanto, usciva girata di un quarto; partendo dalla falda usciva
+ * INCLINATA, e il riquadro passava da 400×345 a 494×348 — un pezzo fuori
+ * misura dal supporto, con le giunzioni dei teli in diagonale sul muro e i
+ * trapezi che non si riconoscevano più come trapezi.
+ */
+describe('il verso della parete non dipende da come è stata disegnata', () => {
+  /** la parete disegnata partendo dal vertice `da`, nel verso `verso` */
+  const disegnata = (da: number, verso: 1 | -1) => {
+    const idx: number[] = [];
+    for (let k = 0; k < 5; k++) idx.push((((da + verso * k) % 5) + 5) % 5);
+    const quote: Record<string, number> = { '0-1': 70, '2-3': 224, '3-4': 400, '4-0': 345 };
+    const punti = idx.map((i) => BASE[i]);
+    const segmenti: Array<{ da: number; a: number; valore: number }> = [];
+    for (let k = 0; k < 5; k++) {
+      const v =
+        quote[`${idx[k]}-${idx[(k + 1) % 5]}`] ?? quote[`${idx[(k + 1) % 5]}-${idx[k]}`];
+      if (v !== undefined) segmenti.push({ da: k, a: (k + 1) % 5, valore: v });
+    }
+    return parete(segmenti, punti);
+  };
+
+  const BASE: Array<[number, number]> = [
+    [0, 0],
+    [70, 0],
+    [400, 121],
+    [400, 345],
+    [0, 345]
+  ];
+
+  /** i vertici messi in fila, per confrontare due figure senza badare all'ordine */
+  const inFila = (v: Array<[number, number]>) =>
+    v
+      .map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`)
+      .sort()
+      .join(' · ');
+
+  const ordini: Array<[number, 1 | -1]> = [];
+  for (let da = 0; da < 5; da++) for (const verso of [1, -1] as const) ordini.push([da, verso]);
+
+  it('tutti i dieci modi di disegnarla danno lo stesso riquadro: 400 × 345', () => {
+    for (const [da, verso] of ordini) {
+      const s = sagomaPoligonoQuotato(disegnata(da, verso), FOTO, false);
+      expect(s, `dal vertice ${da} verso ${verso}`).not.toBeNull();
+      expect(s!.larghezza, `larghezza dal vertice ${da} verso ${verso}`).toBeCloseTo(400, 0);
+      expect(s!.altezza, `altezza dal vertice ${da} verso ${verso}`).toBeCloseTo(345, 0);
+    }
+  });
+
+  it('e la stessa figura, vertice per vertice', () => {
+    const atteso = inFila(
+      sagomaPoligonoQuotato(disegnata(0, 1), FOTO, false)!.vertici as Array<[number, number]>
+    );
+    for (const [da, verso] of ordini) {
+      const v = sagomaPoligonoQuotato(disegnata(da, verso), FOTO, false)!.vertici as Array<
+        [number, number]
+      >;
+      expect(inFila(v), `dal vertice ${da} verso ${verso}`).toBe(atteso);
+    }
+  });
+
+  it('i montanti restano in piedi: la parete non esce inclinata', () => {
+    for (const [da, verso] of ordini) {
+      const v = sagomaPoligonoQuotato(disegnata(da, verso), FOTO, false)!.vertici as Array<
+        [number, number]
+      >;
+      // il pavimento è lungo 400 e deve essere ORIZZONTALE: due vertici alla
+      // stessa altezza, distanti 400
+      const basso = Math.max(...v.map((p) => p[1]));
+      const piedi = v.filter((p) => Math.abs(p[1] - basso) < 0.5);
+      expect(piedi.length, `dal vertice ${da} verso ${verso}`).toBe(2);
+      expect(Math.abs(piedi[0][0] - piedi[1][0])).toBeCloseTo(400, 0);
+    }
+  });
+
+  it('e i teli tornano a essere trapezi, non sagome qualunque', async () => {
+    const { teliDelPezzo } = await import('../pannelli');
+    for (const [da, verso] of ordini) {
+      const s = sagomaPoligonoQuotato(disegnata(da, verso), FOTO, false)!;
+      const pezzo = {
+        forma: s.forma,
+        larghezza: s.larghezza * 10,
+        altezza: s.altezza * 10,
+        vertici: (s.vertici ?? []).map(([x, y]): [number, number] => [x * 10, y * 10])
+      };
+      const teli = teliDelPezzo(pezzo, {
+        asse: 'verticale',
+        sormonto: 0,
+        verso: 'centro',
+        giunti: [1350, 2700]
+      });
+      expect(teli, `dal vertice ${da} verso ${verso}`).toHaveLength(3);
+      // sotto la falda diritta due teli su tre sono trapezi rettangoli
+      const trapezi = teli.filter((t) => t.forma === 'trapezioR').length;
+      expect(trapezi, `dal vertice ${da} verso ${verso}`).toBe(2);
+    }
+  });
+});
+
 describe('quando le misure non bastano o non chiudono', () => {
   it('senza nessuna quota non si inventa niente', () => {
     expect(sagomaPoligonoQuotato(parete([]), FOTO, false)).toBeNull();

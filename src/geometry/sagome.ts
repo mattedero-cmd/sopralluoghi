@@ -221,6 +221,30 @@ export function areaForma(p: MisureForma): number {
   return d1 * d2;
 }
 
+/**
+ * L'IMPRONTA DI UNA FORMA: due forme con la stessa impronta sono lo stesso
+ * pezzo da tagliare, e solo quelle.
+ *
+ * Serve a chi tiene in cache un conto fatto sulla sagoma — la maschera del
+ * motore di piazzamento, per dirne una. Scrivere quella chiave con le sole
+ * misure del riquadro è un errore che non si vede: una sagoma descritta per
+ * VERTICI può avere lo stesso riquadro di un'altra ed essere un pezzo
+ * completamente diverso. Il telo di una parete e quello della parete
+ * SPECULARE hanno sempre lo stesso riquadro, e sono uno il rovescio
+ * dell'altro.
+ *
+ * Succedeva: la cache serviva la maschera della forma sbagliata, il motore
+ * riservava il posto di una sagoma e ne appoggiava un'altra, e sulla lista
+ * dell'hotel due teli del pentagono finivano alla STESSA coordinata, uno
+ * dentro l'altro di settantotto centimetri. Il piano non reggeva il controllo
+ * e si ripiegava sugli ingombri, sprecando materiale senza dire perché.
+ */
+export function improntaForma(p: MisureForma): string {
+  const base = `${formaDi(p)}|${p.larghezza}|${p.altezza}|${p.misura3 ?? 0}`;
+  if (!p.vertici || p.vertici.length === 0) return base;
+  return `${base}|${p.vertici.map(([x, y]) => `${x},${y}`).join(';')}`;
+}
+
 /** le misure scritte come si dicono: 600×400, Ø300, 500/300×200, 600×400|800 */
 export function misureForma(p: MisureForma): string {
   const f = formaDi(p);

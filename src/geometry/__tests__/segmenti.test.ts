@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { frasiRitagli, ritagliUtili, segmentaBobina, strisciaResidua } from '../segmenti';
-import { calcolaNesting, type LastraNesting, type Piazzamento } from '../nesting';
+import { calcolaNesting, type LastraNesting, type PezzoNesting, type Piazzamento } from '../nesting';
+import { calcolaNestingSagome } from '../nestingSagome';
+import { sovrapposizioni } from '../controlloPiano';
 
 /** costruisce una lastra fittizia: solo y/altezza contano per il taglio */
 function lastra(...righe: Array<[number, number, number?]>): LastraNesting {
@@ -588,4 +590,56 @@ describe('frasiRitagli', () => {
   it('niente da tenere, niente da dire', () => {
     expect(frasiRitagli([])).toBe('');
   });
+});
+
+/**
+ * LA RETE DI SICUREZZA DEI SEGMENTI, con la lama a zero.
+ *
+ * Quando il rotolo si spezza in blocchi maneggevoli i pezzi vengono fatti
+ * CADERE verso il fondo del blocco, per lasciare intero il ritaglio di
+ * fianco. È un miglioramento, e un miglioramento che accavalla due pezzi non
+ * è un miglioramento: prima di tenerlo si controlla che il piano regga.
+ *
+ * Quel controllo era scritto come «la coppia più stretta dista almeno una
+ * lama?», e con la lama a zero — come lavora chi taglia pellicola in bobina —
+ * diventava «la distanza è almeno zero?», che è sempre vera: la rete era
+ * bucata proprio sui lavori senza lama. Oggi la domanda la fa
+ * `sovrapposizioni`, che la sa fare giusta a qualunque lama.
+ *
+ * Nessuna disposizione sa più arrivare lì accavallata — la caduta si appoggia
+ * a `corsaLibera`, che è stata sistemata prima — quindi questa prova non
+ * riproduce un difetto: tiene ferma la proprietà che conta, e si accorgerebbe
+ * di una caduta sbagliata che tornasse a passare.
+ */
+describe('i blocchi della bobina senza lama', () => {
+  const trapezio = (id: string, l: number, a: number, m3: number, q: number): PezzoNesting => ({
+    id, nome: id, larghezza: l, altezza: a, misura3: m3,
+    forma: 'trapezioR', quantita: q, ruotabile: true, tinta: 0
+  });
+  const rettangolo = (id: string, l: number, a: number, q: number): PezzoNesting => ({
+    id, nome: id, larghezza: l, altezza: a, forma: 'rett', quantita: q, ruotabile: true, tinta: 0
+  });
+
+  const liste: Array<[string, PezzoNesting[]]> = [
+    ['trapezi e strisce', [trapezio('T', 500, 2490, 2640, 4), rettangolo('R', 700, 2770, 4), rettangolo('S', 110, 3020, 6)]],
+    ['teli di una falda', [trapezio('A', 1350, 1690, 2093, 3), trapezio('B', 1020, 2074, 1700, 3), rettangolo('C', 240, 3500, 5)]],
+    ['pezzi bassi e larghi', [trapezio('D', 900, 800, 2000, 6), rettangolo('E', 400, 1200, 8), rettangolo('F', 1000, 600, 4)]]
+  ];
+
+  for (const [nome, lista] of liste) {
+    it(`${nome}: nessun blocco esce con due pezzi nello stesso posto`, () => {
+      const e = calcolaNestingSagome(
+        { lastra: { larghezza: 1370, altezza: 50000 }, lama: 0, abbondanza: 0, margine: 10, massimoLastre: 1 },
+        lista
+      );
+      for (const l of e.lastre) {
+        for (const massimo of [2000, 3000, 5000, 8000]) {
+          for (const s of segmentaBobina(l, massimo, 10, 1370, 0)) {
+            const rotte = sovrapposizioni(s.lastra, 0);
+            expect(rotte, `blocco da ${massimo}: ${JSON.stringify(rotte[0] ?? null)}`).toHaveLength(0);
+          }
+        }
+      }
+    });
+  }
 });

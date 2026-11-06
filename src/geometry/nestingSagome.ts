@@ -52,6 +52,7 @@ import {
   rotazioniPer,
   versiParalleli,
   versiStretti,
+  improntaForma,
   ruotaPunti,
   sagomaDiTaglio,
   type MascheraSagoma
@@ -603,7 +604,7 @@ function unGiro(
 
   const cache = new Map<string, MascheraSagoma>();
   const maschera = (p: PezzoNesting, rot: number): { chiave: string; m: MascheraSagoma } => {
-    const chiave = `${formaDi(p)}|${p.larghezza}|${p.altezza}|${p.misura3 ?? 0}|${rot}`;
+    const chiave = `${improntaForma(p)}|${rot}`;
     let m = cache.get(chiave);
     if (!m) {
       m = mascheraSagoma(p, rot, pad, cs);
@@ -628,7 +629,7 @@ function unGiro(
     const aMano = p.ruotabile ? par.orientamenti?.[it.chiave] : undefined;
     const forzato =
       typeof aMano === 'number' ? aMano : aMano === true ? 90 : aMano === false ? 0 : null;
-    const chiaveP = `${formaDi(p)}|${p.larghezza}|${p.altezza}|${p.misura3 ?? 0}|${p.ruotabile}|${modo}|${forzato ?? ''}|${blocchi?.[p.id] ?? ''}`;
+    const chiaveP = `${improntaForma(p)}|${p.ruotabile}|${modo}|${forzato ?? ''}|${blocchi?.[p.id] ?? ''}`;
     // il cerchio non ha poligono: per lui l'ingombro è il diametro, e basta
     const poli = poligonoSagoma(p);
     const gia = cacheMaschere.get(chiaveP);
