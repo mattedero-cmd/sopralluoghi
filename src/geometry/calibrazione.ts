@@ -107,7 +107,15 @@ function omografiaDiFoto(
 }
 
 /** Distanza reale tra due punti immagine, nelle unità della calibrazione */
-function distanzaReale(
+/**
+ * La distanza reale fra due punti dell'immagine, SENZA arrotondare.
+ *
+ * `misuraSegmento` qui sopra arrotonda, perché quel numero finisce scritto su
+ * una quota e un decimo di millimetro scritto non vuol dire niente. Chi deve
+ * COSTRUIRE una figura da più distanze — la sagoma di una polilinea — somma
+ * quegli arrotondamenti e se li ritrova nel pezzo: prende di qui.
+ */
+export function distanzaReale(
   foto: CalibrazioneFoto,
   p1: Punto,
   p2: Punto

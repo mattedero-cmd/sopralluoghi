@@ -30,6 +30,7 @@ import {
   sagomaSpeculare,
   type FormaPezzo
 } from './sagome';
+import { sagomaPoligonoQuotato } from './poligonoQuotato';
 import { codicePannello } from './nomenclatura';
 import { inMillimetri } from '../utils/format';
 
@@ -320,6 +321,35 @@ export function ingombroTaglio(
   if (a.tipo === 'quotaPoligono') {
     const segs = segmentiPoligono(a);
     const conAbb = segs.some((s) => segmentoELato(s, a.punti.length) && abbondanzaTotale(s) > 0);
+
+    /**
+     * CINQUE LATI O PIÙ: la parete sotto falda che non è un quadrilatero.
+     *
+     * Non ha un nome e si descrive per vertici. Sagoma e ingombro vengono
+     * dalla STESSA ricostruzione, o il pezzo piazzato non conterrebbe la
+     * propria forma — e il motore piazzerebbe sopra il vuoto che crede suo.
+     */
+    if (a.punti.length >= 5) {
+      const sag = sagomaPoligonoQuotato(a, foto, true);
+      if (sag?.vertici) {
+        const l = mm(sag.larghezza, a.unita);
+        const h = mm(sag.altezza, a.unita);
+        return {
+          larghezza: l,
+          altezza: h,
+          conAbbondanze: conAbb,
+          sagoma: {
+            forma: 'quad',
+            d1: l,
+            d2: h,
+            vertici: sag.vertici.map((q): [number, number] => [
+              mm(q[0], a.unita),
+              mm(q[1], a.unita)
+            ])
+          }
+        };
+      }
+    }
 
     // prima le misure scritte: sono quelle che finiscono sul report e che
     // l'artigiano ha davvero preso

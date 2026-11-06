@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Punto } from '../db/types';
 import { Icona } from './Icona';
 import { CampoNumero } from './CampoNumero';
-import { applicaOmografia, calcolaOmografia } from '../geometry/omografia';
+import { applicaOmografia, calcolaOmografia, type Omografia } from '../geometry/omografia';
 import { quadConvesso } from '../geometry/punti';
 import { poligonoConvesso } from '../geometry/sagome';
 import { bordiSagoma, fasciaSagoma, sagomaDiTaglioQuad } from '../geometry/formaQuadrilatera';
@@ -89,6 +89,9 @@ const sagomaValida = (punti: Punto[]) =>
 
 /** quanto vicino al giunto bisogna toccare per prenderlo, in pixel di schermo */
 const PRESA = 26;
+
+/** la trasformazione che non trasforma: si disegna la sagoma com'è */
+const IDENTITA: Omografia = [1, 0, 0, 0, 1, 0, 0, 0, 1];
 
 /** lo stesso verde delle giunzioni sulla foto, per il contorno dei teli */
 const VERDE_ABBONDANZA = '#34c759';
@@ -296,6 +299,13 @@ export function AmbientePannelli({
    * e le giunzioni cadrebbero dove non cadono.
    */
   const omografie = useMemo(() => {
+    // SENZA FOTO NON C'È PROSPETTIVA: il disegno è la sagoma stessa, e la
+    // trasformazione è l'identità. Serve dirlo, perché l'omografia si calcola
+    // su QUATTRO corrispondenze e una parete a cinque lati non ne ha quattro:
+    // provandoci si restava senza trasformazione e senza disegno
+    if (quad === sagoma || quad.length !== 4 || sagoma.length !== 4) {
+      return { versoDisegno: IDENTITA, versoReale: IDENTITA };
+    }
     try {
       return {
         versoDisegno: calcolaOmografia(sagoma, quad),

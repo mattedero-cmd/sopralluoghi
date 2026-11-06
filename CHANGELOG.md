@@ -10,6 +10,41 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.73.0 — La polilinea arriva al taglio con la sua forma vera
+
+- **Una parete sotto falda non è sempre un quadrilatero.** Quella della camera
+  307 ha cinque lati — montante 345, un pezzo di soffitto piano 70, la falda,
+  montante corto 224, pavimento 400 — disegnata con la polilinea e quotata
+  dove si poteva misurare. Nel piano di taglio ne arrivava il **rettangolo
+  d'ingombro**: il triangolo sotto la falda veniva tagliato e buttato, e i teli
+  uscivano squadrati dove vanno in diagonale.
+
+  Adesso la sagoma arriva intera, a qualunque numero di lati. La regola è
+  quella che l'app usava già per il quadrilatero, generalizzata: **le misure
+  scritte comandano, il disegno dà la pendenza.** Un poligono di n lati è
+  determinato da 2n−3 numeri — n lati e n−3 diagonali — e quelli che mancano
+  si prendono dal disegno, dal **piano di riferimento** se c'è (che toglie la
+  prospettiva) e se no dai pixel, riportati in scala sulle misure vere. Così
+  il pezzo tagliato ha i lati che sono stati presi sul posto, e a essere
+  dedotta è solo l'inclinazione della falda.
+
+- **E si divide in teli seguendo la falda.** Sulla parete della camera: tre
+  teli da 1350, 1350 e 1320, dove il primo porta l'angolo in alto e gli altri
+  due sono trapezi con le loro due altezze. **8,91 m di bobina invece di
+  10,35**: un metro e mezzo di pellicola in meno su una parete sola, e nessun
+  telo che manca dove il tetto scende.
+
+- Se le misure non chiudono una figura convessa non si inventa niente: si
+  ripiega sull'ingombro come prima.
+
+- L'ambiente di pannellizzazione **disegnava il vuoto** su una sagoma di
+  cinque lati: la trasformazione prospettica si calcola su quattro
+  corrispondenze, e senza foto sotto non serve affatto. Adesso senza foto si
+  disegna la sagoma com'è.
+
+- Nel piano di taglio la forma «Quadrilatero (dal rilievo)» si chiama
+  **«Sagoma (dal rilievo)»**: di lati ne può avere anche cinque.
+
 ## 1.72.0 — La lama a zero spegneva i controlli
 
 Dal piano di taglio «Camere hotel Europa», 201 pezzi su bobina da 1370 con

@@ -42,7 +42,7 @@ export const FORME: Array<{ id: FormaPezzo; nome: string }> = [
   { id: 'rombo', nome: 'Rombo' },
   { id: 'trapezio', nome: 'Trapezio isoscele' },
   { id: 'trapezioR', nome: 'Trapezio rettangolo' },
-  { id: 'quad', nome: 'Quadrilatero (dal rilievo)' }
+  { id: 'quad', nome: 'Sagoma (dal rilievo)' }
 ];
 
 /** i campi di un pezzo che descrivono la sua forma */
