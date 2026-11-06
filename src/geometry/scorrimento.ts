@@ -42,6 +42,19 @@ import type { Piazzamento } from './nesting';
 const E = 1e-6;
 
 /**
+ * IL FILO D'ARIA CHE SI PRETENDE ANCHE SENZA LAMA.
+ *
+ * «Fra i due passa la lama?» con la lama a zero diventa «la distanza è almeno
+ * zero?», e la distanza fra due sagome non è mai negativa: la domanda è
+ * sempre vera, e un pezzo poteva scivolare DENTRO un altro e fermarsi lì.
+ * Succedeva solo sulle sagome — fra rettangoli il conto è sugli ingombri e
+ * non degenera — ed è così che un trapezio finiva stampato sopra un altro
+ * pezzo. Un centesimo di millimetro non si vede su nessun taglio, e rimette
+ * la domanda in piedi.
+ */
+const CONTATTO = 0.01;
+
+/**
  * Un rettangolo puro: il suo ingombro È la sua sagoma, e non c'è niente da
  * calcolare. Attenzione a non chiederlo ai vertici: il piazzamento porta
  * `punti` anche per i rettangoli — sono i quattro spigoli — e chi guarda lì
@@ -122,11 +135,12 @@ export function corsaLibera(
   ostacoli: Piazzamento[],
   verso: 'x' | 'y',
   segno: 1 | -1,
-  lama: number,
+  lamaRichiesta: number,
   massimo: number,
   pronte?: { propria: Sagoma | null; altrui: Array<Sagoma | null> }
 ): number {
   if (!(massimo > 0)) return 0;
+  const lama = Math.max(lamaRichiesta, CONTATTO);
   const lungo = lungoDi(verso);
   const altro = verso === 'y' ? 'x' : 'y';
   const pRett = eRettangolo(p);

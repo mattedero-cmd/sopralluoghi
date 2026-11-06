@@ -114,6 +114,80 @@ export function distanzaPuntoPoligono(q: Punto, P: Punto[]): number {
   return m;
 }
 
+/** distanza dal BORDO del poligono, anche quando il punto è dentro */
+function distanzaBordo(q: Punto, P: Punto[]): number {
+  let m = Infinity;
+  for (let i = 0; i < P.length; i++) {
+    const a = P[i];
+    const b = P[(i + 1) % P.length];
+    const vx = b[0] - a[0];
+    const vy = b[1] - a[1];
+    const l = vx * vx + vy * vy;
+    const t = l ? Math.max(0, Math.min(1, ((q[0] - a[0]) * vx + (q[1] - a[1]) * vy) / l)) : 0;
+    const d = Math.hypot(q[0] - (a[0] + t * vx), q[1] - (a[1] + t * vy));
+    if (d < m) m = d;
+  }
+  return m;
+}
+
+/** quanto si accavallano due poligoni convessi: il teorema degli assi separanti */
+function penetrazionePoligoni(P: Punto[], Q: Punto[]): number {
+  let minima = Infinity;
+  for (const poly of [P, Q]) {
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i];
+      const b = poly[(i + 1) % poly.length];
+      // la normale al lato: è lì che i due poligoni si possono separare
+      const nx = -(b[1] - a[1]);
+      const ny = b[0] - a[0];
+      const l = Math.hypot(nx, ny);
+      if (l < 1e-12) continue;
+      const proietta = (R: Punto[]) => {
+        let min = Infinity;
+        let max = -Infinity;
+        for (const q of R) {
+          const v = (q[0] * nx + q[1] * ny) / l;
+          if (v < min) min = v;
+          if (v > max) max = v;
+        }
+        return { min, max };
+      };
+      const pp = proietta(P);
+      const qq = proietta(Q);
+      const sovra = Math.min(pp.max, qq.max) - Math.max(pp.min, qq.min);
+      // un asse che li separa basta: non si accavallano
+      if (sovra <= 0) return 0;
+      if (sovra < minima) minima = sovra;
+    }
+  }
+  return minima === Infinity ? 0 : minima;
+}
+
+/**
+ * QUANTO DUE SAGOME SI ACCAVALLANO, in millimetri. 0 = si toccano appena, o
+ * sono staccate.
+ *
+ * `distanzaSagome` non lo sa dire: per lei due pezzi che si sfiorano e due
+ * pezzi uno dentro l'altro distano tutti e due ZERO. Finché fra i pezzi deve
+ * passare la lama la differenza non serve — zero è comunque troppo poco — ma
+ * con la LAMA A ZERO quella misura smette di dire qualcosa, e un piano con
+ * due pezzi sovrapposti passa ogni controllo. Questa la dice.
+ */
+export function penetrazione(A: Sagoma, B: Sagoma): number {
+  if (A.cerchio && B.cerchio) {
+    const d = Math.hypot(A.cerchio.x - B.cerchio.x, A.cerchio.y - B.cerchio.y);
+    return Math.max(0, A.cerchio.r + B.cerchio.r - d);
+  }
+  const conCerchio = (c: { x: number; y: number; r: number }, poly: Punto[]) => {
+    const q: Punto = [c.x, c.y];
+    const d = distanzaBordo(q, poly);
+    return puntoDentro(q, poly) ? c.r + d : Math.max(0, c.r - d);
+  };
+  if (A.cerchio) return conCerchio(A.cerchio, B.punti as Punto[]);
+  if (B.cerchio) return conCerchio(B.cerchio, A.punti as Punto[]);
+  return penetrazionePoligoni(A.punti as Punto[], B.punti as Punto[]);
+}
+
 /**
  * La sagoma di un pezzo: un poligono convesso, oppure un cerchio.
  *

@@ -18,18 +18,26 @@
  * d'ingombro, che è un conto da niente.
  */
 
-import { distanzaSagome, sagomaDi } from './distanzaPoligoni';
+import { distanzaSagome, penetrazione, sagomaDi } from './distanzaPoligoni';
 import type { LastraNesting } from './nesting';
 
 export interface Sovrapposizione {
   /** i due pezzi, come si chiamano nel piano */
   a: string;
   b: string;
-  /** quanto passa fra le due sagome, in mm (0 = si accavallano) */
+  /** quanto passa fra le due sagome, in mm (0 = si toccano o si accavallano) */
   distanza: number;
+  /** di quanto i due pezzi sono UNO DENTRO L'ALTRO, in mm (0 = si sfiorano) */
+  dentro: number;
   /** dove guardare: l'angolo in alto a sinistra dei due ingombri */
   dove: string;
 }
+
+/**
+ * Sotto questo accavallamento non si grida: è l'arrotondamento ai decimi di
+ * millimetro del piano, non materiale contato due volte.
+ */
+const SFIORO = 0.05;
 
 /**
  * Le coppie di pezzi fra cui la lama non passa. Vuoto = piano sano.
@@ -40,7 +48,13 @@ export interface Sovrapposizione {
 export function sovrapposizioni(lastra: LastraNesting, lama: number): Sovrapposizione[] {
   const ps = lastra.piazzamenti;
   const fuori: Sovrapposizione[] = [];
-  if (ps.length < 2 || !(lama > 0)) return fuori;
+  if (ps.length < 2) return fuori;
+  // LA LAMA A ZERO NON SPEGNE IL CONTROLLO. Chiedere «fra i due passa la
+  // lama?» con la lama a zero è chiedere «la distanza è almeno zero?», che è
+  // sempre vero: il controllo si spegneva da solo proprio sui lavori senza
+  // lama, e lì un piano con due pezzi uno sopra l'altro passava indisturbato.
+  // Due pezzi che si accavallano sono sbagliati con qualunque lama.
+  const luce = Math.max(0, lama);
 
   const sagome = ps.map((p) => sagomaDi(p));
   for (let i = 0; i < ps.length; i++) {
@@ -51,19 +65,22 @@ export function sovrapposizioni(lastra: LastraNesting, lama: number): Sovrapposi
       // un asse, le sagome dentro distano almeno altrettanto e non c'è niente
       // da misurare
       if (
-        a.x + a.larghezza + lama <= b.x ||
-        b.x + b.larghezza + lama <= a.x ||
-        a.y + a.altezza + lama <= b.y ||
-        b.y + b.altezza + lama <= a.y
+        a.x + a.larghezza + luce <= b.x ||
+        b.x + b.larghezza + luce <= a.x ||
+        a.y + a.altezza + luce <= b.y ||
+        b.y + b.altezza + luce <= a.y
       ) {
         continue;
       }
       const d = distanzaSagome(sagome[i], sagome[j]);
-      if (d >= lama - 0.01) continue;
+      const dentro = penetrazione(sagome[i], sagome[j]);
+      const lamaNonPassa = luce > 0 && d < luce - 0.01;
+      if (!lamaNonPassa && dentro <= SFIORO) continue;
       fuori.push({
         a: a.nome || 'pezzo',
         b: b.nome || 'pezzo',
         distanza: d,
+        dentro,
         dove: `${Math.round(a.x)},${Math.round(a.y)} e ${Math.round(b.x)},${Math.round(b.y)}`
       });
     }

@@ -108,6 +108,15 @@ export interface DisegnoLastra {
   scala: number;
 }
 
+/**
+ * Quanto sta SOPRA la linea di base il centro visivo di una riga.
+ *
+ * Una riga di testo si legge centrata quando è centrata l'altezza delle
+ * maiuscole, che su Roboto vale 0,71 del corpo e sta tutta sopra la linea di
+ * base: il suo centro è a metà di quella, cioè 0,355 del corpo più in alto.
+ */
+const CENTRO_MAIUSCOLE = 0.355;
+
 /** corpi in punti: sulla carta si legge anche il 5, sotto no */
 const CORPI_PDF = { massimo: 9, comodo: 6.5, dueRighe: 6, minimo: 4.2 };
 
@@ -276,9 +285,14 @@ export function impaginaLastra(
           corpo: r.corpo,
           grassetto: r.forte,
           colore: r.forte ? '#1d2229' : '#3a424c',
-          // pdfmake posa il testo dall'ALTO della riga, il motore ne dà il
-          // centro: si scende di mezza riga
-          scarto: r.dy - r.corpo * 0.5
+          // LA LINEA DI BASE, non il bordo alto della riga. Il testo girato
+          // si disegna in SVG, e in SVG il testo si posa sulla sua linea di
+          // base: metterla dove va il bordo alto alza la scritta di quasi un
+          // corpo intero, e su un testo GIRATO quell'errore non è in alto,
+          // è di FIANCO — la scritta esce dal pezzo e finisce su quello
+          // accanto. Si vedeva sui pezzi stretti, dove un corpo è una fetta
+          // buona della larghezza.
+          scarto: r.dy + r.corpo * CENTRO_MAIUSCOLE
         }))
       });
       continue;

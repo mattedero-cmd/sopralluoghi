@@ -10,6 +10,42 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.72.0 — La lama a zero spegneva i controlli
+
+Dal piano di taglio «Camere hotel Europa», 201 pezzi su bobina da 1370 con
+**lama 0**: nel PDF un trapezio era stampato sopra un rettangolo, stesso
+angolo e stesse coordinate. Rifatto qui il lavoro, il piano usciva davvero
+così — e nessun controllo se n'era accorto. Due difetti, una causa sola.
+
+- **«Fra questi due passa la lama?» con la lama a zero diventa «la distanza è
+  almeno zero?», che è sempre vera**, perché la distanza fra due sagome non è
+  mai negativa. Quella domanda regge lo scorrimento dei pezzi: con la lama a
+  zero una sagoma poteva scivolare DENTRO un'altra e fermarsi lì. Succedeva
+  solo alle sagome — fra rettangoli il conto è sugli ingombri e non degenera —
+  ed è così che il trapezio è finito addosso al rettangolo. Adesso si pretende
+  comunque un centesimo di millimetro, che su un taglio non si vede e rimette
+  la domanda in piedi.
+
+- **Il controllo del piano si spegneva alla prima riga** (`lama > 0`), cioè
+  proprio sui lavori senza lama. Adesso non si spegne mai: due pezzi che si
+  accavallano sono sbagliati con qualunque lama. Serviva una misura nuova —
+  QUANTO due sagome sono una dentro l'altra — perché la distanza, per due
+  pezzi che si sfiorano e per due pezzi uno dentro l'altro, vale zero in tutti
+  e due i casi. Si calcola col teorema degli assi separanti, esatto sui
+  convessi, e dice anche di quanto.
+
+- La rete di sicurezza ha funzionato come doveva: col difetto rimesso, il
+  motore si accorge del piano rotto e ripiega sui rettangoli d'ingombro invece
+  di consegnare un piano non tagliabile.
+
+- **Le etichette girate uscivano dal loro pezzo.** Il nome scritto per lungo
+  si disegna in SVG, e in SVG il testo si posa sulla LINEA DI BASE, non sul
+  bordo alto della riga: calcolarla come se fosse il bordo alto alzava la
+  scritta di quasi un corpo, e su un testo girato quell'errore non è in alto,
+  è **di fianco**. Su un pezzo largo non si vedeva; su una striscia da 240 mm
+  la scritta finiva sul pezzo accanto. Nel PDF del cantiere erano **26
+  etichette su 143**, e sembravano pezzi sovrapposti.
+
 ## 1.71.0 — Si dividono in teli anche i trapezi
 
 - **«Dividi in teli» non è più solo per i rettangoli.** Una finestra sotto
