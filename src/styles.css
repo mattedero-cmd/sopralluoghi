@@ -2227,13 +2227,27 @@ h2 {
   flex: 1;
   min-width: 0;
 }
-.btn.piu-misura {
+/* i due segni, attaccati come un tastierino solo: occupano meno di due
+   pulsanti separati e si leggono come una cosa sola */
+.tasti-conto {
+  display: flex;
+  flex: 0 0 auto;
+}
+.btn.tasto-conto {
   min-height: 44px;
-  min-width: 42px;
-  padding: 0 10px;
+  min-width: 40px;
+  padding: 0 8px;
   font-size: 19px;
   font-weight: 700;
-  flex: 0 0 auto;
+}
+.tasti-conto .btn:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.tasti-conto .btn:last-child {
+  margin-left: -1px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
 }
 
 /* il totale del conto scritto nel campo misura: «100+124+113  = 337» */

@@ -6838,13 +6838,13 @@ function EditorQuota({
       <div className="eq-controlli">
         <div className="campo">
           <label>Misura</label>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <InputMisura
               autoFocus
               valore={testoVal}
               onCambia={setTestoVal}
               placeholder="es. 100"
-              style={{ flex: 1 }}
+              style={{ flex: '1 1 180px' }}
             />
             <select value={unita} onChange={(e) => setUnita(e.target.value as Unita)} style={{ width: 90 }}>
               <option value="mm">mm</option>
@@ -6888,25 +6888,41 @@ function EditorQuota({
         </div>
         <div className="campo">
           <label>Abbondanze (extra per il taglio)</label>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span style={{ minWidth: 64, color: 'var(--testo-2)', fontSize: 13, textTransform: 'capitalize' }}>
-              {versoA}
-            </span>
-            <InputMisura
-              valore={abbInizio}
-              onCambia={setAbbInizio}
-              placeholder="0"
-              style={{ flex: 1 }}
-            />
-            <span style={{ minWidth: 64, color: 'var(--testo-2)', fontSize: 13, textTransform: 'capitalize' }}>
-              {versoB}
-            </span>
-            <InputMisura
-              valore={abbFine}
-              onCambia={setAbbFine}
-              placeholder="0"
-              style={{ flex: 1 }}
-            />
+          {/*
+            Le due abbondanze vanno a capo quando non ci stanno in riga: con
+            il campo, i due tasti del conto e l'etichetta del verso, su un
+            telefono due gruppi in una riga sola lasciano campi larghi un dito
+          */}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {(
+              [
+                [versoA, abbInizio, setAbbInizio],
+                [versoB, abbFine, setAbbFine]
+              ] as const
+            ).map(([verso, valore, scrivi]) => (
+              <span
+                key={verso}
+                style={{ display: 'flex', gap: 8, alignItems: 'center', flex: '1 1 230px' }}
+              >
+                <span
+                  style={{
+                    minWidth: 64,
+                    color: 'var(--testo-2)',
+                    fontSize: 13,
+                    textTransform: 'capitalize'
+                  }}
+                >
+                  {verso}
+                </span>
+                <InputMisura
+                  valore={valore}
+                  onCambia={scrivi}
+                  etichetta={`Abbondanza ${verso}`}
+                  placeholder="0"
+                  style={{ flex: 1 }}
+                />
+              </span>
+            ))}
           </div>
           {tagliata !== null && (abbA > 0 || abbB > 0) && (
             <span style={{ color: 'var(--ok)', fontSize: 13, fontWeight: 700, marginTop: 6 }}>
@@ -7136,7 +7152,7 @@ function EditorCerchio({
       <div className="eq-controlli">
         <div className="campo">
           <label>Misura</label>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <span className="segmenti" role="group" aria-label="Raggio o diametro">
               {(
                 [
@@ -7154,7 +7170,7 @@ function EditorCerchio({
               valore={testoVal}
               onCambia={setTestoVal}
               placeholder="es. 50"
-              style={{ flex: 1 }}
+              style={{ flex: '1 1 180px' }}
             />
             <select value={unita} onChange={(e) => setUnita(e.target.value as Unita)} style={{ width: 80 }}>
               <option value="mm">mm</option>
@@ -10148,19 +10164,21 @@ function SchedaParete({
 
       <div className="campo">
         <label>Misure reali del riquadro</label>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        {/* larghezza e altezza vanno a capo se non ci stanno: col tastierino
+            del conto due campi in riga lascerebbero due fessure */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <InputMisura
             valore={testoL}
             onCambia={setTestoL}
             etichetta="Larghezza reale"
-            style={{ flex: 1, minWidth: 0 }}
+            style={{ flex: '1 1 190px', minWidth: 0 }}
           />
           <span style={{ color: 'var(--testo-2)' }}>×</span>
           <InputMisura
             valore={testoA}
             onCambia={setTestoA}
             etichetta="Altezza reale"
-            style={{ flex: 1, minWidth: 0 }}
+            style={{ flex: '1 1 190px', minWidth: 0 }}
           />
           <select
             value={unita}

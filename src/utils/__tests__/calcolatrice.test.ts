@@ -50,6 +50,18 @@ describe('il conto', () => {
     expect(analizzaMisura('2400/2')).toBe(1200);
   });
 
+  it('somma e sottrae nella stessa catena: il tutto meno quello che si leva', () => {
+    expect(analizzaMisura('337+63-15')).toBe(385);
+    expect(analizzaMisura('1200-150-150')).toBe(900);
+    expect(analizzaMisura('100+124+113-37')).toBe(300);
+  });
+
+  it('un conto che finisce sotto zero non è una misura', () => {
+    // il campo lo lascia scritto com'è: chi lo sta scrivendo lo corregge
+    expect(analizzaMisura('150-1200')).toBeNull();
+    expect(normalizzaMisura('150-1200')).toBe('150-1200');
+  });
+
   it('rispetta la precedenza e le parentesi', () => {
     expect(analizzaMisura('100+2*50')).toBe(200);
     expect(analizzaMisura('(100+50)*2')).toBe(300);
@@ -114,6 +126,7 @@ describe('quando il campo si riscrive col totale', () => {
   it('il totale prende il posto del conto, e il numero resta com’è', () => {
     expect(normalizzaMisura('100+124+113')).toBe('337');
     expect(normalizzaMisura('100,5+20,25')).toBe('120,75');
+    expect(normalizzaMisura('337+63-15')).toBe('385');
     expect(normalizzaMisura('12,5')).toBe('12,5');
     // un conto che non torna si lascia lì: chi lo sta scrivendo lo finisce
     expect(normalizzaMisura('100+')).toBe('100+');

@@ -10,6 +10,26 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.70.0 — Anche il meno nella calcolatrice
+
+- **Accanto al «+» c'è il «−».** Una misura è spesso un tutto a cui si leva
+  qualcosa — «1200−150» — e sul telefono la tastiera numerica il segno meno
+  non ce l'ha più di quanto abbia il più. I due tasti stanno attaccati come un
+  tastierino solo, che occupa meno di due pulsanti separati e si legge come
+  una cosa sola.
+
+- **Toccando un tasto il conto non si chiudeva più da solo.** Il tasto rubava
+  il fuoco al campo, e uscire dal campo chiude il conto nel suo totale: dopo
+  «337+63» un tocco sul meno lasciava «400» e il pezzo scritto dopo finiva in
+  un conto nuovo. Adesso il fuoco resta dov'è: la catena si vede per intero —
+  «337+63−15 = 385» — e il cursore è già al posto giusto per il pezzo
+  successivo.
+
+- **Le righe strette vanno a capo.** Con due tasti in più, due campi misura
+  affiancati — le abbondanze sinistra/destra, la larghezza e l'altezza del
+  riquadro di riferimento — lasciavano campi larghi un dito. Adesso, quando
+  non ci stanno in riga, scendono una sotto l'altra.
+
 ## 1.69.0 — La calcolatrice nel campo della misura, e le foto che cambiano sopralluogo
 
 - **La misura si può FARE, non solo scrivere.** Al banco una misura viene
