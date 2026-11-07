@@ -99,8 +99,8 @@ const CHIAVE_VECCHIA = 'nesting.v1';
  * LE FASCE DI ROTOLO A PORTATA DI TOCCO.
  *
  * Si lavora scalando di fascia — quello che non entra nella 915 va sulla
- * 1220, poi sulla 1520 — e ogni volta la misura è sempre una di queste tre:
- * ribatterla a mano è tempo perso e un'occasione di sbagliare cifra.
+ * 1220, poi sulla 1370, e così via — e ogni volta la misura è sempre una di
+ * queste: ribatterla a mano è tempo perso e un'occasione di sbagliare cifra.
  */
 function FasceBobina({ valore, onSceglie }: { valore: number; onSceglie: (v: number) => void }) {
   return (

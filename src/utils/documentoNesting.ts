@@ -59,9 +59,10 @@ export const BOBINA_PREDEFINITA = { larghezza: 1220, metri: 50 };
  *
  * Pellicole e controllo solare arrivano in queste misure: tenerle a portata
  * di tocco serve a scalare da una fascia all'altra — quello che non entra
- * nella 915 si prova sulla 1220, poi sulla 1520 — senza ribattere il numero.
+ * nella 915 si prova sulla 1220, poi sulla 1370, e così via — senza
+ * ribattere il numero. In ordine crescente, che è l'ordine in cui si sale.
  */
-export const FASCE_BOBINA = [915, 1220, 1520];
+export const FASCE_BOBINA = [915, 1220, 1370, 1520, 1600];
 
 export function materialeNuovo(id: string, nome: string): MaterialeNesting {
   return {

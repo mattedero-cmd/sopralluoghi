@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   BOBINA_PREDEFINITA,
+  FASCE_BOBINA,
   LASTRA_PREDEFINITA,
   cambioVenatura,
   duplicaEssenza,
@@ -471,5 +472,34 @@ describe('la nuova essenza nasce già sul supporto giusto', () => {
     });
     expect(dopo.materiali[1].modo).toBe('bobina');
     expect(dopo.materiali[1].bobina).toEqual({ larghezza: 915, metri: 10 });
+  });
+});
+
+/**
+ * LE FASCE DI ROTOLO A PORTATA DI TOCCO.
+ *
+ * Si lavora scalando di fascia, e ogni volta la misura è una di queste:
+ * ribatterla a mano è tempo perso e un'occasione di sbagliare cifra. La
+ * lista è in millimetri, in ordine crescente — che è l'ordine in cui si sale
+ * — e i tasti la mostrano in centimetri.
+ */
+describe('le fasce di rotolo', () => {
+  it('ci sono tutte quelle che si usano davvero', () => {
+    for (const mm of [915, 1220, 1370, 1520, 1600]) {
+      expect(FASCE_BOBINA, `manca la fascia da ${mm / 10} cm`).toContain(mm);
+    }
+  });
+
+  it('stanno in ordine crescente e non si ripetono', () => {
+    const ordinate = [...FASCE_BOBINA].sort((a, b) => a - b);
+    expect(FASCE_BOBINA).toEqual(ordinate);
+    expect(new Set(FASCE_BOBINA).size).toBe(FASCE_BOBINA.length);
+  });
+
+  it('sono misure vere, in millimetri', () => {
+    for (const mm of FASCE_BOBINA) {
+      expect(mm).toBeGreaterThan(500);
+      expect(mm).toBeLessThan(3000);
+    }
   });
 });
