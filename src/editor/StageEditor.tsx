@@ -168,6 +168,9 @@ interface Props {
    *  apre la modifica INLINE del valore sul canvas, senza editor dedicato.
    *  `indice` = segmento; `cliente` = posizione in pixel schermo del tocco. */
   onQuotaInline?: (indice: number, cliente: { x: number; y: number }) => void;
+  /** tocco su uno SPIGOLO della polilinea selezionata: apre la dichiarazione
+   *  dell'angolo a 90°. `indice` = vertice; `cliente` = pixel schermo. */
+  onAngoloVertice?: (indice: number, cliente: { x: number; y: number }) => void;
   /** tocco sull'etichetta di una quota di DISTANZA oggetto–lato dello schizzo:
    *  apre la modifica inline (id del vincolo + posizione schermo). */
   onDistanzaInline?: (vincoloId: string, cliente: { x: number; y: number }) => void;
@@ -1932,6 +1935,7 @@ export function StageEditor(p: Props) {
               vincolo={p.vincolo}
               gestoMulti={() => gestoMulti.current}
               onQuotaInline={p.onQuotaInline}
+              onAngoloVertice={p.onAngoloVertice}
               onDistanzaInline={p.onDistanzaInline}
             />
           )}
@@ -2495,6 +2499,7 @@ function ManiglieAnnotazione({
   vincolo,
   gestoMulti,
   onQuotaInline,
+  onAngoloVertice,
   onDistanzaInline
 }: {
   ann: Annotazione;
@@ -2510,6 +2515,13 @@ function ManiglieAnnotazione({
   gestoMulti?: () => boolean;
   /** tocco secco sull'etichetta di una quota: modifica inline del valore */
   onQuotaInline?: (indice: number, cliente: { x: number; y: number }) => void;
+  /**
+   * Tocco secco su uno SPIGOLO di una polilinea: si dichiara a 90°.
+   *
+   * In una stanza l'angolo retto si sa senza misurarlo, e il posto per dirlo
+   * è lo spigolo stesso: si tocca quello, lì sulla foto, dove lo si vede.
+   */
+  onAngoloVertice?: (indice: number, cliente: { x: number; y: number }) => void;
   /** tocco secco sull'etichetta di una quota di distanza oggetto–lato */
   onDistanzaInline?: (vincoloId: string, cliente: { x: number; y: number }) => void;
 }) {
@@ -2723,9 +2735,49 @@ function ManiglieAnnotazione({
                 segmenti: segs,
                 punti: punti.map((q, j) => (j === i ? n : q))
               }),
-              { snap: true, escludi: [pos] }
+              {
+                snap: true,
+                escludi: [pos],
+                // trascinare sposta lo spigolo, TOCCARLO dice che è a squadro
+                ...(onAngoloVertice && punti.length >= 4
+                  ? { onTap: (cliente: { x: number; y: number }) => onAngoloVertice(i, cliente) }
+                  : {})
+              }
             )
           )}
+          {/* IL SEGNO DELLO SPIGOLO A SQUADRO: la squadretta del disegnatore,
+              messa dentro l'angolo e orientata sui suoi due lati. Si vede solo
+              mentre la forma è selezionata — è il riscontro di quello che si è
+              appena dichiarato, non un segno in più sulla foto */}
+          {(ann.angoliRetti ?? []).map((i) => {
+            const c = punti[i];
+            const p = punti[(i + punti.length - 1) % punti.length];
+            const q = punti[(i + 1) % punti.length];
+            if (!c || !p || !q) return null;
+            const versore = (d: Punto) => {
+              const L = Math.hypot(d.x, d.y);
+              return L > 0 ? { x: d.x / L, y: d.y / L } : { x: 0, y: 0 };
+            };
+            const u = versore({ x: p.x - c.x, y: p.y - c.y });
+            const v = versore({ x: q.x - c.x, y: q.y - c.y });
+            const L = raggio * 1.6;
+            return (
+              <Line
+                key={`retto-${i}`}
+                points={[
+                  c.x + u.x * L,
+                  c.y + u.y * L,
+                  c.x + (u.x + v.x) * L,
+                  c.y + (u.y + v.y) * L,
+                  c.x + v.x * L,
+                  c.y + v.y * L
+                ]}
+                stroke="#ffd400"
+                strokeWidth={2.5 / scala}
+                listening={false}
+              />
+            );
+          })}
           {/* maniglia del testo di ogni segmento: trascinala perpendicolare
               per proiettare la quota, lungo la linea per spostare il numero
               (utile per le diagonali che si accavallano al centro) */}

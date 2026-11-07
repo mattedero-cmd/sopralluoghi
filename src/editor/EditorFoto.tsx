@@ -586,6 +586,13 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     x: number;
     y: number;
   } | null>(null);
+  /** lo spigolo toccato sulla foto, per dichiararlo a 90° */
+  const [spigoloRetto, setSpigoloRetto] = useState<{
+    id: string;
+    indice: number;
+    x: number;
+    y: number;
+  } | null>(null);
   /** passo dell'aggancio angolare del comando «Ortogonale».
    *  Erano tre voci di menu (90°, snap 45°, snap 30°) per una riga di
    *  codice con un parametro: adesso è UNA voce e il passo si sceglie qui,
@@ -3226,7 +3233,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     if (rif.length === 0) {
       mostraToast(
         'info',
-        'Nessuna forma con misure scritte a mano: quota un rettangolo (o un poligono a quattro lati) e riprova.'
+        'Nessuna forma che possa fare da riferimento: quota un rettangolo, un poligono a quattro lati, oppure una polilinea con gli spigoli dichiarati a 90° (toccali sulla foto).'
       );
       return;
     }
@@ -3949,6 +3956,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           if (!selezionata || selezionata.tipo !== 'quotaPoligono') return;
           setQuotaInline({ id: selezionata.id, indice, x: cliente.x, y: cliente.y });
         }}
+        onAngoloVertice={(indice, cliente) => {
+          if (!selezionata || selezionata.tipo !== 'quotaPoligono') return;
+          setSpigoloRetto({ id: selezionata.id, indice, x: cliente.x, y: cliente.y });
+        }}
         onPuntoVincolo={onPuntoVincolo}
         puntiSelezionabili={strumento === 'vincolo' ? puntiSelezionabiliArmati() : null}
         censure={foto.censure}
@@ -4621,6 +4632,54 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 }
                 setAngoloInline(null);
               }}
+            />
+          );
+        })()}
+
+
+      {/* LO SPIGOLO DICHIARATO A SQUADRO.
+          Si tocca l'angolo sulla foto, dove lo si vede, e si dice che fa
+          novanta. Il disegno NON si muove — resta in prospettiva, com'è stato
+          tracciato — e quello che cambia è a valle: la forma vera del pezzo
+          esce dalle quote invece che dal disegno, la polilinea diventa un
+          riferimento buono per il piano prospettico, e la pannellizzazione la
+          raddrizza da sola come fa già con rettangoli e trapezi. */}
+      {spigoloRetto &&
+        (() => {
+          const poli = annotazioni?.find(
+            (a) => a.id === spigoloRetto.id && a.tipo === 'quotaPoligono'
+          ) as QuotaPoligono | undefined;
+          if (!poli) return null;
+          const retti = poli.angoliRetti ?? [];
+          const gia = retti.includes(spigoloRetto.indice);
+          const scrivi = (nuovi: number[]) => {
+            commit(
+              (annotazioni ?? []).map((a) =>
+                a.id === poli.id ? ({ ...poli, angoliRetti: nuovi } as QuotaPoligono) : a
+              )
+            );
+            setSpigoloRetto(null);
+          };
+          return (
+            <SpigoloInline
+              x={spigoloRetto.x}
+              y={spigoloRetto.y}
+              numero={spigoloRetto.indice + 1}
+              dichiarato={gia}
+              tutti={retti.length === poli.punti.length}
+              onAnnulla={() => setSpigoloRetto(null)}
+              onDichiara={() =>
+                scrivi(
+                  gia
+                    ? retti.filter((v) => v !== spigoloRetto.indice)
+                    : [...retti, spigoloRetto.indice].sort((a, b) => a - b)
+                )
+              }
+              onTutti={() =>
+                scrivi(
+                  retti.length === poli.punti.length ? [] : poli.punti.map((_, i) => i)
+                )
+              }
             />
           );
         })()}
@@ -6318,6 +6377,67 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
 // al punto toccato sul canvas: niente ambiente dedicato, il disegno resta
 // visibile e si aggiorna appena si conferma il valore.
 // ---------------------------------------------------------------------------
+/**
+ * IL RIQUADRINO DELLO SPIGOLO, ancorato all'angolo toccato.
+ *
+ * Un tasto solo, perché c'è una cosa sola da dire. Non toglie e non sposta
+ * niente sulla foto: dichiara, e si chiude.
+ */
+function SpigoloInline({
+  x,
+  y,
+  numero,
+  dichiarato,
+  tutti,
+  onDichiara,
+  onTutti,
+  onAnnulla
+}: {
+  x: number;
+  y: number;
+  numero: number;
+  dichiarato: boolean;
+  tutti: boolean;
+  onDichiara: () => void;
+  onTutti: () => void;
+  onAnnulla: () => void;
+}) {
+  const pannello = useRef<HTMLDivElement>(null);
+  const [aggiusta, setAggiusta] = useState({ dx: 0, dy: 0 });
+  useLayoutEffect(() => {
+    const el = pannello.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const M = 8;
+    let dx = 0;
+    let dy = 0;
+    if (r.left < M) dx = M - r.left;
+    else if (r.right > window.innerWidth - M) dx = window.innerWidth - M - r.right;
+    if (r.top < M) dy = M - r.top;
+    else if (r.bottom > window.innerHeight - M) dy = window.innerHeight - M - r.bottom;
+    if (dx !== 0 || dy !== 0) setAggiusta((a) => ({ dx: a.dx + dx, dy: a.dy + dy }));
+  }, [x, y]);
+  return (
+    <>
+      <div className="quota-inline-backdrop" onClick={onAnnulla} />
+      <div
+        ref={pannello}
+        className="quota-inline"
+        style={{ left: x + aggiusta.dx, top: Math.max(76, y) + aggiusta.dy }}
+        role="dialog"
+        aria-label={`Spigolo ${numero}`}
+      >
+        <div className="qi-azioni">
+          <button className={dichiarato ? 'attivo' : ''} onClick={onDichiara}>
+            {dichiarato ? `Spigolo ${numero}: non è a 90°` : `Spigolo ${numero} a 90°`}
+          </button>
+          <button onClick={onTutti}>{tutti ? 'Nessuno a 90°' : 'Tutti a 90°'}</button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function QuotaInline({
   x,
   y,
@@ -7537,8 +7657,6 @@ function EditorPoligono({
   const [latoVincA, setLatoVincA] = useState(0);
   const [latoVincB, setLatoVincB] = useState(1);
   // origine (datum) e conversione px↔reale per gli oggetti (Fase 4)
-  /** gli spigoli dichiarati a novanta gradi, in ordine */
-  const retti = poli.angoliRetti ?? [];
   /**
    * COME CHIUDE IL PERIMETRO con quegli spigoli. È il controllo che prima non
    * si poteva fare: senza angoli dichiarati un perimetro chiude sempre, perché
@@ -7882,42 +8000,10 @@ function EditorPoligono({
         </div>
         {n >= 4 && (
           <div className="campo">
-            <label>Angoli a squadro — tocca lo spigolo che fa novanta</label>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-              <button
-                className="btn"
-                style={{ minHeight: 44, padding: '0 12px' }}
-                onClick={() =>
-                  onModifica({
-                    angoliRetti: retti.length === n ? [] : poli.punti.map((_, i) => i)
-                  })
-                }
-              >
-                {retti.length === n ? 'Nessuno' : 'Tutti a 90°'}
-              </button>
-              {poli.punti.map((_, i) => (
-                <button
-                  key={i}
-                  className={`btn${retti.includes(i) ? ' attivo' : ''}`}
-                  style={{ minHeight: 44, minWidth: 44, padding: '0 10px' }}
-                  aria-pressed={retti.includes(i)}
-                  aria-label={`Spigolo ${i + 1}${retti.includes(i) ? ', a squadro' : ''}`}
-                  onClick={() =>
-                    onModifica({
-                      angoliRetti: retti.includes(i)
-                        ? retti.filter((v) => v !== i)
-                        : [...retti, i].sort((a, b) => a - b)
-                    })
-                  }
-                >
-                  {retti.includes(i) ? '⌐' : ''}
-                  {i + 1}
-                </button>
-              ))}
-            </div>
-            <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
+            <label>Angoli a squadro</label>
+            <span style={{ color: 'var(--testo-2)', fontSize: 13 }}>
               {chiusura === null
-                ? 'In una stanza l’angolo retto si sa senza misurarlo. Dichiarandolo, la forma esce dalle quote e non serve più il piano di riferimento: gli spigoli non dichiarati li ricava la chiusura del perimetro.'
+                ? 'In una stanza l’angolo retto si sa senza misurarlo: tocca lo spigolo sulla foto e dichiaralo. La forma esce allora dalle quote, senza piano di riferimento, e gli spigoli non dichiarati li ricava la chiusura del perimetro.'
                 : chiusura.scarto > sogliaScarto
                   ? `Con questi angoli le misure non chiudono: ${formattaNumero(chiusura.scarto)} ${poli.unita} di troppo. O una quota è sbagliata, o uno di questi spigoli a squadro non è.`
                   : `Ne esce una parete ${formattaNumero(riquadroChiusura!.larghezza)} × ${formattaNumero(riquadroChiusura!.altezza)} ${poli.unita}, su ${chiusura.retti} spigoli a squadro` +

@@ -28,14 +28,15 @@
 import type { Annotazione, Foto, PianoProspettiva, Punto, Unita } from '../db/types';
 import { segmentiPoligono } from '../db/types';
 import { formaQuadrilatera } from './formaQuadrilatera';
+import { sagomaPoligonoQuotato } from './poligonoQuotato';
 import { famigliaDi } from './nomenclatura';
 import { pianoDi } from './calibrazione';
 import {
   applicaOmografia,
-  calcolaOmografia,
   invertiOmografia,
   omografiaAiMinimiQuadrati,
   omografiaPiano,
+  omografiaSagoma,
   type Omografia
 } from './omografia';
 import { inMillimetri } from '../utils/format';
@@ -97,16 +98,17 @@ export function riferimentiPiano(annotazioni: Annotazione[]): RiferimentoPiano[]
   for (const a of annotazioni) {
     if (a.tipo !== 'quotaPoligono' && a.tipo !== 'quotaRett') continue;
     if (misureCalcolate(a)) continue;
-    const forma = formaQuadrilatera(a);
+    const forma = sagomaDiRiferimento(a);
     if (!forma) continue;
     const u = forma.unita;
-    const reale = forma.verticiNetti.map((p) => ({
+    const reale = forma.reale.map((p) => ({
       x: inMillimetri(p.x, u),
       y: inMillimetri(p.y, u)
     }));
     // una forma sbilenca o sfilata non è un riferimento: darebbe un piano peggio
-    const lati = forma.quad.map((p, i) => {
-      const q = forma.quad[(i + 1) % 4];
+    const n = forma.immagine.length;
+    const lati = forma.immagine.map((p, i) => {
+      const q = forma.immagine[(i + 1) % n];
       return Math.hypot(q.x - p.x, q.y - p.y);
     });
     const peso = lati.reduce((s, v) => s + v, 0);
@@ -116,9 +118,47 @@ export function riferimentiPiano(annotazioni: Annotazione[]): RiferimentoPiano[]
     // proprio È l'originale, gli altri sono repliche. Una forma senza famiglia
     // è originale di se stessa, e passa senza accorgersi di niente.
     if (famigliaDi(a) !== a.id) continue;
-    rif.push({ id: a.id, immagine: forma.quad.map((p) => ({ ...p })), reale, peso });
+    rif.push({ id: a.id, immagine: forma.immagine.map((p) => ({ ...p })), reale, peso });
   }
   return rif;
+}
+
+/**
+ * LA FORMA DI UN RIFERIMENTO: quattro angoli, oppure una polilinea con gli
+ * SPIGOLI DICHIARATI A SQUADRO.
+ *
+ * Un quadrilatero quotato è un riferimento da sempre. Una polilinea no, e per
+ * una ragione buona: la sua forma, finché gli angoli non si dichiarano, la
+ * deduce il DISEGNO — e dare in pasto alla prospettiva una figura ricavata
+ * dalla prospettiva vuol dire farle dare ragione a sé stessa.
+ *
+ * Con gli spigoli dichiarati la cosa si capovolge. «Questo angolo è a
+ * novanta» è un'informazione che il disegno non contiene: viene dal muro, e
+ * insieme alle quote determina la figura da sola. A quel punto la polilinea è
+ * un riferimento vero — anzi migliore di un quadrilatero, perché di angoli
+ * noti ne porta sei o otto invece di quattro, sparsi su tutta la parete.
+ *
+ * È per questo che ora si dichiarano: un rilievo fatto di polilinee, che
+ * prima non poteva calibrare niente, adesso si costruisce il piano da sé.
+ */
+function sagomaDiRiferimento(
+  a: Annotazione
+): { immagine: Punto[]; reale: Punto[]; unita: Unita } | null {
+  if (a.tipo === 'quotaPoligono' && a.punti.length >= 5) {
+    if (!(a.angoliRetti ?? []).length) return null;
+    // niente foto: la figura esce dalle quote e dagli spigoli dichiarati, e
+    // al disegno si chiede solo da che parte gira
+    const s = sagomaPoligonoQuotato(a, null, false);
+    if (!s?.vertici || s.vertici.length !== a.punti.length) return null;
+    return {
+      immagine: a.punti.map((p) => ({ ...p })),
+      reale: s.vertici.map(([x, y]) => ({ x, y })),
+      unita: a.unita
+    };
+  }
+  const q = formaQuadrilatera(a);
+  if (!q) return null;
+  return { immagine: q.quad, reale: q.verticiNetti, unita: q.unita };
 }
 
 /**
@@ -147,19 +187,22 @@ function misureCalcolate(a: Annotazione): boolean {
 export function scartoDelPiano(H: Omografia, r: RiferimentoPiano): ScartoRiferimento {
   let somma = 0;
   let massimo = 0;
-  for (let i = 0; i < 4; i++) {
+  // tutti i lati del riferimento: quattro per un quadrilatero, otto per una
+  // parete dichiarata a squadro
+  const n = r.immagine.length;
+  for (let i = 0; i < n; i++) {
     const a = applicaOmografia(H, r.immagine[i]);
-    const b = applicaOmografia(H, r.immagine[(i + 1) % 4]);
+    const b = applicaOmografia(H, r.immagine[(i + 1) % n]);
     const letto = Math.hypot(b.x - a.x, b.y - a.y);
     const vero = Math.hypot(
-      r.reale[(i + 1) % 4].x - r.reale[i].x,
-      r.reale[(i + 1) % 4].y - r.reale[i].y
+      r.reale[(i + 1) % n].x - r.reale[i].x,
+      r.reale[(i + 1) % n].y - r.reale[i].y
     );
     const scarto = Math.abs(letto - vero);
     somma += scarto;
     massimo = Math.max(massimo, scarto);
   }
-  return { id: r.id, medio: somma / 4, massimo };
+  return { id: r.id, medio: somma / n, massimo };
 }
 
 /** lo scarto medio di un piano su tutte le forme, e la peggiore */
@@ -245,12 +288,12 @@ export function adattaPiano(riferimenti: RiferimentoPiano[]): EsitoPiano | null 
   const rif = [...riferimenti].sort((a, b) => b.peso - a.peso);
   if (rif.length === 0) return null;
 
-  let H: Omografia;
-  try {
-    H = calcolaOmografia(rif[0].immagine, rif[0].reale);
-  } catch {
-    return null;
-  }
+  // l'omografia di partenza, dal riferimento più grande. Con più di quattro
+  // vertici le corrispondenze sono più di quattro: se ne scelgono quattro,
+  // le più larghe, che è il conto più stabile
+  const primo = omografiaSagoma(rif[0].immagine, rif[0].reale);
+  if (!primo) return null;
+  let H: Omografia = primo;
   if (rif.length === 1) {
     const v = verificaPiano(H, rif);
     return { H, riferimenti: rif, erroreMedio: v.medio, peggiore: v.peggiore };
@@ -302,13 +345,12 @@ export function adattaPiano(riferimenti: RiferimentoPiano[]): EsitoPiano | null 
  * lo scarto di una parete diversa non è di millimetri, è di decine.
  */
 function latoMedio(r: RiferimentoPiano): number {
+  const n = r.reale.length;
+  if (n === 0) return 0;
   let lato = 0;
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < n; i++) {
     lato +=
-      Math.hypot(
-        r.reale[(i + 1) % 4].x - r.reale[i].x,
-        r.reale[(i + 1) % 4].y - r.reale[i].y
-      ) / 4;
+      Math.hypot(r.reale[(i + 1) % n].x - r.reale[i].x, r.reale[(i + 1) % n].y - r.reale[i].y) / n;
   }
   return lato;
 }
@@ -456,8 +498,8 @@ export function pianiDalleForme(riferimenti: RiferimentoPiano[]): PianoRicavato[
     const piano = pianoDaOmografia(esito.H, esito.riferimenti);
     if (!piano) continue;
     piano.ancore = gruppo.map((r) => ({
-      x: r.immagine.reduce((s, p) => s + p.x, 0) / 4,
-      y: r.immagine.reduce((s, p) => s + p.y, 0) / 4
+      x: r.immagine.reduce((s, p) => s + p.x, 0) / r.immagine.length,
+      y: r.immagine.reduce((s, p) => s + p.y, 0) / r.immagine.length
     }));
     // le forme da cui è nato: finché ci sono, il piano le segue
     piano.origini = gruppo.map((r) => r.id);

@@ -489,3 +489,89 @@ describe('la finestra fuori squadro, con uno spigolo dichiarato', () => {
     expect(d.valore).toBeCloseTo(147, 6);
   });
 });
+
+/* ───────── la polilinea dichiarata diventa un piano prospettico ───────── */
+
+describe('dalla parete dichiarata nasce il piano', () => {
+  /**
+   * Un quadrilatero quotato è un riferimento da sempre. Una polilinea no, e
+   * per una ragione buona: finché gli angoli non si dichiarano la sua forma
+   * la deduce il DISEGNO, e dare in pasto alla prospettiva una figura ricavata
+   * dalla prospettiva vuol dire farle dare ragione a sé stessa.
+   *
+   * Con gli spigoli dichiarati la cosa si capovolge: «questo angolo è a
+   * novanta» è un'informazione che il disegno non contiene, viene dal muro.
+   * A quel punto la polilinea calibra — e meglio di un quadrilatero, perché
+   * di angoli noti ne porta otto invece di quattro, sparsi su tutta la parete.
+   *
+   * Qui gli spigoli a squadro sono tre: il piede sinistro, il piede destro e
+   * quello in alto a sinistra, dove il montante incontra il soffitto piano.
+   * I due capi della falda no — lì novanta non è — e i loro angoli li ricava
+   * la chiusura. Tre dichiarazioni e quattro quote fanno sette numeri, che è
+   * esattamente quanto serve a fissare un pentagono.
+   */
+
+  /** la camera ripresa di tre quarti: i punti sulla foto sono in prospettiva */
+  const SULLA_FOTO: Array<[number, number]> = [
+    [300, 180],
+    [456, 202],
+    [1139, 519],
+    [1120, 900],
+    [320, 820]
+  ];
+  /** una parete a cinque lati: montante 345, soffitto 70, montante 224 */
+  const PARETE = (angoliRetti?: number[]) =>
+    ({
+      id: 'p1',
+      fotoId: 'f',
+      tipo: 'quotaPoligono',
+      zIndex: 0,
+      punti: SULLA_FOTO.map(([x, y]) => ({ x, y })),
+      segmenti: [
+        { da: 0, a: 1, valore: 70, offset: 0 },
+        { da: 2, a: 3, valore: 224, offset: 0 },
+        { da: 3, a: 4, valore: 400, offset: 0 },
+        { da: 4, a: 0, valore: 345, offset: 0 }
+      ],
+      unita: 'cm',
+      stato: 'reale',
+      ...(angoliRetti ? { angoliRetti } : {})
+    }) as never;
+
+  it('senza dichiarazioni la polilinea non calibra: darebbe ragione a sé stessa', async () => {
+    const { riferimentiPiano } = await import('../pianoDaForme');
+    expect(riferimentiPiano([PARETE()])).toHaveLength(0);
+  });
+
+  it('con gli spigoli dichiarati diventa un riferimento, con tutti i suoi vertici', async () => {
+    const { riferimentiPiano } = await import('../pianoDaForme');
+    const rif = riferimentiPiano([PARETE([0, 3, 4])]);
+    expect(rif).toHaveLength(1);
+    expect(rif[0].immagine).toHaveLength(5);
+    expect(rif[0].reale).toHaveLength(5);
+    // la sagoma vera è in millimetri, e le sue misure sono quelle scritte
+    const lato = (i: number, j: number) =>
+      Math.hypot(rif[0].reale[j].x - rif[0].reale[i].x, rif[0].reale[j].y - rif[0].reale[i].y);
+    expect(lato(3, 4)).toBeCloseTo(4000, 0);
+    expect(lato(4, 0)).toBeCloseTo(3450, 0);
+  });
+
+  it('e da lei sola esce un piano che misura la parete giusta', async () => {
+    const { riferimentiPiano, pianiDalleForme } = await import('../pianoDaForme');
+    const { distanzaReale } = await import('../calibrazione');
+    const pareti = pianiDalleForme(riferimentiPiano([PARETE([0, 3, 4])]));
+    expect(pareti).toHaveLength(1);
+    const piano = pareti[0].piano;
+    // il piano misura il pavimento e il montante come li ha misurati l'uomo
+    const foto = { scala: null, piano, piani: undefined };
+    const p = SULLA_FOTO.map(([x, y]) => ({ x, y }));
+    const pavimento = distanzaReale(foto, p[3], p[4])!;
+    const montante = distanzaReale(foto, p[4], p[0])!;
+    expect(pavimento.valore, 'il pavimento').toBeCloseTo(4000, -1);
+    expect(montante.valore, 'il montante').toBeCloseTo(3450, -1);
+    // e misura anche un segmento che nessuno ha quotato: la falda
+    const falda = distanzaReale(foto, p[1], p[2])!;
+    expect(falda.valore).toBeGreaterThan(3000);
+    expect(falda.valore).toBeLessThan(3800);
+  });
+});
