@@ -861,7 +861,7 @@ function dettaglioPoligono(formaMis: QuotaPoligono, fotoMis: Foto): Partial<Riga
   }
   // l'ingombro di taglio segue la stessa fonte della misura: l'originale
   out.taglioMm = ingombroTaglio(formaMis, fotoMis) ?? undefined;
-  out.pannelli = pannelliTaglio(formaMis) ?? undefined;
+  out.pannelli = pannelliTaglio(formaMis, fotoMis) ?? undefined;
   // l'elenco dei teli lo scrive chi conosce il codice della riga: vedi
   // righeMisureFoto, che chiama testoTeli sui due rami
   const perimetro = perimetroReale(formaMis);
@@ -948,7 +948,7 @@ function righeMisureFoto(
       else reale = `${n(m.baseSup)} · ${n(m.latoDx)} · ${n(m.baseInf)} · ${n(m.latoSx)} ${a.unita}`;
       const rigaR: RigaMisura = { codice: codiceForma(a), forma: nome, reale, stato: a.stato, pezzo: true };
       rigaR.taglioMm = ingombroTaglio(a, foto) ?? undefined;
-      rigaR.pannelli = pannelliTaglio(a) ?? undefined;
+      rigaR.pannelli = pannelliTaglio(a, foto) ?? undefined;
       rigaR.teli = testoTeli(rigaR.pannelli, rigaR.codice, sormontoDi(a), a.unita);
       const areaR = areaElemento(a, foto);
       if (areaR) {

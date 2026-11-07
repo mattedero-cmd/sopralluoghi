@@ -112,6 +112,14 @@ export type Strumento =
  * del dito (premi → aggiusta con la lente → rilascia), così il primo
  * punto non va mai corretto a posteriori.
  */
+/**
+ * Quel poco della foto che serve a disegnare una parete da cinque lati in su:
+ * la scala e il piano di riferimento. La sagoma di quelle pareti si
+ * ricostruisce dalle misure scritte, e il piano serve a raddrizzare il disegno
+ * da cui si ricava quello che non è stato misurato.
+ */
+type CalibFotoStage = Pick<Foto, 'scala' | 'piano' | 'piani'>;
+
 function strumentoDuePunti(s: Strumento): boolean {
   return (
     s === 'quotaO' ||
@@ -1352,6 +1360,7 @@ export function StageEditor(p: Props) {
               hitWidth={Math.max(28 / vista.scala, 12)}
               scala={vista.scala}
               abbondanze={p.foto.mostraAbbondanze}
+              calibrazione={p.foto}
               gestoMulti={() => gestoMulti.current}
               onSeleziona={() => p.onSeleziona(a.id)}
               onModifica={() => p.onModifica(a.id)}
@@ -1489,6 +1498,7 @@ export function StageEditor(p: Props) {
             <AnnotazioneShape
               ann={bozzaAnnotazione}
               immagine={p.immagine}
+              calibrazione={p.foto}
               selezionata={false}
               interattiva={false}
               hitWidth={1}
@@ -1503,6 +1513,7 @@ export function StageEditor(p: Props) {
               key={a.id}
               ann={a}
               immagine={p.immagine}
+              calibrazione={p.foto}
               selezionata={false}
               interattiva={false}
               hitWidth={1}
@@ -1940,6 +1951,7 @@ export function StageEditor(p: Props) {
           vista={vista}
           contenitore={dimensioni}
           abbondanze={p.foto.mostraAbbondanze}
+          calibrazione={p.foto}
           mirino={p.mirino ?? MIRINO_DEFAULT}
         />
       )}
@@ -1981,6 +1993,7 @@ function Lente({
   vista,
   contenitore,
   abbondanze,
+  calibrazione,
   mirino
 }: {
   immagine: ImmagineDisegnabile;
@@ -1991,6 +2004,8 @@ function Lente({
   contenitore: { w: number; h: number };
   /** true = anche nella lente si vede il contorno del pezzo da tagliare */
   abbondanze?: boolean;
+  /** la foto, per le pareti la cui sagoma si ricostruisce dalle misure */
+  calibrazione?: CalibFotoStage | null;
   mirino: Mirino;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -2026,7 +2041,8 @@ function Lente({
     const vociLente = vociLegenda(annotazioni);
     for (const a of annotazioni) {
       for (const prim of primitiveAnnotazione(a, undefined, undefined, () => vociLente, {
-        abbondanze
+        abbondanze,
+        foto: calibrazione
       })) {
         disegnaPrimitiva(ctx, prim, immagine);
       }
@@ -2137,6 +2153,7 @@ function AnnotazioneShape({
   hitWidth,
   scala,
   abbondanze,
+  calibrazione,
   gestoMulti,
   onSeleziona,
   onModifica,
@@ -2157,6 +2174,12 @@ function AnnotazioneShape({
   scala: number;
   /** true = mostra anche il contorno del pezzo da tagliare, abbondanze comprese */
   abbondanze?: boolean;
+  /**
+   * La foto a cui l'annotazione appartiene: serve solo alle pareti da cinque
+   * lati in su, dove la sagoma si ricostruisce dalle misure e il piano di
+   * riferimento raddrizza il disegno
+   */
+  calibrazione?: CalibFotoStage | null;
   /** true mentre è in corso un gesto a due dita (zoom): blocca select/drag */
   gestoMulti?: () => boolean;
   onSeleziona: () => void;
@@ -2166,9 +2189,10 @@ function AnnotazioneShape({
   const prims = useMemo(
     () =>
       primitiveAnnotazione(ann, () => immagineDettaglio ?? null, () => etichetta, () => voci ?? [], {
-        abbondanze
+        abbondanze,
+        foto: calibrazione
       }),
-    [ann, immagineDettaglio, etichetta, voci, abbondanze]
+    [ann, immagineDettaglio, etichetta, voci, abbondanze, calibrazione]
   );
   // ricorda se l'oggetto era già selezionato all'inizio del tocco: un tocco
   // "secco" su un oggetto già selezionato apre la modifica (secondo tap)

@@ -215,3 +215,81 @@ function risolvi(A: number[][]): number[] | null {
   const x = A.map((riga, i) => riga[n] / riga[i]);
   return x.every((v) => Number.isFinite(v)) ? x : null;
 }
+
+/**
+ * L'OMOGRAFIA DI UNA SAGOMA QUALUNQUE, da quanti vertici ha.
+ *
+ * `calcolaOmografia` qui sopra vuole esattamente quattro corrispondenze, che è
+ * giusto: quattro punti determinano un'omografia, e otto numeri si ricavano da
+ * otto equazioni. Ma una parete sotto falda ha cinque lati, e di corrispondenze
+ * ne porta cinque — una in più del necessario, non una in meno. Senza questa
+ * funzione si restava senza trasformazione: l'ambiente di pannellizzazione
+ * disegnava la sagoma piatta, senza prospettiva, e sulla foto le giunzioni non
+ * si vedevano affatto.
+ *
+ * Di tutti i vertici se ne scelgono QUATTRO, quelli che formano il
+ * quadrilatero più ampio: il conto di un'omografia è tanto più stabile quanto
+ * più i quattro punti sono lontani fra loro, e prendere i primi quattro di una
+ * polilinea significa a volte prenderne tre quasi in fila. Con pochi vertici
+ * si possono provare tutte le quaterne e tenere la migliore, che è quello che
+ * si fa: sei vertici sono quindici quaterne, un conto da niente.
+ *
+ * Non è un adattamento ai minimi quadrati su tutti i punti: la figura è
+ * ricostruita dalle MISURE e il disegno è fatto a dito, quindi le due nuvole
+ * non combaciano mai esattamente e un compromesso fra tutte non sarebbe più
+ * «vero» di questo. Qui le quattro corrispondenze scelte sono rispettate
+ * esattamente, e il residuo sugli altri vertici è l'errore del disegno.
+ */
+export function omografiaSagoma(sorgente: Punto[], destinazione: Punto[]): Omografia | null {
+  const n = sorgente.length;
+  if (n < 4 || destinazione.length !== n) return null;
+  if (n === 4) {
+    try {
+      return calcolaOmografia(sorgente, destinazione);
+    } catch {
+      return null;
+    }
+  }
+
+  /** l'area del quadrilatero i-j-k-l, col segno: dice anche il verso di giro */
+  const area = (p: Punto[], i: number, j: number, k: number, l: number) => {
+    const v = [p[i], p[j], p[k], p[l]];
+    let doppia = 0;
+    for (let m = 0; m < 4; m++) {
+      const a = v[m];
+      const b = v[(m + 1) % 4];
+      doppia += a.x * b.y - b.x * a.y;
+    }
+    return doppia / 2;
+  };
+
+  let scelta: [number, number, number, number] | null = null;
+  let ampiezza = 0;
+  // le quaterne in ordine ciclico: così il quadrilatero non è mai intrecciato
+  for (let i = 0; i < n - 3; i++) {
+    for (let j = i + 1; j < n - 2; j++) {
+      for (let k = j + 1; k < n - 1; k++) {
+        for (let l = k + 1; l < n; l++) {
+          const a = Math.abs(area(destinazione, i, j, k, l));
+          // dev'essere un quadrilatero buono in TUTTI E DUE gli spazi: ampio
+          // sul disegno e non ribaltato sulla sagoma
+          if (a <= ampiezza) continue;
+          const b = area(sorgente, i, j, k, l);
+          const c = area(destinazione, i, j, k, l);
+          if (!(Math.abs(b) > 0) || b * c < 0) continue;
+          ampiezza = a;
+          scelta = [i, j, k, l];
+        }
+      }
+    }
+  }
+  if (!scelta) return null;
+  try {
+    return calcolaOmografia(
+      scelta.map((i) => sorgente[i]),
+      scelta.map((i) => destinazione[i])
+    );
+  } catch {
+    return null;
+  }
+}

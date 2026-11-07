@@ -21,8 +21,7 @@ import {
   formaQuadrilatera,
   latiQuadrilatero,
   pannelliDellaForma,
-  sagomaDaLati,
-  sagomaDiTaglioQuad
+  sagomaDaLati
 } from './formaQuadrilatera';
 import {
   fasciaDiPoligono,
@@ -66,7 +65,7 @@ export interface SagomaTaglio {
 }
 
 
-type CalibFoto = Pick<Foto, 'scala' | 'piano'>;
+type CalibFoto = Pick<Foto, 'scala' | 'piano' | 'piani'>;
 
 const mm = (v: number, u: Unita) => Math.round(inMillimetri(v, u) * 10) / 10;
 
@@ -438,8 +437,11 @@ function sagomaDelTelo(poly: Array<[number, number]>): SagomaTaglio | null {
  * parete intera che nessuna bobina potrebbe contenere. Le misure comprendono
  * i sormonti, perché quelli si tagliano insieme al telo.
  */
-export function pannelliTaglio(a: Annotazione): PannelloTaglio[] | null {
-  const dati = pannelliDellaForma(a);
+export function pannelliTaglio(
+  a: Annotazione,
+  foto?: CalibFoto | null
+): PannelloTaglio[] | null {
+  const dati = pannelliDellaForma(a, foto);
   if (!dati) return null;
   const u = dati.forma.unita;
   const verticale = dati.pann.asse === 'verticale';
@@ -453,18 +455,17 @@ export function pannelliTaglio(a: Annotazione): PannelloTaglio[] | null {
    * rettangolare vuol dire buttare il triangolo che avanza e ritrovarsi in
    * posa un telo che non copre.
    *
-   * Si prende quindi la sagoma di taglio — i quattro angoli veri del vetro
-   * gonfiati delle abbondanze, nelle STESSE coordinate in cui sono misurate
-   * le giunzioni — e la si ritaglia fascia per fascia. È la stessa sagoma che
-   * si vede nell'ambiente di pannellizzazione: quello che si guarda e quello
-   * che si taglia devono essere lo stesso pezzo.
+   * Si prende quindi la sagoma di taglio — gli angoli veri del vetro gonfiati
+   * delle abbondanze, nelle STESSE coordinate in cui sono misurate le
+   * giunzioni — e la si ritaglia fascia per fascia. È la stessa sagoma che si
+   * vede nell'ambiente di pannellizzazione: quello che si guarda e quello che
+   * si taglia devono essere lo stesso pezzo, e per non allontanarsi mai la
+   * calcola un posto solo (`formaDaDividere`).
    */
   const forma = dati.forma;
   const poly: Array<[number, number]> | null = forma.rettangolare
     ? null
-    : sagomaDiTaglioQuad(forma.verticiNetti, forma.abbondanze).map(
-        (q): [number, number] => [q.x, q.y]
-      );
+    : forma.verticiTaglio.map((q): [number, number] => [q.x, q.y]);
   const asse: 0 | 1 = verticale ? 0 : 1;
 
   return dati.pannelli.map((p) => {
@@ -543,7 +544,7 @@ export function pezziDaAnnotazioni(
       nome = nomeDi(a.etichetta, undefined, nomeForma(misureElemento(a).forma));
     else continue;
     // una forma divisa in teli entra nella distinta come i suoi teli
-    const teli = pannelliTaglio(a);
+    const teli = pannelliTaglio(a, foto);
     if (teli) {
       for (const t of teli) {
         pezzi.push({

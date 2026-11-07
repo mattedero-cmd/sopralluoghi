@@ -13,7 +13,7 @@
  * altrimenti la giunzione che si vede sulla foto non è quella che si taglia.
  */
 
-import type { Annotazione, Punto, SegmentoQuota, Unita } from '../db/types';
+import type { Annotazione, Punto, QuotaPoligono, SegmentoQuota, Unita } from '../db/types';
 import {
   abbondanzaTotale,
   quadrilateroQuotaRett,
@@ -21,6 +21,11 @@ import {
   segmentoELato
 } from '../db/types';
 import { misureElemento } from './calibrazione';
+import { sagomaPoligonoQuotato } from './poligonoQuotato';
+import type { Foto } from '../db/types';
+
+/** quel poco della foto che serve a raddrizzare il disegno */
+type CalibFoto = Pick<Foto, 'scala' | 'piano' | 'piani'>;
 import { offsetPoligono, ordinaQuad, quadConvesso } from './punti';
 import {
   fasciaDiPoligono,
@@ -334,15 +339,35 @@ export function bordiSagoma(poly: Punto[], asse: AssePannelli, u: number): { da:
   const i = asseDi(asse);
   const co = (p: Punto) => (i === 0 ? p.x : p.y);
   const tr = (p: Punto) => (i === 0 ? p.y : p.x);
+  /**
+   * QUANDO UN LATO STA SULLA LINEA DI TAGLIO: la tolleranza del banco, non
+   * quella della macchina.
+   *
+   * Un montante disegnato a dito su una foto non viene mai perfettamente a
+   * piombo: un pixel di disegno su una parete di tre metri e mezzo sono tre
+   * millimetri di pendenza, e la sagoma ricostruita se li porta dietro. Con un
+   * milionesimo di tolleranza quel montante non era più «parallelo al taglio»,
+   * e il telo di bordo si ritrovava misurato dove la parete finisce in punta:
+   * ZERO centimetri di traverso, scritto nell'ambiente di divisione.
+   *
+   * Si guarda quindi quanto il lato CORRE lungo l'asse rispetto a tutto il
+   * pezzo: sotto l'uno per cento è un lato di testa, e il telo che gli si
+   * appoggia è lungo quanto lui. Un lato davvero obliquo — una falda — corre
+   * per mezzo pezzo e non ci casca.
+   */
+  const coordinate = poly.map(co);
+  const tolleranza = Math.max(1e-9, (Math.max(...coordinate) - Math.min(...coordinate)) * 0.01);
   const valori: number[] = [];
   for (let k = 0; k < poly.length; k++) {
     const p1 = poly[k];
     const p2 = poly[(k + 1) % poly.length];
     const c1 = co(p1);
     const c2 = co(p2);
-    if (Math.abs(c1 - c2) < 1e-9) {
-      // lato parallelo al taglio: conta solo se è proprio lui
-      if (Math.abs(c1 - u) < 1e-6) valori.push(tr(p1), tr(p2));
+    if (Math.abs(c1 - c2) < tolleranza) {
+      // lato di testa: conta solo se la linea di taglio passa proprio di lì
+      if (Math.abs(c1 - u) < tolleranza || Math.abs(c2 - u) < tolleranza) {
+        valori.push(tr(p1), tr(p2));
+      }
       continue;
     }
     const t = (u - c1) / (c2 - c1);
@@ -353,10 +378,19 @@ export function bordiSagoma(poly: Punto[], asse: AssePannelli, u: number): { da:
   return { da: Math.min(...valori), a: Math.max(...valori) };
 }
 
-/** true se su questa forma la pannellizzazione ha un senso */
+/**
+ * true se su questa forma la pannellizzazione ha un senso.
+ *
+ * Un telo si spezza lungo una retta, e questo si fa su qualunque forma chiusa
+ * convessa: una finestra, una parete, una parete sotto falda a cinque lati.
+ * Dai cinque lati in su il tasto non compariva affatto — la divisione si
+ * poteva fare solo dalla pagina del nesting, cioè dopo, quando la foto con il
+ * disegno non si vede più. Se poi le misure non bastano a ricostruire la
+ * forma, il tasto c'è ma spento: lo dice `formaDaDividere`, non questa.
+ */
 export function ePannellizzabile(a: Annotazione): boolean {
   if (a.tipo === 'quotaRett') return true;
-  return a.tipo === 'quotaPoligono' && a.punti.length === 4 && !a.soloEtichetta;
+  return a.tipo === 'quotaPoligono' && a.punti.length >= 4 && !a.soloEtichetta;
 }
 
 /**
@@ -598,6 +632,141 @@ export function abbondanzeZoppe(
   return fuori;
 }
 
+/**
+ * DI QUANTO SBORDA OGNI LATO di un poligono, per via delle abbondanze.
+ *
+ * Un'abbondanza è scritta su un LATO, ai suoi due estremi, e non allarga quel
+ * lato: allarga i DUE LATI DI FIANCO. Dieci centimetri di abbondanza in fondo
+ * al montante sinistro vogliono dire che il pavimento scende di dieci, non che
+ * il montante si allunga — il montante la sua lunghezza ce l'ha scritta.
+ *
+ * Quindi il lato i sborda di quanto dicono i suoi vicini ai due vertici che
+ * condivide con loro. La regola è una sola e sta scritta qui: la usano il
+ * contorno disegnato sulla foto e la sagoma di taglio, e devono dire la stessa
+ * cosa, se no il pezzo tagliato non è quello che si vede.
+ *
+ * `quanto(s, v)` dice quanto vale l'abbondanza del lato `s` al vertice `v`,
+ * nell'unità che serve a chi chiama: millimetri per il taglio, pixel per il
+ * disegno sulla foto.
+ */
+export function sbordiLati(
+  q: QuotaPoligono,
+  quanto: (s: SegmentoQuota, v: number) => number
+): number[] {
+  const n = q.punti.length;
+  const segs = segmentiPoligono(q).filter((s) => segmentoELato(s, n));
+  const lato = (i: number) =>
+    segs.find((s) => (s.da === i && s.a === (i + 1) % n) || (s.a === i && s.da === (i + 1) % n));
+  const al = (s: SegmentoQuota | undefined, v: number) => (s ? quanto(s, v) : 0);
+  return q.punti.map((_, i) =>
+    Math.max(al(lato((i + n - 1) % n), i), al(lato((i + 1) % n), (i + 1) % n))
+  );
+}
+
+/** l'abbondanza scritta sul lato `s` al vertice `v`, nell'unità della quota */
+export function abbondanzaAlVertice(s: SegmentoQuota, v: number): number {
+  if (s.valore === null || !(s.valore > 0)) return 0;
+  if (s.da === v) return s.abbInizio ?? 0;
+  if (s.a === v) return s.abbFine ?? 0;
+  return 0;
+}
+
+/**
+ * LA FORMA QUOTATA COME LA VEDE LA PANNELLIZZAZIONE, a qualunque numero di lati.
+ *
+ * `formaQuadrilatera` qui sopra legge quello che ha quattro angoli — la quota
+ * elemento e il poligono di quattro vertici — e lo legge con le sue regole: i
+ * quattro lati, la diagonale, la falda, il trapezio. Quelle regole non si
+ * toccano, e per quattro angoli questa funzione passa di là.
+ *
+ * Da cinque lati in su comandano le stesse due idee, generalizzate: le MISURE
+ * scritte fanno la forma (`sagomaPoligonoQuotato`) e il DISEGNO la gira. Una
+ * parete sotto falda si divide in teli come una finestra, e prima si poteva
+ * farlo solo dalla pagina del nesting: sulla foto, dove il pezzo è stato
+ * disegnato e quotato, il tasto non compariva.
+ *
+ * È l'unico punto da cui leggono tutti e tre — l'ambiente di divisione, le
+ * giunzioni disegnate sulla foto e la distinta di taglio — perché la giunzione
+ * che si vede deve essere quella che si taglia.
+ */
+export interface FormaDaDividere {
+  /** il contorno DISEGNATO sulla foto, vertice per vertice (px immagine) */
+  contorno: Punto[];
+  /** misure a vista, senza abbondanze, nell'unità della forma */
+  netta: { larghezza: number; altezza: number };
+  /** misure DI TAGLIO: quelle che devono stare nella fascia del rotolo */
+  taglio: { larghezza: number; altezza: number };
+  /** quanto sborda l'abbondanza sui quattro lati del riquadro */
+  abbondanze: { sinistra: number; destra: number; sopra: number; sotto: number };
+  /** la sagoma vera nel riquadro della forma, nell'ordine di `contorno` */
+  verticiNetti: Punto[];
+  /** la sagoma DI TAGLIO: la vera, gonfiata delle abbondanze di ogni lato */
+  verticiTaglio: Punto[];
+  /** vero quando i vertici sono soltanto i quattro spigoli del riquadro */
+  rettangolare: boolean;
+  unita: Unita;
+}
+
+export function formaDaDividere(
+  a: Annotazione,
+  foto?: CalibFoto | null
+): FormaDaDividere | null {
+  // QUATTRO ANGOLI: le regole di sempre, intatte
+  if (a.tipo === 'quotaRett' || (a.tipo === 'quotaPoligono' && a.punti.length === 4)) {
+    const f = formaQuadrilatera(a);
+    if (!f) return null;
+    return {
+      contorno: f.quad.map((p) => ({ ...p })),
+      netta: f.netta,
+      taglio: f.taglio,
+      abbondanze: f.abbondanze,
+      verticiNetti: f.verticiNetti.map((p) => ({ ...p })),
+      verticiTaglio: sagomaDiTaglioQuad(f.verticiNetti, f.abbondanze),
+      rettangolare: f.rettangolare,
+      unita: f.unita
+    };
+  }
+
+  if (a.tipo !== 'quotaPoligono' || a.punti.length < 5 || a.soloEtichetta) return null;
+
+  const netta = sagomaPoligonoQuotato(a, foto ?? null, false);
+  if (!netta?.vertici) return null;
+  const verticiNetti = netta.vertici.map(([x, y]) => ({ x, y }));
+  if (!poligonoConvesso(netta.vertici)) return null;
+
+  // la sagoma di taglio: ogni lato spostato in fuori di quanto dicono i suoi
+  // vicini, con la stessa regola del contorno disegnato sulla foto
+  const sbordi = sbordiLati(a, abbondanzaAlVertice);
+  const verticiTaglio = sbordi.some((v) => v > 0)
+    ? offsetPoligono(verticiNetti, sbordi)
+    : verticiNetti.map((p) => ({ ...p }));
+
+  // l'ingombro di taglio è il riquadro della sagoma gonfiata, e le abbondanze
+  // del riquadro sono di quanto sborda da quello netto su ciascun lato
+  const xs = verticiTaglio.map((p) => p.x);
+  const ys = verticiTaglio.map((p) => p.y);
+  const minX = Math.min(...xs, 0);
+  const minY = Math.min(...ys, 0);
+  const maxX = Math.max(...xs, netta.larghezza);
+  const maxY = Math.max(...ys, netta.altezza);
+
+  return {
+    contorno: a.punti.map((p) => ({ ...p })),
+    netta: { larghezza: netta.larghezza, altezza: netta.altezza },
+    taglio: { larghezza: maxX - minX, altezza: maxY - minY },
+    abbondanze: {
+      sinistra: -minX,
+      destra: maxX - netta.larghezza,
+      sopra: -minY,
+      sotto: maxY - netta.altezza
+    },
+    verticiNetti,
+    verticiTaglio,
+    rettangolare: false,
+    unita: a.unita
+  };
+}
+
 /** la pannellizzazione applicata a una forma, se c'è e se regge */
 export function pannellizzazioneDi(a: Annotazione): Pannellizzazione | null {
   if (a.tipo === 'quotaRett' || a.tipo === 'quotaPoligono') return a.pannelli ?? null;
@@ -605,7 +774,7 @@ export function pannellizzazioneDi(a: Annotazione): Pannellizzazione | null {
 }
 
 export interface PannelliForma {
-  forma: FormaQuadrilatera;
+  forma: FormaDaDividere;
   /** la pannellizzazione RISANATA: è questa che comanda, non quella salvata */
   pann: Pannellizzazione;
   /**
@@ -624,11 +793,21 @@ export interface PannelliForma {
   abbondanze: AbbondanzeTelo;
 }
 
-/** i teli di una forma pannellizzata, misure di taglio comprese */
-export function pannelliDellaForma(a: Annotazione): PannelliForma | null {
+/**
+ * I teli di una forma pannellizzata, misure di taglio comprese.
+ *
+ * `foto` serve soltanto alle forme da cinque lati in su, dove la sagoma si
+ * ricostruisce dalle misure e il piano di riferimento raddrizza il disegno da
+ * cui si ricava il resto. Chi ce l'ha la passa: l'editor, la distinta. Chi
+ * disegna le primitive la riceve dalle opzioni.
+ */
+export function pannelliDellaForma(
+  a: Annotazione,
+  foto?: CalibFoto | null
+): PannelliForma | null {
   const salvata = pannellizzazioneDi(a);
   if (!salvata) return null;
-  const forma = formaQuadrilatera(a);
+  const forma = formaDaDividere(a, foto);
   if (!forma) return null;
   // un salvataggio vecchio o arrivato da un altro dispositivo può contenere di
   // tutto: si risana PRIMA di leggere l'asse, o si sceglierebbe la misura da
@@ -656,7 +835,7 @@ export function pannelliDellaForma(a: Annotazione): PannelliForma | null {
 
 /** le abbondanze della forma, girate nel verso dell'asse di divisione */
 export function abbondanzeSullAsse(
-  forma: FormaQuadrilatera,
+  forma: Pick<FormaDaDividere, 'abbondanze'>,
   asse: Pannellizzazione['asse']
 ): AbbondanzeTelo {
   const a = forma.abbondanze;

@@ -1,6 +1,7 @@
 import type {
   Annotazione,
   Callout,
+  Foto,
   DisegnoLibero,
   Etichetta,
   Forma,
@@ -15,7 +16,6 @@ import type {
   QuotaRettangolo,
   QuotaTecnica,
   Rettangolo,
-  SegmentoQuota,
   TestoFoto,
   Unita
 } from '../db/types';
@@ -28,14 +28,25 @@ import {
   segmentoELato
 } from '../db/types';
 import {
+  abbondanzaAlVertice,
   bordiSagoma,
   fasciaSagoma,
   formaQuadrilatera,
   pannelliDellaForma,
-  sagomaDiTaglioQuad
+  sagomaDiTaglioQuad,
+  sbordiLati
 } from './formaQuadrilatera';
 import { sbordo } from './pannelli';
-import { applicaOmografia, calcolaOmografia } from './omografia';
+import { poligonoConvesso } from './sagome';
+
+/**
+ * Quel poco della foto che serve a disegnare le giunzioni di una parete a
+ * cinque lati o più: la scala e il piano di riferimento, con cui il disegno
+ * si raddrizza e la sagoma si ricostruisce come sta sul muro. Le forme a
+ * quattro angoli non ne hanno bisogno — le loro regole non guardano la foto.
+ */
+type CalibFotoPrimitive = Pick<Foto, 'scala' | 'piano' | 'piani'>;
+import { applicaOmografia, calcolaOmografia, omografiaSagoma } from './omografia';
 import { codicePannello } from './nomenclatura';
 import { misureElemento, nomePoligono } from './calibrazione';
 import { ordinaQuad, quadConvesso } from './punti';
@@ -545,28 +556,20 @@ export function primitiveAbbondanze(a: Annotazione): Primitiva[] {
   }
 
   // OGNI ALTRO POLIGONO: si sposta ogni lato in pixel, con la scala del lato
-  // che porta l'abbondanza
-  const n = a.punti.length;
-  if (n < 3) return [];
-  const segs = segmentiPoligono(a).filter((s) => segmentoELato(s, n));
-  /** l'abbondanza del lato `s` al vertice `v`, già in pixel dell'immagine */
-  const abbPx = (s: SegmentoQuota | undefined, v: number): number => {
-    if (!s || s.valore === null || s.valore <= 0) return 0;
-    const q = s.da === v ? (s.abbInizio ?? 0) : s.a === v ? (s.abbFine ?? 0) : 0;
+  // che porta l'abbondanza. QUALE vicino allarga quale lato lo dice
+  // `sbordiLati`, una volta per tutti: la stessa regola serve alla sagoma di
+  // taglio, e scritta due volte le due figure prima o poi si allontanano
+  if (a.punti.length < 3) return [];
+  const sbordi = sbordiLati(a, (s, v) => {
+    const q = abbondanzaAlVertice(s, v);
     if (!(q > 0)) return 0;
     const p1 = a.punti[s.da];
     const p2 = a.punti[s.a];
-    if (!p1 || !p2) return 0;
+    if (!p1 || !p2 || s.valore === null) return 0;
+    // da unità reali a pixel, con la scala di QUESTO lato: è la sola che si
+    // conosce senza calibrazione
     return (q * distanza(p1, p2)) / s.valore;
-  };
-  const lato = (i: number) =>
-    segs.find((s) => (s.da === i && s.a === (i + 1) % n) || (s.a === i && s.da === (i + 1) % n));
-  // il lato i sborda di quanto dicono i suoi VICINI ai due vertici che
-  // condivide: un'abbondanza sta sul lato che la misura, ma allarga quello di
-  // fianco
-  const sbordi = a.punti.map((_, i) =>
-    Math.max(abbPx(lato((i + n - 1) % n), i), abbPx(lato((i + 1) % n), (i + 1) % n))
-  );
+  });
   if (!sbordi.some((v) => v > 0)) return [];
   return contorno(offsetPoligono(a.punti, sbordi), a.stile.spessore);
 }
@@ -586,9 +589,10 @@ export function primitiveAbbondanze(a: Annotazione): Primitiva[] {
  */
 export function primitivePannelli(
   q: QuotaPoligono | QuotaRettangolo,
-  codice?: string
+  codice?: string,
+  foto?: CalibFotoPrimitive | null
 ): Primitiva[] {
-  const dati = pannelliDellaForma(q);
+  const dati = pannelliDellaForma(q, foto);
   if (!dati) return [];
   const { forma, pann, giunti, pannelli, totale, abbondanze } = dati;
   const L = forma.netta.larghezza;
@@ -597,18 +601,16 @@ export function primitivePannelli(
   // su una forma rientrante l'omografia esiste ma ribalta l'interno
   // all'esterno: le giunzioni finirebbero a sparare linee verdi attraverso
   // tutta la foto. Meglio non disegnarle
-  if (!quadConvesso(forma.quad)) return [];
+  if (!poligonoConvesso(forma.contorno.map((p): [number, number] => [p.x, p.y]))) return [];
 
-  let H;
-  try {
-    // si parte dai quattro angoli VERI del vetro: mandare un rettangolo sul
-    // quadrilatero della foto vorrebbe dire disegnare una finestra sotto
-    // falda come un rettangolo messo in prospettiva
-    H = calcolaOmografia(forma.verticiNetti, forma.quad);
-  } catch {
-    // quattro angoli degeneri: meglio non disegnare che disegnare storto
-    return [];
-  }
+  // si parte dagli angoli VERI del vetro: mandare un rettangolo sul
+  // quadrilatero della foto vorrebbe dire disegnare una finestra sotto
+  // falda come un rettangolo messo in prospettiva. Con più di quattro
+  // vertici le corrispondenze sono più di quattro, e `omografiaSagoma`
+  // scegle le quattro più larghe
+  const H = omografiaSagoma(forma.verticiNetti, forma.contorno);
+  // angoli degeneri: meglio non disegnare che disegnare storto
+  if (!H) return [];
 
   const verticale = pann.asse === 'verticale';
   const trasversaleNetto = verticale ? A : L;
@@ -712,7 +714,11 @@ export function primitivePannelli(
  * (offset 0, frecce sui punti, nessuna linea di proiezione); trascinando la
  * maniglia di un lato la si proietta all'esterno e compaiono le linee guida.
  */
-export function primitiveQuotaRettangolo(q: QuotaRettangolo, etichetta?: string): Primitiva[] {
+export function primitiveQuotaRettangolo(
+  q: QuotaRettangolo,
+  etichetta?: string,
+  foto?: CalibFotoPrimitive | null
+): Primitiva[] {
   const badge = etichetta ?? q.etichetta;
   const [altoSx, altoDx, bassoDx, bassoSx] = quadrilateroQuotaRett(q);
   const prim: Primitiva[] = [
@@ -732,7 +738,7 @@ export function primitiveQuotaRettangolo(q: QuotaRettangolo, etichetta?: string)
   ];
   // giunzioni e sormonti del telo diviso: subito sopra il contorno e SOTTO le
   // quote, che restano la cosa più leggibile della foto
-  prim.push(...primitivePannelli(q, badge));
+  prim.push(...primitivePannelli(q, badge, foto));
   const comune = {
     id: q.id,
     fotoId: q.fotoId,
@@ -991,7 +997,11 @@ function etichettaUguaglianzaLato(q: QuotaPoligono, edgeIdx: number): string | n
   return null;
 }
 
-export function primitiveQuotaPoligono(q: QuotaPoligono, etichetta?: string): Primitiva[] {
+export function primitiveQuotaPoligono(
+  q: QuotaPoligono,
+  etichetta?: string,
+  foto?: CalibFotoPrimitive | null
+): Primitiva[] {
   const punti = q.punti;
   const n = punti.length;
   const colore = coloreQuota(q);
@@ -1010,7 +1020,7 @@ export function primitiveQuotaPoligono(q: QuotaPoligono, etichetta?: string): Pr
   ];
   // giunzioni e sormonti del telo diviso: subito sopra il contorno e SOTTO le
   // quote, che restano la cosa più leggibile della foto
-  prim.push(...primitivePannelli(q, badge));
+  prim.push(...primitivePannelli(q, badge, foto));
 
   const comune = {
     id: q.id,
@@ -2132,6 +2142,14 @@ function puntoSuBordo(r: Rettangolo, target: Punto): Punto {
 export interface OpzioniPrimitive {
   /** true = disegna anche il contorno del pezzo da tagliare, abbondanze comprese */
   abbondanze?: boolean;
+  /**
+   * La foto a cui appartiene l'annotazione: serve alle pareti da cinque lati
+   * in su, dove la sagoma si ricostruisce dalle misure e il piano di
+   * riferimento raddrizza il disegno. Senza, la sagoma si ricava dai pixel —
+   * si disegna comunque, ma la prospettiva della foto resta dentro al conto, e
+   * le giunzioni non cadono dove le mette la distinta.
+   */
+  foto?: CalibFotoPrimitive | null;
 }
 
 export function primitiveAnnotazione(
@@ -2144,7 +2162,7 @@ export function primitiveAnnotazione(
   vociLegenda?: () => Array<{ lettera: string; descrizione: string; quantita?: number }>,
   opzioni?: OpzioniPrimitive
 ): Primitiva[] {
-  const proprie = primitiveDiTipo(a, risolviDettaglio, etichettaForma, vociLegenda);
+  const proprie = primitiveDiTipo(a, risolviDettaglio, etichettaForma, vociLegenda, opzioni?.foto);
   // le abbondanze stanno SOPRA la forma: sono il contorno del pezzo, e devono
   // leggersi anche dove passa una quota
   return opzioni?.abbondanze ? [...proprie, ...primitiveAbbondanze(a)] : proprie;
@@ -2154,7 +2172,8 @@ function primitiveDiTipo(
   a: Annotazione,
   risolviDettaglio?: (c: Callout) => CanvasImageSource | null,
   etichettaForma?: (a: Annotazione) => string | undefined,
-  vociLegenda?: () => Array<{ lettera: string; descrizione: string; quantita?: number }>
+  vociLegenda?: () => Array<{ lettera: string; descrizione: string; quantita?: number }>,
+  foto?: CalibFotoPrimitive | null
 ): Primitiva[] {
   switch (a.tipo) {
     case 'quota':
@@ -2164,9 +2183,9 @@ function primitiveDiTipo(
     case 'quotaRaggio':
       return primitiveQuotaRaggio(a);
     case 'quotaRett':
-      return primitiveQuotaRettangolo(a, etichettaForma?.(a));
+      return primitiveQuotaRettangolo(a, etichettaForma?.(a), foto);
     case 'quotaPoligono':
-      return primitiveQuotaPoligono(a, etichettaForma?.(a));
+      return primitiveQuotaPoligono(a, etichettaForma?.(a), foto);
     case 'freccia':
       return primitiveFreccia(a);
     case 'testo':

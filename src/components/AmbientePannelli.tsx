@@ -2,8 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Punto } from '../db/types';
 import { Icona } from './Icona';
 import { CampoNumero } from './CampoNumero';
-import { applicaOmografia, calcolaOmografia, type Omografia } from '../geometry/omografia';
-import { quadConvesso } from '../geometry/punti';
+import { applicaOmografia, omografiaSagoma, type Omografia } from '../geometry/omografia';
 import { poligonoConvesso } from '../geometry/sagome';
 import { bordiSagoma, fasciaSagoma, sagomaDiTaglioQuad } from '../geometry/formaQuadrilatera';
 import {
@@ -57,6 +56,15 @@ export interface FormaDaPannellizzare {
    * far vedere un pezzo diverso da quello che si taglia.
    */
   vertici?: Punto[] | null;
+  /**
+   * LA SAGOMA DI TAGLIO: il vetro gonfiato delle abbondanze, lato per lato.
+   *
+   * Chi la conosce la passa, perché da cinque lati in su gonfiare «sopra,
+   * sotto, a sinistra e a destra» non vuol dire niente: le abbondanze stanno
+   * sui lati, e quali lati spostano lo sa soltanto chi ha letto le quote. Senza,
+   * si gonfia il riquadro come si è sempre fatto per le forme a quattro angoli.
+   */
+  verticiTaglio?: Punto[] | null;
   /** etichetta dell'unità, per i testi (mm, cm, m) */
   unita: string;
   /**
@@ -256,11 +264,14 @@ export function AmbientePannelli({
   }, [forma.vertici, L, A]);
 
   /** la sagoma DI TAGLIO: il vetro gonfiato delle abbondanze, lato per lato */
-  const sagomaTaglio = useMemo<Punto[]>(
-    () => sagomaDiTaglioQuad(sagoma, abb),
+  const sagomaTaglio = useMemo<Punto[]>(() => {
+    const t = forma.verticiTaglio;
+    // chi l'ha già calcolata leggendo le quote comanda: è la stessa che
+    // finisce nella distinta di taglio
+    if (t && t.length === sagoma.length && sagomaValida(t)) return t;
+    return sagomaDiTaglioQuad(sagoma, abb);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sagoma, abb.sinistra, abb.destra, abb.sopra, abb.sotto]
-  );
+  }, [forma.verticiTaglio, sagoma, abb.sinistra, abb.destra, abb.sopra, abb.sotto]);
 
   /**
    * LE MISURE VERE DI OGNI TELO.
@@ -281,12 +292,12 @@ export function AmbientePannelli({
     [pannelli, sagomaTaglio, pann.asse]
   );
 
-  /** i 4 angoli nello spazio del disegno: la foto, o la sagoma in scala */
+  /** il contorno nello spazio del disegno: la foto, o la sagoma in scala */
   const quad = useMemo<Punto[]>(() => {
     const p = forma.prospettiva?.punti;
     // una forma rientrante manderebbe l'omografia a ribaltare l'interno con
     // l'esterno: si rinuncia alla prospettiva e si disegna la sagoma com'è
-    if (p && p.length === 4 && quadConvesso(p)) return p;
+    if (p && p.length === sagoma.length && p.length >= 4 && sagomaValida(p)) return p;
     return sagoma;
   }, [forma.prospettiva, sagoma]);
 
@@ -300,20 +311,17 @@ export function AmbientePannelli({
    */
   const omografie = useMemo(() => {
     // SENZA FOTO NON C'È PROSPETTIVA: il disegno è la sagoma stessa, e la
-    // trasformazione è l'identità. Serve dirlo, perché l'omografia si calcola
-    // su QUATTRO corrispondenze e una parete a cinque lati non ne ha quattro:
-    // provandoci si restava senza trasformazione e senza disegno
-    if (quad === sagoma || quad.length !== 4 || sagoma.length !== 4) {
+    // trasformazione è l'identità.
+    if (quad === sagoma || quad.length !== sagoma.length || sagoma.length < 4) {
       return { versoDisegno: IDENTITA, versoReale: IDENTITA };
     }
-    try {
-      return {
-        versoDisegno: calcolaOmografia(sagoma, quad),
-        versoReale: calcolaOmografia(quad, sagoma)
-      };
-    } catch {
-      return null;
-    }
+    // con più di quattro vertici le corrispondenze sono più di quattro:
+    // `omografiaSagoma` ne scegle quattro, le più larghe. Prima ci si fermava
+    // qui — una parete a cinque lati restava senza prospettiva e senza disegno
+    const versoDisegno = omografiaSagoma(sagoma, quad);
+    const versoReale = omografiaSagoma(quad, sagoma);
+    if (!versoDisegno || !versoReale) return null;
+    return { versoDisegno, versoReale };
   }, [quad, sagoma]);
 
   /**

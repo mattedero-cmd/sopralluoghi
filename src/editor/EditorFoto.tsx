@@ -60,7 +60,7 @@ import { AmbientePannelli } from '../components/AmbientePannelli';
 import {
   abbondanzeZoppe,
   ePannellizzabile,
-  formaQuadrilatera,
+  formaDaDividere,
   pannelliDellaForma
 } from '../geometry/formaQuadrilatera';
 import { normalizzaPannellizzazione } from '../geometry/pannelli';
@@ -5882,7 +5882,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           const rif = quotaInModifica;
           const ann = annotazioni.find((a) => a.id === rif.id);
           if (!ann || (ann.tipo !== 'quotaPoligono' && ann.tipo !== 'quotaRett')) return null;
-          const forma = formaQuadrilatera(ann);
+          const forma = formaDaDividere(ann, foto);
           // senza le misure scritte non si divide niente: i teli sono centimetri
           if (!forma) return null;
           // chiudendo si torna da dove si è arrivati: l'ambiente del poligono
@@ -5901,9 +5901,13 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 // arriva fin sotto l'obliquo, e il telo che ne esce è un
                 // trapezio — non un rettangolo messo in prospettiva
                 vertici: forma.rettangolare ? null : forma.verticiNetti,
+                // e la sagoma DI TAGLIO la calcola chi ha letto le quote: da
+                // cinque lati in su le abbondanze stanno sui lati, e gonfiare
+                // il riquadro non vorrebbe dire niente
+                verticiTaglio: forma.rettangolare ? null : forma.verticiTaglio,
                 abbondanze: forma.abbondanze,
                 unita: forma.unita,
-                prospettiva: { punti: forma.quad, immagine }
+                prospettiva: { punti: forma.contorno, immagine }
               }}
               iniziale={
                 // le giunzioni fuori misura non devono comparire come maniglie:
@@ -7532,11 +7536,13 @@ function EditorPoligono({
   const [latoVincA, setLatoVincA] = useState(0);
   const [latoVincB, setLatoVincB] = useState(1);
   // origine (datum) e conversione px↔reale per gli oggetti (Fase 4)
-  // una forma si divide in teli solo se si sa quanto misura
-  const misurata = formaQuadrilatera(poli) !== null;
+  // una forma si divide in teli solo se si sa quanto misura. Da cinque lati
+  // in su la forma si ricostruisce dalle misure scritte e dal disegno
+  // raddrizzato sul piano di riferimento: la foto serve, e va passata
+  const misurata = formaDaDividere(poli, foto) !== null;
   // i teli VERI: le giunzioni salvate possono essere finite fuori misura dopo
   // una correzione delle quote, e allora i teli non ci sono più
-  const teli = pannelliDellaForma(poli);
+  const teli = pannelliDellaForma(poli, foto);
   const pxUnita = pxPerUnita(foto, poli.unita); // px per unità reale, o null
   const idxOrigine = poli.origine != null ? poli.origine : origineDefault(poli.punti);
   const puntoOrigine = poli.punti[idxOrigine] ?? poli.punti[0];
@@ -7865,7 +7871,7 @@ function EditorPoligono({
             </span>
           </div>
         )}
-        {n === 4 && onPannellizza && (
+        {ePannellizzabile(poli) && onPannellizza && (
           <div className="campo">
             <label>Pannellizzazione</label>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -7890,7 +7896,9 @@ function EditorPoligono({
             <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
               {misurata
                 ? 'Per i teli più larghi del rotolo: le giunzioni restano sulla foto, in verde, e nel piano di taglio arrivano i singoli teli.'
-                : 'Prima quota base e altezza: i teli si dividono a centimetri, e i centimetri stanno nelle quote.'}
+                : n === 4
+                  ? 'Prima quota base e altezza: i teli si dividono a centimetri, e i centimetri stanno nelle quote.'
+                  : 'Prima quota i lati: da almeno una quota si ricava la forma, e i teli seguono la sagoma vera — anche sotto una falda.'}
             </span>
           </div>
         )}
@@ -8981,18 +8989,18 @@ function ProprietaRettangolo({
       </span>
       {ePannellizzabile(rett) && (
         <button
-          className={pannelliDellaForma(rett) ? 'btn attivo' : 'btn'}
+          className={pannelliDellaForma(rett, foto) ? 'btn attivo' : 'btn'}
           title={
-            formaQuadrilatera(rett)
+            formaDaDividere(rett, foto)
               ? 'Dividi l’elemento in teli con sormonto'
               : 'Prima scrivi base e altezza'
           }
-          disabled={!formaQuadrilatera(rett)}
+          disabled={!formaDaDividere(rett, foto)}
           onClick={onPannellizza}
         >
           <Icona nome="griglia" dimensione={18} />{' '}
-          {pannelliDellaForma(rett)
-            ? `Teli (${pannelliDellaForma(rett)!.pannelli.length})`
+          {pannelliDellaForma(rett, foto)
+            ? `Teli (${pannelliDellaForma(rett, foto)!.pannelli.length})`
             : 'Dividi in teli'}
         </button>
       )}
