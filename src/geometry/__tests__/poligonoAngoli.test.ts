@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { poligonoDaAngoliRetti } from '../poligonoAngoli';
 import { poligonoConvesso, type PuntoSagoma } from '../sagome';
+import type { PezzoNesting } from '../nesting';
 
 /**
  * LA CAMERA D'ALBERGO MISURATA SENZA PIANO DI RIFERIMENTO.
