@@ -3,7 +3,7 @@ import type { Punto } from '../db/types';
 import { Icona } from './Icona';
 import { CampoNumero } from './CampoNumero';
 import { applicaOmografia, omografiaSagoma, type Omografia } from '../geometry/omografia';
-import { poligonoConvesso } from '../geometry/sagome';
+import { monotonoSullAsse, poligonoConvesso } from '../geometry/sagome';
 import { bordiSagoma, fasciaSagoma, sagomaDiTaglioQuad } from '../geometry/formaQuadrilatera';
 import {
   giuntiAutomatici,
@@ -92,8 +92,24 @@ const MODI = [
  * il ritaglio a fasce conta su questo — una fascia di un poligono concavo
  * potrebbe uscire in due pezzi staccati, e un telo in due pezzi non è un telo.
  */
-const sagomaValida = (punti: Punto[]) =>
-  poligonoConvesso(punti.map((p): [number, number] => [p.x, p.y]));
+/**
+ * La sagoma vale se è un poligono convesso — quattro angoli come la finestra
+ * sotto falda, ma anche tre come un triangolo di sottotetto — oppure se, pur
+ * rientrando, le sue fasce restano pezzi interi almeno su un verso: è il caso
+ * del muro col gradino nel controsoffitto, che rientra sul gradino e si
+ * divide benissimo in teli verticali. Su quale verso si possa dividere lo
+ * dice `assoBuono` qui sotto, perché quello dipende dall'asse scelto.
+ */
+const sagomaValida = (punti: Punto[]) => {
+  const v = punti.map((p): [number, number] => [p.x, p.y]);
+  return poligonoConvesso(v) || monotonoSullAsse(v, 0) || monotonoSullAsse(v, 1);
+};
+
+/** su questo verso una fascia di questa sagoma esce in un pezzo solo? */
+const assoBuono = (punti: Punto[], asse: AssePannelli) => {
+  const v = punti.map((p): [number, number] => [p.x, p.y]);
+  return poligonoConvesso(v) || monotonoSullAsse(v, asse === 'verticale' ? 0 : 1);
+};
 
 /** quanto vicino al giunto bisogna toccare per prenderlo, in pixel di schermo */
 const PRESA = 26;
@@ -709,18 +725,29 @@ export function AmbientePannelli({
 
           <span className="et">Come si divide</span>
           <div className="segmenti" role="group" aria-label="Verso delle giunzioni">
-            <button
-              className={pann.asse === 'verticale' ? 'attivo' : ''}
-              onClick={() => ridistribuisci({ asse: 'verticale' })}
-            >
-              ↕ Giunzioni verticali
-            </button>
-            <button
-              className={pann.asse === 'orizzontale' ? 'attivo' : ''}
-              onClick={() => ridistribuisci({ asse: 'orizzontale' })}
-            >
-              ↔ Giunzioni orizzontali
-            </button>
+            {([
+              ['verticale', '↕ Giunzioni verticali'],
+              ['orizzontale', '↔ Giunzioni orizzontali']
+            ] as Array<[AssePannelli, string]>).map(([a, testo]) => {
+              // su una forma rientrante un verso può spezzare il telo in due
+              // ritagli staccati: quel verso non si offre, e si dice perché
+              const buono = assoBuono(sagoma, a);
+              return (
+                <button
+                  key={a}
+                  className={pann.asse === a ? 'attivo' : ''}
+                  disabled={!buono}
+                  title={
+                    buono
+                      ? undefined
+                      : 'Da questa parte un telo uscirebbe in due pezzi staccati: la sagoma rientra.'
+                  }
+                  onClick={() => ridistribuisci({ asse: a })}
+                >
+                  {testo}
+                </button>
+              );
+            })}
           </div>
 
           <div className="ap-numero">

@@ -29,6 +29,7 @@ type CalibFoto = Pick<Foto, 'scala' | 'piano' | 'piani'>;
 import { offsetPoligono, ordinaQuad, quadConvesso } from './punti';
 import {
   fasciaDiPoligono,
+  monotonoSullAsse,
   poligonoConvesso,
   poligonoSagoma,
   type MisureForma,
@@ -238,6 +239,28 @@ export function diagonaleQuadrilatero(
       quotata: true
     };
   }
+  /**
+   * UNO SPIGOLO DICHIARATO A SQUADRO DÀ LA DIAGONALE, con Pitagora.
+   *
+   * Quattro lati non bastano a determinare un quadrilatero: tenendoli tutti
+   * uguali la figura si deforma come un telaio snodato, e serve un quinto
+   * numero. Finora quel numero, quando non era quotato, veniva dal DISEGNO —
+   * l'unica cosa dedotta in tutta la forma. Ma se uno dei due spigoli che la
+   * diagonale scavalca è dichiarato a novanta, il quinto numero non si deduce
+   * più: è l'ipotenusa dei due lati che lo formano, e il disegno non serve.
+   *
+   * La diagonale va da basso-sinistra (3) ad alto-destra (1): la scavalcano lo
+   * spigolo alto-sinistra (0), fra il lato sinistro e quello alto, e quello
+   * basso-destra (2), fra il basso e il destro.
+   */
+  const retti = new Set(a.angoliRetti ?? []);
+  if (retti.has(perVertice[0])) {
+    return { valore: Math.hypot(sinistro, alto), quotata: false };
+  }
+  if (retti.has(perVertice[2])) {
+    return { valore: Math.hypot(basso, destro), quotata: false };
+  }
+
   // dal disegno: la diagonale disegnata, riportata in scala sui lati misurati
   // (media dei quattro rapporti, così un lato storto pesa poco)
   const dis = (i: number, j: number) => Math.hypot(quad[i].x - quad[j].x, quad[i].y - quad[j].y);
@@ -732,7 +755,27 @@ export function formaDaDividere(
   const netta = sagomaPoligonoQuotato(a, foto ?? null, false);
   if (!netta?.vertici) return null;
   const verticiNetti = netta.vertici.map(([x, y]) => ({ x, y }));
-  if (!poligonoConvesso(netta.vertici)) return null;
+  /**
+   * ANCHE UNA PARETE RIENTRANTE SI DIVIDE, se le sue fasce restano intere.
+   *
+   * Il gradino di un controsoffitto fa rientrare la forma, e una forma
+   * rientrante non si può dividere alla cieca: da una U una fascia uscirebbe
+   * in due ritagli staccati. Ma un muro col gradino non è una U — ogni
+   * verticale lo attraversa una volta sola — e quelle pareti sono la
+   * normalità in una stanza: rifiutarle vorrebbe dire rimandarle tutte al
+   * rettangolo d'ingombro.
+   *
+   * Si chiede quindi la cosa che serve davvero: che su ALMENO un asse il
+   * contorno sia fatto di due creste. Su quale dei due si possa poi dividere
+   * lo controlla chi sceglie l'asse (`pannelliDellaForma`).
+   */
+  if (
+    !poligonoConvesso(netta.vertici) &&
+    !monotonoSullAsse(netta.vertici, 0) &&
+    !monotonoSullAsse(netta.vertici, 1)
+  ) {
+    return null;
+  }
 
   // la sagoma di taglio: ogni lato spostato in fuori di quanto dicono i suoi
   // vicini, con la stessa regola del contorno disegnato sulla foto
@@ -814,6 +857,14 @@ export function pannelliDellaForma(
   // dividere con una regola e l'asse con un'altra
   const asse = salvata.asse === 'orizzontale' ? 'orizzontale' : 'verticale';
   const verticale = asse === 'verticale';
+  /**
+   * SU QUESTO ASSE le fasce restano pezzi interi? Su una forma rientrante
+   * dipende dal verso: un muro col gradino nel soffitto si divide in teli
+   * verticali senza problemi, ma tagliarlo in fasce ORIZZONTALI darebbe una
+   * fascia in due pezzi staccati — e due pezzi staccati non sono un telo.
+   */
+  const sagoma = forma.verticiNetti.map((p): [number, number] => [p.x, p.y]);
+  if (!poligonoConvesso(sagoma) && !monotonoSullAsse(sagoma, verticale ? 0 : 1)) return null;
   // SI DIVIDE IL VETRO: le giunzioni sono posizioni sull'elemento finito
   const totale = verticale ? forma.netta.larghezza : forma.netta.altezza;
   const pann = normalizzaPannellizzazione(salvata, totale);

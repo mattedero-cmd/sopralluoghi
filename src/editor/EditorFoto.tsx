@@ -63,6 +63,7 @@ import {
   formaDaDividere,
   pannelliDellaForma
 } from '../geometry/formaQuadrilatera';
+import { chiusuraAngoliRetti } from '../geometry/poligonoQuotato';
 import { normalizzaPannellizzazione } from '../geometry/pannelli';
 import { pianiAgganciati, pianoProiettato } from '../geometry/pianoModifica';
 import { calcolaCatene, sommaCatenaInUnita } from '../geometry/catene';
@@ -7536,6 +7537,32 @@ function EditorPoligono({
   const [latoVincA, setLatoVincA] = useState(0);
   const [latoVincB, setLatoVincB] = useState(1);
   // origine (datum) e conversione px↔reale per gli oggetti (Fase 4)
+  /** gli spigoli dichiarati a novanta gradi, in ordine */
+  const retti = poli.angoliRetti ?? [];
+  /**
+   * COME CHIUDE IL PERIMETRO con quegli spigoli. È il controllo che prima non
+   * si poteva fare: senza angoli dichiarati un perimetro chiude sempre, perché
+   * la forma si piega finché torna.
+   */
+  const chiusura = useMemo(() => chiusuraAngoliRetti(poli, foto), [poli, foto]);
+  /** mezzo centimetro di scarto è l'arrotondamento delle quote, non un errore */
+  const sogliaScarto = daMillimetri(5, poli.unita);
+  /**
+   * IL RIQUADRO DELLA FORMA CHE NE ESCE, scritto in chiaro.
+   *
+   * È il riscontro che serve a chi dichiara: il pannello mostra il DISEGNO,
+   * non la figura ricostruita, e premendo «tutti a 90°» su una parete che ha
+   * una falda la falda diventa un gradino senza che si veda. Due numeri lo
+   * dicono subito.
+   */
+  const riquadroChiusura = useMemo(() => {
+    if (!chiusura) return null;
+    const arr = (v: number) => Math.round(v * 10) / 10;
+    return {
+      larghezza: arr(Math.max(...chiusura.vertici.map((p) => p[0]))),
+      altezza: arr(Math.max(...chiusura.vertici.map((p) => p[1])))
+    };
+  }, [chiusura]);
   // una forma si divide in teli solo se si sa quanto misura. Da cinque lati
   // in su la forma si ricostruisce dalle misure scritte e dal disegno
   // raddrizzato sul piano di riferimento: la foto serve, e va passata
@@ -7853,6 +7880,53 @@ function EditorPoligono({
               })()}
           </div>
         </div>
+        {n >= 4 && (
+          <div className="campo">
+            <label>Angoli a squadro — tocca lo spigolo che fa novanta</label>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <button
+                className="btn"
+                style={{ minHeight: 44, padding: '0 12px' }}
+                onClick={() =>
+                  onModifica({
+                    angoliRetti: retti.length === n ? [] : poli.punti.map((_, i) => i)
+                  })
+                }
+              >
+                {retti.length === n ? 'Nessuno' : 'Tutti a 90°'}
+              </button>
+              {poli.punti.map((_, i) => (
+                <button
+                  key={i}
+                  className={`btn${retti.includes(i) ? ' attivo' : ''}`}
+                  style={{ minHeight: 44, minWidth: 44, padding: '0 10px' }}
+                  aria-pressed={retti.includes(i)}
+                  aria-label={`Spigolo ${i + 1}${retti.includes(i) ? ', a squadro' : ''}`}
+                  onClick={() =>
+                    onModifica({
+                      angoliRetti: retti.includes(i)
+                        ? retti.filter((v) => v !== i)
+                        : [...retti, i].sort((a, b) => a - b)
+                    })
+                  }
+                >
+                  {retti.includes(i) ? '⌐' : ''}
+                  {i + 1}
+                </button>
+              ))}
+            </div>
+            <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
+              {chiusura === null
+                ? 'In una stanza l’angolo retto si sa senza misurarlo. Dichiarandolo, la forma esce dalle quote e non serve più il piano di riferimento: gli spigoli non dichiarati li ricava la chiusura del perimetro.'
+                : chiusura.scarto > sogliaScarto
+                  ? `Con questi angoli le misure non chiudono: ${formattaNumero(chiusura.scarto)} ${poli.unita} di troppo. O una quota è sbagliata, o uno di questi spigoli a squadro non è.`
+                  : `Ne esce una parete ${formattaNumero(riquadroChiusura!.larghezza)} × ${formattaNumero(riquadroChiusura!.altezza)} ${poli.unita}, su ${chiusura.retti} spigoli a squadro` +
+                    (n - chiusura.retti > 0
+                      ? ` e ${n - chiusura.retti} ricavati dalle misure.`
+                      : '. Niente piano di riferimento: bastano le quote.')}
+            </span>
+          </div>
+        )}
         {n === 4 && (
           <div className="campo">
             <label>Base e altezza</label>

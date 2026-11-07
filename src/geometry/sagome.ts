@@ -81,6 +81,43 @@ export function poligonoConvesso(punti: PuntoSagoma[]): boolean {
   return segno !== 0;
 }
 
+/**
+ * UNA FASCIA DI QUESTO POLIGONO È UN PEZZO SOLO?
+ *
+ * Un telo si ritaglia con due rette parallele, e su una forma convessa quello
+ * che ne esce è sempre un pezzo intero. Su una forma RIENTRANTE no: da una U
+ * una fascia verticale può uscire in due ritagli staccati, e due ritagli
+ * staccati non sono un telo.
+ *
+ * Ma non tutte le forme rientranti sono una U. Un muro col gradino nel
+ * soffitto rientra — il gradino è uno spigolo che rientra — eppure ogni
+ * verticale lo attraversa UNA VOLTA SOLA, e le sue fasce sono pezzi interi.
+ * Quelle pareti si devono poter dividere, perché sono la normalità in una
+ * stanza.
+ *
+ * La domanda giusta non è quindi «è convessa?» ma «camminando sul perimetro,
+ * lungo questo asse si va avanti e si torna indietro una volta sola?». Se i
+ * versi di marcia cambiano due volte il contorno è fatto di due creste, una
+ * sopra e una sotto, e qualunque retta ci passi in mezzo le tocca una volta
+ * per ciascuna.
+ */
+export function monotonoSullAsse(punti: PuntoSagoma[], asse: 0 | 1): boolean {
+  const n = punti.length;
+  if (n < 3) return false;
+  const versi: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const d = punti[(i + 1) % n][asse] - punti[i][asse];
+    if (Math.abs(d) < 1e-9) continue; // lato perpendicolare: non cambia marcia
+    versi.push(d > 0 ? 1 : -1);
+  }
+  if (versi.length < 2) return false;
+  let cambi = 0;
+  for (let i = 0; i < versi.length; i++) {
+    if (versi[i] !== versi[(i + 1) % versi.length]) cambi++;
+  }
+  return cambi <= 2;
+}
+
 /** vertici riportati col riquadro in (0,0), come tutti i poligoni canonici */
 function verticiNormalizzati(punti: PuntoSagoma[]): PuntoSagoma[] {
   const mx = Math.min(...punti.map((q) => q[0]));
@@ -438,7 +475,57 @@ export function fasciaDiPoligono(
   ) {
     puliti.pop();
   }
-  return puliti;
+  return senzaSchegge(puliti);
+}
+
+/**
+ * VIA LE SCHEGGE lasciate dal taglio.
+ *
+ * Una giunzione messa a mano cade quasi sul gradino, non esattamente: basta
+ * un decimo di millimetro e il ritaglio esce con una scheggia — due vertici
+ * che fanno uno sperone sottilissimo, di area praticamente nulla. Quella
+ * scheggia non è una forma: rende il telo RIENTRANTE, gli toglie il nome di
+ * rettangolo o trapezio e lo manda al piano di taglio squadrato, sprecando
+ * materiale per via di due decimi di millimetro che nessuno taglierà mai.
+ *
+ * Si butta quindi ogni vertice che sta sulla congiungente dei suoi vicini
+ * entro un decimillesimo della dimensione del pezzo: su una parete di tre
+ * metri e mezzo sono tre decimi di millimetro, cioè meno di quanto una lama
+ * sappia seguire. I vertici veri — lo spigolo di una falda, il gradino di un
+ * controsoffitto — stanno a centimetri dalla congiungente e non si toccano.
+ */
+function senzaSchegge(punti: PuntoSagoma[]): PuntoSagoma[] {
+  if (punti.length < 4) return punti;
+  const xs = punti.map((p) => p[0]);
+  const ys = punti.map((p) => p[1]);
+  const taglia =
+    Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) * 1e-4;
+  if (!(taglia > 0)) return punti;
+
+  let v = punti;
+  let tolto = true;
+  while (tolto && v.length > 3) {
+    tolto = false;
+    for (let i = 0; i < v.length; i++) {
+      const a = v[(i + v.length - 1) % v.length];
+      const b = v[i];
+      const c = v[(i + 1) % v.length];
+      const lx = c[0] - a[0];
+      const ly = c[1] - a[1];
+      const base = Math.hypot(lx, ly);
+      // quanto il vertice si scosta dalla congiungente dei suoi vicini
+      const fuori =
+        base < 1e-12
+          ? Math.hypot(b[0] - a[0], b[1] - a[1])
+          : Math.abs(lx * (a[1] - b[1]) - (a[0] - b[0]) * ly) / base;
+      if (fuori <= taglia) {
+        v = v.filter((_, k) => k !== i);
+        tolto = true;
+        break;
+      }
+    }
+  }
+  return v;
 }
 
 /**

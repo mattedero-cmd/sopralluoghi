@@ -23,7 +23,8 @@
  */
 
 import type { Foto, Punto, QuotaPoligono, Unita } from '../db/types';
-import { abbondanzaTotale, segmentiPoligono } from '../db/types';
+import { abbondanzaTotale, angoliRettiDi, segmentiPoligono } from '../db/types';
+import { poligonoDaAngoliRetti, type EsitoAngoli } from './poligonoAngoli';
 import { distanzaReale, omografiaDiFoto } from './calibrazione';
 import { applicaOmografia } from './omografia';
 import { daMillimetri, inMillimetri } from '../utils/format';
@@ -254,6 +255,28 @@ export function sagomaPoligonoQuotato(
   }
 
   /**
+   * GLI SPIGOLI DICHIARATI A SQUADRO COMANDANO, e tolgono di mezzo il piano.
+   *
+   * Quando ci sono, la figura non si costruisce più a ventaglio dalle
+   * diagonali — che il disegno deve indovinare — ma si CAMMINA sul perimetro:
+   * a ogni spigolo dichiarato si sterza di novanta esatti, e quello che resta
+   * lo decide la chiusura del giro, cioè le misure. Al disegno si chiede
+   * soltanto da che parte gira ogni spigolo, che è una cosa che un dito su una
+   * foto sa dire benissimo anche senza piano di riferimento.
+   */
+  const retti = angoliRettiDi(q);
+  if (retti.some(Boolean)) {
+    const giro = giroDelPerimetro(q, foto, lati, retti);
+    if (giro) {
+      const larghezza = Math.max(...giro.vertici.map((p) => p[0]));
+      const altezza = Math.max(...giro.vertici.map((p) => p[1]));
+      if (larghezza > 0 && altezza > 0) {
+        return { forma: 'quad', larghezza, altezza, vertici: giro.vertici };
+      }
+    }
+  }
+
+  /**
    * DA DISEGNO A REALE: il rapporto medio fra quello che è stato misurato e
    * quello che si vede. Con il piano di riferimento vale quasi uno — la
    * distanza sul piano è già in misure vere — e serve solo a non far litigare
@@ -294,6 +317,39 @@ export function sagomaPoligonoQuotato(
   const altezza = Math.max(...vertici.map((p) => p[1]));
   if (!(larghezza > 0 && altezza > 0)) return null;
   return { forma: 'quad', larghezza, altezza, vertici };
+}
+
+/** il giro del perimetro con gli spigoli dichiarati: un posto solo */
+function giroDelPerimetro(
+  q: QuotaPoligono,
+  foto: CalibFoto | null,
+  lati: Array<number | null>,
+  retti: boolean[]
+): EsitoAngoli | null {
+  return poligonoDaAngoliRetti({ lati, retti, disegno: disegnoRaddrizzato(q, foto) });
+}
+
+/**
+ * COME SI CHIUDE IL PERIMETRO con gli spigoli dichiarati a squadro.
+ *
+ * Serve a dirlo a chi misura, mentre misura: se con quegli angoli le quote
+ * non tornano, da qualche parte c'è una misura sbagliata o uno spigolo che a
+ * squadro non è. È un controllo che prima non si poteva nemmeno fare — senza
+ * angoli dichiarati un perimetro chiude sempre, perché la forma si piega
+ * finché torna — e vale più di molte verifiche: lo si scopre in cantiere, col
+ * metro ancora in mano, invece che al banco di taglio.
+ */
+export function chiusuraAngoliRetti(
+  q: QuotaPoligono,
+  foto: CalibFoto | null
+): EsitoAngoli | null {
+  const n = q.punti.length;
+  if (n < 3) return null;
+  const retti = angoliRettiDi(q);
+  if (!retti.some(Boolean)) return null;
+  const lati: Array<number | null> = [];
+  for (let i = 0; i < n; i++) lati.push(quotato(q, i, (i + 1) % n, false));
+  return giroDelPerimetro(q, foto, lati, retti);
 }
 
 /** i vertici reali di una polilinea, nell'unità della quota: per chi disegna */

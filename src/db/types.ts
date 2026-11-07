@@ -629,12 +629,34 @@ export interface QuotaPoligono extends AnnotazioneBase {
    */
   simboliScambiati?: boolean;
   /**
+   * GLI SPIGOLI DICHIARATI A NOVANTA GRADI (indici dei vertici).
+   *
+   * In una stanza l'angolo retto è la cosa che si sa SENZA misurarla: lo
+   * spigolo fra due pareti è a squadro, lo stipite è a piombo, il gradino del
+   * controsoffitto fa novanta. Dichiararlo costa un tocco e vale quanto una
+   * quota — anzi di più, perché toglie di mezzo il PIANO DI RIFERIMENTO, che
+   * in una camera col letto in mezzo vuole quattro spigoli visibili che spesso
+   * non ci sono.
+   *
+   * Si può dichiarare anche DOPO aver preso le misure: la forma si rifà da
+   * sola. Gli spigoli non dichiarati restano liberi e il loro angolo si ricava
+   * dalla chiusura del perimetro, cioè dalle misure (vedi
+   * geometry/poligonoAngoli.ts).
+   */
+  angoliRetti?: number[];
+  /**
    * Divisione in teli con sormonto (solo per i poligoni a 4 vertici, vedi
    * geometry/pannelli.ts). Le posizioni delle giunzioni sono nell'unità della
    * forma e si misurano sulla MISURA DI TAGLIO, abbondanze comprese: è quella
    * che deve stare nella fascia del rotolo.
    */
   pannelli?: Pannellizzazione;
+}
+
+/** gli spigoli dichiarati a squadro, come maschera per vertice */
+export function angoliRettiDi(q: QuotaPoligono): boolean[] {
+  const scelti = new Set(q.angoliRetti ?? []);
+  return q.punti.map((_, i) => scelti.has(i));
 }
 
 /** Segmenti quotati del poligono, con conversione dei record legacy (lati[]) */
