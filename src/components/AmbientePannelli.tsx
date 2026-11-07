@@ -283,8 +283,10 @@ export function AmbientePannelli({
   const sagomaTaglio = useMemo<Punto[]>(() => {
     const t = forma.verticiTaglio;
     // chi l'ha già calcolata leggendo le quote comanda: è la stessa che
-    // finisce nella distinta di taglio
-    if (t && t.length === sagoma.length && sagomaValida(t)) return t;
+    // finisce nella distinta di taglio. Può avere MENO vertici della netta —
+    // un'abbondanza che si mangia un gradino gli toglie un lato — e va bene
+    // lo stesso: è il contorno del pezzo, non una copia della sagoma
+    if (t && t.length >= 3 && sagomaValida(t)) return t;
     return sagomaDiTaglioQuad(sagoma, abb);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [forma.verticiTaglio, sagoma, abb.sinistra, abb.destra, abb.sopra, abb.sotto]);

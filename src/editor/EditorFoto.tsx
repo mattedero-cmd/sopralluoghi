@@ -6185,6 +6185,11 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               immagine={immagine}
               nomenclatura={{ simbolo: seg.simbolo ?? '', auto: simboloAuto }}
               extra={extraPianta}
+              // l'abbondanza che sposta il lato in fuori vale sui LATI: una
+              // diagonale non ha un fuori
+              sbordoLato={
+                eLato ? { valore: seg.abbLato, perimetro: poli.abbPerimetro } : undefined
+              }
               onCalibraDaQuota={
                 // con un piano prospettico i lati sono già misurati
                 // dall'omografia: la scala lineare sarebbe ignorata → niente pulsante
@@ -6217,6 +6222,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                   nota: nuova.nota,
                   abbInizio: nuova.abbInizio,
                   abbFine: nuova.abbFine,
+                  abbLato: eLato ? (extra?.abbLato ?? undefined) : seg.abbLato,
                   simbolo: extra?.simbolo,
                   // quota inserita a mano → FISSA (non si modifica da sola quando
                   // si cambiano altre quote); solo i lati auto si adattano
@@ -6749,6 +6755,7 @@ function EditorQuota({
   immagine,
   nomenclatura,
   extra,
+  sbordoLato,
   onSalva,
   onCalibraDaQuota,
   onElimina,
@@ -6762,7 +6769,14 @@ function EditorQuota({
   nomenclatura?: { simbolo: string; auto: string };
   /** controlli aggiuntivi (es. vincoli/ancore delle piante parametriche) */
   extra?: ReactNode;
-  onSalva: (q: Quota, extra?: { simbolo?: string }) => void;
+  /**
+   * presente solo sui LATI di un poligono: l'abbondanza del lato, cioè di
+   * quanto il lato si sposta in fuori perpendicolare a sé stesso. `valore`
+   * è quella scritta su questo lato (assente = segue quella perimetrale),
+   * `perimetro` quella della forma, da mostrare come segnaposto.
+   */
+  sbordoLato?: { valore?: number; perimetro?: number };
+  onSalva: (q: Quota, extra?: { simbolo?: string; abbLato?: number | null }) => void;
   /** se presente, mostra "Usa come scala": ricava la calibrazione da questa
    *  misura (utile sulle piante non calibrate) */
   onCalibraDaQuota?: (q: Quota) => void;
@@ -6785,6 +6799,9 @@ function EditorQuota({
   );
   const [abbFine, setAbbFine] = useState(
     quota.abbFine === undefined ? '' : String(quota.abbFine).replace('.', ',')
+  );
+  const [abbSbordo, setAbbSbordo] = useState(
+    sbordoLato?.valore === undefined ? '' : String(sbordoLato.valore).replace('.', ',')
   );
   /** moltiplicatore di dimensione applicato al salvataggio (spessore + testo) */
   const [scalaTesto, setScalaTesto] = useState(1);
@@ -6948,7 +6965,14 @@ function EditorQuota({
         stato,
         stile
       },
-      nomenclatura ? { simbolo: simbolo.trim() || undefined } : undefined
+      nomenclatura || sbordoLato
+        ? {
+            simbolo: nomenclatura ? simbolo.trim() || undefined : undefined,
+            // campo vuoto = non impostata, e il lato segue il perimetro;
+            // uno zero scritto a mano invece è una scelta e resta
+            ...(sbordoLato ? { abbLato: analizzaMisura(abbSbordo) } : {})
+          }
+        : undefined
     );
   };
 
@@ -7077,6 +7101,40 @@ function EditorQuota({
             </span>
           )}
         </div>
+        {/*
+          L'ABBONDANZA DEL LATO, solo sui lati di una forma. È un'altra cosa
+          dalle due qui sopra: quelle allungano la misura, questa sposta il
+          lato. Su una polilinea è quella che serve — «questo pezzo di
+          soffitto deve sbordare di due» — e sulle misure non si saprebbe
+          nemmeno dove scriverla.
+        */}
+        {sbordoLato && (
+          <div className="campo">
+            <label>Abbondanza di questo lato (in fuori)</label>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span style={{ minWidth: 64, color: 'var(--testo-2)', fontSize: 13 }}>⟂ in fuori</span>
+              <InputMisura
+                valore={abbSbordo}
+                onCambia={setAbbSbordo}
+                etichetta="Abbondanza del lato, in fuori"
+                placeholder={
+                  sbordoLato.perimetro ? formattaNumero(sbordoLato.perimetro) : '0'
+                }
+                style={{ flex: '1 1 160px', maxWidth: 220 }}
+              />
+              <span style={{ color: 'var(--testo-2)', fontSize: 13 }}>{unita}</span>
+            </div>
+            <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
+              Il lato si sposta in fuori di tanto, perpendicolare a sé stesso: resta lungo{' '}
+              {valore === null ? 'quanto è' : `${formattaNumero(valore)} ${unita}`}, e sono i lati
+              di fianco ad allungarsi per andarlo a prendere. Dove due abbondanze si incontrano si
+              fondono nello spigolo.{' '}
+              {sbordoLato.perimetro
+                ? `Vuoto = l’abbondanza perimetrale della forma (${formattaNumero(sbordoLato.perimetro)} ${unita}); scrivi 0 per lasciare questo lato a filo.`
+                : 'Vuoto = niente.'}
+            </span>
+          </div>
+        )}
         <div className="campo">
           <label>Stato della misura</label>
           <span className="segmenti" role="group">
@@ -7674,6 +7732,14 @@ function EditorPoligono({
   const calibrata = haCalibrazione(foto);
   const colore = poli.stile.colore;
   const area = areaReale(poli, foto);
+  // l'abbondanza perimetrale si scrive qui e vale per tutti i lati; il testo
+  // resta locale così il campo accetta anche un conto (2+0,5) mentre si batte
+  const [periTesto, setPeriTesto] = useState(
+    poli.abbPerimetro === undefined ? '' : String(poli.abbPerimetro).replace('.', ',')
+  );
+  const latiConLaLoro = segs.filter(
+    (sg) => segmentoELato(sg, n) && sg.abbLato !== undefined
+  ).length;
   // form dei vincoli geometrici (Fase 3)
   const [tipoVincolo, setTipoVincolo] = useState<TipoVincoloPianta>('orizzontale');
   const [latoVincA, setLatoVincA] = useState(0);
@@ -8019,6 +8085,35 @@ function EditorPoligono({
                 );
               })()}
           </div>
+        </div>
+        {/*
+          L'ABBONDANZA PERIMETRALE: un numero solo per tutti i lati.
+          Su una parete a sette lati «due centimetri tutt'attorno» sono sette
+          lati da aprire uno per uno, e il lato dimenticato non si vede.
+        */}
+        <div className="campo">
+          <label>Abbondanza perimetrale (in fuori, su ogni lato)</label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <InputMisura
+              valore={periTesto}
+              onCambia={(t) => {
+                setPeriTesto(t);
+                const v = analizzaMisura(t);
+                onModifica({ abbPerimetro: v && v > 0 ? v : undefined });
+              }}
+              etichetta="Abbondanza perimetrale"
+              placeholder="0"
+              style={{ flex: '1 1 160px', maxWidth: 220 }}
+            />
+            <span style={{ color: 'var(--testo-2)', fontSize: 13 }}>{poli.unita}</span>
+          </div>
+          <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
+            Ogni lato si sposta in fuori di tanto, perpendicolare a sé stesso, e dove due
+            abbondanze si incontrano si fondono nello spigolo.{' '}
+            {latiConLaLoro > 0
+              ? `${latiConLaLoro} ${latiConLaLoro === 1 ? 'lato ha la sua' : 'lati hanno la loro'} e non ${latiConLaLoro === 1 ? 'segue' : 'seguono'} questa: tocca il lato per cambiarla.`
+              : 'Un lato che vuole la sua la dichiara da solo: toccalo e scrivila lì — anche zero, per quello che va a filo contro un muro.'}
+          </span>
         </div>
         {n >= 4 && (
           <div className="campo">
@@ -9162,6 +9257,25 @@ function ProprietaRettangolo({
         <option value="cm">cm</option>
         <option value="m">m</option>
       </select>
+      {/*
+        L'ABBONDANZA PERIMETRALE della quota elemento. Qui non ci sono quote
+        per lato su cui scriverla, e un numero solo tutt'attorno è anche come
+        la si chiede nove volte su dieci: «dammene due in giro».
+      */}
+      <label
+        style={{ color: 'var(--testo-2)', fontSize: 13 }}
+        title="Abbondanza perimetrale: tanti centimetri in più su ogni lato"
+      >
+        ⟂+
+      </label>
+      <CampoMisura
+        key={`${rett.id}-abb`}
+        valore={rett.abbPerimetro ?? null}
+        valoreAuto={false}
+        calcolabile={false}
+        onValore={(v) => onModifica({ abbPerimetro: v && v > 0 ? v : undefined })}
+        onRiattivaAuto={() => {}}
+      />
       <span className="segmenti" role="group" aria-label="Stato della misura">
         {(['reale', 'stimata'] as StatoMisura[]).map((s) => (
           <button key={s} className={rett.stato === s ? 'attivo' : ''} onClick={() => onModifica({ stato: s })}>

@@ -13,6 +13,7 @@
 
 import type { Annotazione, Foto, Punto, QuotaPoligono, SegmentoQuota, Unita } from '../db/types';
 import { abbondanzaTotale, segmentiPoligono, segmentoELato } from '../db/types';
+import { diagonaliRomboTaglio, haAbbondanze, latiTriangoloTaglio } from './abbondanze';
 import { misuraSegmento } from './calibrazione';
 import { misureElemento } from './calibrazione';
 import { nomeFormaPoligono, simboliPoligono } from './primitive';
@@ -152,7 +153,6 @@ function ingombroDaQuote(q: QuotaPoligono): { larghezza: number; altezza: number
   const segs = segmentiPoligono(q);
   const n = q.punti.length;
   const forma = nomeFormaPoligono(q);
-  const lati = segs.filter((s) => segmentoELato(s, n));
 
   // QUADRILATERO: larghezza e altezza si leggono dalla posizione dei lati —
   // sopra/sotto e fianchi — non dal simbolo scritto. Così scambiare a mano i
@@ -165,9 +165,9 @@ function ingombroDaQuote(q: QuotaPoligono): { larghezza: number; altezza: number
   // TRIANGOLO: i tre lati bastano a costruirlo. Si taglia appoggiato sul lato
   // più lungo, quindi l'ingombro è quel lato per l'altezza relativa.
   if (forma === 'Triangolo') {
-    const v = lati.map(taglioSegmento);
-    if (v.length !== 3 || v.some((x) => x === null)) return null;
-    const [a, b, c] = v as number[];
+    const v = latiTriangoloTaglio(q);
+    if (!v) return null;
+    const [a, b, c] = v;
     const sp = (a + b + c) / 2;
     const q2 = sp * (sp - a) * (sp - b) * (sp - c);
     if (q2 <= 0) return null; // lati che non chiudono un triangolo
@@ -202,7 +202,8 @@ function ingombroDaQuote(q: QuotaPoligono): { larghezza: number; altezza: number
 
   // ROMBO: sta dentro il rettangolo delle sue diagonali
   if (forma === 'Rombo' && diagonali.length === 2) {
-    return { larghezza: Math.max(...diagonali), altezza: Math.min(...diagonali) };
+    const d = diagonaliRomboTaglio(q, diagonali);
+    return { larghezza: Math.max(...d), altezza: Math.min(...d) };
   }
 
   // rettangolo, trapezio, quadrilatero: il lato più lungo per ciascun verso
@@ -247,23 +248,22 @@ function sagomaDaQuote(
       .filter((s) => !segmentoELato(s, n))
       .map((s) => (s.valore !== null && s.valore > 0 ? s.valore + abbondanzaTotale(s) : null));
     if (diagonali.length === 2 && diagonali.every((d): d is number => d !== null)) {
-      return { forma: 'rombo', d1: Math.max(...diagonali), d2: Math.min(...diagonali) };
+      const d = diagonaliRomboTaglio(a, diagonali);
+      return { forma: 'rombo', d1: Math.max(...d), d2: Math.min(...d) };
     }
     return null;
   }
 
   if (forma === 'Triangolo') {
-    const v = segs
-      .filter((s) => segmentoELato(s, n))
-      .map((s) => (s.valore !== null && s.valore > 0 ? s.valore + abbondanzaTotale(s) : null));
-    if (v.length !== 3 || v.some((x) => x === null)) return null;
-    const [a, b, c] = (v as number[]).slice().sort((x, y) => y - x);
+    const v = latiTriangoloTaglio(a);
+    if (!v) return null;
+    const [l1, l2, l3] = v.slice().sort((x, y) => y - x);
     // tre lati misurati BASTANO a costruire il triangolo, storto o no: non
     // c'è niente da inventare. Prima si chiedeva l'isoscele e un triangolo
     // qualunque finiva nel piano di taglio come rettangolo d'ingombro,
     // buttando via metà del materiale sotto la sua ipotenusa.
-    if (!(a + b > c && a + c > b && b + c > a)) return null;
-    return { forma: 'triangoloL', d1: a, d2: b, d3: c };
+    if (!(l1 + l2 > l3 && l1 + l3 > l2 && l2 + l3 > l1)) return null;
+    return { forma: 'triangoloL', d1: l1, d2: l2, d3: l3 };
   }
 
   if (n === 4) {
@@ -300,7 +300,14 @@ export function ingombroTaglio(
     const larg = Math.max(m.baseSup ?? 0, m.baseInf ?? 0);
     const alt = Math.max(m.latoSx ?? 0, m.latoDx ?? 0);
     if (larg <= 0 || alt <= 0) return null;
-    return { larghezza: mm(larg, a.unita), altezza: mm(alt, a.unita), conAbbondanze: false };
+    // la quota elemento non ha quote per lato, ma l'abbondanza perimetrale
+    // sì: due centimetri attorno sono quattro in larghezza e quattro in altezza
+    const giro = Math.max(0, a.abbPerimetro ?? 0);
+    return {
+      larghezza: mm(larg + 2 * giro, a.unita),
+      altezza: mm(alt + 2 * giro, a.unita),
+      conAbbondanze: giro > 0
+    };
   }
 
   if (a.tipo === 'quotaRaggio') {
@@ -319,7 +326,7 @@ export function ingombroTaglio(
 
   if (a.tipo === 'quotaPoligono') {
     const segs = segmentiPoligono(a);
-    const conAbb = segs.some((s) => segmentoELato(s, a.punti.length) && abbondanzaTotale(s) > 0);
+    const conAbb = haAbbondanze(a);
 
     /**
      * CINQUE LATI O PIÙ: la parete sotto falda che non è un quadrilatero.
@@ -375,8 +382,10 @@ export function ingombroTaglio(
 
     const ing = ingombroPoligono(a.punti, segs, foto, a.unita);
     if (!ing) return null;
-    // le abbondanze allungano i lati: quelle dei lati orizzontali entrano
-    // nella larghezza, quelle dei lati verticali nell'altezza
+    // NIENTE QUOTE: l'ingombro lo dà la foto, e sopra ci si mette quel che si
+    // sa delle abbondanze. Quelle sulla misura allungano i lati — quelle dei
+    // lati orizzontali entrano nella larghezza, quelle dei verticali
+    // nell'altezza; l'abbondanza perimetrale allarga da tutte e due le parti
     let extraL = 0;
     let extraA = 0;
     for (const s of segs) {
@@ -389,6 +398,9 @@ export function ingombroTaglio(
       if (orizzontale) extraL = Math.max(extraL, tot);
       else extraA = Math.max(extraA, tot);
     }
+    const giro = Math.max(0, a.abbPerimetro ?? 0);
+    extraL += 2 * giro;
+    extraA += 2 * giro;
     return {
       larghezza: mm(ing.larghezza + extraL, a.unita),
       altezza: mm(ing.altezza + extraA, a.unita),

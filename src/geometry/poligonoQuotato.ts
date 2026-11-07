@@ -23,7 +23,9 @@
  */
 
 import type { Foto, Punto, QuotaPoligono, Unita } from '../db/types';
-import { abbondanzaTotale, angoliRettiDi, segmentiPoligono } from '../db/types';
+import { angoliRettiDi, segmentiPoligono } from '../db/types';
+import { abbondanzaAlVertice, sbordiLati } from './abbondanze';
+import { offsetPoligono } from './punti';
 import { poligonoDaAngoliRetti, type EsitoAngoli } from './poligonoAngoli';
 import { distanzaReale, omografiaDiFoto } from './calibrazione';
 import { applicaOmografia } from './omografia';
@@ -198,19 +200,44 @@ function disegnoRaddrizzato(q: QuotaPoligono, foto: CalibFoto | null): PuntoSago
   });
 }
 
-/** la misura scritta su un segmento, abbondanze comprese */
-function quotato(
-  q: QuotaPoligono,
-  da: number,
-  a: number,
-  conAbbondanze: boolean
-): number | null {
+/** la misura scritta su un segmento: quella netta, a vista */
+function quotato(q: QuotaPoligono, da: number, a: number): number | null {
   for (const s of segmentiPoligono(q)) {
     if ((s.da !== da || s.a !== a) && (s.da !== a || s.a !== da)) continue;
     if (s.valore === null || !(s.valore > 0)) continue;
-    return s.valore + (conAbbondanze ? abbondanzaTotale(s) : 0);
+    return s.valore;
   }
   return null;
+}
+
+/**
+ * LA SAGOMA DI TAGLIO DI UNA POLILINEA: la netta, con ogni lato spostato in
+ * fuori di quello che gli chiedono le abbondanze.
+ *
+ * Prima qui si allungavano i LATI, sommando l'abbondanza alla misura scritta
+ * e ricostruendo la figura da capo. Ma allungare un lato da solo non gonfia
+ * una forma: la deforma. Su una parete a sei lati il montante allungato di
+ * dieci centimetri usciva anche più INCLINATO, perché la figura si richiude
+ * come può attorno alle misure nuove, e il pezzo che ne veniva non era quello
+ * netto con dieci di abbondanza: era un altro pezzo. Sul quadrilatero invece
+ * l'app ha sempre fatto la cosa giusta — ogni lato in fuori, gli angoli dove
+ * si reincontrano — ed è quella che si fa anche qui.
+ *
+ * I vertici tornano NEL RIQUADRO DELLA FORMA NETTA: chi vuole l'ingombro del
+ * pezzo da tagliare misura quanto sbordano, e sa anche da che parte.
+ */
+export function sagomaTaglioPoligono(
+  q: QuotaPoligono,
+  netta: MisureForma | null
+): PuntoSagoma[] | null {
+  const v = netta?.vertici;
+  if (!v || v.length < 3 || v.length !== q.punti.length) return null;
+  const sbordi = sbordiLati(q, abbondanzaAlVertice);
+  if (!sbordi.some((x) => x > 0)) return v.map((p): PuntoSagoma => [p[0], p[1]]);
+  return offsetPoligono(
+    v.map(([x, y]) => ({ x, y })),
+    sbordi
+  ).map((p): PuntoSagoma => [p.x, p.y]);
 }
 
 /**
@@ -226,6 +253,23 @@ export function sagomaPoligonoQuotato(
   foto: CalibFoto | null,
   conAbbondanze: boolean
 ): MisureForma | null {
+  const netta = sagomaNettaPoligono(q, foto);
+  if (!netta || !conAbbondanze) return netta;
+  const taglio = sagomaTaglioPoligono(q, netta);
+  if (!taglio) return netta;
+  // riappoggiata in (0,0): l'abbondanza esce anche dal bordo di sopra e di
+  // sinistra, e un pezzo con le coordinate negative non lo si piazza
+  const minX = Math.min(...taglio.map((p) => p[0]));
+  const minY = Math.min(...taglio.map((p) => p[1]));
+  const vertici = taglio.map((p): PuntoSagoma => [p[0] - minX, p[1] - minY]);
+  const larghezza = Math.max(...vertici.map((p) => p[0]));
+  const altezza = Math.max(...vertici.map((p) => p[1]));
+  if (!(larghezza > 0 && altezza > 0)) return netta;
+  return { forma: 'quad', larghezza, altezza, vertici };
+}
+
+/** la sagoma NETTA, a vista: le misure scritte comandano, il disegno la gira */
+function sagomaNettaPoligono(q: QuotaPoligono, foto: CalibFoto | null): MisureForma | null {
   const n = q.punti.length;
   if (n < 5) return null;
 
@@ -250,7 +294,7 @@ export function sagomaPoligonoQuotato(
   const disLati: Array<number | null> = [];
   for (let i = 0; i < n; i++) {
     const j = (i + 1) % n;
-    lati.push(quotato(q, i, j, conAbbondanze));
+    lati.push(quotato(q, i, j));
     disLati.push(disegnato(i, j));
   }
 
@@ -304,7 +348,7 @@ export function sagomaPoligonoQuotato(
   }
   const diagonali: number[] = [];
   for (let k = 2; k <= n - 2; k++) {
-    const v = quotato(q, 0, k, conAbbondanze) ?? stimato(0, k);
+    const v = quotato(q, 0, k) ?? stimato(0, k);
     if (v === null || !(v > 0)) return null;
     diagonali.push(v);
   }
@@ -348,7 +392,7 @@ export function chiusuraAngoliRetti(
   const retti = angoliRettiDi(q);
   if (!retti.some(Boolean)) return null;
   const lati: Array<number | null> = [];
-  for (let i = 0; i < n; i++) lati.push(quotato(q, i, (i + 1) % n, false));
+  for (let i = 0; i < n; i++) lati.push(quotato(q, i, (i + 1) % n));
   return giroDelPerimetro(q, foto, lati, retti);
 }
 

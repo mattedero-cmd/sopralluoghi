@@ -462,6 +462,16 @@ export interface QuotaRettangolo extends AnnotazioneBase {
    * 2=base inf, 3=lato dx. Si imposta trascinando la maniglia del lato.
    */
   offsetLati?: number[];
+  /**
+   * L'ABBONDANZA PERIMETRALE: tanti centimetri in fuori su OGNI lato, in un
+   * numero solo. Su una parete a sette lati dire «due centimetri tutt'attorno»
+   * sono sette lati da aprire uno per uno, e la dimenticanza di uno non si
+   * vede: qui si scrive una volta e vale per tutti.
+   *
+   * Un lato che porta la sua `abbLato` comanda lui — anche a zero, per il
+   * lato che va a filo contro un muro.
+   */
+  abbPerimetro?: number;
   unita: Unita;
   stato: StatoMisura;
   /**
@@ -525,6 +535,23 @@ export interface SegmentoQuota {
   abbInizio?: number;
   abbFine?: number;
   /**
+   * L'ABBONDANZA DEL LATO: quanto il lato si sposta IN FUORI, perpendicolare
+   * a sé stesso. Non lo allunga — due centimetri su un lato da 24 non fanno
+   * un lato da 26: fanno un lato da 24 spostato di due verso l'esterno, e
+   * sono i lati di fianco ad allungarsi per andarlo a prendere.
+   *
+   * È l'abbondanza come la si pensa su una polilinea. Sul rettangolo si
+   * ragiona per misure — tanto di più sulla base, tanto di più sull'altezza —
+   * e `abbInizio`/`abbFine` bastano; su una parete a sei lati no: lì si
+   * guarda il lato, si dice quanto deve sbordare, e gli angoli si arrangiano.
+   * Dove due abbondanze si incrociano si fondono nello spigolo, dentro o
+   * fuori che sia.
+   *
+   * Assente = vale quella perimetrale della forma, se c'è. Zero scritto a
+   * mano la annulla su questo lato soltanto.
+   */
+  abbLato?: number;
+  /**
    * PIANTE PARAMETRICHE (§12): blocca la lunghezza reale di questo lato nel
    * solver di chiusura. Quando si modifica un'altra quota, un lato bloccato
    * non si adatta: l'aggiustamento ricade sui lati liberi. Assente = libero.
@@ -572,6 +599,16 @@ export interface QuotaPoligono extends AnnotazioneBase {
   punti: Punto[];
   /** segmenti quotati (lati e/o diagonali) */
   segmenti?: SegmentoQuota[];
+  /**
+   * L'ABBONDANZA PERIMETRALE: tanti centimetri in fuori su OGNI lato, in un
+   * numero solo. Su una parete a sette lati dire «due centimetri tutt'attorno»
+   * sono sette lati da aprire uno per uno, e la dimenticanza di uno non si
+   * vede: qui si scrive una volta e vale per tutti.
+   *
+   * Un lato che porta la sua `abbLato` comanda lui — anche a zero, per il
+   * lato che va a filo contro un muro.
+   */
+  abbPerimetro?: number;
   /**
    * Nomenclatura dell'elemento (es. "1", "2", "A"…), come per la quota
    * rettangolo: visibile sulla foto e nel report.

@@ -535,9 +535,12 @@ export function primitiveAbbondanze(a: Annotazione): Primitiva[] {
     ];
   }
 
-  if (a.tipo !== 'quotaPoligono' || a.soloEtichetta) return [];
+  if (a.tipo !== 'quotaPoligono' && a.tipo !== 'quotaRett') return [];
+  if (a.tipo === 'quotaPoligono' && a.soloEtichetta) return [];
 
-  // QUADRILATERO: la sagoma vera, gonfiata in millimetri e riportata sulla foto
+  // QUADRILATERO: la sagoma vera, gonfiata in millimetri e riportata sulla
+  // foto. Ci passa anche la QUOTA ELEMENTO, che di abbondanze ne ha una sola
+  // — quella perimetrale — ma il contorno da tagliare se lo merita uguale
   const forma = formaQuadrilatera(a);
   if (forma && quadConvesso(forma.quad)) {
     const abb = forma.abbondanze;
@@ -558,17 +561,39 @@ export function primitiveAbbondanze(a: Annotazione): Primitiva[] {
   // che porta l'abbondanza. QUALE vicino allarga quale lato lo dice
   // `sbordiLati`, una volta per tutti: la stessa regola serve alla sagoma di
   // taglio, e scritta due volte le due figure prima o poi si allontanano
-  if (a.punti.length < 3) return [];
-  const sbordi = sbordiLati(a, (s, v) => {
-    const q = abbondanzaAlVertice(s, v);
-    if (!(q > 0)) return 0;
+  if (a.tipo !== 'quotaPoligono' || a.punti.length < 3) return [];
+  /**
+   * QUANTI PIXEL FA UN CENTIMETRO su questa forma: la media dei lati quotati.
+   *
+   * L'abbondanza sulla misura si converte con la scala del lato che la porta,
+   * perché è lunga come lui. Quella DEL LATO no: si misura di traverso, e di
+   * traverso non c'è nessun lato da cui leggere la scala. La media di quelli
+   * quotati è il numero più fermo che la forma abbia — e su una foto, dove il
+   * tratteggio serve a far vedere dove va il taglio e non a misurarlo, basta.
+   */
+  const scale: number[] = [];
+  for (const s of segmentiPoligono(a)) {
     const p1 = a.punti[s.da];
     const p2 = a.punti[s.a];
-    if (!p1 || !p2 || s.valore === null) return 0;
-    // da unità reali a pixel, con la scala di QUESTO lato: è la sola che si
-    // conosce senza calibrazione
-    return (q * distanza(p1, p2)) / s.valore;
-  });
+    if (!p1 || !p2 || s.valore === null || !(s.valore > 0)) continue;
+    const d = distanza(p1, p2);
+    if (d > 0) scale.push(d / s.valore);
+  }
+  const scalaMedia = scale.length ? scale.reduce((t, v) => t + v, 0) / scale.length : 0;
+  const sbordi = sbordiLati(
+    a,
+    (s, v) => {
+      const q = abbondanzaAlVertice(s, v);
+      if (!(q > 0)) return 0;
+      const p1 = a.punti[s.da];
+      const p2 = a.punti[s.a];
+      if (!p1 || !p2 || s.valore === null) return 0;
+      // da unità reali a pixel, con la scala di QUESTO lato: è la sola che si
+      // conosce senza calibrazione
+      return (q * distanza(p1, p2)) / s.valore;
+    },
+    () => scalaMedia
+  );
   if (!sbordi.some((v) => v > 0)) return [];
   return contorno(offsetPoligono(a.punti, sbordi), a.stile.spessore);
 }

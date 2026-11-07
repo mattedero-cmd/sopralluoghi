@@ -13,15 +13,16 @@
  * altrimenti la giunzione che si vede sulla foto non è quella che si taglia.
  */
 
-import type { Annotazione, Punto, QuotaPoligono, SegmentoQuota, Unita } from '../db/types';
+import type { Annotazione, Punto, SegmentoQuota, Unita } from '../db/types';
 import {
   abbondanzaTotale,
   quadrilateroQuotaRett,
   segmentiPoligono,
   segmentoELato
 } from '../db/types';
+import { abbondanzaAlVertice, abbondanzaDelLato, sbordiLati } from './abbondanze';
 import { misureElemento } from './calibrazione';
-import { sagomaPoligonoQuotato } from './poligonoQuotato';
+import { sagomaPoligonoQuotato, sagomaTaglioPoligono } from './poligonoQuotato';
 import type { Foto } from '../db/types';
 
 /** quel poco della foto che serve a raddrizzare il disegno */
@@ -429,12 +430,18 @@ export function formaQuadrilatera(a: Annotazione): FormaQuadrilatera | null {
     const altezza = massimo(m.latoSx, m.latoDx);
     if (larghezza === null || altezza === null) return null;
     const misure = { larghezza, altezza };
+    /**
+     * LA QUOTA ELEMENTO non ha quote per lato, quindi non ha nemmeno
+     * abbondanze per lato: quello che può avere è l'abbondanza PERIMETRALE,
+     * un numero solo tutt'attorno. È il caso più comune di tutti — «dammene
+     * due in giro» su una finestra — e prima qui non c'era posto per dirlo.
+     */
+    const giro = Math.max(0, a.abbPerimetro ?? 0);
     return {
       quad: quadrilateroQuotaRett(a),
       netta: misure,
-      // la quota elemento non porta abbondanze: taglio e netto coincidono
-      taglio: { ...misure },
-      abbondanze: { sinistra: 0, destra: 0, sopra: 0, sotto: 0 },
+      taglio: { larghezza: larghezza + 2 * giro, altezza: altezza + 2 * giro },
+      abbondanze: { sinistra: giro, destra: giro, sopra: giro, sotto: giro },
       // la quota elemento resta un rettangolo in tutta l'app — distinta di
       // taglio compresa — e qui non può dire il contrario
       verticiNetti: riquadro(larghezza, altezza),
@@ -550,16 +557,24 @@ export function formaQuadrilatera(a: Annotazione): FormaQuadrilatera | null {
     altezza
   );
 
+  /**
+   * L'ABBONDANZA SCRITTA SUL LATO — o quella perimetrale — è già uno sbordo
+   * perpendicolare: il lato alto che sborda di due è esattamente «due sopra».
+   * Si mette a confronto con quella che gli chiedono le misure dei vicini, e
+   * vince la più grande: sono due modi di chiedere la stessa cosa, non due
+   * richieste da sommare.
+   */
+  const suo = (s: typeof alto) => abbondanzaDelLato(a, s ?? undefined);
+  const sinistra = Math.max(orizzontale.prima, suo(sinistro));
+  const destra = Math.max(orizzontale.dopo, suo(destro));
+  const sopra = Math.max(verticale.prima, suo(alto));
+  const sotto = Math.max(verticale.dopo, suo(basso));
+
   return {
     quad,
     netta: { larghezza, altezza },
-    taglio: { larghezza: orizzontale.taglio, altezza: verticale.taglio },
-    abbondanze: {
-      sinistra: orizzontale.prima,
-      destra: orizzontale.dopo,
-      sopra: verticale.prima,
-      sotto: verticale.dopo
-    },
+    taglio: { larghezza: larghezza + sinistra + destra, altezza: altezza + sopra + sotto },
+    abbondanze: { sinistra, destra, sopra, sotto },
     verticiNetti: netti ?? riquadro(larghezza, altezza),
     rettangolare: netti === null,
     unita: a.unita
@@ -589,13 +604,43 @@ export function latiQuadrilatero(
       (s) =>
         (s.da === indice[da] && s.a === indice[av]) || (s.da === indice[av] && s.a === indice[da])
     ) ?? null;
-  const taglio = (s: ReturnType<typeof lato>) =>
-    s && s.valore !== null && s.valore > 0 ? s.valore + abbondanzaTotale(s) : null;
+  /**
+   * QUANTO È LUNGO QUESTO LATO DA TAGLIARE.
+   *
+   * Due abbondanze diverse lo allungano, e sono la stessa cosa detta dai due
+   * capi: la sua, scritta sulla misura al vertice `v`, e quella del VICINO
+   * che a quel vertice si sposta in fuori. Vince la più grande — chiedere
+   * «due in fondo al montante» e «due sul pavimento» è chiedere due
+   * centimetri, non quattro.
+   *
+   * Si guarda lato per lato apposta: su una finestra sotto falda l'altezza
+   * sinistra e la destra sono due misure diverse, e l'abbondanza può stare
+   * solo su una delle due. Collassarle qui vorrebbe dire tagliare il lato
+   * corto come il lungo.
+   */
+  const abbAl = (s: ReturnType<typeof lato>, verticeOrdinato: number): number => {
+    if (!s) return 0;
+    if (s.da === indice[verticeOrdinato]) return s.abbInizio ?? 0;
+    if (s.a === indice[verticeOrdinato]) return s.abbFine ?? 0;
+    return 0;
+  };
+  const suo = (s: ReturnType<typeof lato>) => abbondanzaDelLato(a, s ?? undefined);
+  const alto = lato(0, 1);
+  const basso = lato(3, 2);
+  const sinistro = lato(0, 3);
+  const destro = lato(1, 2);
+  const taglio = (
+    s: ReturnType<typeof lato>,
+    capi: Array<[number, ReturnType<typeof lato>]>
+  ) =>
+    s && s.valore !== null && s.valore > 0
+      ? s.valore + capi.reduce((t, [v, vicino]) => t + Math.max(abbAl(s, v), suo(vicino)), 0)
+      : null;
   return {
-    alto: taglio(lato(0, 1)),
-    basso: taglio(lato(3, 2)),
-    sinistro: taglio(lato(0, 3)),
-    destro: taglio(lato(1, 2))
+    alto: taglio(alto, [[0, sinistro], [1, destro]]),
+    basso: taglio(basso, [[3, sinistro], [2, destro]]),
+    sinistro: taglio(sinistro, [[0, alto], [3, basso]]),
+    destro: taglio(destro, [[1, alto], [2, basso]])
   };
 }
 
@@ -644,55 +689,27 @@ export function abbondanzeZoppe(
     ['destro', quotato(lato(1, 2)), quotato(lato(3, 0))]
   ];
   const fuori: Array<{ lato: 'alto' | 'basso' | 'sinistro' | 'destro'; abbondato: number; opposto: number }> = [];
+  // quanto materiale in più porta questo lato, comunque gli sia stato dato:
+  // sulla misura o come sbordo del lato. Con un'abbondanza perimetrale ce
+  // l'hanno tutti, e non c'è più niente di zoppo da segnalare
+  const carico = (s: SegmentoQuota) => Math.max(abbondanzaTotale(s), abbondanzaDelLato(a, s));
   for (const [nome, mio, suo] of coppie) {
     // serve che tutti e due i lati siano quotati: un lato non quotato non ha
     // dimenticato niente, semplicemente non è stato misurato
     if (!mio || !suo) continue;
-    const a1 = abbondanzaTotale(mio);
-    const a2 = abbondanzaTotale(suo);
+    const a1 = carico(mio);
+    const a2 = carico(suo);
     if (a1 > 0 && a2 <= 0) fuori.push({ lato: nome, abbondato: a1, opposto: 0 });
   }
   return fuori;
 }
 
 /**
- * DI QUANTO SBORDA OGNI LATO di un poligono, per via delle abbondanze.
- *
- * Un'abbondanza è scritta su un LATO, ai suoi due estremi, e non allarga quel
- * lato: allarga i DUE LATI DI FIANCO. Dieci centimetri di abbondanza in fondo
- * al montante sinistro vogliono dire che il pavimento scende di dieci, non che
- * il montante si allunga — il montante la sua lunghezza ce l'ha scritta.
- *
- * Quindi il lato i sborda di quanto dicono i suoi vicini ai due vertici che
- * condivide con loro. La regola è una sola e sta scritta qui: la usano il
- * contorno disegnato sulla foto e la sagoma di taglio, e devono dire la stessa
- * cosa, se no il pezzo tagliato non è quello che si vede.
- *
- * `quanto(s, v)` dice quanto vale l'abbondanza del lato `s` al vertice `v`,
- * nell'unità che serve a chi chiama: millimetri per il taglio, pixel per il
- * disegno sulla foto.
+ * LA REGOLA DELL'ABBONDANZA sta in `./abbondanze`, un posto solo per tutti.
+ * Qui si ri-esporta perché è di qui che la leggevano il disegno sulla foto e
+ * la distinta, e non c'è ragione di farli cambiare porta.
  */
-export function sbordiLati(
-  q: QuotaPoligono,
-  quanto: (s: SegmentoQuota, v: number) => number
-): number[] {
-  const n = q.punti.length;
-  const segs = segmentiPoligono(q).filter((s) => segmentoELato(s, n));
-  const lato = (i: number) =>
-    segs.find((s) => (s.da === i && s.a === (i + 1) % n) || (s.a === i && s.da === (i + 1) % n));
-  const al = (s: SegmentoQuota | undefined, v: number) => (s ? quanto(s, v) : 0);
-  return q.punti.map((_, i) =>
-    Math.max(al(lato((i + n - 1) % n), i), al(lato((i + 1) % n), (i + 1) % n))
-  );
-}
-
-/** l'abbondanza scritta sul lato `s` al vertice `v`, nell'unità della quota */
-export function abbondanzaAlVertice(s: SegmentoQuota, v: number): number {
-  if (s.valore === null || !(s.valore > 0)) return 0;
-  if (s.da === v) return s.abbInizio ?? 0;
-  if (s.a === v) return s.abbFine ?? 0;
-  return 0;
-}
+export { abbondanzaAlVertice, abbondanzaDelLato, sbordiLati };
 
 /**
  * LA FORMA QUOTATA COME LA VEDE LA PANNELLIZZAZIONE, a qualunque numero di lati.
@@ -777,11 +794,13 @@ export function formaDaDividere(
     return null;
   }
 
-  // la sagoma di taglio: ogni lato spostato in fuori di quanto dicono i suoi
-  // vicini, con la stessa regola del contorno disegnato sulla foto
-  const sbordi = sbordiLati(a, abbondanzaAlVertice);
-  const verticiTaglio = sbordi.some((v) => v > 0)
-    ? offsetPoligono(verticiNetti, sbordi)
+  // la sagoma di taglio: ogni lato spostato in fuori di quanto dicono le
+  // abbondanze — le sue e quelle dei vicini. La calcola `sagomaTaglioPoligono`,
+  // lo stesso che la mette nella distinta: quello che si vede dev'essere
+  // quello che si taglia
+  const taglio = sagomaTaglioPoligono(a, netta);
+  const verticiTaglio = taglio
+    ? taglio.map(([x, y]) => ({ x, y }))
     : verticiNetti.map((p) => ({ ...p }));
 
   // l'ingombro di taglio è il riquadro della sagoma gonfiata, e le abbondanze

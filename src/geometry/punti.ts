@@ -120,47 +120,89 @@ export function quadConvesso(punti: Punto[]): boolean {
  * sia in millimetri reali sia in pixel dell'immagine — a chi chiama decidere
  * in che unità sono gli sbordi.
  *
- * `sbordi[i]` è quello del lato che va da `punti[i]` a `punti[i+1]`. Il verso
- * «fuori» si decide col baricentro, quindi non conta come è stato disegnato il
- * poligono. Vale per i poligoni convessi: su uno rientrante i lati si
- * incrocerebbero dalla parte sbagliata, e si torna il poligono com'era.
+ * `sbordi[i]` è quello del lato che va da `punti[i]` a `punti[i+1]`.
+ *
+ * DA CHE PARTE È «FUORI» LO DICE IL GIRO DEL POLIGONO, non il baricentro.
+ * Col baricentro andava finché la forma era convessa; su una rientrante —
+ * un controsoffitto a vela, un cavedio, un muro col gradino profondo — il
+ * punto di mezzo di un lato può cadere dalla parte sbagliata della media dei
+ * vertici, e quel lato veniva spostato DENTRO. L'abbondanza si trasformava
+ * in un pezzo più corto del netto, senza dire niente a nessuno. Il verso di
+ * giro invece è esatto per qualunque poligono semplice e non costa niente:
+ * basta il segno dell'area.
+ *
+ * QUANDO L'ABBONDANZA SI MANGIA IL GRADINO il lato scompare. Dieci
+ * centimetri attorno a uno scasso profondo cinque lo chiudono: i due lati
+ * ai suoi fianchi si incrociano prima di arrivarci, e il lato in mezzo esce
+ * girato al contrario. Non è un errore del conto — è il pezzo giusto, che lì
+ * quello scasso non ce l'ha più. Il lato rovesciato si toglie e si rifà
+ * l'incrocio, finché tutti i lati rimasti girano nel loro verso.
  */
 export function offsetPoligono(punti: Punto[], sbordi: number[]): Punto[] {
   const n = punti.length;
   if (n < 3) return punti.map((p) => ({ ...p }));
-  let cx = 0;
-  let cy = 0;
-  for (const p of punti) {
-    cx += p.x / n;
-    cy += p.y / n;
+  if (!sbordi.some((v) => v)) return punti.map((p) => ({ ...p }));
+
+  // il segno dell'area dice da che parte gira: la normale uscente del lato
+  // p→q è (dy, −dx) girata di conseguenza
+  let doppia = 0;
+  for (let i = 0; i < n; i++) {
+    const a = punti[i];
+    const b = punti[(i + 1) % n];
+    doppia += a.x * b.y - b.x * a.y;
   }
-  // una retta per lato, già spostata in fuori: normale uscente + distanza
-  const rette = punti.map((p, i) => {
+  const verso = doppia >= 0 ? 1 : -1;
+
+  /** la retta del lato i, già spostata in fuori; null se il lato è nullo */
+  const rettaDi = (i: number) => {
+    const p = punti[i];
     const q = punti[(i + 1) % n];
     const dx = q.x - p.x;
     const dy = q.y - p.y;
     const len = Math.hypot(dx, dy);
     if (len < 1e-9) return null;
-    let nx = dy / len;
-    let ny = -dx / len;
-    // la normale guarda dalla parte opposta al baricentro
-    if (nx * ((p.x + q.x) / 2 - cx) + ny * ((p.y + q.y) / 2 - cy) < 0) {
-      nx = -nx;
-      ny = -ny;
-    }
-    return { nx, ny, c: nx * p.x + ny * p.y + (sbordi[i] ?? 0) };
-  });
-  // il vertice i è l'incrocio fra la retta del lato prima e quella del suo
+    const nx = (verso * dy) / len;
+    const ny = (-verso * dx) / len;
+    return { nx, ny, c: nx * p.x + ny * p.y + (sbordi[i] ?? 0), dx: dx / len, dy: dy / len };
+  };
+
+  // i lati ancora in piedi: si parte da tutti e si tolgono quelli che
+  // l'abbondanza ha cancellato
+  let vivi = punti.map((_, i) => i).filter((i) => rettaDi(i) !== null);
   const pulito = (v: number) => Math.round(v * 1e6) / 1e6 + 0;
-  return punti.map((p, i) => {
-    const r1 = rette[(i + n - 1) % n];
-    const r2 = rette[i];
-    if (!r1 || !r2) return { ...p };
-    const det = r1.nx * r2.ny - r1.ny * r2.nx;
-    if (Math.abs(det) < 1e-9) return { ...p }; // lati allineati: niente spigolo
-    return {
-      x: pulito((r1.c * r2.ny - r2.c * r1.ny) / det),
-      y: pulito((r1.nx * r2.c - r2.nx * r1.c) / det)
-    };
-  });
+
+  for (let giro = 0; giro <= n; giro++) {
+    if (vivi.length < 3) return punti.map((p) => ({ ...p }));
+    const rette = vivi.map((i) => rettaDi(i)!);
+    const m = vivi.length;
+    // il vertice k è l'incrocio fra la retta del lato prima e quella del suo
+    const vert = rette.map((r2, k) => {
+      const r1 = rette[(k + m - 1) % m];
+      const det = r1.nx * r2.ny - r1.ny * r2.nx;
+      if (Math.abs(det) < 1e-9) {
+        // lati allineati: niente spigolo, il vertice scorre lungo la normale
+        const d = Math.abs(r2.c) >= Math.abs(r1.c) ? r2 : r1;
+        const p = punti[vivi[k]];
+        const fuori = d.c - (d.nx * p.x + d.ny * p.y);
+        return { x: p.x + d.nx * fuori, y: p.y + d.ny * fuori };
+      }
+      return {
+        x: (r1.c * r2.ny - r2.c * r1.ny) / det,
+        y: (r1.nx * r2.c - r2.nx * r1.c) / det
+      };
+    });
+    // un lato che esce girato al contrario è un lato che non c'è più
+    let caduto = -1;
+    for (let k = 0; k < m; k++) {
+      const a = vert[k];
+      const b = vert[(k + 1) % m];
+      if ((b.x - a.x) * rette[k].dx + (b.y - a.y) * rette[k].dy < -1e-9) {
+        caduto = k;
+        break;
+      }
+    }
+    if (caduto < 0) return vert.map((p) => ({ x: pulito(p.x), y: pulito(p.y) }));
+    vivi = vivi.filter((_, k) => k !== caduto);
+  }
+  return punti.map((p) => ({ ...p }));
 }
