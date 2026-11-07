@@ -47,6 +47,8 @@ import {
   ingombroForma,
   mascheraSagoma,
   misureComplete,
+  contornoSagoma,
+  poligonoDiPiazzamento,
   poligonoSagoma,
   orientazioniPer,
   rotazioniPer,
@@ -631,7 +633,7 @@ function unGiro(
       typeof aMano === 'number' ? aMano : aMano === true ? 90 : aMano === false ? 0 : null;
     const chiaveP = `${improntaForma(p)}|${p.ruotabile}|${modo}|${forzato ?? ''}|${blocchi?.[p.id] ?? ''}`;
     // il cerchio non ha poligono: per lui l'ingombro è il diametro, e basta
-    const poli = poligonoSagoma(p);
+    const poli = poligonoDiPiazzamento(p);
     const gia = cacheMaschere.get(chiaveP);
     if (gia) return gia;
     const fuori: Maschere = [];
@@ -805,7 +807,7 @@ function piazzamentoDi(
     base.altezzaFinita = p.larghezza;
     return base;
   }
-  const punti = ruotaPunti(poligonoSagoma(p)!, rot);
+  const punti = ruotaPunti(poligonoDiPiazzamento(p)!, rot);
   let rw = 0;
   let rh = 0;
   for (const q of punti) {
@@ -817,5 +819,17 @@ function piazzamentoDi(
   // i vertici relativi al piazzamento sono la sagoma DI TAGLIO: la finita
   // gonfiata di mezza abbondanza per lato, come il rettangolo di sempre
   base.punti = sagomaDiTaglio(punti, mezzaAbb, base.larghezza, base.altezza);
+  /**
+   * IL CONTORNO VERO, quando il pezzo rientra.
+   *
+   * Si è piazzato nel suo riquadro — i conti di distanza valgono fra
+   * convessi — ma la lama deve seguire lo scanso, e nel piano lo scanso si
+   * deve vedere. Senza, un muro col gradino nel controsoffitto si taglierebbe
+   * squadrato e in posa avanzerebbe.
+   */
+  const vero = contornoSagoma(p);
+  if (vero && !poligonoSagoma(p)) {
+    base.contorno = sagomaDiTaglio(ruotaPunti(vero, rot), mezzaAbb, base.larghezza, base.altezza);
+  }
   return base;
 }

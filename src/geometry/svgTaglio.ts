@@ -97,7 +97,10 @@ export function svgTaglio(
   const sp = (opzioni?.spessore ?? 0.25) * k;
 
   // il contorno da tagliare è la SAGOMA vera del pezzo: la macchina segue
-  // questa linea, e un trapezio tagliato per ingombro è un pezzo sbagliato
+  // questa linea, e un trapezio tagliato per ingombro è un pezzo sbagliato.
+  // Su una sagoma RIENTRANTE il contorno non è il poligono con cui il pezzo
+  // è stato piazzato — quello è il suo riquadro — ed è l'unico posto dove
+  // sbagliarsi costa il materiale: la macchina taglierebbe via lo scanso
   const contorni = lastra.piazzamenti
     .map((p) => {
       if (p.forma === 'cerchio') {
@@ -107,8 +110,9 @@ export function svgTaglio(
           p.y + p.altezza / 2
         )}" r="${num(r)}"/>`;
       }
-      if (p.punti) {
-        const punti = p.punti.map((q) => `${num(p.x + q[0])},${num(p.y + q[1])}`).join(' ');
+      const taglio = p.contorno ?? p.punti;
+      if (taglio) {
+        const punti = taglio.map((q) => `${num(p.x + q[0])},${num(p.y + q[1])}`).join(' ');
         return `    <polygon points="${punti}"/>`;
       }
       return `    <rect x="${num(p.x)}" y="${num(p.y)}" width="${num(p.larghezza)}" height="${num(
@@ -165,7 +169,8 @@ const GRIGIO_ETICHETTA = '#4d4d4d';
 /** l'etichetta di un pezzo: nome e misura, o quel che ci sta */
 function etichettaPezzo(p: Piazzamento): string {
   // come in pagina: il testo sta nel baricentro della sagoma, non del riquadro
-  const ancora = p.punti ? ancoraEtichetta(p.punti) : null;
+  const taglio = p.contorno ?? p.punti;
+  const ancora = taglio ? ancoraEtichetta(taglio) : null;
   const cx = p.x + (ancora ? ancora.x : p.larghezza / 2);
   const cy = p.y + (ancora ? ancora.y : p.altezza / 2);
   const largaUtile = ancora ? ancora.larghezza : p.larghezza;

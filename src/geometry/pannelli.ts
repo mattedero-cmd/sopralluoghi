@@ -31,7 +31,7 @@ import {
   formaDi,
   ingombroForma,
   misureDelRitaglio,
-  poligonoSagoma,
+  contornoSagoma,
   type MisureForma
 } from './sagome';
 
@@ -370,8 +370,11 @@ export function teliDelPezzo(pezzo: MisureForma, pann: Pannellizzazione): Misure
   const traverso = verticale ? ing.altezza : ing.larghezza;
   const teli = pannelliDi(lungo, traverso, pann);
   if (teli.length <= 1) return [];
-  // il rettangolo resta la strada di sempre: la sua fetta è un rettangolo
-  const poly = formaDi(pezzo) === 'rett' ? null : poligonoSagoma(pezzo);
+  // il rettangolo resta la strada di sempre: la sua fetta è un rettangolo.
+  // Per tutto il resto comanda il CONTORNO VERO, rientranze comprese: è lui
+  // che si taglia, ed è dividendolo che i teli di un muro col gradino tornano
+  // forme buone
+  const poly = formaDi(pezzo) === 'rett' ? null : contornoSagoma(pezzo);
   const asse: 0 | 1 = verticale ? 0 : 1;
   return teli.map((t) => {
     if (poly) {

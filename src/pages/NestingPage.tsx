@@ -24,7 +24,7 @@ import {
   ingombroForma,
   servemisura3,
   misureForma,
-  poligonoSagoma,
+  contornoSagoma,
   prossimoVerso,
   versiAMano,
   FORME,
@@ -131,7 +131,7 @@ const arrotondaMm = (v: number) => Math.round(v * 10) / 10;
  * un poligono, e una sua fascia avrebbe i lati curvi, che il piano di taglio
  * non sa descrivere.
  */
-const siDivide = (p: PezzoNesting) => poligonoSagoma(p) !== null;
+const siDivide = (p: PezzoNesting) => contornoSagoma(p) !== null;
 
 /** larghezza in pixel di un elemento, per dimensionare i testi dell'SVG */
 function useLarghezza() {
@@ -1785,7 +1785,7 @@ export function NestingPage({
                 // lato sinistro, non quella del riquadro
                 larghezza: ingombroForma(pezzo).larghezza,
                 altezza: ingombroForma(pezzo).altezza,
-                vertici: (poligonoSagoma(pezzo) ?? []).map(([x, y]) => ({ x, y })),
+                vertici: (contornoSagoma(pezzo) ?? []).map(([x, y]) => ({ x, y })),
                 unita: 'mm',
                 massimo: Math.max(0, arrotondaMm(fascia)),
                 fonteMassimo:
@@ -2048,14 +2048,19 @@ function Lastra({
           {lastra.piazzamenti.map((pc, i) => {
             // il testo va nel baricentro della SAGOMA: al centro del riquadro
             // finirebbe nella metà vuota di un triangolo, sopra il pezzo accanto
-            const ancora = pc.punti ? ancoraEtichetta(pc.punti) : null;
+            // IL CONTORNO DA TAGLIARE, non il posto che il pezzo si prende: su
+            // una sagoma rientrante — un muro col gradino nel controsoffitto —
+            // i due sono diversi, e disegnare il riquadro vorrebbe dire far
+            // tagliare il pezzo squadrato, senza scanso
+            const taglio = pc.contorno ?? pc.punti;
+            const ancora = taglio ? ancoraEtichetta(taglio) : null;
             const cx = pc.x + (ancora ? ancora.x : pc.larghezza / 2);
             const cy = pc.y + (ancora ? ancora.y : pc.altezza / 2);
             const largaUtile = ancora ? ancora.larghezza : pc.larghezza;
             const altaUtile = ancora ? ancora.altezza : pc.altezza;
             // la sagoma vera del pezzo, in coordinate della lastra; null = rettangolo
-            const sagoma = pc.punti
-              ? pc.punti.map((q) => `${pc.x + q[0]},${pc.y + q[1]}`).join(' ')
+            const sagoma = taglio
+              ? taglio.map((q) => `${pc.x + q[0]},${pc.y + q[1]}`).join(' ')
               : null;
             const cerchio = pc.forma === 'cerchio';
             const misura = misureForma({

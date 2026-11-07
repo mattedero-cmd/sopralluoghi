@@ -199,7 +199,21 @@ export interface Piazzamento {
    * l'ingombro, ed è per questo che segmenti e avanzi funzionano invariati.
    */
   forma?: FormaPezzo;
+  /**
+   * Il poligono con cui il pezzo è stato PIAZZATO: è su questo che si misurano
+   * le distanze dai vicini e si controlla che la lama passi. Su una sagoma
+   * rientrante è il suo RIQUADRO, perché quei conti valgono fra convessi.
+   */
   punti?: PuntoSagoma[];
+  /**
+   * IL CONTORNO DA TAGLIARE, quando è diverso da `punti`.
+   *
+   * Un muro col gradino nel controsoffitto si piazza largo — dentro il suo
+   * riquadro — ma si TAGLIA con lo scanso, e nel piano quello scanso si deve
+   * vedere: è la differenza fra un pezzo che va su e uno che avanza di
+   * ventiquattro centimetri. Assente = il contorno è `punti`.
+   */
+  contorno?: PuntoSagoma[];
   /** terza misura finita (trapezi), per etichette e testi */
   misura3Finita?: number;
   /** vertici FINITI della sagoma (senza abbondanza): servono all'etichetta */

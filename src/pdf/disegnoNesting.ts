@@ -227,10 +227,14 @@ export function impaginaLastra(
       bordo: tintaBordoEsa(pc.tinta),
       spessore: 0.7,
       // la sagoma vera, scalata in punti pagina: il PDF mostra quello che si
-      // taglia, non il rettangolo che lo contiene
-      poligono: pc.punti
-        ? pc.punti.map((q) => ({ x: rx + q[0] * scala, y: ry + q[1] * scala }))
-        : undefined,
+      // TAGLIA, non il rettangolo che lo contiene. Su un pezzo rientrante —
+      // un muro col gradino nel controsoffitto — il contorno da tagliare non
+      // è quello con cui il pezzo è stato piazzato: quello è il riquadro, e
+      // stamparlo vorrebbe dire far tagliare il pezzo squadrato
+      poligono: (pc.contorno ?? pc.punti)?.map((q) => ({
+        x: rx + q[0] * scala,
+        y: ry + q[1] * scala
+      })),
       // il taglio comprende l'abbondanza: il Ø dell'ingombro, non il finito
       raggio: pc.forma === 'cerchio' ? rw / 2 : undefined
     });
@@ -255,7 +259,7 @@ export function impaginaLastra(
       vertici: pc.verticiFiniti
     });
     // come in pagina: il testo nel baricentro della sagoma, non del riquadro
-    const ancora = pc.punti ? ancoraEtichetta(pc.punti) : null;
+    const ancora = pc.contorno ?? pc.punti ? ancoraEtichetta((pc.contorno ?? pc.punti)!) : null;
     const tx = rx + (ancora ? ancora.x * scala : rw / 2);
     const ty = ry + (ancora ? ancora.y * scala : rh / 2);
     const piano = pianoEtichetta(

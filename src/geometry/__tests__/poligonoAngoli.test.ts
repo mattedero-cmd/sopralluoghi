@@ -365,21 +365,20 @@ describe('la camera arriva al piano di taglio', () => {
       vertici: p.sagoma!.vertici
     });
     /**
-     * IL TELO DI MEZZO PRENDE IL GRADINO, e un telo che rientra non è una
-     * forma che il taglio sappia trattare: quello si taglia SQUADRATO. Si
-     * consuma un po' più di materiale — il 2,6% su questo muro — e mai meno,
-     * che è il verso giusto in cui sbagliare: un telo più corto del muro non
-     * copre, uno più lungo si rifila in posa.
+     * IL TELO DI MEZZO PRENDE IL GRADINO, e si taglia CON IL GRADINO.
      *
-     * Mettendo una giunzione PROPRIO SUL GRADINO i teli tornerebbero tutti
-     * convessi e non si butterebbe niente: è una cosa che chi divide può
-     * fare a mano, spostando la pallina gialla.
+     * Prima no: un ritaglio rientrante restava senza forma e nel piano di
+     * taglio arrivava il suo rettangolo pieno — lo scanso spariva, e un telo
+     * tagliato squadrato dove il muro rientra in posa avanza di ventiquattro
+     * centimetri. Adesso ogni telo porta il suo contorno vero, e i tre
+     * rifanno il muro senza sprecare niente.
      */
-    expect(area / intera).toBeGreaterThan(0.999);
-    expect(area / intera).toBeLessThan(1.05);
-    // i due teli che non toccano il gradino escono con la loro forma vera
-    const conSagoma = teli.filter((t) => t.sagoma).length;
-    expect(conSagoma).toBe(2);
+    expect(area / intera).toBeCloseTo(1, 3);
+    // tutti e tre con la loro forma: nessuno squadrato per ripiego
+    expect(teli.every((t) => t.sagoma)).toBe(true);
+    // e quello di mezzo ha lo SCANSO: più di quattro vertici
+    const conScanso = teli.filter((t) => (t.sagoma?.vertici?.length ?? 0) > 4);
+    expect(conScanso.length, 'il telo del gradino deve portarsi lo scanso').toBeGreaterThan(0);
   });
 
   it('e mettendo la giunzione sul gradino non si butta più niente', async () => {
@@ -673,5 +672,99 @@ describe('la pannellizzazione si vede sulla foto', () => {
     expect(omografiaSagoma(buono, freccia)).toBeNull();
     expect(omografiaSagoma(freccia, buono)).toBeNull();
     expect(omografiaSagoma(buono, buono)).not.toBeNull();
+  });
+});
+
+/* ───────────── lo scanso arriva fino alla lama ───────────── */
+
+describe('il telo che prende il gradino si taglia col gradino', () => {
+  /**
+   * IL GUASTO: il terzo telo arrivava al piano come RETTANGOLO PIENO.
+   *
+   * La fascia che contiene il gradino del controsoffitto esce rientrante, e
+   * un ritaglio rientrante restava senza forma: nel piano di taglio arrivava
+   * il suo riquadro. Un telo tagliato squadrato dove il muro rientra, in posa
+   * avanza di ventiquattro centimetri — e te ne accorgi sul ponteggio.
+   *
+   * Peggio ancora, una parete rientrante NON divisa in teli non arrivava
+   * affatto: finiva fra gli «incompleti», non piazzata e nemmeno scartata.
+   * Spariva dal piano in silenzio.
+   *
+   * Adesso un pezzo rientrante si PIAZZA nel suo riquadro — i conti di
+   * distanza fra sagome valgono fra convessi, e lì non si bara — ma porta con
+   * sé il CONTORNO vero, che è quello che finisce nel disegno, nel PDF e nel
+   * file per la macchina.
+   */
+  const muro: PezzoNesting = {
+    id: 'c1',
+    nome: 'C1.c',
+    forma: 'quad',
+    quantita: 1,
+    ruotabile: true,
+    tinta: 0,
+    larghezza: 1138,
+    altezza: 2740,
+    // il telo di destra: rettangolo con lo scanso in alto a sinistra
+    vertici: [
+      [0, 240],
+      [380, 240],
+      [380, 0],
+      [1138, 0],
+      [1138, 2740],
+      [0, 2740]
+    ]
+  };
+  const PAR = {
+    lastra: { larghezza: 1370, altezza: 50000 },
+    lama: 0,
+    abbondanza: 0,
+    margine: 10,
+    massimoLastre: 1
+  };
+
+  it('arriva sul rotolo: non sparisce fra gli «incompleti»', async () => {
+    const { calcolaNestingSagome } = await import('../nestingSagome');
+    const e = calcolaNestingSagome(PAR, [muro]);
+    expect(e.incompleti, 'contato incompleto = sparito dal piano').toBe(0);
+    expect(e.lastre.flatMap((l) => l.piazzamenti)).toHaveLength(1);
+  });
+
+  it('si piazza nel suo riquadro, e il piano regge', async () => {
+    const { calcolaNestingSagome } = await import('../nestingSagome');
+    const { sovrapposizioni } = await import('../controlloPiano');
+    const e = calcolaNestingSagome(PAR, [{ ...muro, quantita: 3 }]);
+    for (const l of e.lastre) expect(sovrapposizioni(l, 0)).toHaveLength(0);
+    // il posto che si prende è un rettangolo: è lui a tenere lontani i vicini
+    const pc = e.lastre.flatMap((l) => l.piazzamenti)[0];
+    expect(pc.punti).toHaveLength(4);
+  });
+
+  it('ma porta lo SCANSO, e lo scanso arriva al PDF', async () => {
+    const { calcolaNestingSagome } = await import('../nestingSagome');
+    const { impaginaLastra } = await import('../../pdf/disegnoNesting');
+    const e = calcolaNestingSagome(PAR, [muro]);
+    const pc = e.lastre[0].piazzamenti[0];
+    expect(pc.contorno, 'senza contorno si taglia squadrato').toHaveLength(6);
+
+    const d = impaginaLastra(e.lastre[0], { larghezza: 1370, altezza: 3000 }, {
+      x: 0,
+      y: 0,
+      larghezza: 400,
+      altezza: 600
+    });
+    const sagome = d.pezzi.filter((p) => p.poligono);
+    expect(sagome, 'il PDF deve disegnare la sagoma').toHaveLength(1);
+    expect(sagome[0].poligono, 'nel PDF esce il riquadro, non lo scanso').toHaveLength(6);
+  });
+
+  it('e arriva anche al file per la macchina da taglio', async () => {
+    const { calcolaNestingSagome } = await import('../nestingSagome');
+    const { svgTaglio } = await import('../svgTaglio');
+    const e = calcolaNestingSagome(PAR, [muro]);
+    const svg = svgTaglio(e.lastre[0], { larghezza: 1370, altezza: 3000 }, { titolo: 'prova' });
+    const poly = svg.match(/<polygon points="([^"]+)"/);
+    expect(poly, 'nessun contorno nel file di taglio').not.toBeNull();
+    // sei vertici: la macchina segue lo scanso invece di squadrare il pezzo
+    expect(poly![1].trim().split(/\s+/)).toHaveLength(6);
   });
 });

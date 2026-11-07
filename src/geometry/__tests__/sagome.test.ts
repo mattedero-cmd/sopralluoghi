@@ -7,6 +7,8 @@ import {
   misureComplete,
   misureForma,
   ancoraEtichetta,
+  contornoSagoma,
+  poligonoDiPiazzamento,
   poligonoSagoma,
   orientazioniPer,
   rotazioniPer,
@@ -895,8 +897,21 @@ describe('il quadrilatero storto', () => {
     expect(areaForma(p)).toBeLessThan(ing.larghezza * ing.altezza);
   });
 
-  it('un poligono concavo non diventa una sagoma: la griglia lo romperebbe', () => {
-    // la rasterizzazione assume uno span unico per riga (poligoni convessi)
+  /**
+   * UN POLIGONO RIENTRANTE SI PIAZZA LARGO, MA NON SPARISCE.
+   *
+   * La rasterizzazione assume uno span unico per riga, e i conti di distanza
+   * fra sagome valgono fra convessi: una sagoma rientrante lì dentro
+   * romperebbe tutto in silenzio, e `poligonoSagoma` infatti non la dà.
+   *
+   * Ma il rimedio era buttare il pezzo: finiva fra gli «incompleti» e dal
+   * piano di taglio spariva — non piazzato, nemmeno scartato. Un muro col
+   * gradino nel controsoffitto è un pezzo da tagliare come un altro. Adesso
+   * si piazza dentro il suo RIQUADRO (`poligonoDiPiazzamento`) e si taglia
+   * col suo contorno vero (`contornoSagoma`): un filo di materiale in più,
+   * e il pezzo c'è.
+   */
+  it('un poligono rientrante si piazza nel suo riquadro, e non sparisce', () => {
     const concavo = quad({
       vertici: [
         [0, 500],
@@ -905,8 +920,38 @@ describe('il quadrilatero storto', () => {
         [640, 60]
       ]
     } as Partial<PezzoNesting>);
-    expect(misureComplete(concavo)).toBe(false);
+    // per piazzare non si usa: i conti che lo userebbero valgono fra convessi
     expect(poligonoSagoma(concavo)).toBeNull();
+    // ma è un pezzo completo, e il posto che si prende è il suo riquadro
+    expect(misureComplete(concavo)).toBe(true);
+    const posto = poligonoDiPiazzamento(concavo)!;
+    expect(posto).toHaveLength(4);
+    const ing = ingombroForma(concavo);
+    expect(Math.max(...posto.map((q) => q[0]))).toBeCloseTo(ing.larghezza, 6);
+    expect(Math.max(...posto.map((q) => q[1]))).toBeCloseTo(ing.altezza, 6);
+    // il contorno vero resta quello che si taglia, rientranza compresa
+    expect(contornoSagoma(concavo)).toHaveLength(4);
+    expect(areaForma(concavo)).toBeLessThan(ing.larghezza * ing.altezza);
+  });
+
+  it('e arriva davvero sul rotolo, col suo contorno da tagliare', () => {
+    const concavo = quad({
+      vertici: [
+        [0, 500],
+        [600, 470],
+        [300, 250],
+        [640, 60]
+      ]
+    } as Partial<PezzoNesting>);
+    const esito = calcolaNestingSagome(par(1300, 1250, { margine: 10 }), [
+      concavo
+    ] as PezzoNesting[]);
+    const piazzati = esito.lastre.flatMap((l) => l.piazzamenti);
+    expect(esito.incompleti, 'non è un pezzo incompleto').toBe(0);
+    expect(piazzati, 'il pezzo deve finire sul rotolo').toHaveLength(1);
+    // si piazza col riquadro — quattro vertici — ma porta il contorno vero
+    expect(piazzati[0].punti).toHaveLength(4);
+    expect(piazzati[0].contorno, 'senza contorno si taglierebbe squadrato').toHaveLength(4);
   });
 
   it('si nesta come sagoma, e fra due copie resta la lama', () => {

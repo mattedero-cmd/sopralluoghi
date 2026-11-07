@@ -162,11 +162,16 @@ export function misureComplete(p: MisureForma): boolean {
   if (servemisura3(f) && !((p.misura3 ?? 0) > 0)) return false;
   // tre lati che non chiudono un triangolo non sono una forma
   if (f === 'triangoloL' && !latiChiudono(p.larghezza, p.altezza, p.misura3 ?? 0)) return false;
-  // il poligono deve esserci ed essere convesso: la rasterizzazione conta
-  // sullo span unico per riga, e un pezzo concavo la romperebbe in silenzio
-  if (f === 'quad' && !(p.vertici && p.vertici.length >= 3 && poligonoConvesso(p.vertici))) {
-    return false;
-  }
+  /**
+   * Il poligono dev'esserci. RIENTRANTE PUÒ ESSERLO: un muro col gradino nel
+   * controsoffitto è un pezzo da tagliare come un altro, e prima finiva fra
+   * gli «incompleti» — cioè spariva dal piano, in silenzio, senza nemmeno
+   * comparire fra gli scarti. Dove la convessità serve davvero — la
+   * rasterizzazione, che conta su uno span unico per riga, e i conti di
+   * distanza fra sagome — ci pensa `poligonoDiPiazzamento`, che per una
+   * sagoma rientrante dà il suo RIQUADRO: si piazza largo e si taglia giusto.
+   */
+  if (f === 'quad' && !(p.vertici && p.vertici.length >= 3)) return false;
   return true;
 }
 
@@ -307,6 +312,57 @@ export function misureForma(p: MisureForma): string {
 export type PuntoSagoma = [number, number];
 
 /**
+ * IL CONTORNO VERO DEL PEZZO: quello che la lama deve seguire.
+ *
+ * `poligonoSagoma` qui sotto torna null su una sagoma RIENTRANTE, ed è
+ * giusto che lo faccia: quel poligono serve a piazzare, e piazzare una
+ * sagoma rientrante vuol dire misurarne le distanze dalle vicine con conti
+ * che valgono solo fra convessi. Ma il CONTORNO di un pezzo rientrante
+ * esiste eccome — il gradino del controsoffitto è lì e va tagliato — e serve
+ * a due cose: disegnarlo nel piano di taglio e dividerlo in teli.
+ */
+export function contornoSagoma(p: MisureForma): PuntoSagoma[] | null {
+  if (formaDi(p) === 'quad' && p.vertici && p.vertici.length >= 3) {
+    return verticiNormalizzati(p.vertici);
+  }
+  return poligonoSagoma(p);
+}
+
+/**
+ * IL POLIGONO SU CUI SI PIAZZA: per una sagoma rientrante è il suo riquadro.
+ *
+ * Il motore di piazzamento misura le distanze fra le sagome con l'asse
+ * separatore, che vale fra convessi e basta; e la maschera raster conta su
+ * uno span unico per riga. Dare loro una sagoma rientrante vuol dire
+ * sbagliare i conti in silenzio — e un conto sbagliato lì mette due pezzi
+ * nello stesso posto.
+ *
+ * Quindi il pezzo rientrante si piazza LARGO, dentro il suo riquadro: si
+ * consuma un filo di materiale in più (il gradino di un controsoffitto è un
+ * decimo di metro quadro su tre) e in cambio il piano regge e il pezzo si
+ * taglia con il suo scanso, che è quello che conta.
+ */
+export function poligonoDiPiazzamento(p: MisureForma): PuntoSagoma[] | null {
+  const vero = poligonoSagoma(p);
+  if (vero) return vero;
+  const contorno = contornoSagoma(p);
+  if (!contorno) return null;
+  let w = 0;
+  let h = 0;
+  for (const q of contorno) {
+    if (q[0] > w) w = q[0];
+    if (q[1] > h) h = q[1];
+  }
+  if (!(w > 0 && h > 0)) return null;
+  return [
+    [0, 0],
+    [w, 0],
+    [w, h],
+    [0, h]
+  ];
+}
+
+/**
  * Poligono canonico della forma: bbox (0,0)–(w,h), y verso il basso (SVG).
  * Il cerchio non ha poligono (torna null) e viene rasterizzato per conto suo.
  */
@@ -425,7 +481,19 @@ export function misureDelRitaglio(poly: PuntoSagoma[]): MisureForma | null {
       }
     }
   }
-  return poligonoConvesso(vertici) ? { forma: 'quad', larghezza: W, altezza: H, vertici } : null;
+  /**
+   * ANCHE UN RITAGLIO RIENTRANTE È UN PEZZO.
+   *
+   * Qui si chiedeva la convessità e, se mancava, il telo restava SENZA FORMA:
+   * nel piano di taglio arrivava il suo rettangolo pieno, e lo scanso — il
+   * gradino del controsoffitto che cade dentro quel telo — spariva. Un telo
+   * tagliato squadrato dove il muro rientra è un telo che in posa avanza di
+   * ventiquattro centimetri, e te ne accorgi sul ponteggio.
+   *
+   * La convessità serve a piazzare, non a descrivere: chi piazza la chiede a
+   * `poligonoDiPiazzamento`, che su una sagoma rientrante dà il riquadro.
+   */
+  return { forma: 'quad', larghezza: W, altezza: H, vertici };
 }
 
 /**
@@ -894,7 +962,9 @@ export function ingombroRuotato(
   p: MisureForma,
   gradi: number
 ): { larghezza: number; altezza: number } {
-  const poly = poligonoSagoma(p);
+  // il posto che il pezzo si prende girato: su una sagoma rientrante è il
+  // suo riquadro, che girato di un quarto scambia i lati come deve
+  const poly = poligonoDiPiazzamento(p);
   if (!poly) return ingombroForma(p); // il cerchio gira su sé stesso
   const r = ruotaPunti(poly, gradi);
   let l = 0;
@@ -933,7 +1003,9 @@ export function versiAMano(
           ? [0]
           : [0, 90]
         : f === 'quad' && !poligonoSagoma(p)
-          ? [0]
+          ? // una sagoma rientrante si piazza nel suo riquadro: gli appoggi
+            // obliqui non vorrebbero dire niente, i quarti di giro sì
+            [0, 90, 180, 270]
           : orientazioniPer(p);
   const entrano = dentro
     ? versi.filter((g) => {
@@ -1010,7 +1082,7 @@ export function rotazioniPer(p: MisureForma & { ruotabile: boolean }): number[] 
   const f = formaDi(p);
   if (!p.ruotabile || f === 'cerchio') return [0];
   if (f === 'rett' || f === 'rombo') return p.larghezza === p.altezza ? [0] : [0, 90];
-  if (f === 'quad') return poligonoSagoma(p) ? [0, 90, 180, 270] : [0];
+  if (f === 'quad') return contornoSagoma(p) ? [0, 90, 180, 270] : [0];
   return [0, 90, 180, 270];
 }
 
@@ -1064,7 +1136,9 @@ export function mascheraSagoma(
     return { w: n, h: n, rows, cells };
   }
 
-  const pts = ruotaPunti(poligonoSagoma(p)!, rot);
+  // la maschera è il posto che il pezzo si PRENDE: su una sagoma rientrante
+  // è il suo riquadro, perché lo span unico per riga non reggerebbe il rientro
+  const pts = ruotaPunti(poligonoDiPiazzamento(p)!, rot);
   let w = 0;
   let h = 0;
   for (const q of pts) {
