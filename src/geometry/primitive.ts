@@ -37,7 +37,6 @@ import {
   sbordiLati
 } from './formaQuadrilatera';
 import { sbordo } from './pannelli';
-import { poligonoConvesso } from './sagome';
 
 /**
  * Quel poco della foto che serve a disegnare le giunzioni di una parete a
@@ -598,18 +597,24 @@ export function primitivePannelli(
   const L = forma.netta.larghezza;
   const A = forma.netta.altezza;
   if (!(L > 0) || !(A > 0)) return [];
-  // su una forma rientrante l'omografia esiste ma ribalta l'interno
-  // all'esterno: le giunzioni finirebbero a sparare linee verdi attraverso
-  // tutta la foto. Meglio non disegnarle
-  if (!poligonoConvesso(forma.contorno.map((p): [number, number] => [p.x, p.y]))) return [];
-
-  // si parte dagli angoli VERI del vetro: mandare un rettangolo sul
-  // quadrilatero della foto vorrebbe dire disegnare una finestra sotto
-  // falda come un rettangolo messo in prospettiva. Con più di quattro
-  // vertici le corrispondenze sono più di quattro, e `omografiaSagoma`
-  // scegle le quattro più larghe
+  /**
+   * Si parte dagli angoli VERI del vetro: mandare un rettangolo sul
+   * quadrilatero della foto vorrebbe dire disegnare una finestra sotto falda
+   * come un rettangolo messo in prospettiva. Con più di quattro vertici le
+   * corrispondenze sono più di quattro, e `omografiaSagoma` ne sceglie quattro
+   * — le più larghe, e convesse in tutti e due gli spazi.
+   *
+   * Qui c'era un rifiuto in blocco delle forme RIENTRANTI, e il motivo era
+   * giusto: un'omografia costruita su quattro punti a punta di freccia
+   * ribalta il dentro col fuori, e le giunzioni partivano a sparare linee
+   * verdi attraverso tutta la foto. Ma rifiutare la forma era rimediare dalla
+   * parte sbagliata — una parete col gradino nel controsoffitto rientra, si
+   * divide benissimo in teli, e le sue giunzioni restavano invisibili. Il
+   * ribaltamento lo esclude adesso chi costruisce l'omografia, scegliendo
+   * quattro punti convessi: se non ce ne sono, torna null e qui non si
+   * disegna, come prima.
+   */
   const H = omografiaSagoma(forma.verticiNetti, forma.contorno);
-  // angoli degeneri: meglio non disegnare che disegnare storto
   if (!H) return [];
 
   const verticale = pann.asse === 'verticale';

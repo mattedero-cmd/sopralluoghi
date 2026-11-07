@@ -243,13 +243,6 @@ function risolvi(A: number[][]): number[] | null {
 export function omografiaSagoma(sorgente: Punto[], destinazione: Punto[]): Omografia | null {
   const n = sorgente.length;
   if (n < 4 || destinazione.length !== n) return null;
-  if (n === 4) {
-    try {
-      return calcolaOmografia(sorgente, destinazione);
-    } catch {
-      return null;
-    }
-  }
 
   /** l'area del quadrilatero i-j-k-l, col segno: dice anche il verso di giro */
   const area = (p: Punto[], i: number, j: number, k: number, l: number) => {
@@ -263,20 +256,52 @@ export function omografiaSagoma(sorgente: Punto[], destinazione: Punto[]): Omogr
     return doppia / 2;
   };
 
+  /**
+   * I QUATTRO PUNTI DEVONO FARE UN QUADRILATERO CONVESSO, in tutti e due gli
+   * spazi.
+   *
+   * Non è un capriccio di eleganza. Quattro punti presi in ordine ciclico su
+   * una figura RIENTRANTE possono formare una punta di freccia, e
+   * un'omografia costruita su una punta di freccia esiste ma ribalta il
+   * dentro col fuori: le giunzioni finirebbero a sparare linee attraverso
+   * tutta la foto. Su un quadrilatero convesso in partenza e convesso
+   * all'arrivo quel ribaltamento non può succedere, e allora anche una parete
+   * col gradino nel soffitto si può disegnare.
+   */
+  const convessa = (p: Punto[], idx: number[]) => {
+    let segno = 0;
+    for (let m = 0; m < 4; m++) {
+      const a = p[idx[m]];
+      const b = p[idx[(m + 1) % 4]];
+      const c = p[idx[(m + 2) % 4]];
+      const cr = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
+      if (Math.abs(cr) < 1e-9) continue;
+      const sg = cr > 0 ? 1 : -1;
+      if (segno === 0) segno = sg;
+      else if (sg !== segno) return false;
+    }
+    return segno !== 0;
+  };
+
   let scelta: [number, number, number, number] | null = null;
   let ampiezza = 0;
+  // con quattro vertici la quaterna è una sola, ma il controllo vale lo
+  // stesso: un quadrilatero rientrante ribalterebbe il dentro col fuori
   // le quaterne in ordine ciclico: così il quadrilatero non è mai intrecciato
   for (let i = 0; i < n - 3; i++) {
     for (let j = i + 1; j < n - 2; j++) {
       for (let k = j + 1; k < n - 1; k++) {
         for (let l = k + 1; l < n; l++) {
+          const quartetto = [i, j, k, l];
           const a = Math.abs(area(destinazione, i, j, k, l));
-          // dev'essere un quadrilatero buono in TUTTI E DUE gli spazi: ampio
-          // sul disegno e non ribaltato sulla sagoma
+          // la più ampia fra quelle buone: il conto di un'omografia è tanto
+          // più stabile quanto più i quattro punti sono lontani fra loro
           if (a <= ampiezza) continue;
           const b = area(sorgente, i, j, k, l);
           const c = area(destinazione, i, j, k, l);
+          // stesso verso di giro: se no la sagoma arriva specchiata
           if (!(Math.abs(b) > 0) || b * c < 0) continue;
+          if (!convessa(sorgente, quartetto) || !convessa(destinazione, quartetto)) continue;
           ampiezza = a;
           scelta = [i, j, k, l];
         }

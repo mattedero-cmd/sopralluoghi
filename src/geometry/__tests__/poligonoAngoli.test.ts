@@ -575,3 +575,103 @@ describe('dalla parete dichiarata nasce il piano', () => {
     expect(falda.valore).toBeLessThan(3800);
   });
 });
+
+/* ───────── le giunzioni verdi sulla foto, anche su un muro col gradino ───────── */
+
+describe('la pannellizzazione si vede sulla foto', () => {
+  /**
+   * LE GIUNZIONI DI UN MURO RIENTRANTE NON SI DISEGNAVANO.
+   *
+   * Un gradino nel controsoffitto fa rientrare la forma, e chi disegna le
+   * giunzioni rifiutava in blocco le forme rientranti. Il motivo era giusto —
+   * quattro punti presi a punta di freccia danno un'omografia che ribalta il
+   * dentro col fuori, e le linee verdi partivano attraverso tutta la foto —
+   * ma il rimedio era dalla parte sbagliata: la parete si divideva in teli e
+   * poi di quei teli sulla foto non si vedeva niente.
+   *
+   * Adesso il ribaltamento lo esclude chi costruisce l'omografia, scegliendo
+   * quattro punti convessi in tutti e due gli spazi; e la forma, rientrante o
+   * no, si disegna.
+   */
+  const conTeli = (angoliRetti: number[], pannelli: unknown) =>
+    ({
+      id: 'c1',
+      fotoId: 'f',
+      tipo: 'quotaPoligono',
+      zIndex: 0,
+      punti: CAMERA.disegno.map(([x, y]) => ({ x, y })),
+      segmenti: [
+        { da: 0, a: 1, valore: 200, offset: 0 },
+        { da: 3, a: 4, valore: 75, offset: 0 },
+        { da: 4, a: 5, valore: 24, offset: 0 },
+        { da: 5, a: 6, valore: 76, offset: 0 },
+        { da: 6, a: 7, valore: 250, offset: 0 },
+        { da: 7, a: 0, valore: 340, offset: 0 }
+      ],
+      unita: 'cm',
+      stato: 'reale',
+      etichetta: 'C1',
+      stile: { colore: '#ffd400', spessore: 3, dimensioneTesto: 22 },
+      angoliRetti,
+      pannelli
+    }) as never;
+
+  const DIVISA = { asse: 'verticale', sormonto: 1, verso: 'centro', giunti: [170] };
+
+  it('la camera rientra davvero: è il caso che non si disegnava', async () => {
+    const { formaDaDividere } = await import('../formaQuadrilatera');
+    const f = formaDaDividere(conTeli([0, 3, 4, 5, 6, 7], DIVISA), null)!;
+    expect(f).not.toBeNull();
+    expect(
+      poligonoConvesso(f.verticiNetti.map((p): [number, number] => [p.x, p.y])),
+      'il gradino la fa rientrare'
+    ).toBe(false);
+  });
+
+  it('e le sue giunzioni arrivano sulla foto', async () => {
+    const { primitivePannelli } = await import('../primitive');
+    const prim = primitivePannelli(conTeli([0, 3, 4, 5, 6, 7], DIVISA), 'C1', null);
+    expect(prim.length, 'nessuna giunzione disegnata').toBeGreaterThan(0);
+  });
+
+  it('e cadono DENTRO il disegno, non attraverso la foto', async () => {
+    const { primitivePannelli } = await import('../primitive');
+    const prim = primitivePannelli(conTeli([0, 3, 4, 5, 6, 7], DIVISA), 'C1', null);
+    // il riquadro del disegno sulla foto, con un po' di margine
+    const xs = CAMERA.disegno.map(([x]) => x);
+    const ys = CAMERA.disegno.map(([, y]) => y);
+    const M = 40;
+    const dentro = (v: number, min: number, max: number) => v >= min - M && v <= max + M;
+    for (const p of prim) {
+      const punti = (p as { punti?: number[] }).punti;
+      if (!punti) continue;
+      for (let i = 0; i < punti.length; i += 2) {
+        expect(dentro(punti[i], Math.min(...xs), Math.max(...xs)), 'linea fuori in x').toBe(true);
+        expect(dentro(punti[i + 1], Math.min(...ys), Math.max(...ys)), 'linea fuori in y').toBe(
+          true
+        );
+      }
+    }
+  });
+
+  it('ma un quadrilatero disegnato a punta di freccia resta senza giunzioni', async () => {
+    const { omografiaSagoma } = await import('../omografia');
+    // i quattro punti in ordine ciclico fanno una freccia: l'omografia
+    // ribalterebbe il dentro col fuori, e meglio non disegnare
+    const freccia = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 50, y: 40 },
+      { x: 100, y: 100 }
+    ];
+    const buono = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 100 },
+      { x: 0, y: 100 }
+    ];
+    expect(omografiaSagoma(buono, freccia)).toBeNull();
+    expect(omografiaSagoma(freccia, buono)).toBeNull();
+    expect(omografiaSagoma(buono, buono)).not.toBeNull();
+  });
+});
