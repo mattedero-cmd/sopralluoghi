@@ -3,7 +3,7 @@ import { db } from '../db/db';
 import type { Cartella, Foto, Progetto } from '../db/types';
 import { blobOrigine, canvasInBlob, caricaImmagine, fotoIllegibile } from './image';
 import { haCensure, immagineCensurata } from './censura';
-import { etichettaFoto } from '../geometry/nomenclatura';
+import { etichetteFotoDelProgetto, etichettaFoto } from '../geometry/nomenclatura';
 import {
   documentoTaglioProgetto,
   generaReportCartella,
@@ -91,7 +91,13 @@ async function aggiungiFotoProgetto(
   progetto: Progetto,
   foto: Foto[]
 ): Promise<void> {
-  const letteraDi = (f: Foto) => etichettaFoto(f, foto);
+  /**
+   * La lettera di ogni foto come la calcola l'app: dentro una sezione
+   * etichettata le lettere ripartono da A, e lo ZIP mette ogni sezione nella
+   * sua cartella — «Piano 2/A.jpg», non «Piano 2/C.jpg».
+   */
+  const lettere = etichetteFotoDelProgetto(foto, progetto);
+  const letteraDi = (f: Foto) => lettere.get(f.id) ?? etichettaFoto(f, foto);
   const sezioni = [...(progetto.sezioni ?? [])].sort((a, b) => a.ordine - b.ordine);
   if (sezioni.length === 0) {
     await aggiungiFoto(zip, prefisso, foto, letteraDi);

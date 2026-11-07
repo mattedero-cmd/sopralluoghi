@@ -3567,19 +3567,29 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   // condizionali sotto: è uno hook (useMemo) e va eseguito a ogni render, anche
   // mentre la foto sta caricando, altrimenti React cambia il numero di hook tra
   // un render e l'altro e l'editor va in crash (schermo nero).
+  /**
+   * Il percorso di una foto (cartelle, progetto, sezione etichettata). Lo
+   * stesso che comanda le lettere: dentro una sezione etichettata ripartono
+   * da A, e chi rinumera a mano deve guardare lo stesso gruppo.
+   */
+  const percorsoFoto = useCallback(
+    (fid: string) => {
+      const lista = fotoProgetto && fotoProgetto.length ? fotoProgetto : foto ? [foto] : [];
+      const ff = lista.find((f) => f.id === fid);
+      return ff && progetto ? percorsoDellaFoto(ff, progetto, tutteCartelle ?? []) : [];
+    },
+    [fotoProgetto, foto, progetto, tutteCartelle]
+  );
+
   const numeriForme = useMemo(() => {
     // numerazione DEL SOLO PROGETTO corrente (mai globale): i codici e i richiami
     // restano dentro il progetto aperto. Per la foto in modifica si usano le
     // annotazioni "vive"; per le altre foto del progetto quelle del DB.
     const lista = fotoProgetto && fotoProgetto.length ? fotoProgetto : foto ? [foto] : [];
-    const percorsoDi = (fid: string) => {
-      const ff = lista.find((f) => f.id === fid);
-      return ff && progetto ? percorsoDellaFoto(ff, progetto, tutteCartelle ?? []) : [];
-    };
     const annDi = (fid: string) =>
       fid === fotoId ? annotazioni ?? [] : (annotazioniProgetto ?? []).filter((a) => a.fotoId === fid);
-    return numeriProgetto(lista, annDi, percorsoDi);
-  }, [fotoId, annotazioni, annotazioniProgetto, progetto, tutteCartelle, fotoProgetto, foto]);
+    return numeriProgetto(lista, annDi, percorsoFoto);
+  }, [fotoId, annotazioni, annotazioniProgetto, fotoProgetto, foto, percorsoFoto]);
 
   // misure ORIGINALI richiamabili (una per famiglia) del SOLO progetto corrente:
   // il menu mostra solo gli originali (A1, A2, B1…) di questo progetto, non quelli
@@ -3600,7 +3610,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       const orig = membri.find((m) => !m.soloEtichetta) ?? membri[0];
       const info = numeriForme.get(orig.id);
       const f = fotoDi.get(orig.fotoId);
-      const perc = f && progetto ? percorsoDellaFoto(f, progetto, tutteCartelle ?? []) : [];
+      const perc = percorsoFoto(orig.fotoId);
       const base = info ? `${info.etichettaFoto}${info.numero}` : codiceLocaleForma(orig, numeriForme);
       const codice = codiceCompletoForma(perc, base);
       const quante = membri.length;
@@ -4701,7 +4711,13 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               onSalva={(nome, numero) => {
                 let mod: Partial<QuotaPoligono> = { etichetta: nome.trim() || undefined };
                 if (numero != null) {
-                  const ord = ordinePerNumero(poli, numero, fotoProgetto ?? [foto], annotazioniDi);
+                  const ord = ordinePerNumero(
+                    poli,
+                    numero,
+                    fotoProgetto ?? [foto],
+                    annotazioniDi,
+                    percorsoFoto
+                  );
                   if (ord !== null) mod = { ...mod, ordine: ord };
                 }
                 commit(
@@ -5723,7 +5739,13 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               codice={codiceForma(poli)}
               numero={numeriForme.get(poli.id)?.numero}
               onNumero={(n) => {
-                const ord = ordinePerNumero(poli, n, fotoProgetto ?? [foto], annotazioniDi);
+                const ord = ordinePerNumero(
+                  poli,
+                  n,
+                  fotoProgetto ?? [foto],
+                  annotazioniDi,
+                  percorsoFoto
+                );
                 if (ord !== null) {
                   commit(annotazioni.map((a) => (a.id === poli.id ? { ...a, ordine: ord } : a)));
                 }
