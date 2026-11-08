@@ -887,23 +887,54 @@ export function ProgettoPage({ id }: { id: string }) {
         <StatoApp />
       </header>
       <main className="contenuto">
-        <button className="scheda" onClick={() => setModificaDati(true)}>
-          <span className="glifo neutro">
-            <Icona nome="matita" dimensione={20} />
-          </span>
-          <span className="corpo">
-            <div className="titolo">
-              {progetto.cliente || 'Cliente non indicato'}
-              {progetto.etichetta ? <span className="badge-etichetta">{progetto.etichetta}</span> : null}
-            </div>
-            <div className="sotto">{progetto.luogo || 'Luogo non indicato'}</div>
-            <div className="sotto" style={{ color: 'var(--accento-2)' }}>
-              Tocca per modificare dati ed etichetta (codice nelle misure)
-            </div>
-            {progetto.note && <div className="sotto">{progetto.note.slice(0, 120)}</div>}
-          </span>
-          <SelettoreStato progetto={progetto} />
-        </button>
+        {/*
+          LA SCHEDA DEL SOPRALLUOGO.
+          Diceva «Cliente non indicato», «Luogo non indicato» e poi tre righe
+          blu per spiegare che toccandola si modifica: su un telefono erano
+          cinque righe, quasi tutte per dire che non c'era niente da dire. Il
+          nome del progetto è già nella barra sopra; qui va quel che lo
+          distingue — cliente, luogo, etichetta — e quando non c'è si scrive
+          una riga sola, che è anche l'invito a metterlo. La freccetta dice
+          che si tocca: non serve una frase.
+          Lo stato scende su una riga sua. Prima era un menù a tendina DENTRO
+          il pulsante: due comandi uno dentro l'altro, che il browser non
+          sa annunciare e che rubava larghezza al nome del cliente.
+        */}
+        <section className="testa-progetto">
+          <button className="dati" onClick={() => setModificaDati(true)}>
+            <span className="glifo neutro">
+              <Icona nome="matita" dimensione={20} />
+            </span>
+            <span className="corpo">
+              {progetto.cliente || progetto.luogo ? (
+                <>
+                  <span className="titolo">
+                    <span className="nome">{progetto.cliente || progetto.luogo}</span>
+                    {progetto.etichetta ? (
+                      <span className="badge-etichetta">{progetto.etichetta}</span>
+                    ) : null}
+                  </span>
+                  {progetto.cliente && progetto.luogo && (
+                    <span className="sotto">{progetto.luogo}</span>
+                  )}
+                </>
+              ) : (
+                <span className="titolo">
+                  <span className="nome manca">Tocca per aggiungere cliente, luogo ed etichetta</span>
+                  {progetto.etichetta ? (
+                    <span className="badge-etichetta">{progetto.etichetta}</span>
+                  ) : null}
+                </span>
+              )}
+              {progetto.note && <span className="sotto nota">{progetto.note}</span>}
+            </span>
+            <Icona nome="avanti" dimensione={18} />
+          </button>
+          <div className="stato">
+            <span>Stato del lavoro</span>
+            <SelettoreStato progetto={progetto} />
+          </div>
+        </section>
 
         {/*
           LE AZIONI DEL SOPRALLUOGO, a tessere uguali.
