@@ -4475,3 +4475,24 @@ a {
     justify-content: start;
   }
 }
+
+/* --- GLI INPUT FILE NASCOSTI ------------------------------------------ */
+/* Un `input type=file` si tiene fuori dalla vista e lo si apre col tasto
+   vero. Finché lo si nascondeva con `hidden` però spariva anche dal
+   layout, e su un input che non c'è il tocco programmato può non arrivare
+   dove deve: il telefono apre la scelta generica invece della fotocamera,
+   o non apre niente. Qui l'input resta nel layout — un pixel, trasparente,
+   non toccabile — che è l'unico modo di nasconderlo senza toglierglielo. */
+.file-nascosto {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  clip-path: inset(50%);
+  pointer-events: none;
+}

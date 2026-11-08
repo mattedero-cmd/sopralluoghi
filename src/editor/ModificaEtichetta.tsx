@@ -118,10 +118,10 @@ export function ModificaEtichetta({
           type="file"
           accept="image/*"
           capture="environment"
-          hidden
+          className="file-nascosto"
           onChange={scegliFile}
         />
-        <input ref={inputGalleria} type="file" accept="image/*" hidden onChange={scegliFile} />
+        <input ref={inputGalleria} type="file" accept="image/*" className="file-nascosto" onChange={scegliFile} />
       </div>
 
       <div className="riga-pulsanti" style={{ marginTop: 8 }}>

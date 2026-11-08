@@ -633,7 +633,7 @@ function Fotocamera({
         type="file"
         accept="image/*"
         multiple
-        hidden
+        className="file-nascosto"
         onChange={(e) => {
           // i file si copiano PRIMA di azzerare il campo: svuotarlo svuota
           // anche la FileList, e la funzione asincrona non troverebbe niente

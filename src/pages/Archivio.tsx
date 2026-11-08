@@ -446,7 +446,7 @@ export function Archivio({ cartellaId }: { cartellaId: string | null }) {
                 ref={fileSvgRef}
                 type="file"
                 accept=".svg,image/svg+xml"
-                hidden
+                className="file-nascosto"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
                   e.target.value = '';

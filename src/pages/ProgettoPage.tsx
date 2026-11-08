@@ -933,7 +933,7 @@ export function ProgettoPage({ id }: { id: string }) {
             ref={inputSvg}
             type="file"
             accept=".svg,image/svg+xml"
-            hidden
+            className="file-nascosto"
             onChange={(e) => {
               const f = e.target.files?.[0];
               e.target.value = '';
@@ -947,7 +947,7 @@ export function ProgettoPage({ id }: { id: string }) {
           type="file"
           accept="image/*"
           capture="environment"
-          hidden
+          className="file-nascosto"
           onChange={(e) => void acquisisci(e.target.files)}
         />
         <input
@@ -955,7 +955,7 @@ export function ProgettoPage({ id }: { id: string }) {
           type="file"
           accept="image/*"
           multiple
-          hidden
+          className="file-nascosto"
           onChange={(e) => void acquisisci(e.target.files)}
         />
         {panoramicaAperta && (

@@ -276,7 +276,7 @@ export function ImpostazioniPage() {
           ref={inputRestore}
           type="file"
           accept=".zip,application/zip"
-          hidden
+          className="file-nascosto"
           onChange={(e) => void ripristina(e.target.files?.[0])}
         />
         {operazione && <p style={{ color: 'var(--testo-2)', marginTop: 10 }}>{operazione}</p>}

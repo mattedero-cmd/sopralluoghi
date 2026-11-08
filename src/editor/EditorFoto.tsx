@@ -10325,7 +10325,7 @@ function EditorCallout({
             accept="image/*"
             capture="environment"
             onChange={scegliFoto}
-            style={{ display: 'none' }}
+            className="file-nascosto"
           />
           <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 6 }}>
             {caricando
