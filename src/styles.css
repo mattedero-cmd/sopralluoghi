@@ -4637,3 +4637,18 @@ a {
   stroke: rgba(0, 0, 0, 0.5);
   stroke-width: 3px;
 }
+
+/* la riga del preset dentro la scheda del sopralluogo: è una riga di stato
+   che si tocca, non un titolo */
+.testa-progetto .dati.preset {
+  border-top: 1px solid color-mix(in srgb, var(--bordo) 60%, transparent);
+  padding: 10px 14px;
+}
+
+.testa-progetto .dati.preset .valore {
+  display: block;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

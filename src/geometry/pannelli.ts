@@ -260,13 +260,40 @@ export function giuntiAutomatici(totale: number, o: OpzioniGiunti): number[] {
 
   const giunti: number[] = [];
   if (o.modo === 'fascia' && o.massimo && o.massimo > s) {
-    // i primi n−1 teli larghi quanto la fascia, l'ultimo prende il resto.
-    // Il primo però porta anche l'abbondanza di bordo: sul vetro copre di meno
+    /**
+     * A FASCIA PIENA, FINCHÉ L'ULTIMO TELO CI STA.
+     *
+     * I teli prendono tutta la larghezza utile e l'ultimo si tiene quello che
+     * avanza. Il primo e l'ultimo però non sono come quelli in mezzo: portano
+     * l'abbondanza di bordo invece di mezzo sormonto, e di vetro ne coprono
+     * meno. Riempiendo da sinistra senza guardare la coda, l'ULTIMO telo
+     * poteva uscire più largo della fascia — su una parete da 400 con due
+     * centimetri attorno e una bobina da 137 ne venivano tre, e il terzo era
+     * da 136: un telo che dal rotolo non esce. Il programma lo diceva pure,
+     * «un pannello supera la larghezza utile», ma lo proponeva lo stesso.
+     *
+     * Adesso si riempie finché quello che resta entra in una fascia. Se non
+     * entra più, a fascia piena non si può fare: si divide in PARTI UGUALI
+     * nel numero minimo che ci sta — che è il conto che `numeroMinimo` ha già
+     * fatto, e che tiene conto delle abbondanze dei due capi.
+     */
+    const passo = o.massimo - s;
+    /** quanto VETRO può coprire l'ultimo telo, che porta l'abbondanza di coda */
+    const coda = o.massimo - sb.inizio - ab.fine;
+    const pieni: number[] = [];
     let g = o.massimo - ab.inizio - sb.fine;
-    for (let i = 0; i < n - 1; i++) {
-      giunti.push(g);
-      g += o.massimo - s;
+    let sano = coda > 0 && passo > 0 && g > 0;
+    while (sano && g < totale) {
+      pieni.push(g);
+      if (totale - g <= coda) break; // dopo questo giunto la coda ci sta
+      g += passo;
+      if (pieni.length > 500) sano = false;
     }
+    const ultimo = pieni[pieni.length - 1];
+    if (sano && ultimo !== undefined && totale - ultimo <= coda) {
+      return giuntiValidi(pieni, totale);
+    }
+    for (let i = 1; i < n; i++) giunti.push((totale * i) / n);
   } else {
     // PARTI UGUALI SUL VETRO: è quello che si guarda. Le abbondanze rendono
     // poi diversi i teli di bordo, ed è giusto — la giunzione resta dov'era

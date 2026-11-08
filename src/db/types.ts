@@ -4,13 +4,69 @@
  * Cartella → Progetto → (Foto → Annotazione).
  */
 
-import type { Pannellizzazione } from '../geometry/pannelli';
+import type { AssePannelli, Pannellizzazione, VersoSormonto } from '../geometry/pannelli';
 
 export type ID = string;
 
 export type Unita = 'mm' | 'cm' | 'm';
 
 export type StatoProgetto = 'bozza' | 'in_corso' | 'completato';
+
+/** supporto: lastre uguali a volontà, oppure un rotolo di lunghezza data */
+export type ModoSupporto = 'lastre' | 'bobina';
+
+/** direzione della venatura del materiale (o assenza) */
+export type Venatura = 'nessuna' | 'orizzontale' | 'verticale';
+
+/**
+ * IL PRESET DEL LAVORO: da dove partono le cose, invece che da zero.
+ *
+ * Un sopralluogo non comincia mai da una pagina bianca: chi fa pellicole
+ * solari lavora con la sua bobina, dà sempre gli stessi centimetri di
+ * abbondanza e sormonta sempre allo stesso modo. Finora niente di tutto
+ * questo si poteva dire una volta per tutte — l'abbondanza di una forma
+ * nuova nasceva a zero, i teli nascevano «due uguali» e il piano di taglio
+ * con una lastra di fabbrica — e andava rifatto a mano su ogni forma.
+ *
+ * Il preset dà i valori QUANDO LA COSA NASCE, poi la lascia libera: se
+ * cambi un'abbondanza a mano su una forma, quella resta tua e nessun preset
+ * te la riscrive. Cambiare il preset a lavoro avviato non tocca quello che
+ * c'è già; per portarlo anche lì c'è un comando apposta, che lo dice.
+ */
+export interface PresetProgetto {
+  /**
+   * Abbondanza perimetrale delle forme nuove, in MILLIMETRI. In millimetri
+   * perché una forma può essere quotata in mm, cm o m, e il preset deve
+   * valere per tutte: si converte nell'unità della forma al momento.
+   */
+  abbPerimetroMm?: number;
+  /**
+   * Il supporto da cui si taglia. Serve a due cose lontane fra loro: il
+   * piano di taglio nasce già con la macchina giusta, e la divisione in
+   * teli FATTA SULLA FOTO sa quanto è larga la fascia — cosa che prima
+   * sapeva solo la pagina del nesting, e per questo dalla foto i teli
+   * uscivano sempre «due uguali», che quasi mai è la divisione vera.
+   */
+  supporto?: {
+    modo: ModoSupporto;
+    lastra: { larghezza: number; altezza: number };
+    bobina: { larghezza: number; metri: number };
+    venatura: Venatura;
+    /** taglio consumato fra un pezzo e l'altro, mm */
+    lama: number;
+    /** margine su tutti i lati del supporto, mm */
+    margine: number;
+  };
+  /** da dove partono le divisioni in teli */
+  teli?: {
+    /** sovrapposizione fra un telo e il successivo, in MILLIMETRI */
+    sormontoMm: number;
+    verso: VersoSormonto;
+    asse: AssePannelli;
+    /** 'fascia' = teli larghi quanto la bobina; 'uguali' = tutti uguali */
+    modo: 'fascia' | 'uguali';
+  };
+}
 
 export interface Cartella {
   id: ID;
@@ -58,6 +114,8 @@ export interface Progetto {
   stato: StatoProgetto;
   /** Note generali del progetto, riportate nel PDF */
   note: string;
+  /** i valori di partenza di questo lavoro (abbondanza, supporto, teli) */
+  preset?: PresetProgetto;
   creatoIl: number;
   modificatoIl: number;
 }

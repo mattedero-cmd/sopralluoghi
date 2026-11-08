@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import type { Annotazione, DisegnoSvg, Foto, LavoroNesting, Progetto, StatoProgetto } from '../db/types';
+import type { Annotazione, DisegnoSvg, Foto, LavoroNesting, Progetto, StatoProgetto, Unita } from '../db/types';
 import {
   aggiungiFoto,
   aggiornaProgetto,
@@ -52,6 +52,8 @@ import { PannelloOpzioniPdf } from '../components/OpzioniPdf';
 import { Nomenclatura } from '../components/Nomenclatura';
 import { ScattoRapido } from '../components/ScattoRapido';
 import { AnteprimaAnnotata } from '../components/AnteprimaAnnotata';
+import { PresetLavoro } from '../components/PresetLavoro';
+import { riassuntoPreset } from '../utils/preset';
 
 /**
  * Il segno che l'ambiente della panoramica era aperto quando la pagina è
@@ -85,6 +87,43 @@ export function ProgettoPage({ id }: { id: string }) {
     }
     return per;
   }, [(foto ?? []).map((f) => f.id).join(',')]);
+  /** le forme quotate di tutto il lavoro: quelle che un'abbondanza ce l'hanno */
+  const formeDelLavoro = [...(annotazioniFoto?.values() ?? [])]
+    .flat()
+    .filter((a) => a.tipo === 'quotaPoligono' || a.tipo === 'quotaRett');
+
+  /**
+   * Porta l'abbondanza del preset su tutto quello che è già disegnato. È il
+   * comando esplicito: il preset da solo non tocca mai quello che c'è già.
+   */
+  const applicaAbbondanzaATutte = async (mm: number) => {
+    const { scriviAbbondanzaPerimetrale } = await import('../db/repository');
+    const { daMillimetri } = await import('../utils/format');
+    // ogni forma ha la SUA unità: il preset è in millimetri apposta
+    const perUnita = new Map<string, string[]>();
+    for (const a of formeDelLavoro) {
+      const u = 'unita' in a ? a.unita : 'cm';
+      const l = perUnita.get(u);
+      if (l) l.push(a.id);
+      else perUnita.set(u, [a.id]);
+    }
+    let quante = 0;
+    for (const [u, ids] of perUnita) {
+      quante += await scriviAbbondanzaPerimetrale(
+        ids,
+        Math.round(daMillimetri(mm, u as Unita) * 1e4) / 1e4
+      );
+    }
+    mostraToast(
+      quante > 0 ? 'successo' : 'info',
+      quante === 0
+        ? 'Le forme avevano già questa abbondanza.'
+        : quante === 1
+          ? 'Abbondanza scritta su una forma.'
+          : `Abbondanza scritta su ${quante} forme.`
+    );
+  };
+
   const [conferma, setConferma] = useState<RichiestaConferma | null>(null);
   const [menu, setMenu] = useState<{
     pos: { x: number; y: number };
@@ -145,6 +184,7 @@ export function ProgettoPage({ id }: { id: string }) {
   const [pdfInCorso, setPdfInCorso] = useState<string | null>(null);
   const [opzioniPdfAperte, setOpzioniPdfAperte] = useState(false);
   const [nomenclaturaAperta, setNomenclaturaAperta] = useState(false);
+  const [presetAperto, setPresetAperto] = useState(false);
   /** la fotocamera dentro l'app, con la richiesta già fatta nel gesto del dito */
   const [scattoAperto, setScattoAperto] = useState<{
     richiesta: Promise<MediaStream> | null;
@@ -621,7 +661,8 @@ export function ProgettoPage({ id }: { id: string }) {
           : `Piano di taglio vuoto: ${conto.formeChiuse} forme trovate, ma senza misure utilizzabili. Incolla la lista dei pezzi, o scrivi le misure sui lati.`;
 
       const materiale = {
-        ...materialeNuovo(nuovoId(), 'Materiale 1'),
+        // il supporto del preset: il piano nasce già con la macchina giusta
+        ...materialeNuovo(nuovoId(), 'Materiale 1', progetto.preset?.supporto),
         pezzi: pezzi.map((p, i) => ({
           id: nuovoId(),
           nome: p.nome,
@@ -952,6 +993,21 @@ export function ProgettoPage({ id }: { id: string }) {
             <span>Stato del lavoro</span>
             <SelettoreStato progetto={progetto} />
           </div>
+          {/*
+            IL PRESET sta qui e non fra le tessere: è configurazione del
+            lavoro, come il cliente e l'etichetta, non un'azione. E dicendo
+            in una riga cosa contiene si sa sempre da dove parte quello che
+            si disegna, senza doverlo aprire.
+          */}
+          <button className="dati preset" onClick={() => setPresetAperto(true)}>
+            <span className="corpo">
+              <span className="sotto">Preset del lavoro</span>
+              <span className="valore">
+                {riassuntoPreset(progetto.preset) ?? 'Non impostato: si parte da zero'}
+              </span>
+            </span>
+            <Icona nome="avanti" dimensione={18} />
+          </button>
         </section>
 
         {/*
@@ -1297,6 +1353,15 @@ export function ProgettoPage({ id }: { id: string }) {
         />
       )}
       {modificaDati && <FormDatiProgetto progetto={progetto} onChiudi={() => setModificaDati(false)} />}
+      {presetAperto && (
+        <PresetLavoro
+          preset={progetto.preset}
+          quanteForme={formeDelLavoro.length}
+          onSalva={(p) => void aggiornaProgetto(progetto.id, { preset: p })}
+          onApplicaAbbondanza={(mm) => void applicaAbbondanzaATutte(mm)}
+          onChiudi={() => setPresetAperto(false)}
+        />
+      )}
       {nomenclaturaAperta && (
         <Nomenclatura progetto={progetto} onChiudi={() => setNomenclaturaAperta(false)} />
       )}

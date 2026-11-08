@@ -873,6 +873,38 @@ export async function salvaAnnotazioniFoto(fotoId: ID, annotazioni: Annotazione[
   );
 }
 
+/**
+ * SCRIVE L'ABBONDANZA PERIMETRALE SU PIÙ FORME IN UNA VOLTA.
+ *
+ * È il comando «applica il preset a quello che c'è già»: su un sopralluogo
+ * di trenta pareti farlo a mano, una per una, è il lavoro che il preset
+ * doveva togliere. Tocca solo quel campo — tutto il resto della forma, teli
+ * compresi, resta dov'è.
+ */
+export async function scriviAbbondanzaPerimetrale(
+  ids: ID[],
+  abbPerimetro: number | undefined
+): Promise<number> {
+  if (ids.length === 0) return 0;
+  return scrivi("scrivere l'abbondanza sulle forme", async () => {
+    const toccate = new Set<ID>();
+    let quante = 0;
+    await db.transaction('rw', [db.annotazioni, db.foto], async () => {
+      for (const id of ids) {
+        const a = await db.annotazioni.get(id);
+        if (!a || (a.tipo !== 'quotaPoligono' && a.tipo !== 'quotaRett')) continue;
+        if ((a.abbPerimetro ?? undefined) === abbPerimetro) continue;
+        await db.annotazioni.put({ ...a, abbPerimetro });
+        toccate.add(a.fotoId);
+        quante++;
+      }
+      const adesso = ora();
+      for (const f of toccate) await db.foto.update(f, { modificataIl: adesso });
+    });
+    return quante;
+  });
+}
+
 export async function eliminaAnnotazione(id: ID): Promise<void> {
   await scrivi("eliminare l'annotazione", () => db.annotazioni.delete(id));
 }

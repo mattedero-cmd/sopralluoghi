@@ -57,6 +57,43 @@ describe('giuntiAutomatici a fascia', () => {
   });
 });
 
+describe('a fascia, quando l’ultimo telo non ci starebbe', () => {
+  /**
+   * Una parete da 400 con due centimetri di abbondanza attorno, su una
+   * bobina da 137 col margine di 1 per parte: la fascia utile è 135.
+   *
+   * Riempiendo da sinistra senza guardare la coda ne venivano TRE, e il
+   * terzo — che porta l'abbondanza di coda invece di mezzo sormonto — era
+   * largo 136: un telo che dal rotolo non esce. Il programma lo diceva pure
+   * («un pannello supera la larghezza utile») e lo proponeva lo stesso.
+   */
+  const opzioni = {
+    massimo: 135,
+    modo: 'fascia' as const,
+    sormonto: 1,
+    verso: 'centro' as const,
+    abbondanze: { inizio: 2, fine: 2, trasversaleInizio: 0, trasversaleFine: 0 }
+  };
+
+  it('si divide in parti uguali, nel numero minimo che ci sta', () => {
+    expect(numeroMinimo(400, 135, 1, opzioni.abbondanze)).toBe(4);
+    expect(giuntiAutomatici(400, opzioni)).toEqual([100, 200, 300]);
+  });
+
+  it('e nessun telo supera più la fascia', () => {
+    const giunti = giuntiAutomatici(400, opzioni);
+    const teli = pannelliDi(400, 260, { asse: 'verticale', sormonto: 1, verso: 'centro', giunti }, opzioni.abbondanze);
+    for (const t of teli) expect(t.larghezza).toBeLessThanOrEqual(135 + 1e-9);
+  });
+
+  it('dove la fascia piena regge, resta la fascia piena', () => {
+    // senza abbondanze ai capi il riempimento da sinistra va benissimo, e
+    // non si deve toccare: i teli interi sono il taglio più pulito
+    const giunti = giuntiAutomatici(510, { massimo: 137, modo: 'fascia', sormonto: 2, verso: 'centro' });
+    expect(giunti).toEqual([136, 271, 406]);
+  });
+});
+
 describe('giuntiAutomatici in parti uguali', () => {
   it('«uguali» divide IL VETRO in parti uguali, non il materiale', () => {
     const giunti = giuntiAutomatici(510, {

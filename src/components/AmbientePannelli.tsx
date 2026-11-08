@@ -123,11 +123,23 @@ const VERDE_ABBONDANZA = '#34c759';
 export function AmbientePannelli({
   forma,
   iniziale,
+  predefiniti,
   onConferma,
   onChiudi
 }: {
   forma: FormaDaPannellizzare;
   iniziale?: Pannellizzazione | null;
+  /**
+   * Da dove partire quando la forma non è ancora divisa: il preset del
+   * lavoro. Vale solo alla PRIMA divisione — una pannellizzazione salvata
+   * comanda sempre lei, perché i giunti li ha messi qualcuno a mano.
+   */
+  predefiniti?: {
+    sormonto?: number;
+    verso?: VersoSormonto;
+    asse?: AssePannelli;
+    modo?: 'fascia' | 'uguali';
+  };
   /** null = niente pannellizzazione, la forma resta intera */
   onConferma: (p: Pannellizzazione | null) => void;
   onChiudi: () => void;
@@ -137,26 +149,43 @@ export function AmbientePannelli({
   const conAbbondanze = abb.sinistra > 0 || abb.destra > 0 || abb.sopra > 0 || abb.sotto > 0;
 
   /** modo di distribuzione: con una fascia nota si parte da lei */
-  const [modo, setModo] = useState<'fascia' | 'uguali'>(forma.massimo ? 'fascia' : 'uguali');
+  const modoIniziale: 'fascia' | 'uguali' = forma.massimo
+    ? (predefiniti?.modo ?? 'fascia')
+    : 'uguali';
+  const sormontoDiPartenza = predefiniti?.sormonto ?? sormontoIniziale(forma.unita);
+  const assePartenza: AssePannelli = predefiniti?.asse ?? 'verticale';
+  const versoPartenza: VersoSormonto = predefiniti?.verso ?? 'centro';
+  const [modo, setModo] = useState<'fascia' | 'uguali'>(modoIniziale);
   const [massimo, setMassimo] = useState<number>(forma.massimo ?? 0);
   const [pann, setPann] = useState<Pannellizzazione>(
     () =>
       iniziale ?? {
-        asse: 'verticale',
-        sormonto: sormontoIniziale(forma.unita),
-        verso: 'centro',
-        giunti: giuntiAutomatici(L, {
+        asse: assePartenza,
+        sormonto: sormontoDiPartenza,
+        verso: versoPartenza,
+        giunti: giuntiAutomatici(assePartenza === 'verticale' ? L : A, {
           massimo: forma.massimo ?? null,
-          modo: forma.massimo ? 'fascia' : 'uguali',
-          numero: forma.massimo ? null : 2,
-          sormonto: sormontoIniziale(forma.unita),
-          verso: 'centro',
-          abbondanze: {
-            inizio: forma.abbondanze?.sinistra ?? 0,
-            fine: forma.abbondanze?.destra ?? 0,
-            trasversaleInizio: forma.abbondanze?.sopra ?? 0,
-            trasversaleFine: forma.abbondanze?.sotto ?? 0
-          }
+          modo: modoIniziale,
+          numero: modoIniziale === 'fascia' ? null : 2,
+          sormonto: sormontoDiPartenza,
+          verso: versoPartenza,
+          // le abbondanze vanno girate nel verso dell'asse di partenza: se
+          // il preset dice «teli orizzontali», inizio e fine sono sopra e
+          // sotto, non sinistra e destra
+          abbondanze:
+            assePartenza === 'verticale'
+              ? {
+                  inizio: forma.abbondanze?.sinistra ?? 0,
+                  fine: forma.abbondanze?.destra ?? 0,
+                  trasversaleInizio: forma.abbondanze?.sopra ?? 0,
+                  trasversaleFine: forma.abbondanze?.sotto ?? 0
+                }
+              : {
+                  inizio: forma.abbondanze?.sopra ?? 0,
+                  fine: forma.abbondanze?.sotto ?? 0,
+                  trasversaleInizio: forma.abbondanze?.sinistra ?? 0,
+                  trasversaleFine: forma.abbondanze?.destra ?? 0
+                }
         })
       }
   );

@@ -8,17 +8,20 @@
  * materiale nei parametri del motore di calcolo.
  */
 
+import type { ModoSupporto, PresetProgetto, Venatura } from '../db/types';
 import type { OpzioniRicerca, ParametriNesting, PezzoNesting } from '../geometry/nesting';
 import { FORME, type FormaPezzo } from '../geometry/sagome';
 import { BLOCCO_MANEGGEVOLE } from '../geometry/segmenti';
 import { nuovoId } from './id';
 import { prossimaTinta } from './tinte';
 
-/** supporto: lastre uguali a volontà, oppure un rotolo di lunghezza data */
-export type ModoSupporto = 'lastre' | 'bobina';
+/**
+ * Supporto e venatura stanno nel modello dati (`db/types`), perché il preset
+ * di un sopralluogo li porta con sé; qui si ri-esportano, che è di qui che
+ * li legge mezza applicazione.
+ */
+export type { ModoSupporto, Venatura } from '../db/types';
 
-/** direzione della venatura del materiale (o assenza) */
-export type Venatura = 'nessuna' | 'orizzontale' | 'verticale';
 
 export interface MaterialeNesting {
   id: string;
@@ -64,17 +67,22 @@ export const BOBINA_PREDEFINITA = { larghezza: 1220, metri: 50 };
  */
 export const FASCE_BOBINA = [915, 1220, 1370, 1520, 1600];
 
-export function materialeNuovo(id: string, nome: string): MaterialeNesting {
+export function materialeNuovo(
+  id: string,
+  nome: string,
+  /** il supporto del preset del lavoro: se c'è, la macchina parte già giusta */
+  supporto?: PresetProgetto['supporto']
+): MaterialeNesting {
   return {
     id,
     nome,
-    modo: 'lastre',
-    lastra: { ...LASTRA_PREDEFINITA },
-    bobina: { ...BOBINA_PREDEFINITA },
-    venatura: 'nessuna',
-    lama: 3,
+    modo: supporto?.modo ?? 'lastre',
+    lastra: { ...(supporto?.lastra ?? LASTRA_PREDEFINITA) },
+    bobina: { ...(supporto?.bobina ?? BOBINA_PREDEFINITA) },
+    venatura: supporto?.venatura ?? 'nessuna',
+    lama: supporto?.lama ?? 3,
     abbondanza: 0,
-    margine: 10,
+    margine: supporto?.margine ?? 10,
     orientamenti: {},
     pezzi: []
   };

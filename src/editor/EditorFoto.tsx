@@ -50,6 +50,7 @@ import { caricaDettaglio } from '../utils/immaginiCallout';
 import { naviga } from '../router';
 import { ConfermaDialog, ImmagineBlob, Modale, StatoApp, type RichiestaConferma } from '../components/comuni';
 import { mostraToast } from '../state/toast';
+import { conPresetApplicato, fasciaDelPreset, predefinitiTeli } from '../utils/preset';
 import { StageEditor, type ModalitaVincolo, type Strumento } from './StageEditor';
 import { FabbricaAnnotazioni } from './fabbrica';
 import { MenuCircolareEtichette } from './MenuCircolareEtichette';
@@ -1270,8 +1271,11 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   };
 
   /** crea un'annotazione e la seleziona */
-  const creaEseleziona = (a: Annotazione) => {
+  const creaEseleziona = (nuova: Annotazione) => {
     if (!annotazioni) return;
+    // IL PRESET DEL LAVORO ENTRA QUI, dove le forme nascono: l'abbondanza si
+    // scrive alla nascita e poi la forma è libera
+    const a = conPresetApplicato(nuova, progetto?.preset);
     commit([...annotazioni, a]);
     setSelezioneId(a.id);
     setStrumento('seleziona');
@@ -2641,11 +2645,14 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     if (!proposta || !annotazioni) return;
     // il poligono diventa definitivo col colore unico (uguale a quelli manuali);
     // si stampa l'istante di creazione per la numerazione automatica
-    const definitiva: QuotaPoligono = {
-      ...proposta,
-      creatoIl: proposta.creatoIl ?? Date.now(),
-      stile: { ...proposta.stile, colore: COLORE_QUOTA }
-    };
+    const definitiva = conPresetApplicato(
+      {
+        ...proposta,
+        creatoIl: proposta.creatoIl ?? Date.now(),
+        stile: { ...proposta.stile, colore: COLORE_QUOTA }
+      },
+      progetto?.preset
+    ) as QuotaPoligono;
     commit([...annotazioni, definitiva]);
     chiudiProposta();
     setSelezioneId(definitiva.id);
@@ -2843,7 +2850,13 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     // resta nello strumento Schizzo: si possono aggiungere elementi consecutivi
     // (stanze, muri interni); si quotano poi selezionandoli
     const s = fabbrica.poligonoLati(vertici, annotazioni);
-    commit([...annotazioni, { ...s, snapAngolo: snapSchizzo > 0 ? snapSchizzo : undefined }]);
+    commit([
+      ...annotazioni,
+      conPresetApplicato(
+        { ...s, snapAngolo: snapSchizzo > 0 ? snapSchizzo : undefined },
+        progetto?.preset
+      )
+    ]);
     setSelezioneId(s.id);
   };
 
@@ -5990,8 +6003,19 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 verticiTaglio: forma.rettangolare ? null : forma.verticiTaglio,
                 abbondanze: forma.abbondanze,
                 unita: forma.unita,
+                /**
+                 * LA FASCIA DEL SUPPORTO, dal preset del lavoro.
+                 *
+                 * Dalla pagina del nesting la larghezza del rotolo si sa, e i
+                 * teli nascono già tagliati a fascia. Dalla foto — che è dove
+                 * si lavora — non si sapeva, e nascevano «due uguali»: una
+                 * divisione che quasi mai è quella vera. Col supporto nel
+                 * preset lo sa anche qui.
+                 */
+                ...fasciaDelPreset(progetto?.preset, forma.unita),
                 prospettiva: { punti: forma.contorno, immagine }
               }}
+              predefiniti={predefinitiTeli(progetto?.preset, forma.unita)}
               iniziale={
                 // le giunzioni fuori misura non devono comparire come maniglie:
                 // si risana con lo stesso metro del disegno e della distinta
