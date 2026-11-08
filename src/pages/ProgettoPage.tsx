@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import type { DisegnoSvg, Foto, LavoroNesting, Progetto, StatoProgetto } from '../db/types';
+import type { Annotazione, DisegnoSvg, Foto, LavoroNesting, Progetto, StatoProgetto } from '../db/types';
 import {
   aggiungiFoto,
   aggiornaProgetto,
@@ -51,6 +51,7 @@ import { formattaData } from '../utils/format';
 import { PannelloOpzioniPdf } from '../components/OpzioniPdf';
 import { Nomenclatura } from '../components/Nomenclatura';
 import { ScattoRapido } from '../components/ScattoRapido';
+import { AnteprimaAnnotata } from '../components/AnteprimaAnnotata';
 
 /**
  * Il segno che l'ambiente della panoramica era aperto quando la pagina è
@@ -68,6 +69,22 @@ export function ProgettoPage({ id }: { id: string }) {
     },
     [id]
   );
+  /**
+   * LE ANNOTAZIONI DI TUTTE LE FOTO, per disegnarle sulle anteprime.
+   * Una query sola invece di una per foto, e viva: cambi una quota
+   * nell'editor e il francobollo nella griglia cambia con lei.
+   */
+  const annotazioniFoto = useLiveQuery(async () => {
+    const ids = (foto ?? []).map((f) => f.id);
+    const per = new Map<string, Annotazione[]>();
+    if (ids.length === 0) return per;
+    for (const a of await db.annotazioni.where('fotoId').anyOf(ids).toArray()) {
+      const lista = per.get(a.fotoId);
+      if (lista) lista.push(a);
+      else per.set(a.fotoId, [a]);
+    }
+    return per;
+  }, [(foto ?? []).map((f) => f.id).join(',')]);
   const [conferma, setConferma] = useState<RichiestaConferma | null>(null);
   const [menu, setMenu] = useState<{
     pos: { x: number; y: number };
@@ -858,6 +875,7 @@ export function ProgettoPage({ id }: { id: string }) {
           }}
         >
           <ImmagineBlob dati={f.miniatura} tipo={f.miniaturaTipo} alt={f.didascalia || 'Foto'} />
+          <AnteprimaAnnotata foto={f} annotazioni={annotazioniFoto?.get(f.id)} />
           <span
             className="btn icona"
             role="button"
