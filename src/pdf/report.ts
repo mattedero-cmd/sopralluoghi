@@ -16,6 +16,8 @@ import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { db } from '../db/db';
 import type { Annotazione, Cartella, Foto, Progetto, Punto, Quota, QuotaPoligono, StatoMisura } from '../db/types';
 import { abbondanzaTotale, segmentiPoligono, segmentoELato } from '../db/types';
+import { abbondanzaDelLato, latiDiTaglio } from '../geometry/abbondanze';
+import { sagomaPoligonoQuotato, sagomaTaglioPoligono } from '../geometry/poligonoQuotato';
 import { nomeFormaPoligono, simboliPoligono, versiSegmento } from '../geometry/primitive';
 import { pannelliDellaForma } from '../geometry/formaQuadrilatera';
 import {
@@ -836,6 +838,17 @@ function dettaglioAbb(
   return parti.length ? `${simbolo}: ${parti.join(', ')}` : '';
 }
 
+/**
+ * IL CONTORNO DEL PEZZO DA TAGLIARE di una polilinea, quando si sa ricavare.
+ * È lo stesso che finisce nella distinta e sulla macchina: misurando i suoi
+ * lati il foglio dice le misure vere anche dove un gradino rientra, dove la
+ * somma delle abbondanze direbbe il contrario.
+ */
+function contornoDiTaglio(q: QuotaPoligono, f: Foto): Array<[number, number]> | null {
+  if (q.punti.length < 5) return null;
+  return sagomaTaglioPoligono(q, sagomaPoligonoQuotato(q, f, false));
+}
+
 /** Misure (lati, taglio, perimetro, angoli, area) di un poligono, dalla forma
  *  ORIGINALE: condivise da tutte le istanze della famiglia (fonte unica). */
 function dettaglioPoligono(formaMis: QuotaPoligono, fotoMis: Foto): Partial<RigaMisura> {
@@ -849,15 +862,43 @@ function dettaglioPoligono(formaMis: QuotaPoligono, fotoMis: Foto): Partial<Riga
   // il taglio riguarda solo i LATI: le diagonali non si tagliano
   const nVert = formaMis.punti.length;
   const lati = segs.map((s, i) => ({ s, i })).filter(({ s }) => segmentoELato(s, nVert));
-  const abbTot = lati.reduce((acc, { s }) => acc + abbondanzaTotale(s), 0);
+  /**
+   * SI GUARDANO TUTTE E TRE le abbondanze, non solo quella sulla misura.
+   * Un lato spostato in fuori allunga i suoi vicini esattamente come
+   * un'abbondanza scritta sulla loro quota, e il foglio che va in cantiere
+   * deve dire la stessa misura che taglia la macchina: la calcola
+   * `latiDiTaglio`, lo stesso che la mette nella distinta.
+   */
+  const tagli = latiDiTaglio(formaMis, contornoDiTaglio(formaMis, fotoMis));
+  const abbTot = lati.reduce(
+    (acc, { s }) => acc + Math.max(abbondanzaTotale(s), abbondanzaDelLato(formaMis, s)),
+    0
+  );
   if (abbTot > 0) {
     out.taglio = `${lati
-      .map(({ s, i }) => `${simboli[i]} ${s.valore === null ? '?' : formattaNumero(s.valore + abbondanzaTotale(s))}`)
+      .map(({ i }) => `${simboli[i]} ${tagli[i] === null ? '?' : formattaNumero(tagli[i]!)}`)
       .join(' · ')} ${formaMis.unita}`;
-    out.abbondanze = lati
-      .map(({ s, i }) => dettaglioAbb(simboli[i], s.abbInizio, s.abbFine, formaMis.punti[s.da], formaMis.punti[s.a]))
-      .filter(Boolean)
-      .join('   ');
+    const giro = formaMis.abbPerimetro ?? 0;
+    const voci: string[] = [];
+    if (giro > 0) voci.push(`+${formattaNumero(giro)} tutt'intorno`);
+    for (const { s, i } of lati) {
+      const parti: string[] = [];
+      const suo = s.abbLato;
+      // il lato che non segue il giro lo si dice, anche quando va a filo
+      if (suo !== undefined && suo !== giro) {
+        parti.push(suo > 0 ? `+${formattaNumero(suo)} in fuori` : 'a filo');
+      }
+      const sulla = dettaglioAbb(
+        '',
+        s.abbInizio,
+        s.abbFine,
+        formaMis.punti[s.da],
+        formaMis.punti[s.a]
+      );
+      if (sulla) parti.push(sulla.replace(/^:\s*/, ''));
+      if (parti.length) voci.push(`${simboli[i]}: ${parti.join(', ')}`);
+    }
+    out.abbondanze = voci.join('   ');
   }
   // l'ingombro di taglio segue la stessa fonte della misura: l'originale
   out.taglioMm = ingombroTaglio(formaMis, fotoMis) ?? undefined;
@@ -947,6 +988,19 @@ function righeMisureFoto(
         reale = `B ${n(m.baseSup)} · b ${n(m.baseInf)} · h ${n(m.latoSx)} ${a.unita}`;
       else reale = `${n(m.baseSup)} · ${n(m.latoDx)} · ${n(m.baseInf)} · ${n(m.latoSx)} ${a.unita}`;
       const rigaR: RigaMisura = { codice: codiceForma(a), forma: nome, reale, stato: a.stato, pezzo: true };
+      // la quota elemento non ha quote per lato: l'unica abbondanza che può
+      // avere è quella perimetrale, e si scrive come quella del cerchio
+      const giroR = a.abbPerimetro ?? 0;
+      if (giroR > 0) {
+        const piu = (v: number | null) => (v === null ? '?' : formattaNumero(v + 2 * giroR));
+        rigaR.taglio =
+          m.forma === 'rettangolo'
+            ? `b ${piu(m.baseSup)} · h ${piu(m.latoSx)} ${a.unita}`
+            : m.forma === 'trapezio'
+              ? `B ${piu(m.baseSup)} · b ${piu(m.baseInf)} · h ${piu(m.latoSx)} ${a.unita}`
+              : `${piu(m.baseSup)} · ${piu(m.latoDx)} · ${piu(m.baseInf)} · ${piu(m.latoSx)} ${a.unita}`;
+        rigaR.abbondanze = `+${formattaNumero(giroR)} tutt'intorno`;
+      }
       rigaR.taglioMm = ingombroTaglio(a, foto) ?? undefined;
       rigaR.pannelli = pannelliTaglio(a, foto) ?? undefined;
       rigaR.teli = testoTeli(rigaR.pannelli, rigaR.codice, sormontoDi(a), a.unita);

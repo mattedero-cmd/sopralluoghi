@@ -20,7 +20,7 @@ import {
   segmentiPoligono,
   segmentoELato
 } from '../db/types';
-import { abbondanzaAlVertice, abbondanzaDelLato, sbordiLati } from './abbondanze';
+import { abbondanzaAlVertice, abbondanzaDelLato, latiDiTaglio, sbordiLati } from './abbondanze';
 import { misureElemento } from './calibrazione';
 import { sagomaPoligonoQuotato, sagomaTaglioPoligono } from './poligonoQuotato';
 import type { Foto } from '../db/types';
@@ -599,48 +599,29 @@ export function latiQuadrilatero(
   const indice = quad.map((p) => a.punti.indexOf(p));
   if (indice.some((i) => i < 0)) return null;
   const segmenti = segmentiPoligono(a);
-  const lato = (da: number, av: number) =>
-    segmenti.find(
-      (s) =>
-        (s.da === indice[da] && s.a === indice[av]) || (s.da === indice[av] && s.a === indice[da])
-    ) ?? null;
   /**
-   * QUANTO È LUNGO QUESTO LATO DA TAGLIARE.
-   *
-   * Due abbondanze diverse lo allungano, e sono la stessa cosa detta dai due
-   * capi: la sua, scritta sulla misura al vertice `v`, e quella del VICINO
-   * che a quel vertice si sposta in fuori. Vince la più grande — chiedere
-   * «due in fondo al montante» e «due sul pavimento» è chiedere due
-   * centimetri, non quattro.
+   * LA MISURA DI TAGLIO di ogni lato la dà `latiDiTaglio`, un posto solo:
+   * la legge anche il report, e due conti diversi vorrebbero dire che il
+   * foglio e la macchina tagliano due pezzi diversi.
    *
    * Si guarda lato per lato apposta: su una finestra sotto falda l'altezza
    * sinistra e la destra sono due misure diverse, e l'abbondanza può stare
    * solo su una delle due. Collassarle qui vorrebbe dire tagliare il lato
    * corto come il lungo.
    */
-  const abbAl = (s: ReturnType<typeof lato>, verticeOrdinato: number): number => {
-    if (!s) return 0;
-    if (s.da === indice[verticeOrdinato]) return s.abbInizio ?? 0;
-    if (s.a === indice[verticeOrdinato]) return s.abbFine ?? 0;
-    return 0;
+  const tagli = latiDiTaglio(a);
+  const taglio = (da: number, av: number): number | null => {
+    const k = segmenti.findIndex(
+      (s) =>
+        (s.da === indice[da] && s.a === indice[av]) || (s.da === indice[av] && s.a === indice[da])
+    );
+    return k < 0 ? null : tagli[k];
   };
-  const suo = (s: ReturnType<typeof lato>) => abbondanzaDelLato(a, s ?? undefined);
-  const alto = lato(0, 1);
-  const basso = lato(3, 2);
-  const sinistro = lato(0, 3);
-  const destro = lato(1, 2);
-  const taglio = (
-    s: ReturnType<typeof lato>,
-    capi: Array<[number, ReturnType<typeof lato>]>
-  ) =>
-    s && s.valore !== null && s.valore > 0
-      ? s.valore + capi.reduce((t, [v, vicino]) => t + Math.max(abbAl(s, v), suo(vicino)), 0)
-      : null;
   return {
-    alto: taglio(alto, [[0, sinistro], [1, destro]]),
-    basso: taglio(basso, [[3, sinistro], [2, destro]]),
-    sinistro: taglio(sinistro, [[0, alto], [3, basso]]),
-    destro: taglio(destro, [[1, alto], [2, basso]])
+    alto: taglio(0, 1),
+    basso: taglio(3, 2),
+    sinistro: taglio(0, 3),
+    destro: taglio(1, 2)
   };
 }
 
@@ -709,7 +690,7 @@ export function abbondanzeZoppe(
  * Qui si ri-esporta perché è di qui che la leggevano il disegno sulla foto e
  * la distinta, e non c'è ragione di farli cambiare porta.
  */
-export { abbondanzaAlVertice, abbondanzaDelLato, sbordiLati };
+export { abbondanzaAlVertice, abbondanzaDelLato, latiDiTaglio, sbordiLati };
 
 /**
  * LA FORMA QUOTATA COME LA VEDE LA PANNELLIZZAZIONE, a qualunque numero di lati.

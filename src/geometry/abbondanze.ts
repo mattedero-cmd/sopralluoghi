@@ -90,6 +90,51 @@ export function sbordiLati(
   });
 }
 
+/**
+ * QUANTO È LUNGO OGNI SEGMENTO DA TAGLIARE, indicizzato come
+ * `segmentiPoligono`. È la misura scritta più quello che le abbondanze
+ * aggiungono ai suoi due capi, e ai capi di un lato ci sono due modi di
+ * chiedere la stessa cosa: l'abbondanza scritta su QUESTA misura a quel
+ * vertice, e quella del lato VICINO che a quel vertice si sposta in fuori.
+ * Vince la più grande — «due in fondo al montante» e «due sul pavimento»
+ * sono due centimetri, non quattro.
+ *
+ * Le diagonali non si tagliano: tornano la loro misura con le abbondanze
+ * scritte su di loro, come hanno sempre fatto.
+ *
+ * SE IL CONTORNO DI TAGLIO C'È GIÀ, si misura quello e basta. La somma qui
+ * sotto vale su uno spigolo sporgente — il vicino che esce allunga il lato —
+ * ma su uno RIENTRANTE dice il contrario del vero: lì il vicino che esce
+ * entra nel lato e lo ACCORCIA. Sul gradino di un controsoffitto il tratto
+ * da 76 con dieci di abbondanza sul montantino diventa 66, non 86, e
+ * sommando si scriveva sul foglio una misura che la macchina non taglia.
+ * Il contorno, quando c'è, è il pezzo vero: non c'è niente da dedurre.
+ */
+export function latiDiTaglio(
+  q: QuotaPoligono,
+  contorno?: Array<[number, number]> | null
+): Array<number | null> {
+  const n = q.punti.length;
+  const segs = segmentiPoligono(q);
+  const lato = (i: number) =>
+    segs.find((s) => (s.da === i && s.a === (i + 1) % n) || (s.a === i && s.da === (i + 1) % n));
+  const vero = contorno && contorno.length === n ? contorno : null;
+  return segs.map((s) => {
+    if (s.valore === null || !(s.valore > 0)) return null;
+    if (!segmentoELato(s, n)) return s.valore + (s.abbInizio ?? 0) + (s.abbFine ?? 0);
+    // il lato va dal vertice i al vertice j = i+1, comunque sia stato scritto
+    const i = (s.da + 1) % n === s.a ? s.da : s.a;
+    const j = (i + 1) % n;
+    if (vero) {
+      const d = Math.hypot(vero[j][0] - vero[i][0], vero[j][1] - vero[i][1]);
+      if (d > 0) return Math.round(d * 1e4) / 1e4;
+    }
+    const prima = Math.max(abbondanzaAlVertice(s, i), abbondanzaDelLato(q, lato((i + n - 1) % n)));
+    const dopo = Math.max(abbondanzaAlVertice(s, j), abbondanzaDelLato(q, lato(j)));
+    return s.valore + prima + dopo;
+  });
+}
+
 /** vero se da qualche parte su questa forma c'è un'abbondanza */
 export function haAbbondanze(q: QuotaPoligono): boolean {
   if ((q.abbPerimetro ?? 0) > 0) return true;

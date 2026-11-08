@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { abbondanzaDelLato, latiTriangoloTaglio, sbordiLati } from '../abbondanze';
+import { abbondanzaDelLato, latiDiTaglio, latiTriangoloTaglio, sbordiLati } from '../abbondanze';
+import { sagomaPoligonoQuotato, sagomaTaglioPoligono } from '../poligonoQuotato';
 import { abbondanzaAlVertice } from '../abbondanze';
 import { offsetPoligono } from '../punti';
 import { formaDaDividere, formaQuadrilatera, latiQuadrilatero } from '../formaQuadrilatera';
@@ -466,6 +467,82 @@ describe('le altre forme', () => {
     // la distinta arrotonda al decimo di millimetro
     expect(con.larghezza).toBeCloseTo(2000 * k, 1);
     expect(con.altezza).toBeCloseTo(1200 * k, 1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+describe('le misure che vanno sul foglio', () => {
+  /**
+   * SU UNO SPIGOLO RIENTRANTE la somma dice il contrario del vero.
+   *
+   * «Il lato si allunga di quanto escono i suoi vicini» vale finché lo
+   * spigolo sporge. Dove rientra — il gradino di un controsoffitto — il
+   * vicino che esce ENTRA nel lato e lo accorcia: il tratto da 76, con dieci
+   * di abbondanza sul montantino del gradino, diventa 66 e non 86. Il foglio
+   * che va in cantiere deve dire la misura che taglia la macchina, quindi si
+   * misura il contorno vero del pezzo, non si somma.
+   */
+  const q = camera({ abbPerimetro: 2 }, { '2-3': 10, '5-6': 0 });
+  const contorno = sagomaTaglioPoligono(q, sagomaPoligonoQuotato(q, FOTO, false));
+
+  it('il lato oltre il gradino si ACCORCIA, non si allunga', () => {
+    const tagli = latiDiTaglio(q, contorno);
+    // L3 è il tratto da 76: il gradino gli mangia dieci, il montante
+    // destro gliene rende due
+    expect(tagli[2]).toBeCloseTo(68, 3);
+    expect(tagli[2]!).toBeLessThan(76);
+    // e il gradino stesso resta da 24: sopra e sotto escono tutti e due di
+    // due, uno lo allunga e l'altro lo accorcia
+    expect(tagli[1]).toBeCloseTo(24, 3);
+  });
+
+  it('e sono le misure del pezzo che esce dalla macchina', () => {
+    const tagli = latiDiTaglio(q, contorno);
+    const v = contorno!;
+    // la quota k del poligono è il lato che parte dal vertice QUOTE[k][0]
+    QUOTE.forEach(([da], k) => {
+      const j = (da + 1) % v.length;
+      const d = Math.hypot(v[j][0] - v[da][0], v[j][1] - v[da][1]);
+      expect(tagli[k]).toBeCloseTo(d, 3);
+    });
+    // il pavimento a filo si allunga lo stesso: sono i due montanti a uscire
+    expect(tagli[4]).toBeCloseTo(344, 3);
+  });
+
+  it('sommare darebbe quattro misure sbagliate su sei', () => {
+    const somma = latiDiTaglio(q);
+    const veri = latiDiTaglio(q, contorno);
+    const diverse = veri.filter((v, i) => Math.abs((v ?? 0) - (somma[i] ?? 0)) > 0.01).length;
+    expect(diverse).toBe(4);
+    expect(somma[2]).toBeCloseTo(88, 3); // la somma direbbe 88 dove sono 68
+    expect(somma[1]).toBeCloseTo(28, 3); // e 28 dove sono 24
+  });
+
+  it('su un quadrilatero, dove gli spigoli sporgono tutti, la somma basta', () => {
+    const r = {
+      id: 'q2',
+      fotoId: 'f',
+      tipo: 'quotaPoligono',
+      zIndex: 0,
+      punti: [
+        { x: 0, y: 0 },
+        { x: 120, y: 0 },
+        { x: 120, y: 200 },
+        { x: 0, y: 200 }
+      ],
+      segmenti: [
+        { da: 0, a: 1, valore: 120, offset: 0 },
+        { da: 1, a: 2, valore: 200, offset: 0 },
+        { da: 2, a: 3, valore: 120, offset: 0 },
+        { da: 3, a: 0, valore: 200, offset: 0 }
+      ],
+      abbPerimetro: 2,
+      unita: 'cm',
+      stato: 'reale',
+      stile: { colore: '#fff', spessore: 2, dimensioneTesto: 20 }
+    } as unknown as QuotaPoligono;
+    expect(latiDiTaglio(r)).toEqual([124, 204, 124, 204]);
   });
 });
 
