@@ -792,6 +792,46 @@ export async function aggiornaFoto(
   );
 }
 
+/**
+ * RIORDINA LE FOTO DI UN SOPRALLUOGO, in un colpo solo.
+ *
+ * L'ordine delle foto non è un vezzo: è quello che decide le LETTERE (A, B,
+ * C…) e l'ordine delle pagine nel PDF. Chi misura un albergo entra nelle
+ * stanze come può — quella libera prima, quella occupata dopo — e si ritrova
+ * la parete A nella stanza 3. Rimetterle in fila dopo vuol dire riscrivere
+ * l'ordine di tutte insieme, non una per volta.
+ */
+export async function riordinaFoto(idsInOrdine: ID[]): Promise<void> {
+  if (idsInOrdine.length === 0) return;
+  await scrivi('riordinare le foto', async () => {
+    const adesso = ora();
+    await db.transaction('rw', db.foto, async () => {
+      for (let i = 0; i < idsInOrdine.length; i++) {
+        await db.foto.update(idsInOrdine[i], { ordine: i, modificataIl: adesso });
+      }
+    });
+  });
+}
+
+/**
+ * Scrive l'etichetta di più foto insieme (vuota = torna la lettera automatica).
+ * Serve ai due comandi della nomenclatura: «prendi i nomi» e «rimetti le
+ * lettere», che su un albergo toccano trenta foto in una volta.
+ */
+export async function scriviEtichetteFoto(
+  modifiche: Array<{ id: ID; etichetta: string | undefined }>
+): Promise<void> {
+  if (modifiche.length === 0) return;
+  await scrivi('salvare le etichette delle foto', async () => {
+    const adesso = ora();
+    await db.transaction('rw', db.foto, async () => {
+      for (const m of modifiche) {
+        await db.foto.update(m.id, { etichetta: m.etichetta, modificataIl: adesso });
+      }
+    });
+  });
+}
+
 export async function eliminaFoto(id: ID): Promise<void> {
   await scrivi('eliminare la foto', () =>
     db.transaction('rw', [db.foto, db.annotazioni], async () => {

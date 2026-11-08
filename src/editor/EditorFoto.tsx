@@ -108,6 +108,7 @@ import {
 } from '../geometry/parametrico';
 import type { AncoraSegmento } from '../db/types';
 import {
+  codiceBase,
   codiceCompletoForma,
   codiceLocaleForma,
   eCopiaEtichetta,
@@ -3611,7 +3612,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       const info = numeriForme.get(orig.id);
       const f = fotoDi.get(orig.fotoId);
       const perc = percorsoFoto(orig.fotoId);
-      const base = info ? `${info.etichettaFoto}${info.numero}` : codiceLocaleForma(orig, numeriForme);
+      const base = info ? codiceBase(info.etichettaFoto, info.numero) : codiceLocaleForma(orig, numeriForme);
       const codice = codiceCompletoForma(perc, base);
       const quante = membri.length;
       return {

@@ -25,6 +25,7 @@ import {
   codiceLocaleForma,
   codicePannello,
   confrontaEtichetta,
+  codiceBase,
   eCopiaEtichetta,
   eSpeculare,
   SEGNO_SPECULARE,
@@ -1018,7 +1019,7 @@ function righeMisureFoto(
       const orig = ctx.originaleFamiglia.get(famKey);
       const formaMis = orig && orig.forma.tipo === 'quotaPoligono' ? orig.forma : a;
       const fotoMis = orig?.foto ?? foto;
-      const base = `${infoFam?.etichettaFoto ?? ''}${infoFam?.numero ?? ''}`;
+      const base = infoFam ? codiceBase(infoFam.etichettaFoto, infoFam.numero) : '';
       const det = dettaglioPoligono(formaMis, fotoMis);
       if (modo === 'perFoto') {
         // una riga per OGNI istanza presente in QUESTA foto, nella sua posizione

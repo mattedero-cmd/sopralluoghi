@@ -101,6 +101,37 @@ export function etichettaFoto(foto: Foto, fotoDelProgetto: Foto[]): string {
   return letteraDaIndice(idx < 0 ? 0 : idx);
 }
 
+/** quanto può essere lunga l'etichetta di una foto perché il codice resti leggibile */
+export const MAX_ETICHETTA_FOTO = 8;
+
+/**
+ * L'ETICHETTA RICAVATA DAL NOME DELLA FOTO.
+ *
+ * In un albergo si misura come si può: la stanza libera adesso, quella
+ * occupata domani. Le lettere seguono l'ordine degli scatti, e a lavoro finito
+ * la parete A è nella stanza 3 e la C nella stanza 1 — un codice che su un
+ * telo, a mesi di distanza, non dice più niente. Il numero della stanza però
+ * c'è già: è il nome che si dà alla foto mentre la si scatta.
+ *
+ * Qui quel nome diventa il codice. Se è già corto si prende così com'è
+ * («307», «307b», «bagno»); se è una frase se ne tiene il GRUPPO DI CIFRE più
+ * lungo, che è la stanza («Camera 307» → «307»). Se di cifre non ce ne sono e
+ * il nome è lungo, non si inventa niente: torna null, e quella foto la si
+ * scrive a mano.
+ */
+export function etichettaDalNome(didascalia: string | undefined): string | null {
+  const t = (didascalia ?? '').trim();
+  if (!t) return null;
+  if (t.length <= MAX_ETICHETTA_FOTO) return t;
+  const cifre = t.match(/\d+/g);
+  if (!cifre?.length) return null;
+  // il gruppo più lungo, e a pari lunghezza l'ultimo: «Piano 1 camera 307»
+  // è la stanza 307, non il piano 1
+  let scelto = cifre[0];
+  for (const c of cifre) if (c.length >= scelto.length) scelto = c;
+  return scelto.length <= MAX_ETICHETTA_FOTO ? scelto : null;
+}
+
 /**
  * LE LETTERE RIPARTONO DENTRO OGNI SEZIONE ETICHETTATA.
  *
@@ -333,13 +364,31 @@ export function eSpeculare(a: Annotazione): boolean {
   return a.tipo === 'quotaPoligono' && a.speculare === true;
 }
 
+/**
+ * IL CODICE DI UNA FORMA: l'etichetta della sua foto, poi il numero.
+ *
+ * Con una LETTERA si attaccano, come è sempre stato: «A» e 1 fanno «A1».
+ * Con un NUMERO no. Chi fa un albergo chiama le foto col numero della
+ * stanza — è l'unica cosa che, letta sul telo a mesi di distanza, dice
+ * ancora dove va quel pezzo — e «307» attaccato a 1 farebbe «3071», che non
+ * è né la stanza né il pezzo. Lì ci va il punto: «307.1».
+ *
+ * La regola: il punto ci va appena nell'etichetta compare una CIFRA. Non solo
+ * in fondo — «302b» e 1 farebbero «302b1», che si legge anche «302» più «b1»
+ * — ma dovunque sia. Le etichette di sole lettere (A, B, AA) restano attaccate
+ * al numero come sono sempre state, e i lavori già fatti non cambiano.
+ */
+export function codiceBase(etichettaFoto: string, numero: number | string): string {
+  return `${etichettaFoto}${/\d/.test(etichettaFoto) ? '.' : ''}${numero}`;
+}
+
 export function codiceLocaleForma(a: Annotazione, numeri: Map<string, NumeroForma>): string {
   const segno = eSpeculare(a) ? SEGNO_SPECULARE : '';
   const manuale = etichettaManuale(a);
   if (manuale) return manuale + segno;
   const info = numeri.get(a.id);
   if (!info) return '';
-  const base = `${info.etichettaFoto}${info.numero}`;
+  const base = codiceBase(info.etichettaFoto, info.numero);
   return (info.sub ? `${base}.${info.sub}` : base) + segno;
 }
 

@@ -5,7 +5,7 @@ import type { Annotazione, Foto, Preventivo, StatoPreventivo, VocePreventivo } f
 import { segmentiPoligono, segmentoELato } from '../db/types';
 import { areaReale, perimetroReale } from '../geometry/calibrazione';
 import { nomeFormaPoligono } from '../geometry/primitive';
-import { famigliaDi, numeriProgetto } from '../geometry/nomenclatura';
+import { codiceBase, famigliaDi, numeriProgetto } from '../geometry/nomenclatura';
 import { aggiornaPreventivo, eliminaPreventivo } from '../db/repository';
 import { calcolaTotali, nomeRegime } from '../fiscale/calcolo';
 import type { RegimeFiscale } from '../db/types';
@@ -180,7 +180,7 @@ export function PreventivoPage({ id }: { id: string }) {
         if (a.soloEtichetta) continue;
         const n = contaFamiglia.get(famigliaDi(a)) ?? 1;
         const info = numeri.get(a.id);
-        const codice = info ? ` ${info.etichettaFoto}${info.numero}` : '';
+        const codice = info ? ` ${codiceBase(info.etichettaFoto, info.numero)}` : '';
         const nVert = a.punti.length;
         const dim = segmentiPoligono(a)
           .filter((s) => segmentoELato(s, nVert))

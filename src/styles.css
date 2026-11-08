@@ -4364,3 +4364,68 @@ a {
   margin: 6px 0 0;
   padding-left: 18px;
 }
+
+/* --- NOMENCLATURA DEL SOPRALLUOGO ------------------------------------- */
+/* L'elenco delle foto con il loro codice: miniatura, nome, e il codice
+   modificabile sulla destra. Le frecce stanno strette a sinistra, perché su
+   un telefono la riga deve restare una riga. */
+.riga-nome {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--bordo);
+}
+
+.riga-nome .frecce {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.riga-nome .frecce button {
+  min-height: 26px;
+  min-width: 30px;
+  padding: 0;
+  line-height: 1;
+}
+
+.riga-nome .mini {
+  width: 52px;
+  height: 52px;
+  flex: 0 0 52px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--sfondo);
+}
+
+.riga-nome .mini img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.riga-nome .chi {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.riga-nome .chi .nome {
+  display: block;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.riga-nome .chi .sotto {
+  color: var(--testo-2);
+  font-size: 13px;
+}
+
+.riga-nome input {
+  width: 92px;
+  flex: 0 0 92px;
+  text-align: center;
+}

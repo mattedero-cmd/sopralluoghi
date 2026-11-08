@@ -49,6 +49,7 @@ import { BarraSelezione } from '../components/comuni';
 import { condividiSelezione, type Selezionato } from '../utils/condivisione';
 import { formattaData } from '../utils/format';
 import { PannelloOpzioniPdf } from '../components/OpzioniPdf';
+import { Nomenclatura } from '../components/Nomenclatura';
 
 /**
  * Il segno che l'ambiente della panoramica era aperto quando la pagina è
@@ -125,6 +126,7 @@ export function ProgettoPage({ id }: { id: string }) {
   const [importInCorso, setImportInCorso] = useState(false);
   const [pdfInCorso, setPdfInCorso] = useState<string | null>(null);
   const [opzioniPdfAperte, setOpzioniPdfAperte] = useState(false);
+  const [nomenclaturaAperta, setNomenclaturaAperta] = useState(false);
   /** sezione in creazione/modifica: {} = nuova, una Sezione = modifica */
   const [sezioneInModifica, setSezioneInModifica] = useState<Sezione | 'nuova' | null>(null);
   /**
@@ -882,6 +884,11 @@ export function ProgettoPage({ id }: { id: string }) {
           <button className="btn" onClick={() => setSezioneInModifica('nuova')}>
             <Icona nome="cartella-piu" dimensione={20} /> Nuova sezione
           </button>
+          {/* i codici delle misure cominciano dalla lettera della foto: qui si
+              vedono tutte insieme e si cambiano guardandole */}
+          <button className="btn" onClick={() => setNomenclaturaAperta(true)}>
+            <Icona nome="matita" dimensione={20} /> Nomenclatura
+          </button>
           <button className="btn" onClick={() => void nuovaPianta()}>
             <Icona nome="rettangolo" dimensione={20} /> Nuova pianta
           </button>
@@ -1131,6 +1138,9 @@ export function ProgettoPage({ id }: { id: string }) {
         />
       )}
       {modificaDati && <FormDatiProgetto progetto={progetto} onChiudi={() => setModificaDati(false)} />}
+      {nomenclaturaAperta && (
+        <Nomenclatura progetto={progetto} onChiudi={() => setNomenclaturaAperta(false)} />
+      )}
       {sezioneInModifica && (
         <FormSezione
           sezione={sezioneInModifica === 'nuova' ? null : sezioneInModifica}
