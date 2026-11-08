@@ -50,6 +50,7 @@ import { condividiSelezione, type Selezionato } from '../utils/condivisione';
 import { formattaData } from '../utils/format';
 import { PannelloOpzioniPdf } from '../components/OpzioniPdf';
 import { Nomenclatura } from '../components/Nomenclatura';
+import { ScattoRapido } from '../components/ScattoRapido';
 
 /**
  * Il segno che l'ambiente della panoramica era aperto quando la pagina è
@@ -127,6 +128,12 @@ export function ProgettoPage({ id }: { id: string }) {
   const [pdfInCorso, setPdfInCorso] = useState<string | null>(null);
   const [opzioniPdfAperte, setOpzioniPdfAperte] = useState(false);
   const [nomenclaturaAperta, setNomenclaturaAperta] = useState(false);
+  /** la fotocamera dentro l'app, con la richiesta già fatta nel gesto del dito */
+  const [scattoAperto, setScattoAperto] = useState<{
+    richiesta: Promise<MediaStream> | null;
+  } | null>(null);
+  /** quello che la fotocamera ha taciuto scatto per scatto, da dire alla fine */
+  const contoScatti = useRef({ oscurati: 0, senzaRilevamento: 0 });
   /** sezione in creazione/modifica: {} = nuova, una Sezione = modifica */
   const [sezioneInModifica, setSezioneInModifica] = useState<Sezione | 'nuova' | null>(null);
   /**
@@ -226,6 +233,22 @@ export function ProgettoPage({ id }: { id: string }) {
     setPanoramicaAperta({ richiesta });
   };
 
+  /**
+   * APRE LA FOTOCAMERA DENTRO L'APP.
+   *
+   * La fotocamera si chiede QUI, nel gesto del dito: su iPhone un permesso
+   * domandato fuori dal tocco non viene nemmeno chiesto, e lo schermo
+   * resterebbe nero senza dire perché.
+   */
+  const apriScatto = (sid: string | null) => {
+    sezioneTarget.current = sid;
+    const richiesta = chiediFotocamera();
+    // il rifiuto lo racconta il mirino: qui si evita solo che diventi un
+    // errore non gestito
+    richiesta.catch(() => {});
+    setScattoAperto({ richiesta });
+  };
+
   const chiudiPanoramica = () => {
     try {
       sessionStorage.removeItem(SEGNO_PANORAMICA);
@@ -261,6 +284,27 @@ export function ProgettoPage({ id }: { id: string }) {
 
   const acquisisci = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
+    await salvaFoto(Array.from(files));
+  };
+
+  /**
+   * SALVA LE FOTO NEL SOPRALLUOGO, da qualunque parte arrivino: dal selettore
+   * del telefono o dalla fotocamera dentro l'app. Una strada sola, perché il
+   * ridimensionamento, l'oscuramento dei volti e la sezione di arrivo devono
+   * valere uguale per tutte.
+   *
+   * `silenzioso` serve alla fotocamera: lì le foto entrano una per volta
+   * mentre si inquadra la prossima, e otto avvisi per otto scatti sarebbero
+   * una pioggia. Il conto lo tiene il mirino; quello che andava detto —
+   * quante aree sono state oscurate, su quante foto il rilevamento dei volti
+   * non è riuscito — torna indietro nel risultato e si dice tutto insieme
+   * alla chiusura. Zitto non vuol dire dimenticato.
+   */
+  const salvaFoto = async (
+    files: Blob[],
+    silenzioso = false
+  ): Promise<{ importate: number; oscurati: number; senzaRilevamento: number }> => {
+    if (files.length === 0) return { importate: 0, oscurati: 0, senzaRilevamento: 0 };
     setImportInCorso(true);
     let importate = 0;
     // foto entrate SENZA che il rilevamento dei volti sia riuscito: vanno
@@ -271,7 +315,7 @@ export function ProgettoPage({ id }: { id: string }) {
     let oscurati = 0;
     try {
       const { fotoLatoMax, censuraVoltiAuto, censuraVoltiPermanente } = await leggiImpostazioni();
-      for (const file of Array.from(files)) {
+      for (const file of files) {
         try {
           const dati = await importaFoto(file, fotoLatoMax, {
             censuraVolti: censuraVoltiAuto !== false,
@@ -294,10 +338,10 @@ export function ProgettoPage({ id }: { id: string }) {
           );
         }
       }
-      if (importate > 0) {
+      if (importate > 0 && !silenzioso) {
         mostraToast('successo', importate === 1 ? 'Foto salvata.' : `${importate} foto salvate.`);
       }
-      if (oscurati > 0) {
+      if (oscurati > 0 && !silenzioso) {
         mostraToast(
           'info',
           (oscurati === 1
@@ -306,7 +350,7 @@ export function ProgettoPage({ id }: { id: string }) {
             'Nell’editor, con il pulsante 👤, puoi toglierle o aggiungerne.'
         );
       }
-      if (senzaRilevamento > 0) {
+      if (senzaRilevamento > 0 && !silenzioso) {
         mostraToast(
           'errore',
           senzaRilevamento === 1
@@ -319,6 +363,7 @@ export function ProgettoPage({ id }: { id: string }) {
       if (inputCamera.current) inputCamera.current.value = '';
       if (inputGalleria.current) inputGalleria.current.value = '';
     }
+    return { importate, oscurati, senzaRilevamento };
   };
 
   const apriMenuFoto = (f: Foto, e: React.MouseEvent) => {
@@ -693,7 +738,7 @@ export function ProgettoPage({ id }: { id: string }) {
       pos: { x: e.clientX, y: e.clientY },
       voci: [
         { testo: 'Modifica (nome, etichetta)', icona: 'matita', onClick: () => setSezioneInModifica(s) },
-        { testo: 'Scatta foto qui', icona: 'fotocamera', onClick: () => aggiungiA(s.id, 'camera') },
+        { testo: 'Scatta foto qui', icona: 'fotocamera', onClick: () => apriScatto(s.id) },
         { testo: 'Galleria / file qui', icona: 'immagine', onClick: () => aggiungiA(s.id, 'galleria') },
         {
           testo: 'Sposta in un altro sopralluogo…',
@@ -791,7 +836,7 @@ export function ProgettoPage({ id }: { id: string }) {
 
   const barraAggiungi = (sid: string | null) => (
     <div className="riga-aggiungi-sezione">
-      <button className="btn piccolo" disabled={importInCorso} onClick={() => aggiungiA(sid, 'camera')}>
+      <button className="btn piccolo" disabled={importInCorso} onClick={() => apriScatto(sid)}>
         <Icona nome="fotocamera" dimensione={18} /> Scatta
       </button>
       <button className="btn piccolo" disabled={importInCorso} onClick={() => aggiungiA(sid, 'galleria')}>
@@ -872,7 +917,7 @@ export function ProgettoPage({ id }: { id: string }) {
           <button
             className="btn primario"
             disabled={importInCorso}
-            onClick={() => aggiungiA(null, 'camera')}
+            onClick={() => apriScatto(null)}
           >
             <Icona nome="fotocamera" dimensione={22} />
             <span>Scatta</span>
@@ -958,6 +1003,53 @@ export function ProgettoPage({ id }: { id: string }) {
           className="file-nascosto"
           onChange={(e) => void acquisisci(e.target.files)}
         />
+        {scattoAperto && (
+          <ScattoRapido
+            richiesta={scattoAperto.richiesta}
+            onScatto={async (blob) => {
+              const e = await salvaFoto([blob], true);
+              contoScatti.current.oscurati += e.oscurati;
+              contoScatti.current.senzaRilevamento += e.senzaRilevamento;
+            }}
+            onChiudi={(quante) => {
+              setScattoAperto(null);
+              const { oscurati, senzaRilevamento } = contoScatti.current;
+              contoScatti.current = { oscurati: 0, senzaRilevamento: 0 };
+              if (quante > 0) {
+                mostraToast(
+                  'successo',
+                  quante === 1
+                    ? 'Foto salvata nel sopralluogo.'
+                    : `${quante} foto salvate nel sopralluogo.`
+                );
+              }
+              // quello che riguarda la privacy si dice sempre, anche se gli
+              // avvisi scatto per scatto sono stati taciuti
+              if (oscurati > 0) {
+                mostraToast(
+                  'info',
+                  (oscurati === 1
+                    ? 'Un’area è stata oscurata automaticamente (privacy: possibile volto). '
+                    : `${oscurati} aree sono state oscurate automaticamente (privacy: possibili volti). `) +
+                    'Nell’editor, con il pulsante 👤, puoi toglierle o aggiungerne.'
+                );
+              }
+              if (senzaRilevamento > 0) {
+                mostraToast(
+                  'errore',
+                  senzaRilevamento === 1
+                    ? 'Attenzione: il rilevamento dei volti non è riuscito su una foto. Controllala con «Volti» nell’editor.'
+                    : `Attenzione: il rilevamento dei volti non è riuscito su ${senzaRilevamento} foto. Controllale con «Volti» nell’editor.`
+                );
+              }
+            }}
+            onRipiego={() => {
+              setScattoAperto(null);
+              // la sezione di arrivo è già scelta: si cambia solo strada
+              inputCamera.current?.click();
+            }}
+          />
+        )}
         {panoramicaAperta && (
           <Panoramica
             richiesta={panoramicaAperta.richiesta}

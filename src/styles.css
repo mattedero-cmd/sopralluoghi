@@ -4496,3 +4496,13 @@ a {
   clip-path: inset(50%);
   pointer-events: none;
 }
+
+/* La via d'uscita verso la fotocamera del telefono sta IN ALTO A DESTRA, non
+   in basso: in basso al centro c'è la pillola degli obiettivi, e su un
+   telefono stretto le due si accavallerebbero. */
+.scatto-ripiego {
+  left: auto;
+  bottom: auto;
+  right: 12px;
+  top: 12px;
+}
