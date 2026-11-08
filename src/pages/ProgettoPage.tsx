@@ -860,16 +860,26 @@ export function ProgettoPage({ id }: { id: string }) {
           <SelettoreStato progetto={progetto} />
         </button>
 
-        <div className="riga-pulsanti" style={{ margin: '14px 0' }}>
+        {/*
+          LE AZIONI DEL SOPRALLUOGO, a tessere uguali.
+          Erano una riga che andava a capo da sola: etichette lunghe spezzate a
+          metà, tessere di tre altezze diverse e «Panoramica» che usciva dal
+          bordo. Tre per riga, stessa misura, icona sopra e nome sotto: le tre
+          righe dicono anche tre cose diverse — mettere dentro le foto,
+          ordinarle, portarle fuori.
+        */}
+        <div className="azioni-progetto">
           <button
             className="btn primario"
             disabled={importInCorso}
             onClick={() => aggiungiA(null, 'camera')}
           >
-            <Icona nome="fotocamera" dimensione={20} /> Scatta
+            <Icona nome="fotocamera" dimensione={22} />
+            <span>Scatta</span>
           </button>
           <button className="btn" disabled={importInCorso} onClick={() => aggiungiA(null, 'galleria')}>
-            <Icona nome="immagine" dimensione={20} /> Galleria
+            <Icona nome="immagine" dimensione={22} />
+            <span>Galleria</span>
           </button>
           <button
             className="btn"
@@ -879,22 +889,27 @@ export function ProgettoPage({ id }: { id: string }) {
               apriPanoramica();
             }}
           >
-            <Icona nome="immagine" dimensione={20} /> Panoramica
+            <Icona nome="immagine" dimensione={22} />
+            <span>Panoramica</span>
           </button>
           <button className="btn" onClick={() => setSezioneInModifica('nuova')}>
-            <Icona nome="cartella-piu" dimensione={20} /> Nuova sezione
+            <Icona nome="cartella-piu" dimensione={22} />
+            <span>Nuova sezione</span>
           </button>
           {/* i codici delle misure cominciano dalla lettera della foto: qui si
               vedono tutte insieme e si cambiano guardandole */}
           <button className="btn" onClick={() => setNomenclaturaAperta(true)}>
-            <Icona nome="matita" dimensione={20} /> Nomenclatura
+            <Icona nome="matita" dimensione={22} />
+            <span>Nomenclatura</span>
           </button>
           <button className="btn" onClick={() => void nuovaPianta()}>
-            <Icona nome="rettangolo" dimensione={20} /> Nuova pianta
+            <Icona nome="rettangolo" dimensione={22} />
+            <span>Nuova pianta</span>
           </button>
           <button
             className="btn"
             disabled={pdfInCorso !== null}
+            title="Esporta il report in PDF o tutto in uno ZIP"
             onClick={() => {
               if (foto.length === 0) {
                 mostraToast('info', 'Aggiungi almeno una foto per generare il report.');
@@ -903,13 +918,16 @@ export function ProgettoPage({ id }: { id: string }) {
               setOpzioniPdfAperte(true);
             }}
           >
-            <Icona nome="condividi" dimensione={20} /> Esporta (PDF / ZIP)
+            <Icona nome="condividi" dimensione={22} />
+            <span>Esporta</span>
           </button>
           <button className="btn" onClick={() => void creaPianoDiTaglio()}>
-            <Icona nome="griglia" dimensione={20} /> Piano di taglio
+            <Icona nome="griglia" dimensione={22} />
+            <span>Piano di taglio</span>
           </button>
           <button className="btn" onClick={() => inputSvg.current?.click()}>
-            <Icona nome="disegno" dimensione={20} /> Apri un SVG
+            <Icona nome="disegno" dimensione={22} />
+            <span>Apri SVG</span>
           </button>
           <input
             ref={inputSvg}

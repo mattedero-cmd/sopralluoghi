@@ -4429,3 +4429,49 @@ a {
   flex: 0 0 92px;
   text-align: center;
 }
+
+/* --- LE AZIONI DEL SOPRALLUOGO ---------------------------------------- */
+/* Nove comandi in una riga che va a capo da sola vengono male: le etichette
+   lunghe si spezzano, le tessere escono di tre altezze diverse e l'ultima
+   della riga sborda. Qui sono una GRIGLIA: colonne uguali, tessere della
+   stessa misura, icona sopra e nome sotto. Su uno schermo stretto stanno in
+   tre per riga; su uno largo la griglia ne mette di più da sé, senza che
+   nessuna tessera diventi un lenzuolo. */
+.azioni-progetto {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.azioni-progetto .btn {
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 6px;
+  min-height: 88px;
+  text-align: center;
+}
+
+.azioni-progetto .btn > span {
+  font-size: 13px;
+  line-height: 1.25;
+  font-weight: 600;
+  letter-spacing: 0;
+  /* una parola lunga si sillaba (la pagina è in italiano) invece di uscire
+     dal bordo o di essere tagliata a metà senza segno */
+  hyphens: auto;
+  overflow-wrap: break-word;
+}
+
+.azioni-progetto .btn > svg {
+  flex: 0 0 auto;
+}
+
+/* Tablet e desktop: le tessere non si stirano. Restano della loro misura e
+   tengono le tre righe, che è la forma che si impara sul telefono. */
+@media (min-width: 760px) {
+  .azioni-progetto {
+    grid-template-columns: repeat(3, 152px);
+    justify-content: start;
+  }
+}
