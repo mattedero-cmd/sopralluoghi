@@ -136,32 +136,39 @@ export function latiDiTaglio(
 }
 
 
+/** quanto sborda ogni lato del riquadro, nell'unità della forma */
+export interface AbbondanzeAiLati {
+  sinistra: number;
+  destra: number;
+  sopra: number;
+  sotto: number;
+}
+
 /**
- * L'ABBONDANZA DETTA PER BASE E ALTEZZA, scritta su una forma a quattro lati.
+ * L'ABBONDANZA LATO PER LATO, scritta su una forma a quattro lati.
  *
  * Su una polilinea l'abbondanza si dice per lato; su un rettangolo no, si
- * dice per misura: «la base è 120, dammene 2 di qua e 2 di là, e 5 sopra e
- * sotto». Sono i due numeri che chi misura ha in testa, e il posto dove
- * vanno scritti esiste già: le abbondanze SULLE QUOTE. Due centimetri ai
- * capi della base sono due centimetri a sinistra e due a destra — cioè il
- * montante che si sposta in fuori — ed è esattamente quello che chiedeva.
+ * dice per misura: «la base è 120, dammene 2 di qua e 2 di là, 5 sopra e
+ * niente sotto». Sono i numeri che chi misura ha in testa, e il posto dove
+ * vanno scritti esiste già: le abbondanze SULLE QUOTE. Due centimetri al
+ * capo sinistro della base sono il montante di sinistra che si sposta in
+ * fuori di due — cioè esattamente quello che si chiedeva.
  *
  * Perché proprio sulle quote e non `abbLato` sui quattro lati: un rettangolo
  * ha due quote (base e altezza) e quattro lati, e gli altri due lati non
  * hanno un segmento su cui scrivere. Aggiungerglielo vorrebbe dire due quote
  * nuove senza misura — due «?» sulla foto di ogni finestra.
  *
- * `base` è quanto sborda in LARGHEZZA per parte, `altezza` quanto sborda
- * sopra e sotto, nell'unità della forma. Torna `null` se non c'è niente da
- * scrivere: non è un quadrilatero, non ha quote, o i due numeri sono a zero.
+ * I quattro numeri sono nell'unità della forma. Torna `null` se non c'è
+ * niente da scrivere: non è un quadrilatero, non ha quote, o sono tutti a
+ * zero.
  */
-export function conAbbondanzeBaseAltezza(
+export function conAbbondanzeAiLati(
   q: QuotaPoligono,
-  base: number,
-  altezza: number
+  lati: AbbondanzeAiLati
 ): QuotaPoligono | null {
   if (q.punti.length !== 4) return null;
-  if (!(base > 0) && !(altezza > 0)) return null;
+  if (!Object.values(lati).some((v) => v > 0)) return null;
   const segs = q.segmenti;
   if (!segs || segs.length === 0) return null;
 
@@ -172,31 +179,39 @@ export function conAbbondanzeBaseAltezza(
   if (indice.some((i) => i < 0)) return null;
 
   /**
-   * UNA QUOTA CHE CORRE IN ORIZZONTALE porta l'abbondanza in larghezza.
+   * DOVE CADE UN CAPO DELLA QUOTA, sul riquadro.
    *
-   * La quota della base ha i suoi due capi a sinistra e a destra: sono quei
-   * due capi a spostarsi in fuori, e la base di 120 diventa 124. Quella
-   * dell'altezza, invece, ha i capi sopra e sotto. Una diagonale non porta
-   * niente: non ha due lati da spingere.
+   * Una quota che corre in orizzontale — la base — ha i suoi due capi a
+   * sinistra e a destra: sono quei due montanti a spostarsi in fuori.
+   * Quella dell'altezza ha i capi sopra e sotto. Una diagonale non ha due
+   * lati da spingere e non porta niente.
    */
-  const verso = (s: SegmentoQuota): 'base' | 'altezza' | null => {
+  const dove = (s: SegmentoQuota): [keyof AbbondanzeAiLati, keyof AbbondanzeAiLati] | null => {
     const a = indice.indexOf(s.da);
     const b = indice.indexOf(s.a);
     if (a < 0 || b < 0) return null;
     const [x, y] = a < b ? [a, b] : [b, a];
-    if ((x === 0 && y === 1) || (x === 2 && y === 3)) return 'base';
-    if ((x === 1 && y === 2) || (x === 0 && y === 3)) return 'altezza';
-    return null;
+    const orizzontale = (x === 0 && y === 1) || (x === 2 && y === 3);
+    const verticale = (x === 1 && y === 2) || (x === 0 && y === 3);
+    if (!orizzontale && !verticale) return null;
+    const capo = (pos: number): keyof AbbondanzeAiLati =>
+      orizzontale ? (pos === 0 || pos === 3 ? 'sinistra' : 'destra') : pos === 0 || pos === 1 ? 'sopra' : 'sotto';
+    return [capo(a), capo(b)];
   };
 
   let scritto = false;
   const segmenti = segs.map((s) => {
-    const dove = verso(s);
-    if (!dove) return s;
-    const v = dove === 'base' ? base : altezza;
-    if (!(v > 0)) return s;
+    const capi = dove(s);
+    if (!capi) return s;
+    const inizio = lati[capi[0]];
+    const fine = lati[capi[1]];
+    if (!(inizio > 0) && !(fine > 0)) return s;
     scritto = true;
-    return { ...s, abbInizio: v, abbFine: v };
+    return {
+      ...s,
+      ...(inizio > 0 ? { abbInizio: inizio } : {}),
+      ...(fine > 0 ? { abbFine: fine } : {})
+    };
   });
   return scritto ? { ...q, segmenti } : null;
 }

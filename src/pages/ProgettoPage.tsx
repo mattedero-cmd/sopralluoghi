@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import type { Annotazione, DisegnoSvg, Foto, LavoroNesting, Progetto, StatoProgetto } from '../db/types';
+import type {
+  Annotazione,
+  DisegnoSvg,
+  Foto,
+  LavoroNesting,
+  PresetProgetto,
+  Progetto,
+  StatoProgetto
+} from '../db/types';
 import {
   aggiungiFoto,
   aggiornaProgetto,
@@ -54,7 +62,6 @@ import { ScattoRapido } from '../components/ScattoRapido';
 import { AnteprimaAnnotata } from '../components/AnteprimaAnnotata';
 import { PresetLavoro } from '../components/PresetLavoro';
 import { riassuntoPreset } from '../utils/preset';
-import type { AbbondanzaPreset } from '../utils/preset';
 
 /**
  * Il segno che l'ambiente della panoramica era aperto quando la pagina è
@@ -91,27 +98,35 @@ export function ProgettoPage({ id }: { id: string }) {
   /** le forme quotate di tutto il lavoro: quelle che un'abbondanza ce l'hanno */
   const formeDelLavoro = [...(annotazioniFoto?.values() ?? [])]
     .flat()
-    .filter((a) => a.tipo === 'quotaPoligono' || a.tipo === 'quotaRett');
+    .filter(
+      (a) =>
+        a.tipo === 'quotaRett' ||
+        // una copia «solo etichetta» non è una forma: è il codice di una
+        // forma che sta altrove, e il preset non ha niente da scriverle
+        (a.tipo === 'quotaPoligono' && !a.soloEtichetta)
+    );
 
   /**
-   * Porta l'abbondanza del preset su tutto quello che è già disegnato. È il
-   * comando esplicito: il preset da solo non tocca mai quello che c'è già.
+   * Porta TUTTO il preset su quello che è già disegnato: abbondanze e teli.
+   * È il comando esplicito — il preset da solo non tocca mai quello che c'è
+   * già — e quando si lancia su cinquanta stanze deve dire cosa ha fatto.
    */
-  const applicaAbbondanzaATutte = async (abb: AbbondanzaPreset) => {
-    const { scriviAbbondanzaPreset } = await import('../db/repository');
+  const applicaPresetATutte = async (preset: PresetProgetto) => {
+    if (!progetto) return;
+    const { applicaPresetATutto } = await import('../db/repository');
     // ogni forma ha la SUA unità, e il preset è in millimetri apposta: la
     // conversione la fa chi scrive, forma per forma
-    const quante = await scriviAbbondanzaPreset(
-      formeDelLavoro.map((a) => a.id),
-      abb
-    );
+    const esito = await applicaPresetATutto(progetto.id, preset);
+    const pezzi: string[] = [];
+    if (esito.abbondanze > 0) pezzi.push(`abbondanze su ${esito.abbondanze}`);
+    if (esito.teli > 0) pezzi.push(`teli rifatti su ${esito.teli}`);
     mostraToast(
-      quante > 0 ? 'successo' : 'info',
-      quante === 0
-        ? 'Le forme avevano già questa abbondanza.'
-        : quante === 1
-          ? 'Abbondanza scritta su una forma.'
-          : `Abbondanza scritta su ${quante} forme.`
+      pezzi.length ? 'successo' : 'info',
+      esito.forme === 0
+        ? 'Non c’è ancora nessuna forma da sistemare.'
+        : pezzi.length === 0
+          ? `Le ${esito.forme} forme erano già come dice il preset.`
+          : `${pezzi.join(', ')} — su ${esito.forme} forme del sopralluogo.`
     );
   };
 
@@ -1349,7 +1364,7 @@ export function ProgettoPage({ id }: { id: string }) {
           preset={progetto.preset}
           quanteForme={formeDelLavoro.length}
           onSalva={(p) => void aggiornaProgetto(progetto.id, { preset: p })}
-          onApplicaAbbondanza={(abb) => void applicaAbbondanzaATutte(abb)}
+          onApplicaTutto={(p) => void applicaPresetATutte(p)}
           onChiudi={() => setPresetAperto(false)}
         />
       )}

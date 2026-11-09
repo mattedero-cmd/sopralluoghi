@@ -9,6 +9,7 @@ import {
   COLORE_QUOTA_TECNICA,
   COLORE_STIMATA,
   MIRINO_DEFAULT,
+  abbondanzeAVista,
   quadrilateroQuotaRett,
   segmentiPoligono,
   type Annotazione,
@@ -1362,7 +1363,7 @@ export function StageEditor(p: Props) {
               interattiva={p.strumento === 'seleziona'}
               hitWidth={Math.max(28 / vista.scala, 12)}
               scala={vista.scala}
-              abbondanze={p.foto.mostraAbbondanze}
+              abbondanze={abbondanzeAVista(p.foto)}
               calibrazione={p.foto}
               gestoMulti={() => gestoMulti.current}
               onSeleziona={() => p.onSeleziona(a.id)}
@@ -1954,7 +1955,7 @@ export function StageEditor(p: Props) {
           agganciato={indicatoreSnap !== null}
           vista={vista}
           contenitore={dimensioni}
-          abbondanze={p.foto.mostraAbbondanze}
+          abbondanze={abbondanzeAVista(p.foto)}
           calibrazione={p.foto}
           mirino={p.mirino ?? MIRINO_DEFAULT}
         />

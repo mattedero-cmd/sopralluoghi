@@ -5,8 +5,11 @@ import {
   conPresetApplicato,
   fasciaDelPreset,
   predefinitiTeli,
-  riassuntoPreset
+  riassuntoPreset,
+  teliDelPreset
 } from '../preset';
+import { pannelliDi } from '../../geometry/pannelli';
+import { abbondanzeSullAsse, formaDaDividere } from '../../geometry/formaQuadrilatera';
 import { formaQuadrilatera } from '../../geometry/formaQuadrilatera';
 import { latiDiTaglio } from '../../geometry/abbondanze';
 import type {
@@ -137,10 +140,10 @@ const finestra = (base: number, altezza: number, unita: Unita = 'cm'): QuotaPoli
     stile
   }) as unknown as QuotaPoligono;
 
-const PRESET_BH: PresetProgetto = { abbBaseMm: 20, abbAltezzaMm: 30 };
+const PRESET_BH: PresetProgetto = { abbSinistraMm: 20, abbDestraMm: 20, abbSopraMm: 30, abbSottoMm: 30 };
 const segs = (a: Annotazione) => ((a as QuotaPoligono).segmenti ?? []) as SegmentoQuota[];
 
-describe('l’abbondanza detta per base e altezza', () => {
+describe('l’abbondanza detta lato per lato', () => {
   it('va sulle due quote, non attorno', () => {
     const a = conPresetApplicato(finestra(120, 80), PRESET_BH);
     const [b, h] = segs(a);
@@ -240,6 +243,65 @@ describe('l’abbondanza detta per base e altezza', () => {
     expect(segs(a)[1].abbFine).toBeUndefined();
   });
 
+  it('quattro numeri diversi vanno ognuno al suo capo', () => {
+    const a = conPresetApplicato(finestra(120, 80), {
+      abbSinistraMm: 20,
+      abbDestraMm: 50,
+      abbSopraMm: 70,
+      abbSottoMm: 0
+    });
+    const [b, h] = segs(a);
+    expect([b.abbInizio, b.abbFine]).toEqual([2, 5]); // sinistra, destra
+    expect([h.abbInizio, h.abbFine]).toEqual([7, undefined]); // sopra, e sotto a filo
+    expect(formaQuadrilatera(a)?.abbondanze).toEqual({
+      sinistra: 2,
+      destra: 5,
+      sopra: 7,
+      sotto: 0
+    });
+    expect(formaQuadrilatera(a)?.taglio).toEqual({ larghezza: 127, altezza: 87 });
+  });
+
+  it('e li mette dalla parte giusta anche sul rettangolo disegnato al contrario', () => {
+    const storta = {
+      ...finestra(120, 80),
+      punti: [
+        { x: 120, y: 80 },
+        { x: 0, y: 80 },
+        { x: 0, y: 0 },
+        { x: 120, y: 0 }
+      ],
+      // 1→2 è il montante di sinistra, 2→3 è la base in alto
+      segmenti: [
+        { da: 1, a: 2, valore: 80 },
+        { da: 2, a: 3, valore: 120 }
+      ]
+    } as unknown as QuotaPoligono;
+    const a = conPresetApplicato(storta, {
+      abbSinistraMm: 20,
+      abbDestraMm: 50,
+      abbSopraMm: 70,
+      abbSottoMm: 0
+    });
+    expect(formaQuadrilatera(a)?.abbondanze).toEqual({
+      sinistra: 2,
+      destra: 5,
+      sopra: 7,
+      sotto: 0
+    });
+  });
+
+  it('un preset salvato quando i numeri erano due vale ancora', () => {
+    const a = conPresetApplicato(finestra(120, 80), { abbBaseMm: 20, abbAltezzaMm: 30 });
+    expect(formaQuadrilatera(a)?.taglio).toEqual({ larghezza: 124, altezza: 86 });
+  });
+
+  it('su una copia «solo etichetta» non si scrive: la misura è dell’originale', () => {
+    const copia = { ...finestra(120, 80), id: 'c1', soloEtichetta: true } as unknown as QuotaPoligono;
+    expect(conPresetApplicato(copia, PRESET_BH)).toBe(copia);
+    expect(conAbbondanzaDelPreset(copia, PRESET_BH, true)).toBeNull();
+  });
+
   it('e nemmeno se l’abbondanza sua è su un lato, a filo contro un muro', () => {
     const filo = finestra(120, 80);
     filo.segmenti![1] = { ...filo.segmenti![1], abbLato: 0 };
@@ -332,6 +394,87 @@ describe('da dove parte una divisione nuova', () => {
   });
 });
 
+/**
+ * I TELI DEL PRESET, senza aprire l'ambiente di divisione.
+ *
+ * È il conto che il comando «applica a tutto» fa su ogni parete di un
+ * albergo: la stessa fascia, lo stesso sormonto, lo stesso verso. La prova
+ * che conta è una sola — nessun telo più largo del rotolo — perché un telo
+ * che dal rotolo non esce è un pezzo buttato.
+ */
+describe('i teli del preset', () => {
+  /** la larghezza di taglio del telo più largo, nell'unità della forma */
+  const teloPiuLargo = (a: QuotaPoligono, preset: PresetProgetto): number => {
+    const pann = teliDelPreset(a, null, preset)!;
+    const forma = formaDaDividere(a, null)!;
+    const dritto = pann.asse === 'verticale';
+    const pannelli = pannelliDi(
+      dritto ? forma.netta.larghezza : forma.netta.altezza,
+      dritto ? forma.netta.altezza : forma.netta.larghezza,
+      pann,
+      abbondanzeSullAsse(forma, pann.asse)
+    );
+    return Math.max(...pannelli.map((x) => x.larghezza));
+  };
+
+  const CON_BOBINA: PresetProgetto = {
+    ...PRESET,
+    abbPerimetroMm: 20,
+    teli: { sormontoMm: 10, verso: 'centro', asse: 'verticale', modo: 'fascia' }
+  };
+
+  it('una parete da quattro metri esce divisa, e nessun telo supera la fascia', () => {
+    const parete = finestra(400, 250);
+    const pann = teliDelPreset(conPresetApplicato(parete, CON_BOBINA), null, CON_BOBINA);
+    expect(pann?.giunti.length).toBeGreaterThan(0);
+    expect(pann?.asse).toBe('verticale');
+    expect(pann?.sormonto).toBe(1); // 10 mm su una forma in cm
+    // bobina 1370 meno due margini da 10 = 1350 mm = 135 cm
+    expect(teloPiuLargo(conPresetApplicato(parete, CON_BOBINA) as QuotaPoligono, CON_BOBINA))
+      .toBeLessThanOrEqual(135);
+  });
+
+  it('una finestra che ci sta nel rotolo non si divide affatto', () => {
+    expect(teliDelPreset(conPresetApplicato(finestra(120, 80), CON_BOBINA), null, CON_BOBINA))
+      .toBeNull();
+  });
+
+  it('«uguali» divide in parti uguali, ma sempre dentro la fascia', () => {
+    const uguali: PresetProgetto = {
+      ...CON_BOBINA,
+      teli: { sormontoMm: 10, verso: 'centro', asse: 'verticale', modo: 'uguali' }
+    };
+    const parete = conPresetApplicato(finestra(400, 250), uguali) as QuotaPoligono;
+    const pann = teliDelPreset(parete, null, uguali)!;
+    const passi = [0, ...pann.giunti, 400].slice(1).map((v, i) => v - [0, ...pann.giunti][i]);
+    for (const p of passi) expect(p).toBeCloseTo(passi[0], 6);
+    expect(teloPiuLargo(parete, uguali)).toBeLessThanOrEqual(135);
+  });
+
+  it('teli orizzontali dividono l’altezza, non la base', () => {
+    const sdraiati: PresetProgetto = {
+      ...CON_BOBINA,
+      teli: { sormontoMm: 10, verso: 'centro', asse: 'orizzontale', modo: 'fascia' }
+    };
+    const parete = conPresetApplicato(finestra(400, 250), sdraiati) as QuotaPoligono;
+    const pann = teliDelPreset(parete, null, sdraiati)!;
+    expect(pann.asse).toBe('orizzontale');
+    // l'altezza è 250: le giunzioni ci stanno dentro
+    for (const g of pann.giunti) expect(g).toBeLessThan(250);
+    expect(teloPiuLargo(parete, sdraiati)).toBeLessThanOrEqual(135);
+  });
+
+  it('senza supporto nel preset non si inventa quanti teli fare', () => {
+    expect(teliDelPreset(finestra(400, 250), null, { teli: CON_BOBINA.teli })).toBeNull();
+    expect(teliDelPreset(finestra(400, 250), null, undefined)).toBeNull();
+  });
+
+  it('e una forma senza misure non si divide', () => {
+    const muta = { ...finestra(400, 250), segmenti: [] } as unknown as QuotaPoligono;
+    expect(teliDelPreset(muta, null, CON_BOBINA)).toBeNull();
+  });
+});
+
 describe('la riga che riassume', () => {
   it('dice le tre cose, in italiano', () => {
     expect(riassuntoPreset(PRESET)).toMatch(
@@ -339,11 +482,19 @@ describe('la riga che riassume', () => {
     );
   });
 
-  it('e con due numeri li dice entrambi, in italiano', () => {
+  it('e i quattro numeri li dice in italiano, senza ripetersi', () => {
     expect(riassuntoPreset(PRESET_BH)).toBe('2 cm di lato, 3 sopra e sotto');
-    expect(riassuntoPreset({ abbAltezzaMm: 30 })).toBe('3 cm sopra e sotto');
-    // i due numeri comandano: l'abbondanza attorno non si dice due volte
-    expect(riassuntoPreset({ abbPerimetroMm: 20, abbBaseMm: 50 })).toBe('5 cm di lato');
+    expect(riassuntoPreset({ abbSopraMm: 30, abbSottoMm: 30 })).toBe('3 cm sopra e sotto');
+    expect(
+      riassuntoPreset({ abbSinistraMm: 20, abbDestraMm: 20, abbSopraMm: 20, abbSottoMm: 20 })
+    ).toBe('2 cm attorno');
+    expect(
+      riassuntoPreset({ abbSinistraMm: 20, abbDestraMm: 50, abbSopraMm: 70, abbSottoMm: 0 })
+    ).toBe('sx 2, dx 5, sopra 7, sotto 0 cm');
+    // i lati comandano: l'abbondanza attorno non si dice due volte
+    expect(riassuntoPreset({ abbPerimetroMm: 20, abbSinistraMm: 50, abbDestraMm: 50 })).toBe(
+      '5 cm di lato'
+    );
   });
 
   it('di un preset vuoto non dice niente, e il tasto lo sa', () => {
