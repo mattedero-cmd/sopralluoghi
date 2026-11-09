@@ -4652,3 +4652,72 @@ a {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* --- IL PRESET DEL LAVORO --------------------------------------------- */
+/* Righe tutte uguali: cosa è a sinistra, il campo a destra, l'unità in
+   fondo. Prima erano campi misura con la calcolatrice stretti a novanta
+   pixel: la calcolatrice si mangiava il campo e i suoi due segni finivano
+   addosso all'etichetta di fianco. */
+.riga-numero {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+}
+
+.riga-numero .che,
+.riga-scelta .che {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--testo-2);
+  font-size: 14px;
+}
+
+.riga-numero input {
+  flex: 0 0 104px;
+  width: 104px;
+  text-align: right;
+}
+
+.riga-numero .unita {
+  flex: 0 0 26px;
+  color: var(--testo-2);
+  font-size: 13px;
+}
+
+/* una scelta a segmenti con la sua etichetta: stessa riga delle numeriche,
+   così la colonna di sinistra resta una colonna */
+.riga-scelta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+  flex-wrap: wrap;
+}
+
+/* le fasce di rotolo: pastiglie tutte uguali, che vanno a capo in ordine */
+.fasce {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.fasce .btn {
+  min-width: 0;
+  padding: 0 6px;
+}
+
+/* una scelta a segmenti che riempie la riga: due tasti stretti in un
+   riquadro largo il doppio sembrano un comando lasciato a metà. Si chiede
+   dove serve, con una classe: i gruppi che stanno di fianco a un'etichetta
+   devono invece prendere solo il loro. */
+.segmenti.piena {
+  display: flex;
+  width: 100%;
+}
+
+.segmenti.piena > button {
+  flex: 1 1 0;
+  min-width: 0;
+}

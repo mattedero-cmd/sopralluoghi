@@ -1225,13 +1225,13 @@ export function NestingPage({
               className={mat.venatura === 'orizzontale' ? 'attivo' : ''}
               onClick={() => cambiaVenatura('orizzontale')}
             >
-              ↔ Orizzontale
+              {'\u2194\uFE0E Orizzontale'}
             </button>
             <button
               className={mat.venatura === 'verticale' ? 'attivo' : ''}
               onClick={() => cambiaVenatura('verticale')}
             >
-              ↕ Verticale
+              {'\u2195\uFE0E Verticale'}
             </button>
           </div>
           <small>

@@ -21,12 +21,52 @@
 import { useState } from 'react';
 import { Modale } from './comuni';
 import { Icona } from './Icona';
-import { InputMisura } from './InputMisura';
 import { FASCE_BOBINA } from '../utils/documentoNesting';
 import { analizzaMisura, formattaNumero } from '../utils/format';
 import type { AssePannelli, VersoSormonto } from '../geometry/pannelli';
 import type { ModoSupporto, PresetProgetto, Venatura } from '../db/types';
 import { PRESET_INIZIALE } from '../utils/preset';
+
+/**
+ * UNA RIGA NUMERICA, sempre la stessa: cosa è, il campo, l'unità.
+ *
+ * Qui non si usa il campo misura con la calcolatrice — quello serve a chi
+ * somma pezzi presi col metro («100+124+113»), non a chi scrive la fascia
+ * della bobina. E stretto com'è questa roba, la calcolatrice si mangiava
+ * tutto il campo: restavano sei pixel per scriverci dentro, e i due segni
+ * finivano addosso all'etichetta di fianco.
+ *
+ * È un `label`: si tocca anche la scritta e il dito va nel campo.
+ */
+function Numero({
+  etichetta,
+  valore,
+  onCambia,
+  unita = 'mm',
+  suggerito
+}: {
+  etichetta: string;
+  valore: string;
+  onCambia: (t: string) => void;
+  unita?: string;
+  suggerito?: string;
+}) {
+  return (
+    <label className="riga-numero">
+      <span className="che">{etichetta}</span>
+      <input
+        className="input-misura"
+        type="text"
+        inputMode="decimal"
+        value={valore}
+        placeholder={suggerito}
+        aria-label={etichetta}
+        onChange={(e) => onCambia(e.target.value)}
+      />
+      <span className="unita">{unita}</span>
+    </label>
+  );
+}
 
 export function PresetLavoro({
   preset,
@@ -67,6 +107,7 @@ export function PresetLavoro({
 
   return (
     <Modale titolo="Preset del lavoro" onChiudi={onChiudi}>
+      <div className="preset-lavoro">
       <p className="aiuto" style={{ marginTop: 0 }}>
         Da qui partono le cose nuove di questo sopralluogo: l’abbondanza di una forma appena
         disegnata, la divisione in teli, il piano di taglio. Quello che è già fatto non si tocca.
@@ -74,16 +115,13 @@ export function PresetLavoro({
 
       <div className="campo">
         <label>Abbondanza attorno alle forme nuove</label>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <InputMisura
-            valore={abb}
-            onCambia={setAbb}
-            etichetta="Abbondanza del preset"
-            placeholder="0"
-            style={{ flex: '1 1 150px', maxWidth: 200 }}
-          />
-          <span style={{ color: 'var(--testo-2)', fontSize: 13 }}>cm su ogni lato</span>
-        </div>
+        <Numero
+          etichetta="Su ogni lato"
+          valore={abb}
+          onCambia={setAbb}
+          unita="cm"
+          suggerito="0"
+        />
         <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
           La stessa che scriveresti a mano nella forma, sotto «abbondanza perimetrale». Un lato
           che ne vuole una sua la dichiara da solo, e il preset non gliela tocca.
@@ -92,7 +130,7 @@ export function PresetLavoro({
 
       <div className="campo">
         <label>Supporto da cui si taglia</label>
-        <span className="segmenti" role="group" aria-label="Supporto">
+        <span className="segmenti piena" role="group" aria-label="Supporto">
           {(
             [
               ['bobina', 'Bobina'],
@@ -106,23 +144,17 @@ export function PresetLavoro({
         </span>
         {sup.modo === 'bobina' ? (
           <>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
-              <InputMisura
-                valore={numero(sup.bobina.larghezza)}
-                onCambia={(t) =>
-                  scriviSup({ bobina: { ...sup.bobina, larghezza: analizzaMisura(t) ?? 0 } })
-                }
-                etichetta="Fascia della bobina in mm"
-                placeholder="1370"
-                style={{ flex: '0 0 130px' }}
-              />
-              <span style={{ color: 'var(--testo-2)', fontSize: 13 }}>mm di fascia</span>
-            </div>
-            <div className="riga-pulsanti" style={{ marginTop: 8 }}>
+            <Numero
+              etichetta="Fascia della bobina"
+              valore={numero(sup.bobina.larghezza)}
+              onCambia={(t) => scriviSup({ bobina: { ...sup.bobina, larghezza: analizzaMisura(t) ?? 0 } })}
+              suggerito="1370"
+            />
+            <div className="fasce">
               {FASCE_BOBINA.map((f) => (
                 <button
                   key={f}
-                  className={`btn piccolo${sup.bobina.larghezza === f ? ' attivo' : ''}`}
+                  className={`btn${sup.bobina.larghezza === f ? ' attivo' : ''}`}
                   onClick={() => scriviSup({ bobina: { ...sup.bobina, larghezza: f } })}
                 >
                   {f}
@@ -131,52 +163,41 @@ export function PresetLavoro({
             </div>
           </>
         ) : (
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
-            <InputMisura
+          <>
+            <Numero
+              etichetta="Larghezza della lastra"
               valore={numero(sup.lastra.larghezza)}
               onCambia={(t) => scriviSup({ lastra: { ...sup.lastra, larghezza: analizzaMisura(t) ?? 0 } })}
-              etichetta="Larghezza della lastra in mm"
-              placeholder="2500"
-              style={{ flex: '0 0 120px' }}
+              suggerito="2500"
             />
-            <span style={{ color: 'var(--testo-2)' }}>×</span>
-            <InputMisura
+            <Numero
+              etichetta="Altezza della lastra"
               valore={numero(sup.lastra.altezza)}
               onCambia={(t) => scriviSup({ lastra: { ...sup.lastra, altezza: analizzaMisura(t) ?? 0 } })}
-              etichetta="Altezza della lastra in mm"
-              placeholder="1250"
-              style={{ flex: '0 0 120px' }}
+              suggerito="1250"
             />
-            <span style={{ color: 'var(--testo-2)', fontSize: 13 }}>mm</span>
-          </div>
+          </>
         )}
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
-          <span style={{ color: 'var(--testo-2)', fontSize: 13, minWidth: 54 }}>Lama</span>
-          <InputMisura
-            valore={numero(sup.lama)}
-            onCambia={(t) => scriviSup({ lama: analizzaMisura(t) ?? 0 })}
-            etichetta="Lama in mm"
-            placeholder="0"
-            style={{ flex: '0 0 92px' }}
-          />
-          <span style={{ color: 'var(--testo-2)', fontSize: 13, minWidth: 62 }}>Margine</span>
-          <InputMisura
-            valore={numero(sup.margine)}
-            onCambia={(t) => scriviSup({ margine: analizzaMisura(t) ?? 0 })}
-            etichetta="Margine in mm"
-            placeholder="10"
-            style={{ flex: '0 0 92px' }}
-          />
-          <span style={{ color: 'var(--testo-2)', fontSize: 13 }}>mm</span>
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
-          <span style={{ color: 'var(--testo-2)', fontSize: 13 }}>Venatura</span>
+        <Numero
+          etichetta="Lama (taglio consumato)"
+          valore={numero(sup.lama)}
+          onCambia={(t) => scriviSup({ lama: analizzaMisura(t) ?? 0 })}
+          suggerito="0"
+        />
+        <Numero
+          etichetta="Margine su tutti i lati"
+          valore={numero(sup.margine)}
+          onCambia={(t) => scriviSup({ margine: analizzaMisura(t) ?? 0 })}
+          suggerito="10"
+        />
+        <div className="riga-scelta">
+          <span className="che">Venatura</span>
           <span className="segmenti" role="group" aria-label="Venatura">
             {(
               [
                 ['nessuna', 'Nessuna'],
-                ['orizzontale', '↔'],
-                ['verticale', '↕']
+                ['orizzontale', '↔\uFE0E'],
+                ['verticale', '↕\uFE0E']
               ] as Array<[Venatura, string]>
             ).map(([v, testo]) => (
               <button
@@ -202,8 +223,8 @@ export function PresetLavoro({
           <span className="segmenti" role="group" aria-label="Verso dei teli">
             {(
               [
-                ['verticale', '↕ Verticali'],
-                ['orizzontale', '↔ Orizzontali']
+                ['verticale', '↕\uFE0E Verticali'],
+                ['orizzontale', '↔\uFE0E Orizzontali']
               ] as Array<[AssePannelli, string]>
             ).map(([v, testo]) => (
               <button
@@ -232,16 +253,14 @@ export function PresetLavoro({
             ))}
           </span>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
-          <span style={{ color: 'var(--testo-2)', fontSize: 13, minWidth: 68 }}>Sormonto</span>
-          <InputMisura
-            valore={numero(teli.sormontoMm)}
-            onCambia={(t) => setTeli((x) => ({ ...x, sormontoMm: analizzaMisura(t) ?? 0 }))}
-            etichetta="Sormonto in mm"
-            placeholder="10"
-            style={{ flex: '0 0 92px' }}
-          />
-          <span style={{ color: 'var(--testo-2)', fontSize: 13 }}>mm</span>
+        <Numero
+          etichetta="Sormonto fra due teli"
+          valore={numero(teli.sormontoMm)}
+          onCambia={(t) => setTeli((x) => ({ ...x, sormontoMm: analizzaMisura(t) ?? 0 }))}
+          suggerito="10"
+        />
+        <div className="riga-scelta">
+          <span className="che">Lembo</span>
           <span className="segmenti" role="group" aria-label="Da che parte sormonta">
             {(
               [
@@ -288,6 +307,7 @@ export function PresetLavoro({
         <button className="btn primario" onClick={salva}>
           Salva il preset
         </button>
+      </div>
       </div>
     </Modale>
   );
