@@ -41,6 +41,29 @@ export interface PresetProgetto {
    */
   abbPerimetroMm?: number;
   /**
+   * ABBONDANZA DIVERSA IN LARGHEZZA E IN ALTEZZA, in MILLIMETRI.
+   *
+   * Sul rettangolo l'abbondanza non si pensa «attorno»: si pensa per misura
+   * — tanto di più sulla base, tanto di più sull'altezza — perché le due non
+   * servono alla stessa cosa. Due centimetri di lato per entrare sotto i
+   * fermavetro, cinque sopra e sotto per avere da tirare: sono due numeri, e
+   * con un numero solo uno dei due è sbagliato.
+   *
+   * Sono per LATO, come quella perimetrale: `abbBaseMm` 20 su una base da
+   * 120 taglia 124 — venti millimetri a destra e venti a sinistra.
+   *
+   * Valgono sulle forme a QUATTRO LATI, dove una base e un'altezza esistono,
+   * e si scrivono come abbondanza SULLE DUE QUOTE: è il modo in cui le
+   * scriverebbe a mano chi misura, e tutto il resto dell'app — contorno di
+   * taglio, distinta, piano di taglio — le legge già da lì. Su una polilinea
+   * non c'è niente da chiamare base: lì vale il più grande dei due,
+   * tutt'attorno.
+   *
+   * Assenti (o a zero) = comanda `abbPerimetroMm`.
+   */
+  abbBaseMm?: number;
+  abbAltezzaMm?: number;
+  /**
    * Il supporto da cui si taglia. Serve a due cose lontane fra loro: il
    * piano di taglio nasce già con la macchina giusta, e la divisione in
    * teli FATTA SULLA FOTO sa quanto è larga la fascia — cosa che prima

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import type { Annotazione, DisegnoSvg, Foto, LavoroNesting, Progetto, StatoProgetto, Unita } from '../db/types';
+import type { Annotazione, DisegnoSvg, Foto, LavoroNesting, Progetto, StatoProgetto } from '../db/types';
 import {
   aggiungiFoto,
   aggiornaProgetto,
@@ -54,6 +54,7 @@ import { ScattoRapido } from '../components/ScattoRapido';
 import { AnteprimaAnnotata } from '../components/AnteprimaAnnotata';
 import { PresetLavoro } from '../components/PresetLavoro';
 import { riassuntoPreset } from '../utils/preset';
+import type { AbbondanzaPreset } from '../utils/preset';
 
 /**
  * Il segno che l'ambiente della panoramica era aperto quando la pagina è
@@ -96,24 +97,14 @@ export function ProgettoPage({ id }: { id: string }) {
    * Porta l'abbondanza del preset su tutto quello che è già disegnato. È il
    * comando esplicito: il preset da solo non tocca mai quello che c'è già.
    */
-  const applicaAbbondanzaATutte = async (mm: number) => {
-    const { scriviAbbondanzaPerimetrale } = await import('../db/repository');
-    const { daMillimetri } = await import('../utils/format');
-    // ogni forma ha la SUA unità: il preset è in millimetri apposta
-    const perUnita = new Map<string, string[]>();
-    for (const a of formeDelLavoro) {
-      const u = 'unita' in a ? a.unita : 'cm';
-      const l = perUnita.get(u);
-      if (l) l.push(a.id);
-      else perUnita.set(u, [a.id]);
-    }
-    let quante = 0;
-    for (const [u, ids] of perUnita) {
-      quante += await scriviAbbondanzaPerimetrale(
-        ids,
-        Math.round(daMillimetri(mm, u as Unita) * 1e4) / 1e4
-      );
-    }
+  const applicaAbbondanzaATutte = async (abb: AbbondanzaPreset) => {
+    const { scriviAbbondanzaPreset } = await import('../db/repository');
+    // ogni forma ha la SUA unità, e il preset è in millimetri apposta: la
+    // conversione la fa chi scrive, forma per forma
+    const quante = await scriviAbbondanzaPreset(
+      formeDelLavoro.map((a) => a.id),
+      abb
+    );
     mostraToast(
       quante > 0 ? 'successo' : 'info',
       quante === 0
@@ -1358,7 +1349,7 @@ export function ProgettoPage({ id }: { id: string }) {
           preset={progetto.preset}
           quanteForme={formeDelLavoro.length}
           onSalva={(p) => void aggiornaProgetto(progetto.id, { preset: p })}
-          onApplicaAbbondanza={(mm) => void applicaAbbondanzaATutte(mm)}
+          onApplicaAbbondanza={(abb) => void applicaAbbondanzaATutte(abb)}
           onChiudi={() => setPresetAperto(false)}
         />
       )}

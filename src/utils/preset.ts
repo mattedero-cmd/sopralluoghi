@@ -11,13 +11,22 @@
  * conversione si fa qui, nell'unità di chi chiede.
  */
 
-import type { Annotazione, PresetProgetto, Unita } from '../db/types';
+import type {
+  Annotazione,
+  PresetProgetto,
+  QuotaPoligono,
+  QuotaRettangolo,
+  Unita
+} from '../db/types';
 import type { AssePannelli, VersoSormonto } from '../geometry/pannelli';
+import { conAbbondanzeBaseAltezza } from '../geometry/abbondanze';
 import { daMillimetri, formattaNumero } from './format';
 
 /** il preset di partenza, quando il lavoro non ne ha ancora uno */
 export const PRESET_INIZIALE: Required<PresetProgetto> = {
   abbPerimetroMm: 0,
+  abbBaseMm: 0,
+  abbAltezzaMm: 0,
   supporto: {
     modo: 'bobina',
     lastra: { larghezza: 2500, altezza: 1250 },
@@ -32,6 +41,106 @@ export const PRESET_INIZIALE: Required<PresetProgetto> = {
 /** i millesimi di millimetro sono il residuo di una divisione, non una misura */
 const pulito = (v: number) => Math.round(v * 1e4) / 1e4;
 
+/** la parte del preset che riguarda l'abbondanza, sola */
+export type AbbondanzaPreset = Pick<
+  PresetProgetto,
+  'abbPerimetroMm' | 'abbBaseMm' | 'abbAltezzaMm'
+>;
+
+/**
+ * I DUE NUMERI, quando l'abbondanza è detta per base e altezza.
+ *
+ * `null` quando sono entrambi a zero: allora comanda quella perimetrale, e
+ * il preset è quello di prima.
+ */
+export function abbBaseAltezza(
+  abb: AbbondanzaPreset | undefined
+): { base: number; altezza: number } | null {
+  const base = Math.max(0, abb?.abbBaseMm ?? 0);
+  const altezza = Math.max(0, abb?.abbAltezzaMm ?? 0);
+  return base > 0 || altezza > 0 ? { base, altezza } : null;
+}
+
+/** le abbondanze che una forma porta addosso, per vedere se qualcosa cambia */
+function impronta(a: Annotazione): string {
+  if (a.tipo !== 'quotaPoligono' && a.tipo !== 'quotaRett') return '';
+  const segs =
+    a.tipo === 'quotaPoligono'
+      ? (a.segmenti ?? []).map((s) => [s.abbLato, s.abbInizio, s.abbFine])
+      : [];
+  return JSON.stringify([a.abbPerimetro, segs]);
+}
+
+/** vero se la forma porta già un'abbondanza sua, in uno qualunque dei tre modi */
+function haGiaLaSua(a: Annotazione): boolean {
+  if (a.tipo !== 'quotaPoligono' && a.tipo !== 'quotaRett') return false;
+  if (a.abbPerimetro !== undefined) return true;
+  if (a.tipo !== 'quotaPoligono') return false;
+  return (a.segmenti ?? []).some(
+    (s) => s.abbLato !== undefined || s.abbInizio !== undefined || s.abbFine !== undefined
+  );
+}
+
+/** una forma quotata: le due che un'abbondanza la possono portare */
+type FormaQuotata = QuotaPoligono | QuotaRettangolo;
+
+/** la forma ripulita da ogni abbondanza: da lì riparte chi riscrive tutto */
+function senzaAbbondanze(a: FormaQuotata): FormaQuotata {
+  if (a.tipo === 'quotaRett') {
+    const { abbPerimetro: _giro, ...resto } = a;
+    return resto;
+  }
+  const { abbPerimetro: _giro, ...resto } = a;
+  const segmenti = a.segmenti?.map((s) => {
+    const { abbLato: _l, abbInizio: _i, abbFine: _f, ...netto } = s;
+    return netto;
+  });
+  return segmenti ? { ...resto, segmenti } : resto;
+}
+
+/**
+ * L'ABBONDANZA DEL PRESET, SCRITTA SU UNA FORMA.
+ *
+ * Due numeri per base e altezza vanno sulle due quote della forma — è la
+ * lingua del rettangolo, e tutto il resto dell'app la legge già. Un numero
+ * solo va tutt'attorno, come ha sempre fatto. Su una polilinea, dove una
+ * base non c'è, due numeri diventano il più grande dei due: meglio un
+ * centimetro di pellicola in più da rifilare che un pezzo che non arriva.
+ *
+ * `forza` è il comando esplicito «applica a tutte»: cancella quello che
+ * c'era e riscrive. Senza, la forma che porta già una sua abbondanza — in
+ * uno qualunque dei tre modi — non si tocca.
+ *
+ * Torna `null` quando non c'è niente da cambiare.
+ */
+export function conAbbondanzaDelPreset(
+  a: Annotazione,
+  abb: AbbondanzaPreset | undefined,
+  forza = false
+): Annotazione | null {
+  if (a.tipo !== 'quotaPoligono' && a.tipo !== 'quotaRett') return null;
+  if (!forza && haGiaLaSua(a)) return null;
+  const bh = abbBaseAltezza(abb);
+  const giroMm = Math.max(0, abb?.abbPerimetroMm ?? 0);
+  if (!bh && !(giroMm > 0) && !forza) return null;
+
+  const nel = (mm: number) => pulito(daMillimetri(mm, a.unita));
+  const nuda: FormaQuotata = forza ? senzaAbbondanze(a) : a;
+  const cambiata = (f: Annotazione) => (impronta(a) === impronta(f) ? null : f);
+
+  // base e altezza, dove una base e un'altezza esistono: sulle due quote
+  if (bh && nuda.tipo === 'quotaPoligono') {
+    const q: QuotaPoligono = nuda;
+    const fatta = conAbbondanzeBaseAltezza(q, nel(bh.base), nel(bh.altezza));
+    if (fatta) return cambiata(fatta);
+  }
+
+  // altrimenti un numero solo, tutt'attorno
+  const giro = bh ? Math.max(bh.base, bh.altezza) : giroMm;
+  if (!(giro > 0)) return cambiata(nuda);
+  return cambiata({ ...nuda, abbPerimetro: nel(giro) });
+}
+
 /**
  * LA FORMA APPENA NATA prende l'abbondanza del preset.
  *
@@ -39,11 +148,7 @@ const pulito = (v: number) => Math.round(v * 1e4) / 1e4;
  * e il preset non è lì per cancellare quello che qualcuno ha deciso.
  */
 export function conPresetApplicato(a: Annotazione, preset: PresetProgetto | undefined): Annotazione {
-  const mm = preset?.abbPerimetroMm ?? 0;
-  if (!(mm > 0)) return a;
-  if (a.tipo !== 'quotaPoligono' && a.tipo !== 'quotaRett') return a;
-  if (a.abbPerimetro !== undefined) return a;
-  return { ...a, abbPerimetro: pulito(daMillimetri(mm, a.unita)) };
+  return conAbbondanzaDelPreset(a, preset, false) ?? a;
 }
 
 /**
@@ -95,7 +200,17 @@ export function predefinitiTeli(
 export function riassuntoPreset(preset: PresetProgetto | undefined): string | null {
   if (!preset) return null;
   const voci: string[] = [];
-  if (preset.abbPerimetroMm) voci.push(`${formattaNumero(preset.abbPerimetroMm / 10)} cm attorno`);
+  const bh = abbBaseAltezza(preset);
+  if (bh) {
+    const pezzi: string[] = [];
+    if (bh.base > 0) pezzi.push(`${formattaNumero(bh.base / 10)} cm di lato`);
+    if (bh.altezza > 0) {
+      pezzi.push(`${formattaNumero(bh.altezza / 10)}${bh.base > 0 ? '' : ' cm'} sopra e sotto`);
+    }
+    voci.push(pezzi.join(', '));
+  } else if (preset.abbPerimetroMm) {
+    voci.push(`${formattaNumero(preset.abbPerimetroMm / 10)} cm attorno`);
+  }
   if (preset.supporto) {
     voci.push(
       preset.supporto.modo === 'bobina'

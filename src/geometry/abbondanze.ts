@@ -33,7 +33,7 @@
 
 import type { QuotaPoligono, SegmentoQuota } from '../db/types';
 import { segmentiPoligono, segmentoELato } from '../db/types';
-import { offsetPoligono } from './punti';
+import { offsetPoligono, ordinaQuad } from './punti';
 
 /** l'abbondanza scritta sul lato `s` al vertice `v`, nell'unità della quota */
 export function abbondanzaAlVertice(s: SegmentoQuota, v: number): number {
@@ -133,6 +133,72 @@ export function latiDiTaglio(
     const dopo = Math.max(abbondanzaAlVertice(s, j), abbondanzaDelLato(q, lato(j)));
     return s.valore + prima + dopo;
   });
+}
+
+
+/**
+ * L'ABBONDANZA DETTA PER BASE E ALTEZZA, scritta su una forma a quattro lati.
+ *
+ * Su una polilinea l'abbondanza si dice per lato; su un rettangolo no, si
+ * dice per misura: «la base è 120, dammene 2 di qua e 2 di là, e 5 sopra e
+ * sotto». Sono i due numeri che chi misura ha in testa, e il posto dove
+ * vanno scritti esiste già: le abbondanze SULLE QUOTE. Due centimetri ai
+ * capi della base sono due centimetri a sinistra e due a destra — cioè il
+ * montante che si sposta in fuori — ed è esattamente quello che chiedeva.
+ *
+ * Perché proprio sulle quote e non `abbLato` sui quattro lati: un rettangolo
+ * ha due quote (base e altezza) e quattro lati, e gli altri due lati non
+ * hanno un segmento su cui scrivere. Aggiungerglielo vorrebbe dire due quote
+ * nuove senza misura — due «?» sulla foto di ogni finestra.
+ *
+ * `base` è quanto sborda in LARGHEZZA per parte, `altezza` quanto sborda
+ * sopra e sotto, nell'unità della forma. Torna `null` se non c'è niente da
+ * scrivere: non è un quadrilatero, non ha quote, o i due numeri sono a zero.
+ */
+export function conAbbondanzeBaseAltezza(
+  q: QuotaPoligono,
+  base: number,
+  altezza: number
+): QuotaPoligono | null {
+  if (q.punti.length !== 4) return null;
+  if (!(base > 0) && !(altezza > 0)) return null;
+  const segs = q.segmenti;
+  if (!segs || segs.length === 0) return null;
+
+  // dalla posizione nel verso (0 alto-sx, 1 alto-dx, 2 basso-dx, 3 basso-sx)
+  // all'indice del vertice com'è scritto nell'annotazione
+  const quad = ordinaQuad(q.punti);
+  const indice = quad.map((p) => q.punti.indexOf(p));
+  if (indice.some((i) => i < 0)) return null;
+
+  /**
+   * UNA QUOTA CHE CORRE IN ORIZZONTALE porta l'abbondanza in larghezza.
+   *
+   * La quota della base ha i suoi due capi a sinistra e a destra: sono quei
+   * due capi a spostarsi in fuori, e la base di 120 diventa 124. Quella
+   * dell'altezza, invece, ha i capi sopra e sotto. Una diagonale non porta
+   * niente: non ha due lati da spingere.
+   */
+  const verso = (s: SegmentoQuota): 'base' | 'altezza' | null => {
+    const a = indice.indexOf(s.da);
+    const b = indice.indexOf(s.a);
+    if (a < 0 || b < 0) return null;
+    const [x, y] = a < b ? [a, b] : [b, a];
+    if ((x === 0 && y === 1) || (x === 2 && y === 3)) return 'base';
+    if ((x === 1 && y === 2) || (x === 0 && y === 3)) return 'altezza';
+    return null;
+  };
+
+  let scritto = false;
+  const segmenti = segs.map((s) => {
+    const dove = verso(s);
+    if (!dove) return s;
+    const v = dove === 'base' ? base : altezza;
+    if (!(v > 0)) return s;
+    scritto = true;
+    return { ...s, abbInizio: v, abbFine: v };
+  });
+  return scritto ? { ...q, segmenti } : null;
 }
 
 /** vero se da qualche parte su questa forma c'è un'abbondanza */

@@ -16,6 +16,8 @@ import {
   type Sezione
 } from './types';
 import { nuovoId } from '../utils/id';
+import { conAbbondanzaDelPreset } from '../utils/preset';
+import type { AbbondanzaPreset } from '../utils/preset';
 import { blobMiniatura, blobOrigine } from '../utils/image';
 import { inizioSalvataggio, fineSalvataggio } from '../state/saveStatus';
 import { mostraToast } from '../state/toast';
@@ -874,16 +876,25 @@ export async function salvaAnnotazioniFoto(fotoId: ID, annotazioni: Annotazione[
 }
 
 /**
- * SCRIVE L'ABBONDANZA PERIMETRALE SU PIÙ FORME IN UNA VOLTA.
+ * SCRIVE L'ABBONDANZA DEL PRESET SU PIÙ FORME IN UNA VOLTA.
  *
  * È il comando «applica il preset a quello che c'è già»: su un sopralluogo
  * di trenta pareti farlo a mano, una per una, è il lavoro che il preset
- * doveva togliere. Tocca solo quel campo — tutto il resto della forma, teli
- * compresi, resta dov'è.
+ * doveva togliere. Tocca solo le abbondanze — tutto il resto della forma,
+ * teli compresi, resta dov'è.
+ *
+ * RISCRIVE: quello che una forma aveva addosso — perimetrale, per lato o
+ * sulle misure — va via, e al suo posto va il preset. È quello che il
+ * comando promette, e lasciare mezze abbondanze vecchie vorrebbe dire che la
+ * regola del «vince il più grande» tiene in piedi un numero che l'utente
+ * credeva di aver sostituito.
+ *
+ * I numeri del preset sono in millimetri: ogni forma ha la sua unità, e la
+ * conversione la fa `conAbbondanzaDelPreset`, una volta per tutti.
  */
-export async function scriviAbbondanzaPerimetrale(
+export async function scriviAbbondanzaPreset(
   ids: ID[],
-  abbPerimetro: number | undefined
+  abb: AbbondanzaPreset
 ): Promise<number> {
   if (ids.length === 0) return 0;
   return scrivi("scrivere l'abbondanza sulle forme", async () => {
@@ -892,9 +903,10 @@ export async function scriviAbbondanzaPerimetrale(
     await db.transaction('rw', [db.annotazioni, db.foto], async () => {
       for (const id of ids) {
         const a = await db.annotazioni.get(id);
-        if (!a || (a.tipo !== 'quotaPoligono' && a.tipo !== 'quotaRett')) continue;
-        if ((a.abbPerimetro ?? undefined) === abbPerimetro) continue;
-        await db.annotazioni.put({ ...a, abbPerimetro });
+        if (!a) continue;
+        const nuova = conAbbondanzaDelPreset(a, abb, true);
+        if (!nuova) continue;
+        await db.annotazioni.put(nuova);
         toccate.add(a.fotoId);
         quante++;
       }
