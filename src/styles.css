@@ -4708,6 +4708,27 @@ a {
   padding: 0 6px;
 }
 
+/* il comando che porta l'abbondanza su quello che c'è già: staccato dal
+   campo da cui dipende, ma attaccato a lui — non in fondo alla schermata */
+.applica-gia-fatte {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--bordo) 60%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.applica-gia-fatte > span {
+  color: var(--testo-2);
+  font-size: 13px;
+}
+
+.applica-gia-fatte .btn:disabled {
+  opacity: 0.45;
+}
+
 /* una scelta a segmenti che riempie la riga: due tasti stretti in un
    riquadro largo il doppio sembrano un comando lasciato a metà. Si chiede
    dove serve, con una classe: i gruppi che stanno di fianco a un'etichetta

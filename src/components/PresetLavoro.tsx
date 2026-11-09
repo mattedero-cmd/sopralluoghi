@@ -126,6 +126,29 @@ export function PresetLavoro({
           La stessa che scriveresti a mano nella forma, sotto «abbondanza perimetrale». Un lato
           che ne vuole una sua la dichiara da solo, e il preset non gliela tocca.
         </span>
+        {/*
+          IL COMANDO STA ATTACCATO AL NUMERO CHE APPLICA, non in fondo alla
+          schermata: era là sotto, dopo tutto il resto, e spariva del tutto
+          quando l'abbondanza era a zero — cioè proprio mentre uno la stava
+          impostando. Un comando che non si trova è un comando che non c'è.
+        */}
+        {quanteForme > 0 && (
+          <div className="applica-gia-fatte">
+            <button
+              className="btn"
+              disabled={!(abbMm > 0)}
+              onClick={() => onApplicaAbbondanza(abbMm)}
+            >
+              <Icona nome="matita" dimensione={18} /> Applica anche alle{' '}
+              {quanteForme === 1 ? 'forma già disegnata' : `${quanteForme} forme già disegnate`}
+            </button>
+            <span>
+              {abbMm > 0
+                ? `Scrive ${formattaNumero(abbMm / 10)} cm attorno a tutte quelle che ci sono già, comprese quelle a cui avevi messo un valore diverso. I teli non si rifanno: restano come li hai messi.`
+                : 'Scrivi qui sopra quanti centimetri, e con questo tasto li porti anche su quello che hai già disegnato.'}
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="campo">
@@ -285,20 +308,6 @@ export function PresetLavoro({
           spostati a mano resta com’è.
         </span>
       </div>
-
-      {quanteForme > 0 && abbMm > 0 && (
-        <div className="campo">
-          <label>Quello che è già disegnato</label>
-          <button className="btn" onClick={() => onApplicaAbbondanza(abbMm)}>
-            <Icona nome="matita" dimensione={18} /> Applica l’abbondanza alle{' '}
-            {quanteForme === 1 ? 'forma già fatta' : `${quanteForme} forme già fatte`}
-          </button>
-          <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
-            Scrive {formattaNumero(abbMm / 10)} cm attorno a tutte, comprese quelle a cui avevi già
-            messo un valore diverso. I teli non si rifanno: quelli restano come li hai messi.
-          </span>
-        </div>
-      )}
 
       <div className="azioni">
         <button className="btn" onClick={onChiudi}>
