@@ -1024,7 +1024,11 @@ function closedDoorLeaf(g,S) {
     }));
     return Number.isFinite(high)?high:Math.min(g.y,g.right);
   };
-  const y=b?Math.max(support(x,x+notch)-(mirrored?b:0),support(x+notch,x+S)-(mirrored?0:b)):support(x,x+S);
+  // Fuga di riferimento della sola sezione: i bordi paralleli restano distinti,
+  // mentre il fianco dell'anta arriva sulla guarnizione della battuta.
+  // Non è una quota rilevata e non entra negli sviluppi o nei tagli.
+  const clearance=isVertical?Math.min(2,Math.abs(target.edge.b[1]-target.edge.a[1])/4,(target.span?.width||Infinity)/4):0;
+  const y=(b?Math.max(support(x,x+notch)-(mirrored?b:0),support(x+notch,x+S)-(mirrored?0:b)):support(x,x+S))+clearance;
   let span=target?.span|| (target?gasketSpan(target.part,target.index):null),contact=null;
   const limits=target?[target.edge.a[1],target.edge.b[1]]:[y,y];
   if(span){const a=overlapEdgePoint(target.edge,span.start/target.edge.len),c=overlapEdgePoint(target.edge,span.end/target.edge.len);limits.splice(0,2,a[1],c[1]);}
@@ -1042,7 +1046,7 @@ function closedDoorLeaf(g,S) {
     if(isVertical?high>=low-1e-6:stopX>=x-1e-6&&stopX<=x+S+1e-6&&Math.abs(y-target.edge.a[1])<1e-6)contact={partKey:target.part.key,index:target.index,gasket:!!span,
       point:isVertical?[stopX,(low+high)/2]:[stopX,target.edge.a[1]]};
   }
-  return {x,y,w:S,h,points,type:door.type,mirrored,contact,frontProjection:g.frontPlane-x,
+  return {x,y,w:S,h,points,type:door.type,mirrored,contact,clearance,frontProjection:g.frontPlane-x,
     warning:span&&!contact?'La guarnizione non incontra questo profilo di anta: verifica battuta e posizione.':''};
 }
 
@@ -1549,19 +1553,34 @@ function drawFrameQuotes(svg, g, p, X, Y, width, height, compact=false) {
   svg.append(quotes);
 }
 
+function drawClosedDoorLeaf(svg,leaf,X,Y) {
+  const points=leaf.points,upper=points.slice(0,-2),xy=points=>points.map(p=>X(p[0])+','+Y(p[1])).join(' ');
+  const label=leaf.type==='lip'?'Anta battentata':leaf.type==='round'?'Anta con bordo arrotondato':'Anta semplice';
+  const group=el('g',{'data-closed-leaf':leaf.type,'pointer-events':'none'});
+  group.append(el('title',{},label+' chiusa. '+(leaf.warning|| (leaf.contact?.gasket?'Appoggio sulla guarnizione.':'Appoggio sulla battuta.'))));
+  group.append(el('polygon',{points:xy(points),fill:'var(--mt-wood)','fill-opacity':.42,stroke:'none',
+    'data-leaf-profile':leaf.type,'data-leaf-contact':leaf.contact?leaf.contact.partKey+':'+leaf.contact.index:'','data-leaf-gasket':String(!!leaf.contact?.gasket)}));
+  group.append(el('polyline',{points:xy(upper),fill:'none',stroke:'var(--mt-secondary)','stroke-width':1.3,'stroke-linejoin':'miter','data-leaf-contour':'seating'}));
+  const sides=el('path',{d:`M ${X(points.at(-1)[0])} ${Y(points.at(-1)[1])} L ${X(upper[0][0])} ${Y(upper[0][1])} M ${X(upper.at(-1)[0])} ${Y(upper.at(-1)[1])} L ${X(points.at(-2)[0])} ${Y(points.at(-2)[1])}`,
+    fill:'none',stroke:'var(--mt-secondary)','stroke-width':.9,'stroke-dasharray':'5 4','data-leaf-reference':'sides'});
+  group.append(sides);
+  const left=X(leaf.x),right=X(leaf.x+leaf.w),bottom=Y(leaf.y+leaf.h),center=(left+right)/2,breakW=Math.min(7,(right-left)/8);
+  group.append(el('path',{d:`M ${left} ${bottom} L ${center-breakW} ${bottom} l ${breakW/2} -2 l ${breakW} 4 l ${breakW/2} -2 L ${right} ${bottom}`,
+    fill:'none',stroke:'var(--mt-secondary)','stroke-width':.8,'data-leaf-reference':'break'}));
+  group.append(el('text',{x:center,y:Y(leaf.y+leaf.h*.7),'text-anchor':'middle','dominant-baseline':'middle','font-size':11,fill:'var(--mt-secondary)'},'ANTA'));
+  svg.append(group);
+}
+
 function render(svg,g,mini=false,size=null){const box=size||svg.getBoundingClientRect(),w=Math.max(mini?70:240,box.width),h=mini?Math.max(70,box.height||70):box.height||350,p=draft().p;
  const clean=!mini&&svg===$('.mt-full-svg')&&['pellicola','guarnizioni'].includes(tool),compact=w<600||h<420;
  svg.setAttribute('viewBox',`0 0 ${w} ${h}`);svg.setAttribute('data-section-layout',clean?'film':compact?'compact':'dimensions');svg.replaceChildren();const all=g.parts.flatMap(p=>p.edges.flatMap(e=>[e.a,e.b])).concat([[g.wall.left,g.wall.top],[g.wall.right,g.wall.top]],g.leaf?[[g.leaf.x,g.leaf.y+g.leaf.h],[g.leaf.x+g.leaf.w,g.leaf.y+g.leaf.h]]:[]);const xs=all.map(a=>a[0]),ys=all.map(a=>a[1]),loX=Math.min(...xs),hiX=Math.max(...xs),loY=Math.min(...ys),hiY=Math.max(...ys),padX=mini?8:clean?18:compact?26:54,padTop=mini?5:clean?26:compact?42:62,padBottom=mini?5:clean?12:compact?30:62,k=Math.max(.05,Math.min((w-padX*2)/Math.max(1,hiX-loX),Math.max(30,h-padTop-padBottom)/Math.max(1,hiY-loY)));const X=x=>(w-(hiX-loX)*k)/2+(x-loX)*k,Y=y=>padTop+(Math.max(0,h-padTop-padBottom)-(hiY-loY)*k)/2+(y-loY)*k;
  const defs=el('defs'),id=mini?'mt-hatch-'+svg.dataset.model:'mt-hatch-main',pattern=el('pattern',{id,width:mini?5:8,height:mini?5:8,patternUnits:'userSpaceOnUse'});pattern.append(el('path',{d:mini?'M -1 1 L 1 -1 M 0 5 L 5 0 M 4 6 L 6 4':'M -2 2 L 2 -2 M 0 8 L 8 0 M 6 10 L 10 6',stroke:'var(--mt-line)','stroke-width':.7,fill:'none'}));defs.append(pattern);svg.append(defs);
  svg.append(el('rect',{x:X(g.wall.left),y:Y(g.wall.top),width:(g.wall.right-g.wall.left)*k,height:(g.wall.bottom-g.wall.top)*k,fill:'var(--mt-wall)',stroke:'var(--mt-secondary)','stroke-width':mini?.5:.8}));svg.append(el('rect',{x:X(g.wall.left),y:Y(g.wall.top),width:(g.wall.right-g.wall.left)*k,height:(g.wall.bottom-g.wall.top)*k,fill:`url(#${id})`}));
- if(!mini&&g.leaf){const l=g.leaf;const outline=el('polygon',{points:l.points.map(p=>X(p[0])+','+Y(p[1])).join(' '),fill:'none',stroke:'var(--mt-secondary)','stroke-width':.8,'stroke-dasharray':'5 4',
-  'data-leaf-profile':l.type,'data-leaf-contact':l.contact?l.contact.partKey+':'+l.contact.index:'','data-leaf-gasket':String(!!l.contact?.gasket)});
-  outline.append(el('title',{},l.warning|| (l.contact?.gasket?'Anta chiusa in appoggio sulla guarnizione':'Anta chiusa in appoggio sulla battuta')));svg.append(outline);
-  svg.append(el('text',{x:X(l.x+l.w/2),y:Y(l.y+l.h*.75),'text-anchor':'middle','dominant-baseline':'middle','font-size':11},'ANTA'));}
  g.parts.forEach((part,pi)=>{const solid=el('path',{d:partPath(part,X,Y,k,true),fill:mini?'var(--mt-wood)':pi===draft().part?'var(--mt-tint)':'var(--mt-wood)',stroke:mini?'currentColor':'var(--mt-ink)','stroke-width':mini?.75:1.2,'stroke-linejoin':'miter'});if(!mini){solid.classList.add('cursor-interaction');solid.addEventListener('click',()=>{draft().part=pi;draft().edge=0;sync();});}svg.append(solid);
  if(!mini&&pi===draft().part){part.edges.forEach((e,ei)=>{filmSegments(part,ei).forEach(seg=>svg.append(el('path',{d:`M ${X(seg.a[0])} ${Y(seg.a[1])} `+edgeCommand(seg,X,Y,k),fill:'none',stroke:'var(--mt-green)','stroke-width':hasProfileFilmRules()?3:ei===draft().edge?4:2.5,'data-film-segment':part.key+':'+ei,'data-start':seg.start,'data-end':seg.end})));const hit=el('path',{d:`M ${X(e.a[0])} ${Y(e.a[1])} `+edgeCommand(e,X,Y,k),fill:'none',stroke:'transparent','stroke-width':24,class:'cursor-interaction'});hit.addEventListener('click',()=>{draft().edge=ei;sync();});svg.append(hit);});}
  });
  if(mini)return;
+ if(g.leaf)drawClosedDoorLeaf(svg,g.leaf,X,Y);
  g.parts.forEach(part=>part.edges.forEach((e,i)=>drawGasketBand(svg,part,i,X,Y,k)));
  drawRoundedFilm(svg,roundedRelations(null,g),X,Y);
  g.parts.forEach((part,pi)=>{

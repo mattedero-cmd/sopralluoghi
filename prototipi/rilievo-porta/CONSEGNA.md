@@ -33,6 +33,11 @@ semplice consegna; una pubblicazione dovrà essere richiesta separatamente.
 - Anta iniziale a filo del coprifilo esterno, sporgenza configurabile da 0 mm,
   appoggio sulla guarnizione reale. Le quote di battuta rilevate manualmente
   sono conservate e disattivano il posizionamento automatico.
+- Sezione dell'anta basata sugli esempi fotografici di ante in battuta:
+  bordo di chiusura continuo con scalino effettivo, riempimento leggero,
+  fianchi tratteggiati e interruzione grafica del corpo. Una fuga di riferimento
+  separa i bordi paralleli lasciando il fianco sulla guarnizione. Il disegno
+  mantiene i colori del progetto e non altera quote o tagli di pellicola.
 - Le facce dell'anta usano sempre la stessa larghezza di taglio bobina, la
   maggiore necessaria; le lunghezze rimangono specifiche dei due fogli.
 - Avanzi fino a 50 mm: una famiglia si allarga solo se tutti i suoi rotoli,
@@ -45,12 +50,13 @@ semplice consegna; una pubblicazione dovrà essere richiesta separatamente.
 
 ## Verifica dello stato consegnato
 
-HTML SHA256: `4543efa751f3620e2b2f66d902461f90e495544d4a40639c7c607c12b8bc58e6`.
+HTML SHA256: `c81967ed627089c01db551d050f75a0540fbdf772c18e60e57220d6d01ab73b9`.
 
-Superati 86 gruppi di verifica sul JavaScript effettivo in Node VM e DOM simulato:
+Superati 91 gruppi di verifica sul JavaScript effettivo in Node VM e DOM simulato:
 guarnizioni 17, profili raggiati/smussati 21, ordine grafico dei sormonti 10,
 sormonti automatici 8, anta e tagli 12, sezione e scorte 9, bobine uniformi e
-luce minima 9. Verificati sintassi e SVG reali esportati in PNG. L'ultima
+luce minima 9, sezione dell'anta e appoggio 5. Verificati sintassi e SVG reali
+esportati in PNG, compresa la sezione quotata in modalità chiara e scura. L'ultima
 iterazione non ha una verifica browser completa: gli strumenti di anteprima
 non erano disponibili. Gli script e gli artefatti di sessione restano fuori
 dal prototipo; non sono richiesti per aprire l'HTML.

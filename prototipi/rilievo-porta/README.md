@@ -164,6 +164,11 @@ integrato nell'app Sopralluoghi**.
   coprifilo. Una posizione P/P1/P2/E rilevata manualmente viene conservata.
 - La sezione dello stipite mostra l'anta chiusa con il profilo scelto: lo scalino
   della battentata o il lato piano dell'anta semplice appoggiano alla guarnizione.
+  Il bordo in battuta ha contorno continuo, corpo leggermente riempito e labbro
+  visibile; i fianchi tratteggiati e la linea di interruzione indicano che l'anta
+  prosegue. Una piccola fuga di riferimento distingue i bordi paralleli senza
+  modificare le quote rilevate o gli sviluppi di pellicola. La guarnizione gialla
+  resta visibile davanti al profilo, nel punto di appoggio.
   Senza guarnizione l'appoggio è sulla battuta; lo stipite senza battuta mostra
   comunque l'anta sul suo piano. Quote incompatibili con la posizione della
   guarnizione vengono segnalate nella sezione.
