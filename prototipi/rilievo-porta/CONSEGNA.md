@@ -30,9 +30,14 @@ semplice consegna; una pubblicazione dovrà essere richiesta separatamente.
   15 mm a ogni estremità. Misure visibili e inseribili con massimo due decimali.
 - L/H indicano la luce minima sulla parte più spessa dello stipite, mai la
   distanza fra coprifili. I livelli e le lunghezze dei pezzi usano quel piano.
-- Anta iniziale a filo del coprifilo esterno, sporgenza configurabile da 0 mm,
-  appoggio sulla guarnizione reale. Le quote di battuta rilevate manualmente
-  sono conservate e disattivano il posizionamento automatico.
+- Battuta singola, anche con imbotte: anta sopra il coprifilo, con sporgenza
+  iniziale pari a Sb. Per l'anta a filo serve la doppia battuta, inizialmente
+  con sporgenza 0. La guida applica il minimo corrispondente e non propone
+  la singola a filo. Le posizioni rilevate vengono conservate.
+- Doppia battuta: Lb iniziale segue b1, senza il vuoto prodotto dal vecchio
+  valore fisso 12 quando b1 era 6. Una Lb misurata rimane distinta dall'automatica;
+  il pulsante «Lb come prima battuta» ripristina l'automatismo. Disegno e tagli
+  condividono il medesimo valore. Modificare b1 aggiorna anche il materiale previsto.
 - Sezione dell'anta basata sugli esempi fotografici di ante in battuta:
   bordo di chiusura continuo con scalino effettivo, riempimento leggero,
   fianchi tratteggiati e interruzione grafica del corpo. Una fuga di riferimento
@@ -42,9 +47,8 @@ semplice consegna; una pubblicazione dovrà essere richiesta separatamente.
   contatto dello scalino e quello della faccia. Il labbro può scavalcare il
   coprifilo, con sporgenza derivata dalle quote. La chiusura specchiata usa
   la faccia opposta e il riferimento del coprifilo interno.
-- Soltanto per le quote iniziali non ancora rilevate, con anta battentata si
-  lascia un'altezza totale di battuta almeno Lb + 6 mm. Le quote inserite a mano
-  o nella guida non si sovrascrivono. Se non c'è un contatto di superficie reale
+- Le battute dello stipite non si allargano per forzare un'anta singola a filo.
+  Le quote inserite a mano o nella guida non si sovrascrivono. Se non c'è un contatto di superficie reale
   compare un avviso: non basta toccare uno spigolo per dichiarare l'appoggio.
   A parità di quote rilevate e parametri dell'anta gli sviluppi restano identici.
 - Le facce dell'anta usano sempre la stessa larghezza di taglio bobina, la
@@ -59,12 +63,12 @@ semplice consegna; una pubblicazione dovrà essere richiesta separatamente.
 
 ## Verifica dello stato consegnato
 
-HTML SHA256: `6dfa6803ea6d3fd567a10010f2ff49a899c825649b8a8063366347cab6ca6cb3`.
+HTML SHA256: `9de08d6a904ed0d7289fbcf1fdfbf4d07a276ae2408aa2d010db792b657577b5`.
 
-Superati 94 gruppi di verifica sul JavaScript effettivo in Node VM e DOM simulato:
+Superati 98 gruppi di verifica sul JavaScript effettivo in Node VM e DOM simulato:
 guarnizioni 17, profili raggiati/smussati 21, ordine grafico dei sormonti 10,
 sormonti automatici 8, anta e tagli 12, sezione e scorte 9, bobine uniformi e
-luce minima 9, sezione dell'anta e appoggio 8. Verificati sintassi e SVG reali
+luce minima 9, sezione dell'anta e appoggio 8, regole di chiusura e fuga 4. Verificati sintassi e SVG reali
 esportati in PNG, compresa la sezione quotata in modalità chiara e scura. L'ultima
 iterazione non ha una verifica browser completa: gli strumenti di anteprima
 non erano disponibili. Gli script e gli artefatti di sessione restano fuori

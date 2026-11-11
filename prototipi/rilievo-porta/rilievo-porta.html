@@ -61,7 +61,7 @@
  <section data-panel="door" id="mt-door-panel" aria-label="Anta" hidden>
    <div class="mt-subtitle"><h3>Profilo dell’anta</h3><span class="mt-small">Bordo in sezione</span></div>
    <div class="mt-door-types">
-     <button type="button" class="cursor-interaction" data-door-type="square" aria-pressed="true">Squadrata a filo</button>
+     <button type="button" class="cursor-interaction" data-door-type="square" aria-pressed="true">Squadrata</button>
      <button type="button" class="cursor-interaction" data-door-type="lip" aria-pressed="false">Battentata</button>
      <button type="button" class="cursor-interaction" data-door-type="round" aria-pressed="false">Bordo arrotondato</button>
    </div>
@@ -76,7 +76,7 @@
      <label data-door-only="lip">Battuta nello spessore Sb<input type="number" min="0.1" max="299.9" step="0.01" inputmode="decimal" data-door="rebateAt" value="20"></label>
      <label data-door-only="round">Raggio del bordo r<input type="number" min="0.1" max="150" step="0.01" inputmode="decimal" data-door="radius" value="3"></label>
    </div>
-   <div class="mt-fields"><label>Sporgenza anta dal coprifilo (0 = a filo)<input type="number" min="0" max="100" step="0.01" inputmode="decimal" data-door="projection" value="0"></label></div>
+   <div class="mt-fields"><label>Sporgenza anta dal coprifilo<input type="number" min="0" max="100" step="0.01" inputmode="decimal" data-door="projection" value="0"></label></div>
    <div class="mt-board mt-door-board"><svg class="mt-door-diagram" role="img" aria-label="Sviluppo della pellicola con risvolti sui quattro bordi. Il tratteggio delimita la faccia dell’anta."></svg></div>
    <div class="mt-chips" data-chips="door" aria-label="Misure dell’anta"></div>
    <div class="mt-subtitle"><h3>Facce da rivestire</h3><span class="mt-small">Risvolti sui quattro bordi</span></div>
@@ -573,7 +573,7 @@ for (const side of ['E', 'I']) {
 }
 function modelDefaults(m) {
   const p={...base};
-  if(doorSeatReady){initialDoorRebate(p,m||model());positionDoorStop(p,m||model());}
+  if(doorSeatReady)positionDoorStop(p,m||model());
   return p;
 }
 function createDraft(m) {
@@ -997,7 +997,7 @@ function geometry(p=draft().p, m=model(), leafThickness=door.thickness) {
     const innerJamb = parts.find(q => q.key === 'extension') || parts.find(q => q.key === 'integrated') || middle;
     innerJamb.edges = [...innerJamb.edges, line([depth,right],[depth,right-p.eI],'Testa interna a vista')];
   }
-  const g={parts,rebate,depth,frontPlane:-p.tE,backPlane:depth+p.tI,leafRebateAt:doorRebateAt(p,m),wall:{left:0,right:depth,top:Math.min(-12,yE-p.A-8,yI-p.B-8),bottom:0},y,right,yE,yI};
+  const g={parts,rebate,depth,frontPlane:-p.tE,backPlane:depth+p.tI,leafRebateAt:doorRebateAt(p,m),leafLip:doorLip(p,m),leafProjection:doorProjection(p,m),minimumProjection:doorProjectionMin(p,m),firstStepHeight:m.jamb==='double'?p.b1:null,wall:{left:0,right:depth,top:Math.min(-12,yE-p.A-8,yI-p.B-8),bottom:0},y,right,yE,yI};
   g.leaf=Number.isFinite(leafThickness)&&leafThickness>0&&leafThickness<=300?closedDoorLeaf(g,leafThickness):null;
   return g;
 }
@@ -1011,14 +1011,14 @@ function closedDoorLeaf(g,S) {
   const stopSeal=stop?gasketSpan(stop.part,stop.index):null;
   const target=stop?{...stop,span:stopSeal?.valid?stopSeal:null}:null;
   const isVertical=target&&Math.abs(target.edge.a[0]-target.edge.b[0])<1e-6;
-  const b=door.type==='lip'&&Number.isFinite(door.lip)?Math.max(0,door.lip):0;
+  const b=door.type==='lip'&&Number.isFinite(g.leafLip)?Math.max(0,g.leafLip):0;
   const sb=Number.isFinite(g.leafRebateAt)&&g.leafRebateAt>0&&g.leafRebateAt<S?g.leafRebateAt:S/2;
   const mirrored=!!isVertical&&target.edge.b[1]<target.edge.a[1];
   const stopX=isVertical?target.edge.a[0]:target?overlapEdgePoint(target.edge,target.span?.center/target.edge.len||.5)[0]:g.depth/2;
   const notch=mirrored?S-sb:sb;
   // La battuta principale incontra la faccia dell'anta: retro nella chiusura
   // normale, fronte in quella specchiata. Lo scalino non è l'ancora dell'anta.
-  const x=isVertical?(mirrored?stopX:stopX-S):g.frontPlane-(Number.isFinite(door.projection)?door.projection:0);
+  const x=isVertical?(mirrored?stopX:stopX-S):g.frontPlane-(Number.isFinite(g.leafProjection)?g.leafProjection:0);
   const support=(left,right)=>{
     let high=-Infinity;
     g.parts.forEach(part=>part.edges.forEach(edge=>{
@@ -1064,8 +1064,12 @@ function closedDoorLeaf(g,S) {
     contacts.push({partKey:target.part.key,index:target.index,gasket:!!span,surface:'edge',point:[stopX,y]});
   const main=contacts.find(c=>c.partKey===target?.part.key&&c.index===target?.index&&c.surface===(mirrored?'front':'back'));
   const contact=main||contacts.filter(c=>c.gasket).at(-1)||contacts.at(-1)||null;
-  const warning=isVertical&&!main?'La faccia dell’anta non arriva sulla '+(span?'guarnizione':'battuta')+': verifica battuta, labbro e sporgenza.':'';
-  return {x,y,w:S,h,points,type:door.type,mirrored,contact,contacts,clearance,projectionSide:mirrored?'I':'E',frontProjection:mirrored?x+S-g.backPlane:g.frontPlane-x,warning};
+  const frontProjection=mirrored?x+S-g.backPlane:g.frontPlane-x;
+  const intermediateGap=b&&Number.isFinite(g.firstStepHeight)&&Math.abs(x+notch-g.rebate.start)<1e-6?y+b-g.y-g.firstStepHeight:null;
+  const warning=isVertical&&!main?'La faccia dell’anta non arriva sulla '+(span?'guarnizione':'battuta')+': verifica battuta, labbro e sporgenza.':
+    frontProjection<g.minimumProjection-1e-6?'Nella battuta singola l’anta deve scavalcare il coprifilo. Per la chiusura a filo serve la doppia battuta.':
+    intermediateGap>clearance+.01?`Lb ${fmt(b)} mm e prima battuta ${fmt(g.firstStepHeight)} mm lasciano ${fmt(intermediateGap)} mm di fuga sul piano intermedio.`:'';
+  return {x,y,w:S,h,points,type:door.type,mirrored,contact,contacts,clearance,intermediateGap,projectionSide:mirrored?'I':'E',frontProjection,warning};
 }
 
 function frameQuoteError() {
@@ -2604,33 +2608,34 @@ $$('[data-gasket]').forEach(input => input.addEventListener('input', () => {
   update();
 }));
 $('[data-action=split]').addEventListener('change',e=>{const part=geometry().parts[draft().part];draft().split[part.key+':'+draft().edge]=e.target.checked;update();});
-const door = {type: 'square', width: 800, height: 2100, thickness: 40, margin: 25, lip: 12, rebateAt:null, radius: 3, projection:0, bottom:'overlap', covered: {}};
+const door = {type: 'square', width: 800, height: 2100, thickness: 40, margin: 25, lip: 12, lipMeasured:false, rebateAt:null, radius: 3, projection:0, projectionMeasured:false, bottom:'overlap', covered: {}};
 doorSeatReady=true;
-const doorTypes = {square: 'Squadrata a filo', lip: 'Battentata', round: 'Bordo arrotondato'};
+const doorTypes = {square: 'Squadrata', lip: 'Battentata', round: 'Bordo arrotondato'};
 const doorFaces = [['front', 'Faccia esterna'], ['back', 'Faccia interna']];
 const DOOR_BOTTOMS = [
   {id:'overlap',name:'Sormonto completo',note:'Consigliato · entrambi i fogli coprono tutto il bordo'},
   {id:'butt',name:'Due lembi a metà',note:'Si incontrano al centro, senza sovrapporsi'},
   {id:'bare',name:'Non rivestire sotto',note:'Il bordo verso il pavimento rimane scoperto'}
 ];
-function casingSeatNeed(p,m) {return m.casing==='telescopic'?p.LE+p.JxE+.1:m.casing==='overlap'?p.OE+.1:.1;}
+function casingSeatNeed(p,m,side='E') {return m.casing==='telescopic'?p['L'+side]+p['Jx'+side]+.1:m.casing==='overlap'?p['O'+side]+.1:.1;}
+function doorLip(p=draft().p,m=model()) {
+  return m.jamb==='double'&&!door.lipMeasured?p.b1:door.lip;
+}
 function doorRebateAt(p=draft().p,m=model()) {
   if(door.rebateAt!=null)return door.rebateAt;
-  // Nella battuta singola la sede principale dipende dallo spessore S,
-  // non da Sb. Solo la doppia battuta deve far coincidere anche la seconda faccia.
-  return m.jamb!=='double'?door.thickness/2:Math.max(door.thickness/2,p.tE+(door.projection||0)+casingSeatNeed(p,m)+6);
+  if(m.jamb==='double')return Math.max(door.thickness/2,p.tE+(door.projection||0)+casingSeatNeed(p,m)+6);
+  if(m.jamb==='plain')return door.thickness/2;
+  const side=m.jamb==='extension'&&p.sI<p.s?'I':'E';
+  return Math.min(door.thickness/2,Math.max(.1,door.thickness-p['t'+side]-casingSeatNeed(p,m,side)));
 }
-function initialDoorRebate(p,m,measured={}) {
-  if(door.type!=='lip'||!(door.lip>0))return;
-  // Soltanto quote iniziali: una battuta deve lasciare spazio al labbro e
-  // alla faccia che preme la guarnizione. Le misure rilevate non si correggono.
-  const height=door.lip+6;
-  if(m.jamb==='standard'&&!measured.b)p.b=Math.max(p.b,height);
-  if(m.jamb==='double'&&!measured.b2)p.b2=Math.max(p.b2,height-p.b1);
-  if(m.jamb==='extension'&&!measured.sI)p.sI=Math.max(p.sI,p.s+height);
+function doorProjectionMin(p=draft().p,m=model()) {
+  return ['standard','extension'].includes(m.jamb)?doorRebateAt(p,m):0;
+}
+function doorProjection(p=draft().p,m=model()) {
+  return door.projectionMeasured?door.projection:doorProjectionMin(p,m);
 }
 function positionDoorStop(p,m) {
-  const projection=Number.isFinite(door.projection)?door.projection:0;
+  const value=doorProjection(p,m),projection=Number.isFinite(value)?value:0;
   const depth=m.jamb==='extension'?p.E+p.I:p.D;
   const reach=door.thickness;
   const stop=m.jamb==='extension'&&p.sI<p.s?depth+p.tI+projection-reach:reach-p.tE-projection;
@@ -2642,7 +2647,7 @@ function positionDoorStop(p,m) {
     else if(p.P1>=stop||p.P1<casingSeatNeed(p,m))p.P1=(casingSeatNeed(p,m)+stop)/2;}
   else if(m.jamb!=='plain')p.P=stop;
 }
-function refreshDoorSeat() {if(draft().seatAuto){initialDoorRebate(draft().p,model(),draft().measured);positionDoorStop(draft().p,model());}}
+function refreshDoorSeat() {if(draft().seatAuto)positionDoorStop(draft().p,model());}
 function doorBottomMode() {
   const mode=door.bottom||'overlap';
   return mode==='butt'&&doorFaces.filter(([key])=>isDoorFaceCovered(key)).length===1?'overlap':mode;
@@ -2726,9 +2731,9 @@ function validDoor() {
     && Number.isFinite(S) && S > 0 && S <= 300
     && Number.isFinite(door.margin) && door.margin >= 0 && door.margin <= 200;
   if (!base) return false;
-  if(!Number.isFinite(door.projection)||door.projection<0||door.projection>100)return false;
+  if(!Number.isFinite(doorProjection())||doorProjection()<doorProjectionMin()-1e-6||doorProjection()>100)return false;
   if(!['overlap','butt','bare'].includes(door.bottom||'overlap'))return false;
-  if (type === 'lip') return Number.isFinite(door.lip) && door.lip > 0 && door.lip <= 100 && 2 * door.lip < L && door.lip < H &&
+  if (type === 'lip') return Number.isFinite(doorLip()) && doorLip() > 0 && doorLip() <= 100 && 2 * doorLip() < L && doorLip() < H &&
     Number.isFinite(doorRebateAt())&&doorRebateAt()>0&&doorRebateAt()<S;
   if (type === 'round') return Number.isFinite(door.radius) && door.radius > 0 && 2 * door.radius <= S && 2 * door.radius < L && 2 * door.radius < H;
   return true;
@@ -2743,7 +2748,7 @@ function doorFaceName(key) {
 // Un solo piano fisico per disegno e tagli. La battuta è su tre lati;
 // sotto il bordo è diritto. L/H sono le quote della faccia lato battuta.
 function doorFilmPlan() {
-  const {width:L,height:H,thickness:S,type}=door,b=type==='lip'?door.lip:0;
+  const {width:L,height:H,thickness:S,type}=door,b=type==='lip'?doorLip():0;
   const r=type==='round'?door.radius:0,sb=doorRebateAt();
   const full=type==='round'?S+(Math.PI-2)*r:S+b;
   const both=doorFaces.every(([key])=>isDoorFaceCovered(key));
@@ -2996,7 +3001,7 @@ function renderPosa(order) {
 
 let doorView='top';
 function doorBoundary(bottom=false) {
-  const S=door.thickness,b=door.lip,sb=doorRebateAt();
+  const S=door.thickness,b=doorLip(),sb=doorRebateAt();
   if(!bottom&&door.type==='lip')return [[0,0],[sb,0],[sb,b],[S,b]];
   if(door.type==='round'){
     const r=door.radius,points=[];
@@ -3012,7 +3017,7 @@ function doorTrackOffset(points,distance) {
     const m=Math.min(2,1/Math.max(.5,n[0]/length*b[0]+n[1]/length*b[1]));return[p[0]+n[0]/length*distance*m,p[1]+n[1]/length*distance*m];});
 }
 function drawDoorEdge(svg,width,bottom=doorView==='bottom',standalone=false) {
-  const S=door.thickness,b=!bottom&&door.type==='lip'?door.lip:0,sb=doorRebateAt(),depth=Math.max(S,b+S*.6);
+  const S=door.thickness,b=!bottom&&door.type==='lip'?doorLip():0,sb=doorRebateAt(),depth=Math.max(S,b+S*.6);
   const k=Math.min(width*(standalone ? .55 : .31)/S,130/depth),cx=width*(standalone ? .48 : .72),x0=cx-S*k/2,y0=58;
   const X=u=>x0+u*k,Y=v=>bottom?y0+(depth-v)*k:y0+v*k,project=p=>[X(p[0]),Y(p[1])];
   const boundary=doorBoundary(bottom),body=[...boundary,[S,depth],[0,depth]];
@@ -3066,7 +3071,7 @@ function renderDoorFilmControls() {
     b.onclick=()=>{closePad();door.bottom=option.id;doorView='bottom';drawDoor();updateBadge();};choices.append(b);});
   const plan=doorFilmPlan();
   $('.mt-door-film-note').textContent=!doorFaces.some(([key])=>isDoorFaceCovered(key))?'Anta esclusa: seleziona almeno una faccia da rivestire.':plan.both?
-    (door.type==='lip'?`Sopra e sui lati: prima il foglio destro, poi il sinistro sopra la battuta di ${fmt(door.lip)} mm, fino allo spigolo basso.`:
+    (door.type==='lip'?`Sopra e sui lati: prima il foglio destro, poi il sinistro sopra la battuta di ${fmt(doorLip())} mm, fino allo spigolo basso.`:
       `Sopra: prima il foglio destro, poi il sinistro. Entrambi coprono tutto il bordo di ${fmt(plan.full)} mm.`)+
     ' Sotto: '+DOOR_BOTTOMS.find(o=>o.id===plan.mode).name.toLocaleLowerCase('it-IT')+'.':
     'Con una sola faccia rivestita, quel foglio copre tutto il bordo superiore. Sotto puoi coprire tutto il bordo o lasciarlo scoperto.';
@@ -3079,8 +3084,11 @@ function drawDoor() {
   renderDoorFilmControls();
   const svg = $('.mt-door-diagram');
   const rebateInput=inputOf('[data-door="rebateAt"]');
+  const lipInput=inputOf('[data-door="lip"]');
+  if(lipInput&&document.activeElement!==lipInput)lipInput.value=measureInput(doorLip()).replace(',','.');
   if(rebateInput){rebateInput.max=String(floorMeasureLimit(door.thickness-.01));if(document.activeElement!==rebateInput)rebateInput.value=measureInput(doorRebateAt()).replace(',','.');}
   const projectionInput=inputOf('[data-door="projection"]'),actualProjection=geometry().leaf?.frontProjection;
+  if(projectionInput)projectionInput.min=String(ceilMeasureLimit(doorProjectionMin()));
   if(projectionInput&&Number.isFinite(actualProjection)&&document.activeElement!==projectionInput)projectionInput.value=measureInput(actualProjection).replace(',','.');
   const width = Math.max(230, svg.getBoundingClientRect().width);
   svg.setAttribute('viewBox', `0 0 ${width} 260`);
@@ -3111,7 +3119,7 @@ function drawDoor() {
       list.append(row);
     });
   }
-  if (!ok) { renderChips($('[data-chips=door]'), doorSeq()); return; }
+  if (!ok) { renderDoorChips(); return; }
 
   const blank = rows[0] || {width: door.width, height: door.height};
   const scale = Math.min(width * .47 / blank.width, 142 / blank.height);
@@ -3162,7 +3170,15 @@ function drawDoor() {
     adjustable(svg, t, `[data-door="${map[m[1]]}"]`, {rotate: t.getAttribute('transform') || '', pad: 8, drag: true,
       dir: turned || m[1] === 'Lb' ? 'v' : 'h'});
   });
-  renderChips($('[data-chips=door]'), doorSeq());
+  renderDoorChips();
+}
+
+function renderDoorChips() {
+  const box=$('[data-chips=door]');renderChips(box,doorSeq());
+  if(door.type!=='lip'||model().jamb!=='double'||!door.lipMeasured||Number.isFinite(doorLip())&&Math.abs(doorLip()-draft().p.b1)<1e-6)return;
+  const automatic=document.createElement('button');automatic.type='button';automatic.className='mt-chip cursor-interaction';
+  automatic.textContent='Lb come prima battuta';automatic.setAttribute('data-door-lip-auto','true');
+  automatic.onclick=()=>{door.lipMeasured=false;refreshDoorSeat();drawDoor();updateBadge();};box.append(automatic);
 }
 
 function selectPanel(name) {
@@ -3199,8 +3215,9 @@ function bindDoorControls() {
   $$('[data-door]').forEach(input => {
     input.addEventListener('input', () => {
       door[input.dataset.door] = input.value === '' ? NaN : Number(input.value);
-      if(input.dataset.door==='projection')draft().seatAuto=true;
-      if(['thickness','rebateAt','projection'].includes(input.dataset.door))refreshDoorSeat();
+      if(input.dataset.door==='projection'){draft().seatAuto=true;door.projectionMeasured=true;}
+      if(input.dataset.door==='lip')door.lipMeasured=true;
+      if(['thickness','rebateAt','projection','lip'].includes(input.dataset.door))refreshDoorSeat();
       drawDoor(); updateBadge();
     });
   });
@@ -3890,16 +3907,16 @@ function measureSteps() {
     {id: 'antaS', title: 'Anta: spessore', q: 'Misura lo spessore dell’anta sul bordo.', fig: 'antaS',
       get: () => inputNum('[data-door="thickness"]'), set: v => setInput('[data-door="thickness"]', v), min: 1}
   ];
-  if (door.type === 'lip') steps.push({id: 'antaLb', title: 'Anta: battuta', q: 'Quanto sporge la battuta dal bordo dell’anta?', fig: 'antaLb',
-    get: () => inputNum('[data-door="lip"]'), set: v => setInput('[data-door="lip"]', v), min: .1});
+  if (door.type === 'lip') steps.push({id: 'antaLb', title: 'Anta: battuta', q: model().jamb==='double'?'Quanto sporge la battuta dal bordo dell’anta? Inizialmente segue la prima battuta dello stipite; inserisci una misura diversa solo se rilevata.':'Quanto sporge la battuta dal bordo dell’anta?', fig: 'antaLb',
+    get: () => doorLip(), set: v => setInput('[data-door="lip"]', v), min: .1});
   if (door.type === 'lip') steps.push({id:'antaSb',title:'Anta: battuta nello spessore',
     q:'A quanti millimetri dalla faccia sinistra si trova lo scalino della battuta? Inizialmente è a metà dello spessore.',fig:'antaSb',
     get:()=>doorRebateAt(),set:v=>setInput('[data-door="rebateAt"]',v),min:.1,max:floorMeasureLimit(door.thickness-.01)});
   if (door.type === 'round') steps.push({id: 'antaR', title: 'Anta: raggio', q: 'Che raggio ha lo spigolo del bordo?', fig: 'antaR',
     get: () => inputNum('[data-door="radius"]'), set: v => setInput('[data-door="radius"]', v), min: .1});
-  steps.push({id:'antaChiusura',title:'Anta chiusa: a filo o sporgente',
-    q:'Di quanto sporge l’anta rispetto al coprifilo esterno? 0 mm = a filo. Questa quota posiziona la battuta iniziale in sezione.',fig:'antaChiusura',
-    get:()=>geometry().leaf?.frontProjection??door.projection,set:v=>setInput('[data-door="projection"]',v),min:0,max:Math.max(0,floorMeasureLimit((model().jamb==='double'&&door.type==='lip'?doorRebateAt():door.thickness)-draft().p.tE-casingSeatNeed(draft().p,model()))),
+  steps.push({id:'antaChiusura',title:doorProjectionMin()>0?'Anta chiusa: sul coprifilo':'Anta chiusa: a filo o sporgente',
+    q:doorProjectionMin()>0?`Nella battuta singola l’anta scavalca il coprifilo. Di quanto sporge? Con queste quote almeno ${fmt(ceilMeasureLimit(doorProjectionMin()))} mm. Per la chiusura a filo serve la doppia battuta.`:'Di quanto sporge l’anta rispetto al coprifilo esterno? 0 mm = a filo. Questa quota posiziona la battuta iniziale in sezione.',fig:'antaChiusura',
+    get:()=>geometry().leaf?.frontProjection??doorProjection(),set:v=>setInput('[data-door="projection"]',v),min:ceilMeasureLimit(doorProjectionMin()),max:Math.max(0,floorMeasureLimit((model().jamb==='double'&&door.type==='lip'?doorRebateAt():door.thickness)-draft().p.tE-casingSeatNeed(draft().p,model()))),
     validate:()=>valid()&&validDoor(),error:()=>frameQuoteError()||'Verifica spessore, sporgenza e posizione della battuta dell’anta.'});
   steps.push({id: 'facce', title: 'Anta: facce', q: 'Quali facce dell’anta rivesti?', choice: 'faces'});
   steps.push({id:'anta-bordo-inferiore',title:'Anta: bordo verso il pavimento',choice:'doorBottom',
