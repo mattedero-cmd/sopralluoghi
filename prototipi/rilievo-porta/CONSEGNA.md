@@ -36,8 +36,17 @@ semplice consegna; una pubblicazione dovrà essere richiesta separatamente.
 - Sezione dell'anta basata sugli esempi fotografici di ante in battuta:
   bordo di chiusura continuo con scalino effettivo, riempimento leggero,
   fianchi tratteggiati e interruzione grafica del corpo. Una fuga di riferimento
-  separa i bordi paralleli lasciando il fianco sulla guarnizione. Il disegno
-  mantiene i colori del progetto e non altera quote o tagli di pellicola.
+  separa i bordi paralleli. La guarnizione principale appoggia sulla faccia
+  posteriore, anche per l'anta battentata; lo scalino non determina più
+  l'appoggio principale. Nella doppia battuta si verificano distintamente il
+  contatto dello scalino e quello della faccia. Il labbro può scavalcare il
+  coprifilo, con sporgenza derivata dalle quote. La chiusura specchiata usa
+  la faccia opposta e il riferimento del coprifilo interno.
+- Soltanto per le quote iniziali non ancora rilevate, con anta battentata si
+  lascia un'altezza totale di battuta almeno Lb + 6 mm. Le quote inserite a mano
+  o nella guida non si sovrascrivono. Se non c'è un contatto di superficie reale
+  compare un avviso: non basta toccare uno spigolo per dichiarare l'appoggio.
+  A parità di quote rilevate e parametri dell'anta gli sviluppi restano identici.
 - Le facce dell'anta usano sempre la stessa larghezza di taglio bobina, la
   maggiore necessaria; le lunghezze rimangono specifiche dei due fogli.
 - Avanzi fino a 50 mm: una famiglia si allarga solo se tutti i suoi rotoli,
@@ -50,12 +59,12 @@ semplice consegna; una pubblicazione dovrà essere richiesta separatamente.
 
 ## Verifica dello stato consegnato
 
-HTML SHA256: `c81967ed627089c01db551d050f75a0540fbdf772c18e60e57220d6d01ab73b9`.
+HTML SHA256: `6dfa6803ea6d3fd567a10010f2ff49a899c825649b8a8063366347cab6ca6cb3`.
 
-Superati 91 gruppi di verifica sul JavaScript effettivo in Node VM e DOM simulato:
+Superati 94 gruppi di verifica sul JavaScript effettivo in Node VM e DOM simulato:
 guarnizioni 17, profili raggiati/smussati 21, ordine grafico dei sormonti 10,
 sormonti automatici 8, anta e tagli 12, sezione e scorte 9, bobine uniformi e
-luce minima 9, sezione dell'anta e appoggio 5. Verificati sintassi e SVG reali
+luce minima 9, sezione dell'anta e appoggio 8. Verificati sintassi e SVG reali
 esportati in PNG, compresa la sezione quotata in modalità chiara e scura. L'ultima
 iterazione non ha una verifica browser completa: gli strumenti di anteprima
 non erano disponibili. Gli script e gli artefatti di sessione restano fuori

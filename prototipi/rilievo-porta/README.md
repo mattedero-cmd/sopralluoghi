@@ -146,7 +146,7 @@ integrato nell'app Sopralluoghi**.
   nello spigolo basso. La linguetta marrone centrale mostra il sormonto.
 - L e H si misurano sulla faccia destra, lato battuta. La faccia sinistra misura
   L + 2Lb e H + Lb. **Sb** è la posizione della battuta nello spessore, inizialmente
-  S/2 e modificabile (nelle sedi telescopiche si adatta allo spazio necessario):
+  S/2 e modificabile (nella doppia battuta si adatta allo spazio della sede secondaria):
   il sinistro risvolta Sb + Lb, il destro S − Sb + Lb.
 - **Sotto**, verso il pavimento: sormonto completo (iniziale e consigliato),
   due lembi a metà senza sovrapposizione, oppure bordo scoperto. Il bordo inferiore
@@ -160,10 +160,15 @@ integrato nell'app Sopralluoghi**.
   una seconda pellicola; sotto si sceglie completo o scoperto.
 - La posizione iniziale dell’anta è **a filo del coprifilo esterno**. Una quota
   di sporgenza, inizialmente 0, consente di farla avanzare verso l’esterno.
-  La battuta iniziale segue spessore dell’anta, posizione Sb e spessore del
-  coprifilo. Una posizione P/P1/P2/E rilevata manualmente viene conservata.
-- La sezione dello stipite mostra l'anta chiusa con il profilo scelto: lo scalino
-  della battentata o il lato piano dell'anta semplice appoggiano alla guarnizione.
+  La battuta principale iniziale segue l'intero spessore S dell'anta e quello
+  del coprifilo. Sb posiziona il contatto secondario nella doppia battuta.
+  Una posizione P/P1/P2/E rilevata manualmente viene conservata.
+- La sezione dello stipite mostra l'anta chiusa con il profilo scelto:
+  **la faccia posteriore incontra la guarnizione principale**, anche per la
+  battentata. Il labbro può scavalcare il bordo dello stipite e del coprifilo;
+  la sporgenza visibile deriva dalle quote effettive. Nella chiusura specchiata
+  appoggia la faccia opposta. Nella doppia battuta si verificano entrambi i
+  contatti, della faccia e dello scalino, sulle rispettive guarnizioni.
   Il bordo in battuta ha contorno continuo, corpo leggermente riempito e labbro
   visibile; i fianchi tratteggiati e la linea di interruzione indicano che l'anta
   prosegue. Una piccola fuga di riferimento distingue i bordi paralleli senza
@@ -172,6 +177,10 @@ integrato nell'app Sopralluoghi**.
   Senza guarnizione l'appoggio è sulla battuta; lo stipite senza battuta mostra
   comunque l'anta sul suo piano. Quote incompatibili con la posizione della
   guarnizione vengono segnalate nella sezione.
+- Le battute iniziali della maestà con anta battentata lasciano spazio al labbro
+  e alla faccia d'appoggio: altezza complessiva iniziale almeno Lb + 6 mm.
+  Le quote già rilevate a mano o nella guida vengono conservate, anche se
+  incompatibili: in quel caso compare l'avviso di mancato appoggio.
 - Abbondanze iniziali: **25 mm su ogni lato dell'anta**, **15 mm a ogni estremità
   di stipiti, coprifili e imbotte**. Restano modificabili e vengono sommate dopo
   lo sviluppo dei risvolti: 2 × abbondanza su larghezza e altezza di ciascun foglio.
