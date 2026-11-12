@@ -990,12 +990,20 @@ function geometry(p=draft().p, m=model(), leafThickness=door.thickness) {
       ]};
     parts = [outer,middle,extension,inner];
   }
+  // Identità delle superfici prima delle teste variabili. Le guarnizioni e
+  // le scelte di pellicola non dipendono dall'indice nel profilo visualizzato.
+  parts.forEach(part=>part.edges.forEach((edge,i)=>{edge.stateKey=part.key+':'+i;}));
+  if(split){
+    const extension=parts.find(part=>part.key==='extension');
+    extension.edges[extension.edges.length-1].stateKey='extension:plane';
+  }
+  rebateEdges({parts,depth}).forEach((entry,i)=>{entry.edge.stateKey='rebate:'+(i+1);});
   if (offsetAllowed(ct,'E') && p.eE > 0) {
-    middle.edges = [line([0,y-p.eE],[0,y],'Testa esterna a vista'), ...middle.edges];
+    middle.edges = [{...line([0,y-p.eE],[0,y],'Testa esterna a vista'),stateKey:middle.key+':head:E'}, ...middle.edges];
   }
   if (offsetAllowed(ct,'I') && p.eI > 0) {
     const innerJamb = parts.find(q => q.key === 'extension') || parts.find(q => q.key === 'integrated') || middle;
-    innerJamb.edges = [...innerJamb.edges, line([depth,right],[depth,right-p.eI],'Testa interna a vista')];
+    innerJamb.edges = [...innerJamb.edges, {...line([depth,right],[depth,right-p.eI],'Testa interna a vista'),stateKey:innerJamb.key+':head:I'}];
   }
   const g={parts,rebate,depth,frontPlane:-p.tE,backPlane:depth+p.tI,leafRebateAt:doorRebateAt(p,m),leafLip:doorLip(p,m),leafProjection:doorProjection(p,m),minimumProjection:doorProjectionMin(p,m),firstStepHeight:m.jamb==='double'?p.b1:null,wall:{left:0,right:depth,top:Math.min(-12,yE-p.A-8,yI-p.B-8),bottom:0},y,right,yE,yI};
   g.leaf=Number.isFinite(leafThickness)&&leafThickness>0&&leafThickness<=300?closedDoorLeaf(g,leafThickness):null;
@@ -1067,7 +1075,7 @@ function closedDoorLeaf(g,S) {
   const frontProjection=mirrored?x+S-g.backPlane:g.frontPlane-x;
   const intermediateGap=b&&Number.isFinite(g.firstStepHeight)&&Math.abs(x+notch-g.rebate.start)<1e-6?y+b-g.y-g.firstStepHeight:null;
   const warning=isVertical&&!main?'La faccia dell’anta non arriva sulla '+(span?'guarnizione':'battuta')+': verifica battuta, labbro e sporgenza.':
-    frontProjection<g.minimumProjection-1e-6?'Nella battuta singola l’anta deve scavalcare il coprifilo. Per la chiusura a filo serve la doppia battuta.':
+    frontProjection<g.minimumProjection-1e-6?(g.minimumProjection>0?'Nella battuta singola l’anta deve scavalcare il coprifilo. Per la chiusura a filo serve la doppia battuta.':`L’anta è incassata di ${fmt(-frontProjection)} mm rispetto al coprifilo: verifica la posizione della battuta e lo spessore dell’anta.`):
     intermediateGap>clearance+.01?`Lb ${fmt(b)} mm e prima battuta ${fmt(g.firstStepHeight)} mm lasciano ${fmt(intermediateGap)} mm di fuga sul piano intermedio.`:'';
   return {x,y,w:S,h,points,type:door.type,mirrored,contact,contacts,clearance,intermediateGap,projectionSide:mirrored?'I':'E',frontProjection,warning};
 }
@@ -1139,13 +1147,14 @@ function frameQuoteError() {
 }
 function valid() {return frameQuoteError() === '';}
 
-function covered(part,e){return draft().cover[part.key+':'+e]!==false;}
-function separated(part,e){return !!draft().split[part.key+':'+e];}
+function edgeStateKey(part,i){return part.edges[i]?.stateKey||part.key+':'+i;}
+function covered(part,e){return draft().cover[edgeStateKey(part,e)]!==false;}
+function separated(part,e){return !!draft().split[edgeStateKey(part,e)];}
 // Guarnizione: ingombro reale lungo il tratto, centrato a «at» mm da edge.a.
 // «full» segue dinamicamente tutto il tratto; le misure manuali restano salvate.
 // L'eventuale risvolto nella cava è separato dall'ingombro e parte da 0 mm.
 function gasketAt(part, i) {
-  const saved = draft().gaskets[part.key + ':' + i];
+  const saved = draft().gaskets[edgeStateKey(part,i)];
   if (!saved) return null;
   const len = part.edges[i].len;
   return {...saved, at: saved.full ? len / 2 : saved.at, w: saved.full ? len : saved.w,
@@ -1160,7 +1169,7 @@ function gasketSpan(part, i) {
       gasket.depth >= 0 && gasket.depth <= 100 && start >= -1e-6 && end <= len + 1e-6};
 }
 function setGasket(part, i, patch = {}) {
-  const key = part.key + ':' + i, len = part.edges[i].len;
+  const key = edgeStateKey(part,i), len = part.edges[i].len;
   const previous = gasketAt(part, i) || {at: len / 2, w: Math.min(4, len), depth: 0, full: false};
   const next = {...(draft().gaskets[key] || previous), ...patch};
   if (patch.full === false && previous.full) {
@@ -1176,8 +1185,9 @@ function setGasket(part, i, patch = {}) {
   return gasketAt(part, i);
 }
 function removeGasket(part, i) {
-  (draft().gasketChoices||(draft().gasketChoices={}))[part.key+':'+i]=false;
-  return delete draft().gaskets[part.key + ':' + i];
+  const key=edgeStateKey(part,i);
+  (draft().gasketChoices||(draft().gasketChoices={}))[key]=false;
+  return delete draft().gaskets[key];
 }
 function rebateEdges(g = geometry()) {
   const found = [];
@@ -2336,7 +2346,7 @@ function drawProfileDetail(part, svg = $('.mt-profile-diagram'), opt = {}) {
       hit.addEventListener('pointerdown', ev => ev.stopPropagation());
       hit.addEventListener('click', ev => {
         ev.stopPropagation();
-        draft().cover[part.key + ':' + i] = !covered(part, i);
+        draft().cover[edgeStateKey(part,i)] = !covered(part, i);
         draft().edge = i;
         vibrate();
         sync();
@@ -2354,7 +2364,7 @@ function drawProfileDetail(part, svg = $('.mt-profile-diagram'), opt = {}) {
       hit.addEventListener('click', ev => {
         ev.stopPropagation();
         if (!covered(part, i)) return;
-        draft().split[part.key + ':' + i] = !on;
+        draft().split[edgeStateKey(part,i)] = !on;
         draft().edge = i;
         vibrate();
         sync();
@@ -2567,7 +2577,7 @@ function sync() {
     checkbox.type = 'checkbox';
     checkbox.checked = covered(part,index);
     checkbox.addEventListener('change', () => {
-      draft().cover[part.key+':'+index] = checkbox.checked;
+      draft().cover[edgeStateKey(part,index)] = checkbox.checked;
       draft().edge = index;
       showOverFields(part);
       update();
@@ -2607,7 +2617,7 @@ $$('[data-gasket]').forEach(input => input.addEventListener('input', () => {
   setGasket(part, index, {[input.dataset.gasket]: input.value === '' ? NaN : Number(input.value)});
   update();
 }));
-$('[data-action=split]').addEventListener('change',e=>{const part=geometry().parts[draft().part];draft().split[part.key+':'+draft().edge]=e.target.checked;update();});
+$('[data-action=split]').addEventListener('change',e=>{const part=geometry().parts[draft().part];draft().split[edgeStateKey(part,draft().edge)]=e.target.checked;update();});
 const door = {type: 'square', width: 800, height: 2100, thickness: 40, margin: 25, lip: 12, lipMeasured:false, rebateAt:null, radius: 3, projection:0, projectionMeasured:false, bottom:'overlap', covered: {}};
 doorSeatReady=true;
 const doorTypes = {square: 'Squadrata', lip: 'Battentata', round: 'Bordo arrotondato'};
@@ -3836,60 +3846,68 @@ function setInput(sel, v) {
   i.dispatchEvent(new Event('input', {bubbles: true}));
 }
 const isCasingPart = part => part.key === 'outer' || part.key === 'inner';
+function gasketReference(ref,g=geometry()) {
+  if(ref.surfaceKey){
+    for(const part of g.parts){const index=part.edges.findIndex((edge,i)=>edgeStateKey(part,i)===ref.surfaceKey);
+      if(index>=0)return{part,index,edge:part.edges[index],gasket:gasketAt(part,index)};}
+    return null;
+  }
+  const part=g.parts.find(item=>item.key===ref.key);
+  return{part,index:ref.index,edge:part.edges[ref.index],gasket:gasketAt(part,ref.index)};
+}
 function gasketWizardSteps() {
   const steps = [];
   rebateEdges().forEach(entry => {
-    const key = entry.part.key, index = entry.index, id = key + '-' + index;
-    const decisions=draft().gasketChoices||(draft().gasketChoices={}),gasketKey=key+':'+index;
+    const key = entry.part.key, index = entry.index, gasketKey=edgeStateKey(entry.part,index),id=gasketKey;
+    const decisions=draft().gasketChoices||(draft().gasketChoices={});
     if(!Object.hasOwn(decisions,gasketKey)){
       if(!gasketAt(entry.part,index))setGasket(entry.part,index,{full:true,depth:0});
       decisions[gasketKey]=true;
     }
-    const current = () => {
-      const part = geometry().parts.find(item => item.key === key);
-      return {part, edge: part.edges[index], gasket: gasketAt(part, index)};
-    };
-    const common = {gasketRef: {key, index}, title: 'Guarnizione · ' + entry.label};
+    const ref={key,index,surfaceKey:gasketKey},editingDraft=draft(),current=()=>draft()===editingDraft?gasketReference(ref):null;
+    const common = {gasketRef: ref, title: 'Guarnizione · ' + entry.label};
     const quote = entry.part.quotes.find(q => /^b(?:1|2)?$/.test(q.key) &&
       Math.abs(q.from[0] - entry.edge.a[0]) < 1e-6 && Math.abs(q.to[0] - entry.edge.b[0]) < 1e-6);
     if (quote || model().jamb === 'extension') steps.push({id: 'battuta-misura-' + id, title: entry.label + ' · larghezza',
       q: 'Quanto è larga la superficie della battuta? Questa misura determina lo spazio per la guarnizione.',
-      fig: 'gasketSurface', gasketRef: {key, index}, min: .1,
+      fig: 'gasketSurface', gasketRef: ref, min: .1,
       max: quote ? 150 : entry.edge.b[1] > entry.edge.a[1] ? 150 - draft().p.s : draft().p.s - .1,
-      get: () => current().edge.len,
+      get: () => current()?.edge.len||0,
       set: value => {
+        const target=current();if(!target)return;
         if (quote) draft().p[quote.key] = value;
-        else draft().p.sI = draft().p.s + Math.sign(entry.edge.b[1] - entry.edge.a[1]) * value;
+        else draft().p.sI = draft().p.s + Math.sign(target.edge.b[1] - target.edge.a[1]) * value;
         (draft().measured||(draft().measured={}))[quote?quote.key:'sI']=true;
         sync();
       }});
     steps.push({...common, id: 'guarnizione-presenza-' + id, choice: 'gasketPresence',
       q: `C’è una guarnizione sulla ${entry.label.toLocaleLowerCase('it-IT')}? La pellicola viene tagliata ai suoi bordi.`,
-      present: () => !!current().gasket,
+      present: () => !!current()?.gasket,
       choose: present => {
-        const {part, gasket} = current();
+        const target=current();if(!target)return;
+        const {part, gasket,index:currentIndex} = target;
         decisions[gasketKey]=present;
-        if (!present) removeGasket(part, index);
-        else if (!gasket) setGasket(part, index, {full: true, depth: 0});
+        if (!present) removeGasket(part, currentIndex);
+        else if (!gasket) setGasket(part, currentIndex, {full: true, depth: 0});
         sync();
       }});
-    if (!current().gasket) return;
+    if (!current()?.gasket) return;
     steps.push({...common, id: 'guarnizione-estensione-' + id, choice: 'gasketExtent',
       q: 'La guarnizione copre tutta la battuta oppure ne occupa solo una parte?',
-      full: () => current().gasket.full,
-      choose: full => { setGasket(current().part, index, {full}); sync(); }});
-    if (current().gasket.full) return;
+      full: () => !!current()?.gasket?.full,
+      choose: full => { const target=current();if(!target)return;setGasket(target.part,target.index,{full}); sync(); }});
+    if (current()?.gasket?.full) return;
     steps.push({...common, id: 'guarnizione-larghezza-' + id, fig: 'gasketWidth',
       q: `Quanto è larga la guarnizione? La battuta misura ${fmt(current().edge.len)} mm.`,
-      min: .1, max: current().edge.len,
-      get: () => current().gasket.w,
-      set: value => { setGasket(current().part, index, {w: value, full: false}); update(); }});
+      min: .1, max: current()?.edge.len||0,
+      get: () => current()?.gasket?.w||0,
+      set: value => { const target=current();if(!target)return;setGasket(target.part,target.index,{w: value, full: false}); update(); }});
     steps.push({...common, id: 'guarnizione-inizio-' + id, fig: 'gasketStart',
       q: 'A quanti millimetri dal primo spigolo della battuta inizia la guarnizione? Nel disegno il primo spigolo è indicato con 0.',
-      min: 0, max: Math.max(0, current().edge.len - current().gasket.w),
-      get: () => gasketSpan(current().part, index).start,
-      set: value => { setGasket(current().part, index, {start: value, full: false}); update(); },
-      error: () => gasketError(current().part)});
+      min: 0, max: Math.max(0, (current()?.edge.len||0) - (current()?.gasket?.w||0)),
+      get: () => {const target=current();return target?gasketSpan(target.part,target.index)?.start||0:0;},
+      set: value => { const target=current();if(!target)return;setGasket(target.part,target.index,{start: value, full: false}); update(); },
+      error: () => current()?gasketError(current().part):'La superficie non è più presente in questo profilo.'});
   });
   return steps;
 }
@@ -4012,8 +4030,9 @@ function measureFig(kind, val) {
 }
 function gasketMeasureFigure(m, value, mode) {
   const svg = el('svg', {class: 'mt-wiz-fig', viewBox: '0 0 260 180', 'aria-hidden': 'true'});
-  const part = geometry().parts.find(item => item.key === m.gasketRef.key), edge = part.edges[m.gasketRef.index];
-  const span = gasketSpan(part, m.gasketRef.index);
+  const target=gasketReference(m.gasketRef);if(!target)return svg;
+  const {part,index,edge}=target;
+  const span = gasketSpan(part, index);
   const surface = m.fig === 'gasketSurface';
   const start = mode === 'none' || surface ? 0 : mode === 'full' ? 0 : span?.start || 0;
   const width = mode === 'none' || surface ? 0 : mode === 'full' ? edge.len : span?.width || Math.min(4, edge.len);

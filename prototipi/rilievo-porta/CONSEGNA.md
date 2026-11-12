@@ -22,6 +22,14 @@ semplice consegna; una pubblicazione dovrà essere richiesta separatamente.
 - Guarnizione iniziale Sì per ogni battuta; copertura intera o larghezza e
   posizione reali. Modificabile ed eliminabile. Interrompe la pellicola.
   Le scelte esplicite No/eliminata rimangono conservate tornando nella guida.
+- Guarnizioni, decisioni Sì/No, copertura e separazioni usano le identità stabili
+  delle superfici (`edgeStateKey`), assegnate prima delle teste a vista variabili.
+  Le battute hanno chiavi `rebate:1`/`rebate:2`, conservate anche se cambia il
+  pezzo che ospita la battuta dell'imbotte. Non usare gli indici del disegno
+  come chiavi di stato: aggiungere la testa esterna cambia quegli indici.
+  Anche i riferimenti già aperti della guida risolvono la superficie attuale
+  e non possono scrivere in un'altra bozza. L'avviso di anta incassata nella
+  doppia battuta non deve descriverla come una battuta singola.
 - Anta: sopra e sui lati il foglio destro sta sotto e il sinistro sopra.
   Nella battentata si sovrappongono sul tratto Lb fino allo spigolo basso;
   nella semplice entrambi coprono tutto lo spessore. Sotto: completo, due metà
@@ -63,12 +71,13 @@ semplice consegna; una pubblicazione dovrà essere richiesta separatamente.
 
 ## Verifica dello stato consegnato
 
-HTML SHA256: `9de08d6a904ed0d7289fbcf1fdfbf4d07a276ae2408aa2d010db792b657577b5`.
+HTML SHA256: `9afa2e72062ab488773399cc815af7206438852918ac763405a8fe9dcc20286d`.
 
-Superati 98 gruppi di verifica sul JavaScript effettivo in Node VM e DOM simulato:
+Superati 104 gruppi di verifica sul JavaScript effettivo in Node VM e DOM simulato:
 guarnizioni 17, profili raggiati/smussati 21, ordine grafico dei sormonti 10,
 sormonti automatici 8, anta e tagli 12, sezione e scorte 9, bobine uniformi e
-luce minima 9, sezione dell'anta e appoggio 8, regole di chiusura e fuga 4. Verificati sintassi e SVG reali
+luce minima 9, sezione dell'anta e appoggio 8, regole di chiusura e fuga 4,
+aggancio stabile delle superfici 6. Verificati sintassi e SVG reali
 esportati in PNG, compresa la sezione quotata in modalità chiara e scura. L'ultima
 iterazione non ha una verifica browser completa: gli strumenti di anteprima
 non erano disponibili. Gli script e gli artefatti di sessione restano fuori

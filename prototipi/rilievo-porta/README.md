@@ -81,6 +81,9 @@ integrato nell'app Sopralluoghi**.
   manuali fuori misura restano conservate e bloccano i tagli fino alla correzione.
 
 ### Guarnizioni
+- Ogni guarnizione resta agganciata alla propria superficie. Spostare i coprifili,
+  aggiungere o togliere una testa a vista non la trasferisce su un altro tratto.
+  Anche le esclusioni di pellicola e le separazioni restano sulla superficie scelta.
 - Nella creazione guidata la scelta iniziale è **Sì**, su ciascuna battuta,
   inizialmente coperta per intero. Un No esplicito o un'eliminazione vengono
   conservati e non sono sovrascritti tornando nella guida.
