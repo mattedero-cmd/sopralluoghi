@@ -34,6 +34,27 @@ semplice consegna; una pubblicazione dovrà essere richiesta separatamente.
   Nella battentata si sovrappongono sul tratto Lb fino allo spigolo basso;
   nella semplice entrambi coprono tutto lo spessore. Sotto: completo, due metà
   senza sovrapposizione, oppure scoperto. Sopra resta sempre rivestita.
+- La ricerca in `RICERCA-ANTE.md` documenta sagome e guarnizioni anche sull’anta,
+  su fonti ECO Schulte, Westag e Sebino. L’utente conferma guarnizioni su entrambi
+  gli elementi. Dalla foto non si identifica un ulteriore inserto rigido certo:
+  nessun dente o sede proprietaria è stato inventato.
+- **Due scalini** aggiunge Lb2 e Sb2 indipendenti dal telaio. `doorProfileEdges`
+  è la sagoma comune per sezione, film e tagli. Senza guarnizioni si sceglie
+  esplicitamente lo scalino del sormonto; non si deduce dall’arresto del telaio.
+- `door.profileOptions` conserva per sagoma guarnizioni e scelta del sormonto.
+  Chiavi `leaf:<tipo>:<superficie>`, separate da quelle della maestà. La guida
+  parte da Sì ma richiede la superficie; non inventa una posizione della gomma.
+  Le fasce rettilinee si modificano ed eliminano nella scheda Anta. Si estendono
+  sopra e sui due lati; sotto restano le tre opzioni precedenti.
+- `leafProfileRanges` sottrae la gomma dallo sviluppo reale. I fogli terminano
+  ai suoi bordi; i tratti rimasti separati generano tre strisce aggiuntive
+  (due montanti e traverso), con abbondanze e lunghezze proprie. Il risvolto
+  in cava facoltativo si somma ai bordi adiacenti. Distinta e bobine usano
+  gli stessi pezzi; nessun sormonto marrone passa attraverso la guarnizione.
+- `closedDoorLeaf` verifica anche i contatti delle guarnizioni dell’anta con
+  piani orizzontali e verticali del telaio. La sezione riflessa inverte le
+  coordinate del tratto, mantenendo l’origine della misura. Ogni fascia
+  senza appoggio viene segnalata, anche se un’altra fascia appoggia.
 - Abbondanze iniziali: anta 25 mm per lato; stipiti, coprifili e imbotte
   15 mm a ogni estremità. Misure visibili e inseribili con massimo due decimali.
 - L/H indicano la luce minima sulla parte più spessa dello stipite, mai la
@@ -83,20 +104,24 @@ semplice consegna; una pubblicazione dovrà essere richiesta separatamente.
 
 ## Verifica dello stato consegnato
 
-HTML SHA256: `f0c4b339baded7dd5db427afff723811a2c57d83dc8cfd72fc0359a7067f375c`.
+HTML SHA256: `d0589fc394655e3dd1ebea2a078a46dbba0f772efdd2448d6b75e6352baa8403`.
 
-Superati 121 gruppi di verifica: guarnizioni 17, profili raggiati/smussati 21,
+Superati 144 gruppi di verifica: guarnizioni 17, profili raggiati/smussati 21,
 ordine grafico dei sormonti 10, sormonti automatici 8, anta e tagli 12, sezione
 e scorte 9, bobine uniformi e luce minima 9, sezione e appoggio dell'anta 8,
 regole di chiusura 4, aggancio stabile delle superfici 6, nuovo modello di
-chiusura 12, flusso dell'interfaccia 5. Le vecchie prove che imponevano la
+chiusura 12, flusso dell'interfaccia 5, profili e guarnizioni dell’anta 17,
+flusso completo dell’anta e dei suoi controlli 6. Le vecchie prove che imponevano la
 regola singola/doppia o Lb=b1 sono state aggiornate ai requisiti documentati;
 i confronti di taglio usano le stesse quote fisiche esplicite.
 
 Verificati sintassi, JavaScript effettivo in Node VM, avvio completo e creazione
-filomuro in jsdom con elementi ed eventi DOM reali, distinta e piano bobine.
-Esportate sei sezioni SVG reali in entrambi i temi e ispezionate le immagini
-PNG dei casi principali. La verifica in jsdom non è una verifica di rendering
+filomuro e anta battentata con guarnizioni su entrambi gli elementi in jsdom,
+con elementi ed eventi DOM reali, tastierino a due decimali, distinta e bobine.
+Verificati conservazione del materiale, tratti isolati e fasce fuori misura.
+Esportate sezioni SVG reali in entrambi i temi e ispezionate le immagini
+PNG dei casi principali, comprese doppia battuta e sezione riflessa.
+La verifica in jsdom non è una verifica di rendering
 browser: gli strumenti browser previsti non erano disponibili. Script, dipendenze
 di verifica e artefatti rimangono fuori dal prototipo; l'HTML non ha dipendenze.
 

@@ -4,6 +4,9 @@ Ricerca su fonti dei produttori, consultate il 12 novembre 2026.
 Ambito concordato: porte battenti con coprifili e filomuro. Le altre aperture
 restano da sviluppare con un rilievo dedicato.
 
+L’estensione su sagome dell’anta, doppio scalino e guarnizioni montate anche
+sull’anta è documentata in [RICERCA-ANTE.md](RICERCA-ANTE.md).
+
 ## Distinzioni usate nell'app
 
 | Aspetto | Significato nel rilievo |

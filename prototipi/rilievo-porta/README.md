@@ -22,7 +22,9 @@ integrato nell'app Sopralluoghi**.
    coprifilo per lato (a filo, arretrato, sporgente) → angoli (montanti passanti,
    traverso passante, 45°) → riepilogo.
 2. **Misure guidate**, una per schermata, con disegno e tastierino: luce L e H, bordo
-   dell'anta, L/H/S dell'anta (+ battuta, posizione nello spessore o raggio),
+   dell'anta (squadrato, uno scalino, due scalini o arrotondato), L/H/S dell'anta
+   (+ altezze e posizioni degli scalini oppure raggio), guarnizione sull’anta
+   (superficie, tutta la larghezza o misure precise),
    **chiusura sovrapposta, a filo o rientrata**, piano di riferimento (coprifilo,
    estremità dello stipite o parete nel filomuro), superficie di appoggio
    dell'anta e battuta del telaio. Poi posizione rilevata dell'arresto, facce
@@ -149,12 +151,30 @@ integrato nell'app Sopralluoghi**.
 
 ### Anta
 
+- La sagoma del legno e le guarnizioni si rilevano separatamente. La ricerca
+  su fonti ECO Schulte, Westag e Sebino è in [RICERCA-ANTE.md](RICERCA-ANTE.md).
+  Oltre ai profili precedenti, **Due scalini** aggiunge Lb2 e Sb2 indipendenti
+  dal telaio. La guida non ricava la sagoma da quella dello stipite.
+- **Guarnizioni sull’anta** è una sezione apribile nella scheda Anta, distinta
+  da Guarnizioni della Maestà. La guida parte da Sì e richiede la superficie;
+  si sceglie tutto il tratto oppure larghezza e inizio dal suo spigolo 0.
+  Le fasce si modificano, aggiungono o eliminano per ogni tratto rettilineo.
+  La configurazione vale sopra e sui due lati; il bordo inferiore resta separato.
+- Una guarnizione sull’anta interrompe il rivestimento. I fogli si arrestano
+  ai suoi bordi; eventuali tratti isolati diventano strisce separate sui tre
+  lati, comprese nella distinta e nel piano bobine. Il risvolto in cava
+  facoltativo si somma ai bordi adiacenti. Il disegno usa lo stesso sviluppo.
+- La sezione verifica separatamente i contatti delle guarnizioni dell’anta
+  con il telaio, anche con guarnizioni su entrambi. Segnala ciascuna fascia
+  che non trova appoggio. Le quote della gomma non aumentano quelle del legno.
 - **Sopra e sui lati** il rivestimento è completo: prima il foglio destro, poi
   il sinistro sopra. Nell'anta semplice entrambi girano su tutto lo spessore S;
   nell'anta battentata si sovrappongono solo sul tratto verticale Lb, chiudendo
-  nello spigolo basso. La linguetta marrone centrale mostra il sormonto.
+  nello spigolo basso. Con due scalini, in assenza di guarnizioni che
+  interrompono la pellicola, si sceglie su quale effettuare il sormonto.
+  La linguetta marrone centrale mostra il sormonto; sulle guarnizioni non compare.
 - L e H si misurano sulla faccia destra, lato battuta. La faccia sinistra misura
-  L + 2Lb e H + Lb. **Sb** è la posizione della battuta nello spessore, inizialmente
+  L + 2Lb e H + Lb; con due scalini si usa la somma Lb + Lb2. **Sb** è la posizione della battuta nello spessore, inizialmente
   S/2 come esempio modificabile e da rilevare, senza dedurla dallo stipite:
   il sinistro risvolta Sb + Lb, il destro S − Sb + Lb.
 - **Sotto**, verso il pavimento: sormonto completo (iniziale e consigliato),
