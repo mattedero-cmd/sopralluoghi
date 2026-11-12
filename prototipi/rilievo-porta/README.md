@@ -16,45 +16,39 @@ integrato nell'app Sopralluoghi**.
 
 ## Come si usa
 
-La revisione della guida mostra **una scelta per schermata** e una sola
-anteprima grande, con la quota sulla zona interessata. Scalini dell’anta,
-sporgenza/rientro, posizione della battuta e guarnizioni hanno linee di quota
-con riferimenti sul profilo reale. La battuta è mostrata con l’anta in sezione,
-senza lo schema isolato a Z.
+La guida presenta una domanda per schermata e una sola anteprima grande.
+La prima scelta è **la posizione della maniglia**, guardando la porta dal lato
+in cui si tira verso di sé: maniglia e cerniere indicano come orientare la vista.
+Le anteprime e la sezione seguono quel verso; quote e tagli non cambiano.
 
-1. **Creazione guidata del modello**, una scelta alla volta:
-   battuta (nessuna, singola, doppia, con imbotte) → coprifilo (senza coprifili / filomuro, squadrato, smussato,
-   raggiato, modanato, a gradino, telescopico, a sormonto, integrato) → posizione del
-   coprifilo per lato (a filo, arretrato, sporgente) → presenza del traverso superiore
-   → una o due ante → angoli, se il traverso è presente (montanti passanti,
-   traverso passante, 45°) → riepilogo.
-2. **Misure guidate**, una per schermata, con disegno e tastierino: luce L e H, bordo
-   dell'anta (squadrato, uno scalino, due scalini o arrotondato), L/H/S dell'anta
-   (+ altezze e posizioni degli scalini oppure raggio), guarnizione sull’anta
-   (sede automatica se unica, altrimenti scelta; tutta la larghezza o misure precise),
-   **chiusura sovrapposta, a filo o rientrata**, piano di riferimento (coprifilo,
-   estremità dello stipite o parete nel filomuro), superficie di appoggio
-   dell'anta e battuta del telaio. Poi posizione rilevata dell'arresto, facce
-   da rivestire, chiusura del bordo inferiore e abbondanze di
-   maestà e anta. I sormonti di giunzione seguono automaticamente lo spigolo; la guida
-   mostra le misure calcolate. Per ogni battuta chiede la sua
-   larghezza, se c'è la guarnizione e se copre tutta la battuta oppure la sua
-   larghezza e la distanza di inizio dal primo spigolo.
-   Ogni passaggio numerico mostra la linea di quota: comprende profondità e
-   spessori del telaio a vista, anche con imbotte, raggi e sormonti. Il piano di
-   riferimento si chiede solo se esiste una scelta effettiva; con un solo piano
-   o con battuta sul coprifilo viene impostato automaticamente.
-3. **Sezione a mano** nel banco di lavoro: si trascinano i lati del pezzo (1 mm ogni
-   7 px), il coprifilo si sposta su e giù prendendolo dal centro, un tocco apre il
-   tastierino accanto alla quota. Nella sezione piccola restano solo le quote
-   essenziali; nello strumento Pellicola il disegno è pulito, senza quote. Lo
-   sviluppo in piano e le spiegazioni dei sormonti sono raccolti in dettagli apribili.
-4. Strumenti del banco di lavoro: **Misure**, **Pellicola** (tratti da rivestire,
-   separazioni, sormonti S), **Guarnizioni** (fascia alla larghezza e posizione
-   effettive, misure modificabili e pulsante Elimina), **Tagli**
-   (porta vista di fronte, giunzione per pezzo, esclusione di un pezzo).
-5. **Riepilogo**: totali e sequenza di posa. **Lavoro**: porte tipo con quantità,
-   distinta di taglio e piano bobine.
+1. **Modello:** lato della maniglia → battuta → forma del coprifilo →
+   posizione del coprifilo esterno e interno in due passaggi distinti →
+   traverso superiore presente/assente → una/due ante → angoli, se presenti.
+   Non c’è più il riepilogo «Pronto per le misure».
+2. **Misure:** luce minima dello stipite, senza anta nel disegno; poi bordo,
+   larghezza, altezza e spessore dell’anta. Larghezza e altezza dell’anta si
+   rilevano sulla **faccia più grande, comprese le battute**: la figura mostra
+   solo l’anta, la maniglia e la quota esterna, senza maestà.
+3. **Guarnizioni:** le presenze sullo stipite e sull’anta vengono chieste di seguito,
+   poi vengono le rispettive misure e posizioni. Su due ante, le presenze delle
+   due ante rimangono nello stesso gruppo. Sul bordo diritto non si propone
+   una guarnizione dell’anta. Con una sola sede possibile non si chiede la posizione.
+   «Tutta la battuta» significa gomma da uno spigolo all’altro; altrimenti si
+   misurano larghezza e inizio.
+4. **Chiusura e rivestimento:** modo di chiusura, riferimento solo quando c’è
+   una scelta effettiva, appoggio, quote della battuta, facce, bordo inferiore
+   e abbondanze. Ogni misura ha una quota sul dettaglio interessato. La quota
+   della battuta dello stipite mostra lo stipite, senza un’anta che possa
+   essere confusa con l’oggetto da misurare. Non ci sono pagine informative sui
+   sormonti automatici nella guida; i calcoli e le misure manuali necessarie rimangono.
+5. **Banco di lavoro:** Misure, Pellicola, Guarnizioni e Tagli; poi Riepilogo
+   e Lavoro, con porte tipo, distinta e piano bobine. Quote manuali, eliminazione
+   delle guarnizioni, dettagli dei sormonti e scorte rimangono modificabili.
+
+Nei dettagli del coprifilo la **parete è a righe**, lo **stipite ha un
+tratteggio incrociato** e il **coprifilo è pieno**; i tre elementi hanno il
+proprio nome. La forma selezionata ha un dettaglio grande e le altre forme
+rimangono pulsanti compatti. Il posizionamento mostra un solo lato alla volta.
 
 ## Regole decise
 
@@ -90,8 +84,8 @@ senza lo schema isolato a Z.
   immediatamente il sormonto, il disegno, gli sviluppi e i tagli. I vecchi valori
   manuali non bloccano più queste giunzioni. A filo, per raggiati e smussati,
   resta un solo pezzo continuo e non viene aggiunto alcun sormonto.
-- La guida mostra le lunghezze automatiche, senza chiederle una seconda volta.
-  Le relative quote si consultano ma non si possono staccare dalla geometria
+- Le lunghezze automatiche si consultano nell’editor, senza pagine informative
+  aggiuntive nella guida. Le relative quote non si possono staccare dalla geometria
   con il tastierino o trascinando una S. Le misure restano al massimo a due decimali.
 - Gli altri giunti, compresi stipite–imbotte e le sedi non spostabili, conservano
   le misure manuali e la validazione entro lo spazio disponibile. Le guarnizioni
@@ -178,8 +172,11 @@ senza lo schema isolato a Z.
   su fonti ECO Schulte, Westag e Sebino è in [RICERCA-ANTE.md](RICERCA-ANTE.md).
   Oltre ai profili precedenti, **Due scalini** aggiunge Lb2 e Sb2 indipendenti
   dal telaio. La guida non ricava la sagoma da quella dello stipite.
-- **Guarnizioni sull’anta** è una sezione apribile nella scheda Anta, distinta
-  da Guarnizioni della Maestà. La guida parte da Sì e mostra subito la fascia
+- Il **bordo diritto dell’anta non ha guarnizioni sull’anta**: non compare la
+  domanda, non si possono aggiungere fasce nell’editor e vecchie fasce residue
+  non generano tagli. Rimane indipendente la guarnizione dello stipite.
+- Per gli altri profili, **Guarnizioni sull’anta** è una sezione apribile
+  nella scheda Anta, distinta da Guarnizioni della Maestà. La guida parte da Sì e mostra la fascia
   gialla con una freccia; No mostra lo stesso profilo senza gomma. Con una
   sola sede, Sì o Avanti la assegna direttamente e salta la domanda sulla
   superficie. La scelta della sede resta per i profili più complessi.
@@ -204,16 +201,26 @@ senza lo schema isolato a Z.
   stipite rende la combinazione non selezionabile e blocca i tagli di un
   insieme incoerente già misurato. Scegliere Faccia non disattiva il controllo.
   La faccia resta disponibile se le quote producono un contatto reale.
-- **Sopra e sui lati** il rivestimento è completo: prima il foglio destro, poi
-  il sinistro sopra. Nell'anta semplice entrambi girano su tutto lo spessore S;
+- **Sopra e sui lati** il rivestimento è completo: prima il foglio del lato
+  battuta, poi quello della faccia opposta sopra. Nell’anta semplice si posa
+  prima l’interno e poi l’esterno ed entrambi girano su tutto lo spessore S;
   nell'anta battentata si sovrappongono solo sul tratto verticale Lb, chiudendo
   nello spigolo basso. Con due scalini, in assenza di guarnizioni che
   interrompono la pellicola, si sceglie su quale effettuare il sormonto.
   La linguetta marrone centrale mostra il sormonto; sulle guarnizioni non compare.
-- L e H si misurano sulla faccia destra, lato battuta. La faccia sinistra misura
-  L + 2Lb e H + Lb; con due scalini si usa la somma Lb + Lb2. **Sb** è la posizione della battuta nello spessore, inizialmente
-  S/2 come esempio modificabile e da rilevare, senza dedurla dallo stipite:
-  il sinistro risvolta Sb + Lb, il destro S − Sb + Lb.
+- **L e H sono le misure della faccia più grande, comprese le battute.**
+  Con un’altezza totale degli scalini b, la faccia opposta più piccola misura
+  L − 2b e H − b. Con due scalini b = Lb + Lb2. Risvolti, guarnizioni, strisce
+  isolate e abbondanze si sommano poi alle rispettive facce, senza aggiungere
+  nuovamente le battute alla faccia già misurata.
+- `sizeBasis:'outer'` identifica il nuovo riferimento. Un vecchio stato senza
+  questo campo conserva la convenzione precedente (`back`): i suoi tagli
+  fisici non cambiano. Nella guida, editare o confermare L/H converte entrambe
+  le quote nella faccia grande senza alterare la geometria. Il lavoro conserva
+  il riferimento di misura nei metadati di ogni anta.
+- **Sb** resta la posizione della battuta nello spessore, inizialmente S/2
+  come esempio da rilevare, senza dedurla dallo stipite: il sinistro risvolta
+  Sb + Lb, il destro S − Sb + Lb.
 - **Sotto**, verso il pavimento: sormonto completo (iniziale e consigliato),
   due lembi a metà senza sovrapposizione, oppure bordo scoperto. Il bordo inferiore
   della battentata è diritto; questa scelta modifica solo il risvolto inferiore.
@@ -280,7 +287,8 @@ senza lo schema isolato a Z.
   restano conservate quando si rimette il traverso.
 - **Due ante, anche disuguali:** ciascuna ha larghezza, altezza, spessore, profilo,
   guarnizioni, facce, bordo inferiore e abbondanza propri. Le ante sono numerate
-  nel prospetto: 1 a sinistra, 2 a destra. La guida le rileva in successione;
+  nel prospetto: 1 a sinistra, 2 a destra. La guida ne rileva le geometrie
+  in successione, raggruppa le domande sulle guarnizioni e distingue le chiusure;
   struttura e quote comuni del telaio sono rilevate una volta sola. Il selettore
   è disponibile nella scheda Anta e nella sezione dello stipite.
 - **Tagli e bobine:** il telaio compare una sola volta; i fogli e gli eventuali
@@ -345,6 +353,20 @@ Il numero di posa (P01…) è anche il numero del taglio. L'ordine si può cambi
   nesting.
 
 Tutti i parametri del piano bobine si possono modificare dalla scheda Lavoro.
+
+## Verifica e copia online
+
+Il rapporto [VERIFICA-USABILITA.json](VERIFICA-USABILITA.json) descrive i controlli
+di questa revisione: sintassi, modello, SVG e navigazione simulata con gli
+eventi dei controlli. Non è una prova di rendering in browser né in jsdom.
+Il codice resta senza dipendenze.
+
+L’ultimo ambiente di lavoro non è ripartito per un errore del servizio (503).
+Il salvataggio sul branch è stato completato tramite il connettore GitHub;
+**la copia privata online resta alla versione precedente** e dovrà essere
+aggiornata dal sorgente di questo branch quando torna disponibile l’ambiente.
+I dettagli per riprendere sono in [CONSEGNA.md](CONSEGNA.md). L’app principale
+non viene pubblicata da questo salvataggio.
 
 ## Da fare
 

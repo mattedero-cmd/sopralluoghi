@@ -1,0 +1,175 @@
+{
+  "date": "2026-11-12",
+  "file": "rilievo-porta.html",
+  "sourceSha256": "23a6051f1aa96df01f1eff743186089432071dffeb2b4f8ae8c88fb3bc0fc9eb",
+  "sourceBytes": 398575,
+  "sourceCharacters": 397987,
+  "mode": "V8 con DOM minimo simulato: funzioni reali del prototipo, eventi dei controlli e SVG; nessun bootstrap HTML/CSS completo, nessun jsdom o rendering browser. Alcuni ridisegni sono sostituiti durante la navigazione.",
+  "passed": 14,
+  "failed": 0,
+  "checks": [
+    {
+      "name": "JavaScript parses as a standalone script",
+      "pass": true
+    },
+    {
+      "name": "First explicit choice matches handle and opposite hinges, with an unambiguous pull-side view",
+      "pass": true
+    },
+    {
+      "name": "Casing selection has one material-labeled detail; each side has its own position step",
+      "pass": true
+    },
+    {
+      "name": "All 54 casing shape/side/position details have finite outlines and different wall/jamb hatching",
+      "pass": true,
+      "detail": {
+        "figures": 54
+      }
+    },
+    {
+      "name": "Opening and leaf measurements show only the measured object, with exterior dimensions and a visible handle",
+      "pass": true
+    },
+    {
+      "name": "A straight square leaf cannot create a gasket or phantom film cut, including stale profile options",
+      "pass": true
+    },
+    {
+      "name": "Largest-face measurements preserve the physical cut plan for one and two rebates, including isolated gasket edge strips",
+      "pass": true,
+      "detail": {
+        "variants": 4
+      }
+    },
+    {
+      "name": "Gasket presence questions are consecutive for the frame and both complex leaves, with details afterwards",
+      "pass": true,
+      "detail": {
+        "presence": [
+          "guarnizione-presenza-rebate:1",
+          "guarnizione-presenza-rebate:2",
+          "anta-guarnizione",
+          "leaf2-anta-guarnizione"
+        ]
+      }
+    },
+    {
+      "name": "Reference and closure previews label the real components; jamb-stop dimensions have no leaf shape",
+      "pass": true
+    },
+    {
+      "name": "A square leaf selected as flush has zero projection and a valid nonempty cutting list",
+      "pass": true,
+      "detail": {
+        "valid": true,
+        "projection": 0,
+        "warning": "",
+        "rows": 14
+      }
+    },
+    {
+      "name": "Mirroring the full section is applied exactly once and preserves a valid rebated leaf and all cutting quantities",
+      "pass": true
+    },
+    {
+      "name": "Complete one-leaf guided sequence: left handle, flush closure, explicit dimensions and job addition",
+      "pass": true,
+      "detail": {
+        "visited": [
+          "apertura",
+          "battuta",
+          "coprifilo",
+          "posizioneE",
+          "posizioneI",
+          "traverso",
+          "ante",
+          "angoli",
+          "m:luceW",
+          "m:luceH",
+          "m:antaTipo",
+          "m:antaL",
+          "m:antaH",
+          "m:antaS",
+          "m:guarnizione-presenza-rebate:1",
+          "m:battuta-misura-rebate:1",
+          "m:guarnizione-estensione-rebate:1",
+          "m:antaModoChiusura",
+          "m:antaRiferimento",
+          "m:telaioArresto",
+          "m:facce",
+          "m:anta-bordo-inferiore",
+          "m:abbMaesta",
+          "m:abbAnta"
+        ],
+        "numeric": 9,
+        "pieces": 14,
+        "sizes": [
+          {
+            "L": 824,
+            "H": 2112
+          }
+        ]
+      }
+    },
+    {
+      "name": "Complete unequal two-leaf sequence without header or casings: independent sizes, unique frame count and job addition",
+      "pass": true,
+      "detail": {
+        "visited": [
+          "apertura",
+          "battuta",
+          "coprifilo",
+          "traverso",
+          "ante",
+          "m:luceW",
+          "m:luceH",
+          "m:telaio-D",
+          "m:telaio-s",
+          "m:antaTipo",
+          "m:antaL",
+          "m:antaH",
+          "m:antaS",
+          "m:leaf2-antaTipo",
+          "m:leaf2-antaL",
+          "m:leaf2-antaH",
+          "m:leaf2-antaS",
+          "m:antaModoChiusura",
+          "m:facce",
+          "m:anta-bordo-inferiore",
+          "m:abbAnta",
+          "m:leaf2-antaModoChiusura",
+          "m:leaf2-facce",
+          "m:leaf2-anta-bordo-inferiore",
+          "m:leaf2-abbAnta",
+          "m:abbMaesta"
+        ],
+        "numeric": 13,
+        "pieces": 6,
+        "sizes": [
+          {
+            "L": 640.25,
+            "H": 2112
+          },
+          {
+            "L": 359.75,
+            "H": 2108.5
+          }
+        ]
+      }
+    },
+    {
+      "name": "Door drawing does not fail for either face covered alone, both faces or no face",
+      "pass": true,
+      "detail": {
+        "variants": 4
+      }
+    }
+  ],
+  "operationalBlocker": "Ambiente di lavoro non disponibile dopo errore 503/gateway_unavailable in creazione container. Copia Sites non aggiornata; nessuna pubblicazione dell’app principale.",
+  "trial": {
+    "url": "https://rilievo-porta-prova.matteo89.chatgpt.site",
+    "updated": false,
+    "previousSourceSha256": "a2032b248b17b1b7e3fdfca54d7e41b8004a589329c522753181c0c0419a4722"
+  }
+}
