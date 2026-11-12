@@ -96,9 +96,16 @@ rimangono pulsanti compatti. Il posizionamento mostra un solo lato alla volta.
 - Ogni guarnizione resta agganciata alla propria superficie. Spostare i coprifili,
   aggiungere o togliere una testa a vista non la trasferisce su un altro tratto.
   Anche le esclusioni di pellicola e le separazioni restano sulla superficie scelta.
-- Nella creazione guidata la scelta iniziale è **Sì**, su ciascuna battuta,
-  inizialmente coperta per intero. Un No esplicito o un'eliminazione vengono
-  conservati e non sono sovrascritti tornando nella guida.
+- **Una sola guarnizione iniziale, la più comune**: sulla battuta dove appoggia
+  l'anta, coperta per intero. Le altre battute partono senza; sull'anta la scelta
+  iniziale è No. Si toglie o si cambia nella guida o nella scheda Guarnizioni.
+  Un No esplicito o un'eliminazione vengono conservati tornando nella guida.
+- **Solo dove l'anta preme**: una guarnizione del telaio si può mettere solo su
+  una battuta (stipite, o coprifilo di battuta) che almeno un'anta tocca davvero.
+  Frontali e teste dei coprifili, coprifilo interno e facce dello stipite verso la
+  luce non la accettano. Se cambiando anta o misure una battuta non viene più
+  toccata, la sua guarnizione sparisce. Su ogni contatto al massimo una guarnizione:
+  o sull'anta o sul telaio.
 - Una guarnizione interrompe la pellicola: il suo ingombro viene escluso dal percorso
   verde e dallo sviluppo; ai suoi bordi nascono tagli separati.
 - **Tutta la battuta**: larghezza e posizione seguono automaticamente il tratto,
@@ -239,11 +246,16 @@ rimangono pulsanti compatti. Il posizionamento mostra un solo lato alla volta.
   nel rilievo indipendente. Il collegamento è ora possibile scegliendo
   esplicitamente nella guida quale elemento misurare e quale calcolare.
   Il vecchio automatismo Lb=b1 e il pulsante che lo ripristinava sono rimossi.
-  I valori iniziali (Lb 6, Sb S/2, sporgenza 10 mm) sono esempi, non standard di
+  I valori iniziali (Lb 6, Sb S/2, rientro 5 mm) sono esempi, non standard di
   fabbricazione. Nella guida le misure effettive si inseriscono sul disegno.
-- **Sovrapposta**: distanza positiva oltre il piano scelto; **a filo**: distanza
-  0; **rientrata**: distanza positiva di arretramento. Il rientro rimane un caso
-  rilevato, senza trasformarlo nel comportamento iniziale di tutte le porte.
+- **Solo combinazioni reali.** Con la battuta sullo stipite l'anta sta dentro il
+  telaio: **a filo** con l'estremità dello stipite (valore iniziale) oppure
+  **rientrata** di una distanza misurata. Non può sporgere oltre lo stipite senza
+  niente che copra la fessura. **Sovrapposta** esiste solo con lo scalino in
+  appoggio sul coprifilo di battuta, e la sporgenza è calcolata.
+- Scegliendo un'anta battentata, finché le misure non sono rilevate, l'esempio
+  prende lo scalino uguale alla battuta dello stipite (b, b1 o il gradino
+  dell'imbotte) e l'appoggio sullo scalino: si parte da una chiusura che combacia.
 - L'**appoggio** si sceglie sulla faccia oppure, per un'anta battentata, sullo
   scalino. Con più battute si sceglie quella effettiva di arresto. L'app verifica
   l'intersezione reale delle superfici con le guarnizioni, anche per i contatti
@@ -254,11 +266,13 @@ rimangono pulsanti compatti. Il posizionamento mostra un solo lato alla volta.
   tratteggiati e interruzione del corpo. Un segno individua il contatto effettivo;
   nella guida una linea indica il piano scelto. Il giallo rappresenta la
   guarnizione: lo spessore grafico è simbolico, la lunghezza segue la misura.
-  È rimossa la precedente fuga numerica di riferimento da 2 mm: non viene
-  inventata una distanza o simulata la compressione della guarnizione.
+  Fra bordo dell'anta e telaio si disegna una **fuga solo grafica** (3 mm): non si
+  misura, non entra in quote, verifiche o tagli e non simula la compressione.
 - Le posizioni automatiche servono a comporre l'esempio iniziale. Una posizione
   dello stipite inserita o **confermata con Avanti** diventa una quota rilevata.
-  Cambiare chiusura, sporgenza o bordo dell'anta non la sovrascrive. Se le quote
+  Cambiare chiusura, sporgenza o bordo dell'anta non la sovrascrive.
+  **Il rilievo comanda**: nemmeno «Misuro l'anta» riscrive una quota dello stipite
+  già rilevata; calcola solo quelle non ancora misurate. Se le quote
   non corrispondono alla chiusura scelta, l'app mostra la distanza effettiva e
   l'incompatibilità; non allarga il telaio o modifica la battuta dell'anta.
 - **Filomuro**: scegli Senza coprifili e il riferimento Parete. Si quotano il

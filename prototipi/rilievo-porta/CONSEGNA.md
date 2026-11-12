@@ -157,3 +157,44 @@ insufficienti e non introdurre quote standard come misure rilevate.
 
 Restano separati persistenza e integrazione nell’app, altre aperture, note per
 il posatore e maniglie dei raggi.
+
+## Revisione di Claude e correzioni concordate (12 novembre 2026)
+
+Prova in un browser vero (Chromium): 576 combinazioni di stipite, coprifilo,
+anta, battuta di arresto, appoggio e chiusura, più la guida percorsa per intero.
+Nessun errore di script. Problemi trovati nella versione consegnata, ancora
+presenti dopo il commit «Semplifica il rilievo guidato» e ora corretti sopra di esso:
+
+- L'anta squadrata partiva «sovrapposta»: 20 mm fuori dallo stipite e 10 mm oltre
+  il coprifilo, senza niente che coprisse la fessura (32 combinazioni).
+- Bordo dell'anta a contatto, a gioco zero, con stipite e testa del coprifilo in
+  tutti i casi.
+- Guarnizioni su battute che l'anta non tocca (34 combinazioni, ad esempio la
+  seconda battuta con anta semplice); guida con guarnizione Sì sull'anta e su
+  ogni battuta; scheda Guarnizioni che accettava qualsiasi lato, anche i coprifili.
+- «Misuro l'anta» riscriveva quote dello stipite già rilevate e componeva
+  battute da 5 mm; l'anta battentata su battuta singola partiva bloccata.
+
+Regole concordate con l'utente e applicate:
+
+1. Il rilievo comanda: una quota rilevata non viene mai riscritta per far
+   combaciare; se non torna si mostra un avviso.
+2. Fuga fra anta e telaio solo grafica (3 mm), fuori da quote e tagli.
+3. Solo combinazioni reali: con la battuta sullo stipite l'anta è a filo con
+   l'estremità dello stipite o rientrata; sovrapposta solo con la battuta sul
+   coprifilo (sporgenza calcolata). Esempio iniziale dell'anta battentata con lo
+   scalino uguale alla battuta.
+4. All'inizio una sola guarnizione, la più comune, sulla battuta in appoggio;
+   sull'anta No. Guarnizioni del telaio ammesse solo sulle battute che almeno
+   un'anta preme; quelle rimaste su battute non più toccate vengono tolte.
+5. Salvataggio: rimandato su richiesta dell'utente.
+
+Corretto anche il verso delle scritte senza allineamento esplicito nella
+vista specchiata (maniglia a sinistra): «ESTERNO» usciva dal riquadro.
+
+Esito della stessa prova dopo le correzioni: nessuna guarnizione non premuta,
+mai più di una guarnizione iniziale, nessuna anta fuori dal telaio. Restano
+avvisi corretti solo per lo stipite senza battuta (l'anta non ha dove chiudere)
+e per l'anta a due scalini su telaio a battuta singola.
+
+HTML SHA256 dopo la revisione: `aed9fad80d466d27cdac9feead56baba7f21dfee0c7d7ae58dd0a750334f145f`.
