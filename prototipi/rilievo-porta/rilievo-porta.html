@@ -59,6 +59,7 @@
  </div><div class="mt-cut-results" aria-live="polite"></div></details>
  </section>
  <section data-panel="door" id="mt-door-panel" aria-label="Anta" hidden>
+   <div class="mt-leaf-selector"></div>
    <div class="mt-subtitle"><h3>Profilo dell’anta</h3><span class="mt-small">Bordo in sezione</span></div>
    <div class="mt-door-types">
      <button type="button" class="cursor-interaction" data-door-type="square" aria-pressed="true">Squadrata</button>
@@ -130,6 +131,7 @@
     </div>
     <div class="mt-full-parts" aria-label="Pezzo"></div>
    </div>
+   <div class="mt-section-leaf-selector mt-closure-references" aria-label="Anta in sezione" hidden></div>
    <div class="mt-full-stage">
     <svg class="mt-full-svg" role="img" aria-label="Disegno del pezzo"></svg>
     <svg class="mt-elev" role="img" aria-label="Porta vista di fronte con la luce del passaggio e i pezzi"></svg>
@@ -606,7 +608,7 @@ function modelDefaults(m) {
 function createDraft(m) {
   return {p: modelDefaults(m), seatAuto:true, measured:{}, cover: {}, split: {}, cuts: {}, over: {}, gaskets: {}, gasketChoices: {}, joints: {}, skip: {}, order: null, part: 0, edge: 0};
 }
-const state = {cfg: {jamb: 'standard', casing: 'square'}, joint: 'miter', draft: createDraft()};
+const state = {cfg: {jamb: 'standard', casing: 'square'}, hasHead:true,leafCount:1,activeLeaf:0, joint: 'miter', draft: createDraft()};
 const drafts = new Map();
 const model = () => makeModel(state.cfg);
 const draft = () => state.draft;
@@ -1670,7 +1672,7 @@ function drawFrameQuotes(svg, g, p, X, Y, width, height, compact=false) {
   svg.append(quotes);
 }
 
-function drawClosedDoorLeaf(svg,leaf,X,Y) {
+function drawClosedDoorLeaf(svg,leaf,X,Y,options={}) {
   const points=leaf.points,upper=points.slice(0,-2),xy=points=>points.map(p=>X(p[0])+','+Y(p[1])).join(' ');
   const label=leaf.type==='double'?'Anta con due scalini':leaf.type==='lip'?'Anta battentata':leaf.type==='round'?'Anta con bordo arrotondato':'Anta semplice';
   const group=el('g',{'data-closed-leaf':leaf.type,'pointer-events':'none'});
@@ -1684,7 +1686,7 @@ function drawClosedDoorLeaf(svg,leaf,X,Y) {
   const left=X(leaf.x),right=X(leaf.x+leaf.w),bottom=Y(leaf.y+leaf.h),center=(left+right)/2,breakW=Math.min(7,(right-left)/8);
   group.append(el('path',{d:`M ${left} ${bottom} L ${center-breakW} ${bottom} l ${breakW/2} -2 l ${breakW} 4 l ${breakW/2} -2 L ${right} ${bottom}`,
     fill:'none',stroke:'var(--mt-secondary)','stroke-width':.8,'data-leaf-reference':'break'}));
-  group.append(el('text',{x:center,y:Y(leaf.y+leaf.h*.7),'text-anchor':'middle','dominant-baseline':'middle','font-size':11,fill:'var(--mt-secondary)'},'ANTA'));
+  if(options.label!==false)group.append(el('text',{x:center,y:Y(leaf.y+leaf.h*.7),'text-anchor':'middle','dominant-baseline':'middle','font-size':11,fill:'var(--mt-secondary)'},'ANTA'));
   svg.append(group);
   if(svg.getAttribute('data-closure-figure')==='true'){
     const x=X(leaf.referencePlane);
@@ -1747,7 +1749,7 @@ function drawRoundedFilm(svg, relations, X, Y, strokeWidth = 3) {
     svg.append(line);
   });
 }
-function roundedMeasureFigure() {
+function roundedMeasureFigure(reference=null,value='') {
   const svg = el('svg', {class: 'mt-wiz-fig', viewBox: '0 0 320 200', 'aria-hidden': 'true'});
   const g = geometry(), points = g.parts.flatMap(part => [...part.edges.flatMap(edge => [edge.a, edge.b]), ...part.hidden]);
   const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
@@ -1765,6 +1767,14 @@ function roundedMeasureFigure() {
   // I percorsi fisici sono già disegnati tutti con lo stesso spessore:
   // non sovrapporre un secondo tratto di evidenziazione allo stipite.
   g.parts.forEach(part=>['start','end'].forEach(which=>drawFilmOverlap(svg,part,which,X,Y)));
+  if(reference){const part=g.parts.find(part=>part.key===reference.key),points=part?overPath(part,reference.which):[];
+    if(points.length){const a=points[0],b=points.at(-1),vertical=Math.abs(b[1]-a[1])>Math.abs(b[0]-a[0]),dx=vertical?-9:0,dy=vertical?0:9;
+      const group=el('g',{'data-survey-dimension':'sorm-'+reference.key+'-'+reference.which,'data-axis':'path','data-world-from':a.join(','),'data-world-to':b.join(',')});
+      group.append(el('polyline',{points:points.map(p=>(X(p[0])+dx)+','+(Y(p[1])+dy)).join(' '),fill:'none',stroke:'var(--mt-green)','stroke-width':1.3}));
+      [a,b].forEach(p=>group.append(el('line',{x1:X(p[0]),y1:Y(p[1]),x2:X(p[0])+dx,y2:Y(p[1])+dy,stroke:'var(--mt-green)','stroke-width':1})));
+      group.append(el('text',{x:Math.max(35,Math.min(285,(X(a[0])+X(b[0]))/2+dx+(vertical?-20:0))),y:Math.max(15,Math.min(195,(Y(a[1])+Y(b[1]))/2+dy+(vertical?0:13))),'font-size':13,'text-anchor':'middle',fill:'var(--mt-green)',stroke:'var(--mt-paper)','stroke-width':4,'paint-order':'stroke'},'S '+value));svg.append(group);
+    }
+  }
   return svg;
 }
 // La lunghezza del segno segue l'ingombro reale sul profilo, anche sui raggi.
@@ -2071,6 +2081,7 @@ function trattoLevels(part, i) {
 // livello: montante H + livello, traverso L + 2 × livello, qualunque sia la giunzione.
 // Le facce frontali dipendono da come sono uniti i pezzi.
 function trattoLength(part, i) {
+  if(state.hasHead===false)return {m:luce.H,t:0};
   const {lo, hi, side} = trattoLevels(part, i), j = jointOf(part);
   if (side) return {m: luce.H + hi, t: luce.W + 2 * hi};
   if (j === 'posts') return {m: luce.H + hi, t: luce.W + 2 * lo};
@@ -2101,7 +2112,7 @@ function pieceLengths(part) {
 function partCut(part) {
   const stored = draft().cuts[part.key] || (draft().cuts[part.key] = {ends: 15});
   const L = pieceLengths(part), off = k => !!draft().skip[part.key + ':' + k];
-  return {length: off('length') ? 0 : L.length, right: off('right') ? 0 : L.right, head: off('head') ? 0 : L.head, ends: stored.ends};
+  return {length: off('length') ? 0 : L.length, right: off('right') ? 0 : L.right, head: state.hasHead===false||off('head') ? 0 : L.head, ends: stored.ends};
 }
 
 function update() {
@@ -2694,7 +2705,7 @@ function sync() {
   });
   showOverFields(part);
   const cut = partCut(part);
-  $$('[data-cut]').forEach(input => {input.value = cut[input.dataset.cut];});
+  $$('[data-cut]').forEach(input => {input.value = cut[input.dataset.cut];input.disabled=input.dataset.cut==='head'&&state.hasHead===false;});
   update();
 }
 
@@ -2718,6 +2729,54 @@ $$('[data-gasket]').forEach(input => input.addEventListener('input', () => {
 $('[data-action=split]').addEventListener('change',e=>{const part=geometry().parts[draft().part];draft().split[edgeStateKey(part,draft().edge)]=e.target.checked;update();});
 const door = {type: 'square', width: 800, height: 2100, thickness: 40, margin: 25, lip: 6, lipMeasured:false, rebateAt:null, lip2:6,rebateAt2:null,profileOptions:{}, radius: 3,fitBasis:null,
   closure:'overlap', reference:'casing', bearing:'face', stopTarget:'jamb',seatChoices:{}, stopSurfaceKey:'auto', projection:10, projectionMeasured:false, bottom:'overlap', covered: {}};
+const leafRecords=[null,null];
+function copyLeaf(value) {return Array.isArray(value)?value.map(copyLeaf):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([key,item])=>[key,copyLeaf(item)])):value;}
+function leafName(index=state.activeLeaf) {return state.leafCount===2?(index===0?'Anta sinistra':'Anta destra'):'Anta';}
+function replaceDoor(values) {Object.keys(door).forEach(key=>delete door[key]);Object.assign(door,values);}
+function withLeaf(index,fn,save=false) {
+  if(index===state.activeLeaf)return fn();
+  const previous={...door},active=state.activeLeaf,record=leafRecords[index];if(!record)return null;
+  replaceDoor(copyLeaf(record));state.activeLeaf=index;
+  try{return fn();}finally{if(save)leafRecords[index]=copyLeaf(door);replaceDoor(previous);state.activeLeaf=active;}
+}
+function eachLeaf(fn) {return Array.from({length:state.leafCount===2?2:1},(_,index)=>withLeaf(index,()=>fn(index)));}
+function setLeafCount(count,redraw=true) {
+  count=count===2?2:1;if(count===state.leafCount)return;
+  if(count===1&&state.activeLeaf===1)setActiveLeaf(0,false);
+  if(count===2&&!leafRecords[1]){
+    if(!door.widthMeasured)door.width=luce.W/2;
+    leafRecords[1]=copyLeaf(door);leafRecords[1].widthMeasured=false;leafRecords[1].heightMeasured=false;
+  }
+  state.leafCount=count;
+  setActiveLeaf(state.activeLeaf,false);
+  if(redraw){sync();drawDoor();updateBadge();}
+}
+function setActiveLeaf(index,redraw=true) {
+  if(index!==0&&!(index===1&&state.leafCount===2))return;
+  if(index!==state.activeLeaf){leafRecords[state.activeLeaf]=copyLeaf(door);const next=leafRecords[index];if(!next)return;replaceDoor(copyLeaf(next));state.activeLeaf=index;}
+  const automatic=automaticDoorReference();if(automatic)door.reference=automatic;
+  if(door.fitBasis==='frame')syncFitGeometry();
+  $$('[data-door]').forEach(input=>{const value=door[input.dataset.door];if(value!==undefined)input.value=Number.isFinite(value)?measureInput(value).replace(',','.'):'';});
+  $$('[data-door-face]').forEach(input=>{input.checked=isDoorFaceCovered(input.dataset.doorFace);});
+  $$('[data-door-type]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.doorType===door.type)));
+  $$('[data-door-only]').forEach(label=>{label.hidden=!label.dataset.doorOnly.split(',').includes(door.type);});
+  $('.mt-door-extra').hidden=door.type==='square';
+  if(redraw){closePad();sync();drawDoor();updateBadge();}
+}
+function renderLeafSelector() {
+  const box=$('.mt-leaf-selector');if(!box)return;box.replaceChildren();
+  const count=document.createElement('div');count.className='mt-closure-references';count.setAttribute('aria-label','Numero di ante');
+  [1,2].forEach(value=>{const b=document.createElement('button');b.type='button';b.className='mt-chip cursor-interaction';b.textContent=value===1?'Un’anta':'Due ante';b.setAttribute('data-leaf-count',value);b.setAttribute('aria-pressed',String(state.leafCount===value));b.onclick=()=>setLeafCount(value);count.append(b);});box.append(count);
+  if(state.leafCount===2){const choices=document.createElement('div');choices.className='mt-closure-references';choices.setAttribute('aria-label','Anta da rilevare');
+    [0,1].forEach(index=>{const b=document.createElement('button');b.type='button';b.className='mt-chip cursor-interaction';b.textContent=leafName(index);b.setAttribute('data-select-leaf',index);b.setAttribute('aria-pressed',String(state.activeLeaf===index));b.onclick=()=>setActiveLeaf(index);choices.append(b);});box.append(choices);
+  }
+  renderSectionLeafSelector();
+}
+function renderSectionLeafSelector() {
+  const group=$('.mt-section-leaf-selector');if(!group)return;group.hidden=state.leafCount!==2;group.replaceChildren();
+  if(group.hidden)return;
+  [0,1].forEach(index=>{const b=document.createElement('button');b.type='button';b.className='mt-chip cursor-interaction';b.textContent=leafName(index);b.setAttribute('data-section-leaf',index);b.setAttribute('aria-pressed',String(state.activeLeaf===index));b.onclick=()=>setActiveLeaf(index);group.append(b);});
+}
 doorSeatReady=true;
 const doorTypes = {square: 'Squadrata', lip: 'Battentata', double:'Due scalini', round: 'Bordo arrotondato'};
 const DOOR_PROFILES=[
@@ -2976,6 +3035,7 @@ function selectedDoorStop(g) {
   return door.stopSurfaceKey==='auto'?(stops.length>1&&!steppedDoor()?stops[0]:stops.at(-1)):stops.find(t=>edgeStateKey(t.part,t.index)===door.stopSurfaceKey);
 }
 function doorReferenceOptions() {return DOOR_REFERENCES.filter(t=>model().casing==='none'?t.id==='wall':t.id!=='wall');}
+function automaticDoorReference(target=doorStopTarget()) {const options=doorReferenceOptions();return target==='casing'?'casing':options.length===1?options[0].id:null;}
 function doorReferencePlanes(p,m,depth) {return door.reference!=='casing'||m.casing==='none'?{front:0,back:depth}:{front:-p.tE,back:depth+p.tI};}
 function doorClosureName() {
   return (DOOR_CLOSURES.find(t=>t.id===door.closure)?.name||'Chiusura da scegliere')+' · '+
@@ -3084,7 +3144,8 @@ function projectionLimits() {
   return{min:ceilMeasureLimit(min),max:floorMeasureLimit(max)};
 }
 function fitCandidate(change) {
-  if((change.stopTarget||doorStopTarget())==='casing'&&change.reference&&change.reference!=='casing')return false;
+  const automatic=automaticDoorReference(change.stopTarget||doorStopTarget());
+  if(automatic&&change.reference&&change.reference!==automatic)return false;
   const keys=['stopTarget','bearing','stopSurfaceKey','closure','reference','projection','lip','lip2','rebateAt','rebateAt2'],saved=Object.fromEntries(keys.map(key=>[key,door[key]])),p={...draft().p};
   try{Object.assign(door,change);if(change.bearing&&!change.stopSurfaceKey&&doorStopTarget()!=='casing'){const match=fitPairs().find(pair=>pair.bearing===change.bearing);if(match)door.stopSurfaceKey=match.stop;}syncFitGeometry();if(doorStopTarget()!=='casing'&&!door.fitBasis&&draft().seatAuto&&!draft().measured?.[doorStopKey()])positionDoorStop(draft().p,model());const g=geometry();return !frameQuoteError()&&!leafGasketError()&&!fitGeometryError(g)&&(g.leaf?.stopKey?!g.leaf.warning:door.stopSurfaceKey==='auto');}
   finally{Object.assign(door,saved);Object.assign(draft().p,p);}
@@ -3125,7 +3186,8 @@ function positionDoorStop(p,m,measured=p===draft().p?draft().measured:{}) {
     }}
   else if(m.jamb!=='plain')p.P=stop;
 }
-function refreshDoorSeat() {if(doorStopTarget()==='casing'||door.fitBasis&&fitPairs().length)syncFitGeometry();else if(draft().seatAuto&&!draft().measured?.[doorStopKey()])positionDoorStop(draft().p,model());}
+function refreshOneDoorSeat() {const automatic=automaticDoorReference();if(automatic)door.reference=automatic;if(doorStopTarget()==='casing'||door.fitBasis&&fitPairs().length)syncFitGeometry();else if(draft().seatAuto&&!draft().measured?.[doorStopKey()])positionDoorStop(draft().p,model());}
+function refreshDoorSeat() {refreshOneDoorSeat();if(state.leafCount===2)withLeaf(1-state.activeLeaf,()=>{const automatic=automaticDoorReference();if(automatic)door.reference=automatic;if(door.fitBasis==='frame')syncFitGeometry();},true);}
 function setDoorClosure(id) {
   if(!DOOR_CLOSURES.some(t=>t.id===id)||!fitCandidate({closure:id}))return;
   door.closure=id;
@@ -3133,7 +3195,7 @@ function setDoorClosure(id) {
   refreshDoorSeat();sync();drawDoor();updateBadge();
 }
 function setDoorReference(id) {
-  if(doorStopTarget()==='casing'&&id!=='casing')return;
+  if(automaticDoorReference()&&id!==automaticDoorReference())return;
   if(!doorReferenceOptions().some(t=>t.id===id)||!fitCandidate({reference:id}))return;
   door.reference=id;refreshDoorSeat();sync();drawDoor();updateBadge();
 }
@@ -3163,7 +3225,7 @@ function closureChoiceGrid(container,onChange) {
   container.append(grid);
 }
 function closureReferenceControls(container,onChange) {
-  if(doorStopTarget()==='casing')return;
+  if(automaticDoorReference())return;
   const group=document.createElement('div');group.className='mt-closure-references';group.setAttribute('role','group');group.setAttribute('aria-label','Piano di riferimento della chiusura');
   doorReferenceOptions().forEach(option=>{
     const b=document.createElement('button');b.type='button';b.className='mt-chip cursor-interaction';b.textContent=option.name;
@@ -3364,6 +3426,11 @@ function doorRows() {
   });
   return [...faceRows,...strips];
 }
+function allDoorRows() {
+  if(state.leafCount!==2)return doorFaces.some(([key])=>isDoorFaceCovered(key))?doorRows():[];
+  return eachLeaf(index=>{const both=doorFilmPlan().both;return doorFaces.some(([key])=>isDoorFaceCovered(key))?doorRows().map(row=>({...row,id:'leaf'+(index+1)+':'+row.id,name:leafName(index)+row.name.slice(4),leafIndex:index,bothFaces:both})):[];}).flat();
+}
+function invalidLeaf() {return eachLeaf(index=>doorFaces.some(([key])=>isDoorFaceCovered(key))&&!validDoor()?{index,name:leafName(index),error:doorProfileError()||fitGeometryError()||'Verifica le misure e le abbondanze.'}:null).find(Boolean)||null;}
 
 function area(rows) {
   return rows.reduce((sum, row) => sum + row.width * row.height, 0) / 1e6;
@@ -3412,13 +3479,13 @@ function renderSummary() {
   const frameReady = valid();
   const parts = frameReady ? geometry().parts : [];
   const invalidCut = parts.find(part => gasketError(part) || groups(part).length && (!validFrameCut(partCut(part)) || !validOver(part)));
-  const needsDoor = doorFaces.some(([key]) => isDoorFaceCovered(key));
+  const leafError=invalidLeaf();
   const error = $('[data-out=summary-error]');
   const list = $('.mt-cut-list');
   list.replaceChildren();
   const message = !frameReady ? 'Verifica le quote della maestà.'
     : invalidCut ? overError(invalidCut) || `Verifica lunghezze, abbondanze e guarnizioni di ${invalidCut.name.toLocaleLowerCase('it-IT')}.`
-    : needsDoor && !validDoor() ? 'Verifica le quote e le abbondanze dell’anta.' : '';
+    : leafError ? leafError.name+': '+leafError.error : '';
   error.hidden = message === '';
   error.textContent = message;
   if (message) {
@@ -3429,14 +3496,14 @@ function renderSummary() {
   }
 
   const frame = parts.flatMap((part, i) => frameRows(part).map(r => ({...r, partIndex: i})));
-  const leaf = needsDoor ? doorRows() : [];
+  const leaf = allDoorRows();
   const total = frame.length + leaf.length;
   $('[data-out=total-pieces]').textContent = String(total);
   $('[data-out=total-area]').textContent = areaLabel(area(frame) + area(leaf));
   const order = posaOrder([...frame, ...leaf]);
   const numbers = new Map(order.map((r, i) => [r.id, i + 1]));
   renderPosa(order);
-  list.append(renderCutList('Maestà', frame, numbers), renderCutList('Anta', leaf, numbers));
+  list.append(renderCutList('Maestà', frame, numbers), renderCutList(state.leafCount===2?'Due ante':'Anta', leaf, numbers));
 }
 
 // ---------- Sequenza di posa: la memoria di come si montano i pezzi ----------
@@ -3499,7 +3566,7 @@ function posaOrder(rows) {
 }
 function posaReason(r, prev) {
   if(r.door&&r.face==='edge')return 'tratto del bordo separato dalla guarnizione';
-  if (r.door) return !doorFilmPlan().both?'anta: unico foglio, bordo superiore completo':r.face==='back'?'anta: primo foglio, sotto il sormonto':r.face==='front'?'anta: secondo foglio, copre il primo fino allo spigolo':'anta, dopo la maestà';
+  if (r.door) return !(r.bothFaces??doorFilmPlan().both)?'anta: unico foglio, bordo superiore completo':r.face==='back'?'anta: primo foglio, sotto il sormonto':r.face==='front'?'anta: secondo foglio, copre il primo fino allo spigolo':'anta, dopo la maestà';
   if (hasProfileFilmRules()) {
     if (r.partKeys?.length > 1) return 'coprifilo e tratto dello stipite in un unico pezzo';
     const junctions = roundJunctions();
@@ -3667,6 +3734,7 @@ function renderDoorFilmControls() {
 }
 
 function drawDoor() {
+  renderLeafSelector();
   renderDoorFilmControls();
   renderLeafGaskets();renderLeafSeam();
   const svg = $('.mt-door-diagram');
@@ -3808,6 +3876,8 @@ function bindDoorControls() {
       door[input.dataset.door] = input.value === '' ? NaN : Number(input.value);
       if(input.dataset.door==='projection')door.projectionMeasured=true;
       if(input.dataset.door==='lip')door.lipMeasured=true;
+      if(input.dataset.door==='width')door.widthMeasured=true;
+      if(input.dataset.door==='height')door.heightMeasured=true;
       if(['thickness','rebateAt','projection','lip','rebateAt2','lip2'].includes(input.dataset.door))refreshDoorSeat();
       clearFrameSealConflicts();
       drawDoor(); updateBadge();
@@ -4127,6 +4197,7 @@ function renderGasketList(part) {
 }
 function redrawFull() {
   if (activePanel !== 'frame') return;
+  renderSectionLeafSelector();
   $$('[data-view]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === fullView)));
   $$('[data-tool]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.tool === tool)));
   $('.mt-full-hint').textContent = fullView === 'profile' ? HINTS[tool] :
@@ -4194,6 +4265,7 @@ function framePolys(j, x0, top, w, floor, bw) {
 }
 function drawElevation(part) {
   const bar = $('.mt-joint-bar');
+  bar.hidden=state.hasHead===false;
   bar.replaceChildren(...JOINTS.map(j => {
     const b = document.createElement('button');
     b.type = 'button';
@@ -4212,11 +4284,12 @@ function drawElevation(part) {
   const W = Number.isFinite(luce.W) ? luce.W : 800, H = Number.isFinite(luce.H) ? luce.H : 2100;
   const k = Math.min((w - 130) / (W + 2 * band), (h - 64) / (H + band));
   const bw = Math.max(9, band * k), x0 = (w - W * k) / 2, floor = h - 26, top = floor - H * k;
-  const polys = framePolys(jointOf(part), x0, top, W * k, floor, bw);
+  const polys = framePolys(state.hasHead===false?'head':jointOf(part), x0, top, W * k, floor, bw);
   const levels = [...new Set(part.edges.map((_, i) => trattoLevels(part, i)).filter(l => l.side).map(l => Math.round(l.hi * 10) / 10))].sort((a, b) => a - b);
   svg.append(el('line', {x1: 6, y1: floor, x2: w - 6, y2: floor, stroke: 'var(--mt-line)', 'stroke-width': 1}));
   const names = {length: 'Montante SX', right: 'Montante DX', head: 'Traverso'};
   Object.entries(polys).forEach(([key, pts]) => {
+    if(key==='head'&&state.hasHead===false)return;
     const on = cut[key] > 0;
     const poly = el('polygon', {points: pts.map(q => q.join(',')).join(' '), fill: on ? 'var(--mt-tint)' : 'none',
       stroke: on ? 'var(--mt-green)' : 'var(--mt-secondary)', 'stroke-width': on ? 1.5 : 1, ...(on ? {} : {'stroke-dasharray': '4 3'})});
@@ -4236,8 +4309,9 @@ function drawElevation(part) {
   levels.forEach(o => {
     const d = o * k, xl = x0 - d, xr = x0 + W * k + d, yt = top - d;
     if (xr - xl < 4 || floor - yt < 4) return;
-    svg.append(el('polyline', {points: `${xl},${floor} ${xl},${yt} ${xr},${yt} ${xr},${floor}`, fill: 'none',
+    svg.append(el('polyline', {points: state.hasHead===false?`${xl},${floor} ${xl},${top}`:`${xl},${floor} ${xl},${yt} ${xr},${yt} ${xr},${floor}`, fill: 'none',
       stroke: o < 0 ? 'var(--mt-error)' : 'var(--mt-secondary)', 'stroke-width': 1, 'stroke-dasharray': '3 3', 'pointer-events': 'none'}));
+    if(state.hasHead===false)svg.append(el('line',{x1:xr,y1:floor,x2:xr,y2:top,stroke:'var(--mt-secondary)','stroke-width':1,'stroke-dasharray':'3 3'}));
     if (o < 0) svg.append(el('text', {x: 8, y: 16 + levels.filter(v => v < 0).indexOf(o) * 15, 'text-anchor': 'start', 'font-size': 12, style: 'fill:var(--mt-error)',
       stroke: 'var(--mt-paper)', 'stroke-width': 3, 'paint-order': 'stroke', 'pointer-events': 'none'},
       `rientro nel passaggio: H ${fmt(H + o)} · L ${fmt(W + 2 * o)}`));
@@ -4252,7 +4326,7 @@ function drawElevation(part) {
   const midY = (top + floor) / 2;
   text(cut.length > 0 ? 'SX ' + fmt(lens.length) : 'SX escluso', x0 - bw - 10, midY, {rotate: true, fill: 'var(--mt-secondary)'});
   text(cut.right > 0 ? 'DX ' + fmt(lens.right) : 'DX escluso', x0 + W * k + bw + 18, midY, {rotate: true, fill: 'var(--mt-secondary)'});
-  text(cut.head > 0 ? 'Traverso ' + fmt(lens.head) : 'Traverso escluso', w / 2, top - bw - 6, {fill: 'var(--mt-secondary)'});
+  text(state.hasHead===false?'Senza traverso':cut.head > 0 ? 'Traverso ' + fmt(lens.head) : 'Traverso escluso', w / 2, top - bw - 6, {fill: 'var(--mt-secondary)'});
   // luce del passaggio: si tocca o si trascina
   text('L ' + fmt(W), w / 2, floor - 12, {sel: '[data-luce="W"]', size: 14, weight: 700});
   text('H ' + fmt(H), x0 + 16, midY, {sel: '[data-luce="H"]', size: 14, weight: 700, rotate: true});
@@ -4261,13 +4335,15 @@ function drawElevation(part) {
 }
 
 // ---------- Creazione guidata della maestà ----------
-const wiz = {step: 0, cfg: null, pos: {E: 'flush', I: 'flush'}, joint: 'miter'};
+const wiz = {step: 0, cfg: null, pos: {E: 'flush', I: 'flush'},hasHead:true,leafCount:1, joint: 'miter'};
 const POS_VALUE = {flush: 0, back: 6, out: -6};
 const posOf = e => e > 0 ? 'back' : e < 0 ? 'out' : 'flush';
 function wizSteps() {
   const steps = ['battuta', 'coprifilo'];
   if (offsetAllowed(wiz.cfg.casing, 'E') || offsetAllowed(wiz.cfg.casing, 'I')) steps.push('posizione');
-  steps.push('angoli');
+  steps.push('traverso');
+  steps.push('ante');
+  if(wiz.hasHead!==false)steps.push('angoli');
   steps.push('riepilogo');
   measureSteps().forEach(m => steps.push('m:' + m.id));
   return steps;
@@ -4297,6 +4373,8 @@ function openWizard() {
   wiz.cfg = {...state.cfg};
   wiz.pos = {E: posOf(draft().p.eE), I: posOf(draft().p.eI)};
   wiz.joint = state.joint;
+  wiz.hasHead=state.hasHead!==false;
+  wiz.leafCount=state.leafCount===2?2:1;
   wiz.step = 0;
   $('.mt-wizard').hidden = false;
   renderWizard();
@@ -4313,8 +4391,8 @@ function renderWizard() {
   $('[data-out=wiz-step]').textContent = wiz.step <= ri ? `Modello · passo ${wiz.step + 1} di ${ri + 1}` : `Misure · ${wiz.step - ri} di ${steps.length - ri - 1}`;
   $('.mt-wiz-dots').replaceChildren(...steps.map((_, i) => { const d = document.createElement('i'); if (i <= wiz.step) d.className = 'on'; if (i === ri) d.classList.add('gap'); return d; }));
   $('[data-wiz=back]').disabled = wiz.step === 0;
-  if (step.startsWith('m:')) { renderMeasure(measureSteps().find(m => m.id === step.slice(2)), wiz.step === steps.length - 1); return; }
-  const titles = {battuta: 'Battuta', coprifilo: 'Coprifilo', posizione: 'Posizione del coprifilo', angoli: 'Angoli', riepilogo: 'Pronto per le misure'};
+  if (step.startsWith('m:')) {const m=measureSteps().find(m => m.id === step.slice(2));if(m.leafIndex!==undefined&&m.leafIndex!==state.activeLeaf)setActiveLeaf(m.leafIndex,false);renderMeasure(m, wiz.step === steps.length - 1); return; }
+  const titles = {battuta: 'Battuta', coprifilo: 'Coprifilo', posizione: 'Posizione del coprifilo',traverso:'C’è il traverso superiore?',ante:'Quante ante ha la porta?', angoli: 'Angoli', riepilogo: 'Pronto per le misure'};
   const questions = {
     battuta: 'Com’è lo stipite dove chiude l’anta?',
     coprifilo: 'Che coprifilo c’è?',
@@ -4331,6 +4409,15 @@ function renderWizard() {
   next.disabled = false;
   const grid = (cls) => { const g = document.createElement('div'); g.className = 'mt-wiz-grid' + (cls ? ' ' + cls : ''); body.append(g); return g; };
   const auto = () => setTimeout(() => wizGo(1), 180);
+  if(step==='traverso'){
+    $('[data-out=wiz-question]').textContent='';
+    body.append(openingFigure('head',null,{hasHead:wiz.hasHead!==false}));
+    surveyOptions(body,[{id:'yes',name:'Sì'},{id:'no',name:'No'}],wiz.hasHead!==false?'yes':'no',id=>{wiz.hasHead=id==='yes';});
+  }
+  if(step==='ante'){
+    $('[data-out=wiz-question]').textContent='';body.append(openingFigure('count',null,{hasHead:wiz.hasHead!==false,count:wiz.leafCount}));
+    surveyOptions(body,[{id:'one',name:'Un’anta'},{id:'two',name:'Due ante'}],wiz.leafCount===2?'two':'one',id=>{wiz.leafCount=id==='two'?2:1;});
+  }
   if (step === 'battuta') {
     const g = grid();
     JAMBS.forEach(j => g.append(wizCard(j.name, j.note, wiz.cfg.jamb === j.id, wizThumb({...wiz.cfg, jamb: j.id, casing: wiz.cfg.casing === 'integrated' && j.id === 'extension' ? 'square' : wiz.cfg.casing}, wiz.pos), () => {
@@ -4392,15 +4479,20 @@ function renderWizard() {
       if (offsetAllowed(wiz.cfg.casing, 'E')) row('Coprifilo esterno', pn(wiz.pos.E), 2);
       if (offsetAllowed(wiz.cfg.casing, 'I')) row('Coprifilo interno', pn(wiz.pos.I), 2);
     }
-    row('Angoli', JOINTS.find(j => j.id === wiz.joint).name, steps.indexOf('angoli'));
+    row('Traverso superiore',wiz.hasHead!==false?'Presente':'Assente',steps.indexOf('traverso'));
+    row('Ante',wiz.leafCount===2?'Due':'Una',steps.indexOf('ante'));
+    if(wiz.hasHead!==false)row('Angoli', JOINTS.find(j => j.id === wiz.joint).name, steps.indexOf('angoli'));
     body.append(sum);
   }
 }
 function applyWizard() {
   const changed = wiz.cfg.jamb !== state.cfg.jamb || wiz.cfg.casing !== state.cfg.casing;
   const wasWithoutCasing=state.cfg.casing==='none';
+  setActiveLeaf(0,false);
   state.cfg = {...wiz.cfg};
-  if(state.cfg.casing==='none'&&!wasWithoutCasing){door.stopTarget='jamb';door.stopSurfaceKey='auto';door.reference='wall';door.closure='flush';}
+  state.hasHead=wiz.hasHead!==false;
+  setLeafCount(wiz.leafCount===2?2:1,false);
+  if(state.cfg.casing==='none'&&!wasWithoutCasing){for(let index=0;index<(state.leafCount===2?2:1);index++)withLeaf(index,()=>{door.stopTarget='jamb';door.stopSurfaceKey='auto';door.reference='wall';door.closure='flush';},true);}
   else if(state.cfg.casing!=='none'&&door.reference==='wall')door.reference='casing';
   const p = draft().p;
   ['E', 'I'].forEach(side => {
@@ -4526,11 +4618,11 @@ function leafGasketWizardSteps() {
   });
   return steps;
 }
-function measureSteps() {
+function singleMeasureSteps(includeFrame=true) {
   const steps = [
     {id: 'luceW', title: 'Luce minima: larghezza', q: 'Misura il punto più stretto fra gli stipiti, sulla loro parte più spessa. Non misurare fra i coprifili.', fig: 'luceW',
       get: () => inputNum('[data-luce="W"]'), set: v => setInput('[data-luce="W"]', v), min: 100},
-    {id: 'luceH', title: 'Luce minima: altezza', q: 'Dal pavimento alla parte più bassa e spessa dello stipite superiore: questa è l’altezza minima libera, non quella del coprifilo.', fig: 'luceH',
+    {id: 'luceH', title: state.hasHead===false?'Montanti: altezza':'Luce minima: altezza', q: '', fig: 'luceH',
       get: () => inputNum('[data-luce="H"]'), set: v => setInput('[data-luce="H"]', v), min: 100},
     {id: 'antaTipo', title: 'Anta: bordo', q: 'Scegli la sagoma del bordo di legno, senza comprendere la gomma. La guarnizione dell’anta si rileva a parte.', choice: 'door'},
     {id: 'antaL', title: 'Anta: larghezza', q: steppedDoor() ? 'Misura la larghezza sulla faccia destra mostrata nel disegno. Non includere automaticamente gli scalini della faccia opposta.' : 'Misura la larghezza dell’anta.', fig: 'antaL',
@@ -4543,8 +4635,8 @@ function measureSteps() {
   if(steppedDoor())steps.splice(3,0,{id:'antaBaseQuote',title:'Da quale pezzo misuri?',choice:'fitBasis',q:''},...(model().casing!=='none'?[{id:'antaDestinazione',title:'Dove appoggia la battuta dell’anta?',choice:'doorTarget',q:''}]:[]));
   if(model().casing==='none'){
     const keys=model().jamb==='extension'?['E','I','s','sI']:['D','s'];
-    const fields=keys.map(key=>({id:'telaio-'+key,title:'Telaio a vista · '+key,
-      q:key==='s'||key==='sI'?'Misura lo spessore del profilo a vista. Il disegno è schematico: non comprende il profilo nascosto nella parete.':'Misura la profondità del profilo a vista. In Pellicola potrai escludere gli eventuali tratti che appartengono alla parete.',fig:'frameProfile',
+    const fields=keys.map(key=>({id:'telaio-'+key,title:'Telaio a vista · '+(key==='s'?'spessore stipite':key==='sI'?'spessore imbotte':key==='E'?'profondità stipite':key==='I'?'profondità imbotte':'profondità'),
+      q:'',fig:'frameProfile',quoteKey:key,
       get:()=>draft().p[key],confirm:()=>{(draft().measured||(draft().measured={}))[key]=true;},set:value=>{draft().p[key]=value;(draft().measured||(draft().measured={}))[key]=true;refreshDoorSeat();sync();},min:.1,max:key==='s'||key==='sI'?150:500}));
     steps.splice(2,0,...fields);
   }
@@ -4562,7 +4654,7 @@ function measureSteps() {
       get:()=>doorRebateAt2(),set:value=>setInput('[data-door="rebateAt2"]',value)});
   steps.push(...leafGasketWizardSteps());
   if(doorStopTarget()!=='casing')steps.push({id:'antaModoChiusura',title:'Come chiude l’anta?',choice:'doorClosure',q:''});
-  if(doorStopTarget()!=='casing')steps.push({id:'antaRiferimento',title:'Rispetto a quale piano?',choice:'doorReference',q:''});
+  if(!automaticDoorReference())steps.push({id:'antaRiferimento',title:'Rispetto a quale piano?',choice:'doorReference',q:''});
   if(steppedDoor()){const options=doorBearingOptions(),available=options.filter(option=>!option.disabled);if(available.length!==1||available[0].id!==doorBearing())steps.push({id:'antaAppoggio',title:'Quale parte dell’anta appoggia?',choice:'doorBearing',q:''});}
   if(doorStopTarget()!=='casing'&&rebateEdges().length>1)steps.push({id:'antaBattutaTelaio',title:'Su quale battuta del telaio?',choice:'doorStop',q:''});
   if(door.closure!=='flush'&&doorStopTarget()!=='casing')steps.push({id:'antaChiusura',title:door.closure==='recessed'?'Anta chiusa · rientro':'Anta chiusa · sporgenza',
@@ -4574,7 +4666,7 @@ function measureSteps() {
       const pair=pairs.find(pair=>pair.p===key),front=fitFront(),other=pairs.filter(item=>item.p!==key);
       const minimum=Math.max(.01,front+.01,...other.filter(item=>draft().p[item.p]<draft().p[key]).map(item=>draft().p[item.p]+.01));
       const maximum=Math.min((model().jamb==='extension'?draft().p.E+draft().p.I:draft().p.D)-.01,door.fitBasis==='frame'?front+door.thickness-(pair?.at==='thickness'?0:.01):Infinity,...other.filter(item=>draft().p[item.p]>draft().p[key]).map(item=>draft().p[item.p]-.01));
-      steps.push({id:'telaioArresto'+(index?'-'+key:''),title:'Posizione della battuta · '+key,q:'',fig:'closureStop',stopKey:pair?.stop,
+      steps.push({id:'telaioArresto'+(index?'-'+key:''),title:'Posizione della battuta · '+key,q:'',fig:'closureStop',framePosition:key,stopKey:pair?.stop,
         get:()=>draft().p[key],set:value=>{draft().p[key]=value;(draft().measured||(draft().measured={}))[key]=true;draft().seatAuto=false;syncFitGeometry();clearFrameSealConflicts();sync();},
         confirm:()=>{(draft().measured||(draft().measured={}))[key]=true;draft().seatAuto=false;},min:door.fitBasis==='both'&&pair?draft().p[key]:ceilMeasureLimit(minimum),max:door.fitBasis==='both'&&pair?draft().p[key]:floorMeasureLimit(maximum)});
     });
@@ -4583,20 +4675,21 @@ function measureSteps() {
   if(door.type==='double'&&doorFaces.every(([key])=>isDoorFaceCovered(key))&&!leafProfileRanges().gaps.length)steps.push({id:'anta-sormonto-scalino',title:'Sormonto sul bordo dell’anta',choice:'leafSeam',q:'Scegli lo scalino su cui sovrapporre i due fogli. La stessa scelta vale sopra e sui due lati; non viene dedotta dal numero di battute dello stipite.'});
   steps.push({id:'anta-bordo-inferiore',title:'Anta: bordo verso il pavimento',choice:'doorBottom',
     q:'Sopra il rivestimento è sempre completo. Come vuoi chiudere il bordo inferiore?'});
-  steps.push(...gasketWizardSteps());
-  if (hasProfileFilmRules()) steps.push({id:'posa-coprifili-raggiati',choice:'roundedFilmInfo',title:(model().casing === 'bevel' ? 'Coprifili smussati' : 'Coprifili raggiati')+' · posa e tagli',
+  if(includeFrame)steps.push(...gasketWizardSteps());
+  if (includeFrame&&hasProfileFilmRules()) steps.push({id:'posa-coprifili-raggiati',choice:'roundedFilmInfo',title:(model().casing === 'bevel' ? 'Coprifili smussati' : 'Coprifili raggiati')+' · posa e tagli',
     q:'Con lo scalino si riveste prima il coprifilo, comprendendo il primo lato dello stipite. A filo è un unico pezzo fino alla guarnizione. Con coprifilo sporgente si riveste prima lo stipite e poi il coprifilo. Il sormonto segue automaticamente tutto il tratto fino allo spigolo di giunzione.'});
-  else if(geometry().parts.some(part=>['start','end'].some(which=>overlapInfo(part,which).automatic&&overUsed(part,which)>0)))
+  else if(includeFrame&&geometry().parts.some(part=>['start','end'].some(which=>overlapInfo(part,which).automatic&&overUsed(part,which)>0)))
     steps.push({id:'sormonti-automatici',choice:'autoOverlapInfo',title:'Sormonti automatici',
       q:'I sormonti arrivano allo spigolo di giunzione. Cambiando la posizione del coprifilo, disegno e tagli si adeguano automaticamente. La pellicola si ferma prima di una guarnizione.'});
-  steps.push(
+  if(includeFrame)steps.push(
     {id: 'abbMaesta', title: 'Abbondanza maestà', q: 'Quanto lasci in più a ogni estremità delle stecche, per lavorare con agio e sovrapporre le pellicole negli angoli?', fig: 'abbMaesta',
       get: () => { const pt = geometry().parts[0]; return partCut(pt).ends; },
-      set: v => { geometry().parts.forEach(pt => { partCut(pt); draft().cuts[pt.key].ends = v; }); update(); }, min: 0},
+      set: v => { geometry().parts.forEach(pt => { partCut(pt); draft().cuts[pt.key].ends = v; }); update(); }, min: 0});
+  steps.push(
     {id: 'abbAnta', title: 'Abbondanza anta', q: 'Quanto lasci in più su ogni lato dei tagli dell’anta?', fig: 'abbAnta',
       get: () => inputNum('[data-door="margin"]'), set: v => setInput('[data-door="margin"]', v), min: 0}
   );
-  geometry().parts.forEach(part => ['start', 'end'].forEach(which => {
+  if(includeFrame)geometry().parts.forEach(part => ['start', 'end'].forEach(which => {
     const maximum = floorMeasureLimit(overLimit(part, which));
     if (!(maximum > 0) || !overApplies(part, which)) return;
     const info = overlapInfo(part, which), key = part.key;
@@ -4617,7 +4710,35 @@ function measureSteps() {
   }));
   return steps;
 }
+function measureSteps() {
+  if(state.leafCount!==2)return singleMeasureSteps();
+  const first=withLeaf(0,()=>singleMeasureSteps()),second=withLeaf(1,()=>singleMeasureSteps(false));
+  const sharedPositions=new Set(first.filter(step=>step.framePosition).map(step=>step.framePosition));
+  withLeaf(0,()=>{if(door.fitBasis==='leaf')fitPairs().forEach(pair=>sharedPositions.add(pair.p));});
+  const leading=step=>['luceW','luceH'].includes(step.id)||step.id.startsWith('telaio-');
+  const leaf=step=>step.id.startsWith('anta')||step.id.startsWith('telaioArresto')||step.id==='facce'||step.id==='abbAnta';
+  const owned=(step,index)=>({...step,id:(index?'leaf2-':'')+step.id,leafIndex:index,title:leafName(index)+' · '+step.title.replace(/^Anta:?\s*/,'' )});
+  return[...first.filter(leading).map(step=>({...step,leafIndex:0})),...first.filter(leaf).map(step=>owned(step,0)),...second.filter(leaf).filter(step=>!step.framePosition||!sharedPositions.has(step.framePosition)).map(step=>owned(step,1)),...first.filter(step=>!leading(step)&&!leaf(step)).map(step=>({...step,leafIndex:0}))];
+}
 let surveyFigureSerial=0;
+function openingFigure(kind,value,options={}) {
+  const svg=surveyFigure(kind),hasHead=options.hasHead??state.hasHead!==false,count=options.count??state.leafCount;
+  const sizes=state.leafCount===2?eachLeaf(()=>({width:door.width,height:door.height})):[{width:door.width,height:door.height}];
+  if(count===2&&sizes.length===1)sizes.splice(0,1,...[0,1].map(()=>({width:luce.W/2,height:door.height})));
+  const W=Math.max(1,luce.W),H=Math.max(1,luce.H),band=24,k=Math.min(210/(W+2*band),144/(H+(hasHead?band:0))),x=35+(210-W*k)/2,top=52,bottom=top+H*k,bw=Math.max(5,band*k);
+  const ink={fill:'var(--mt-wood)',stroke:'var(--mt-secondary)','stroke-width':1.2};
+  svg.append(el('line',{x1:20,y1:bottom,x2:258,y2:bottom,stroke:'var(--mt-line)','stroke-width':1}));
+  [x-bw,x+W*k].forEach(left=>svg.append(el('rect',{x:left,y:top,width:bw,height:H*k,...ink})));
+  if(hasHead)svg.append(el('rect',{x:x-bw,y:top-bw,width:W*k+2*bw,height:bw,...ink,'data-opening-head':'true',...(kind==='head'?{fill:'var(--mt-tint)',stroke:'var(--mt-green)','stroke-width':2}:{})}));
+  const active=options.leafIndex??state.activeLeaf,total=sizes.slice(0,count).reduce((sum,s)=>sum+Math.max(1,s.width),0);let left=x;
+  const rects=[];
+  sizes.slice(0,count).forEach((size,index)=>{const width=W*k*Math.max(1,size.width)/total,height=Math.min(H*k,Math.max(1,size.height)*k),y=bottom-height,attrs={x:left,y,width,height,fill:index===active?'var(--mt-tint)':'var(--mt-paper)',stroke:index===active?'var(--mt-green)':'var(--mt-secondary)','stroke-width':index===active?1.6:1,'data-opening-leaf':index};svg.append(el('rect',attrs));rects.push({x:left,y,width,height});svg.append(el('text',{x:left+width/2,y:y+height*.55,'text-anchor':'middle','font-size':count===2?13:12,fill:'var(--mt-secondary)'},count===2?String(index+1):'ANTA'));left+=width;});
+  if(count===2)svg.append(el('text',{x:145,y:221,'font-size':12,'text-anchor':'middle',fill:'var(--mt-secondary)'},'1 · sinistra     2 · destra'));
+  if(kind==='luceW')surveyDimension(svg,[x,bottom],[x+W*k,bottom],'h',value,kind);
+  if(kind==='luceH')surveyDimension(svg,[x,top],[x,bottom],'v',value,kind);
+  if(kind==='antaL'||kind==='antaH'){const rect=rects[Math.min(active,rects.length-1)];if(rect)surveyDimension(svg,kind==='antaL'?[rect.x,rect.y]:[rect.x+rect.width,rect.y],kind==='antaL'?[rect.x+rect.width,rect.y]:[rect.x+rect.width,bottom],kind==='antaL'?'h':'v',value,kind);}
+  return svg;
+}
 function surveyFigure(kind) {
   return el('svg',{class:'mt-wiz-fig mt-survey-figure',viewBox:'0 0 320 230',role:'img','data-survey-figure':kind,'aria-label':kind});
 }
@@ -4625,10 +4746,10 @@ function surveyDimension(svg,from,to,axis,value,key) {
   if(![...from,...to].every(Number.isFinite))return;
   const group=el('g',{'data-survey-dimension':key,'data-from':from.join(','),'data-to':to.join(','),'data-axis':axis});
   const line=(a,b,attrs={})=>group.append(el('line',{x1:a[0],y1:a[1],x2:b[0],y2:b[1],stroke:'var(--mt-green)','stroke-width':1.5,...attrs}));
-  const a=axis==='v'?[278,from[1]]:[from[0],24],b=axis==='v'?[278,to[1]]:[to[0],24];
+  const a=axis==='r'?from:axis==='v'?[278,from[1]]:[from[0],24],b=axis==='r'?to:axis==='v'?[278,to[1]]:[to[0],24];
   line(from,a,{'stroke-width':.8,'stroke-dasharray':'2 2'});line(to,b,{'stroke-width':.8,'stroke-dasharray':'2 2'});line(a,b);
   [a,b].forEach(([x,y])=>line([x-4,y+4],[x+4,y-4]));
-  const x=axis==='v'?294:(a[0]+b[0])/2,y=axis==='v'?(a[1]+b[1])/2:14;
+  const x=axis==='r'?(a[0]+b[0])/2+24:axis==='v'?294:(a[0]+b[0])/2,y=axis==='r'?(a[1]+b[1])/2-12:axis==='v'?(a[1]+b[1])/2:14;
   group.append(el('text',{x,y,'text-anchor':'middle','font-size':16,'font-weight':700,fill:'var(--mt-green)',stroke:'var(--mt-paper)','stroke-width':4,'paint-order':'stroke',...(axis==='v'?{transform:`rotate(-90 ${x} ${y})`}:{})},value));
   svg.append(group);
 }
@@ -4645,6 +4766,7 @@ function leafSurveyFigure(field,value,sealKey=null) {
   if(field==='antaS'){from=[0,0];to=[S,b];}
   if(field==='antaLb'){from=[doorRebateAt(),0];to=[doorRebateAt(),doorLip()];axis='v';}
   if(field==='antaLb2'){from=[doorRebateAt2(),doorLip()];to=[doorRebateAt2(),b];axis='v';}
+  if(field==='antaR'){const arc=edges.find(edge=>edge.kind==='arc');if(arc){from=arc.center;to=arc.a;axis='r';}}
   if(sealKey){
     const edge=edges.find(edge=>edge.stateKey===sealKey),span=leafGasketSpan(sealKey);
     if(edge){
@@ -4657,7 +4779,8 @@ function leafSurveyFigure(field,value,sealKey=null) {
   }
   if(from&&to){
     if(axis==='v'||sealKey)svg.append(el('line',{x1:X(from[0]),y1:Y(from[1]),x2:X(to[0]),y2:Y(to[1]),stroke:'var(--mt-green)','stroke-width':4,'data-measured-edge':field}));
-    surveyDimension(svg,[X(from[0]),Y(from[1])],[X(to[0]),Y(to[1])],axis,value,field);
+    if(field==='antaR'){svg.append(el('circle',{cx:X(from[0]),cy:Y(from[1]),r:door.radius*k,fill:'none',stroke:'var(--mt-green)','stroke-width':1,'stroke-dasharray':'2 2'}));svg.append(el('circle',{cx:X(from[0]),cy:Y(from[1]),r:2.5,fill:'var(--mt-green)','data-radius-center':'true'}));}
+    surveyDimension(svg,[X(from[0]),Y(from[1])],[X(to[0]),Y(to[1])],axis,field==='antaR'?'R '+value:value,field);
   }
   return svg;
 }
@@ -4701,13 +4824,15 @@ function sectionSurveyFigure(kind='closure',options={}) {
     minX=Math.min(minX,plane,front)-5;maxX=Math.max(maxX,plane,front)+5;
   }
   if(kind==='closureStop'){minX=Math.min(minX,0);maxX=Math.max(maxX,edge?.a[0]??0)+5;}
+  if(options.from&&options.to){minX=Math.min(minX,options.from[0]-5,options.to[0]-5);maxX=Math.max(maxX,options.from[0]+5,options.to[0]+5);minY=Math.min(minY,options.from[1]-5,options.to[1]-5);maxY=Math.max(maxY,options.from[1]+5,options.to[1]+5);}
   const k=Math.min(230/Math.max(1,maxX-minX),152/Math.max(1,maxY-minY));
   const X=x=>20+(230-(maxX-minX)*k)/2+(x-minX)*k,Y=y=>47+(152-(maxY-minY)*k)/2+(y-minY)*k;
   const clip='mt-survey-clip-'+(++surveyFigureSerial),defs=el('defs'),path=el('clipPath',{id:clip});path.append(el('rect',{x:8,y:35,width:252,height:177}));defs.append(path);svg.append(defs);
   const scene=el('g',{'clip-path':'url(#'+clip+')','data-section-context':'frame-and-leaf'});
   scene.append(el('rect',{x:X(0),y:Y(minY),width:g.depth*k,height:Math.max(0,-minY*k),fill:'var(--mt-wall)',stroke:'var(--mt-line)','stroke-width':.8}));
   g.parts.forEach(part=>scene.append(el('path',{d:partPath(part,X,Y,k,true),fill:'var(--mt-wood)',stroke:'var(--mt-secondary)','stroke-width':1.2})));
-  drawClosedDoorLeaf(scene,leaf,X,Y);
+  drawClosedDoorLeaf(scene,leaf,X,Y,{label:!options.focus});
+  if(options.focus)scene.append(el('text',{x:X(leaf.x+leaf.w/2),y:Y(leaf.y+doorTotalRebate()+12),'text-anchor':'middle','font-size':11,fill:'var(--mt-secondary)'},'ANTA'));
   g.parts.forEach(part=>part.edges.forEach((e,i)=>{
     if(options.gasketRef?.surfaceKey===edgeStateKey(part,i)){
       if(options.sealPreview)drawGasketBand(scene,part,i,X,Y,k,false,options.sealPreview);
@@ -4755,11 +4880,18 @@ function surveyOptions(container,options,selected,onPick) {
 
 // Disegni schematici: in verde la misura da prendere.
 function measureFig(kind, val, context=null) {
-  if(['sormCop','sormStip','sormRaggiati'].includes(kind))return roundedMeasureFigure();
-  if(['antaS','antaLb','antaSb','antaLb2','antaSb2'].includes(kind))return leafSurveyFigure(kind,val);
+  if(['sormCop','sormStip','sormRaggiati'].includes(kind))return roundedMeasureFigure(context?.overlapRef,val);
+  if(['antaS','antaLb','antaSb','antaLb2','antaSb2','antaR'].includes(kind))return leafSurveyFigure(kind,val);
+  if(['luceW','luceH','antaL','antaH'].includes(kind))return openingFigure(kind,val);
   if(kind==='antaChiusura')return sectionSurveyFigure('closureProjection',{focus:true,value:val});
   if(kind==='closureStop'){const stop=context?.stopKey?rebateEdges().find(stop=>stop.edge.stateKey===context.stopKey):selectedDoorStop(geometry());return sectionSurveyFigure(kind,{focus:true,edge:stop?.edge,value:val});}
-  if(kind==='frameProfile')return sectionSurveyFigure();
+  if(kind==='frameProfile'){
+    const g=geometry(),quote=g.parts.flatMap(part=>part.quotes).find(quote=>quote.key===context?.quoteKey);
+    if(!quote)return surveyFigure('frame-measure');
+    const axis=Math.abs(quote.from[0]-quote.to[0])<1e-6?'v':'h';
+    const svg=sectionSurveyFigure('frame-measure',{geometry:g,focus:axis==='v',from:quote.from,to:quote.to,axis,value:val,dimension:'telaio-'+quote.key});
+    svg.setAttribute('data-quote-key',quote.key);svg.setAttribute('data-world-from',quote.from.join(','));svg.setAttribute('data-world-to',quote.to.join(','));return svg;
+  }
   const svg = el('svg', {class: 'mt-wiz-fig', viewBox: '0 0 260 170', 'aria-hidden': 'true'});
   const ink = {fill: 'var(--mt-wood)', stroke: 'var(--mt-ink)', 'stroke-width': 1.2};
   const add = (tag, attrs) => { const n = el(tag, attrs); svg.append(n); return n; };
@@ -4767,7 +4899,7 @@ function measureFig(kind, val, context=null) {
     style: 'fill:var(--mt-green)', stroke: 'var(--mt-paper)', 'stroke-width': 4, 'paint-order': 'stroke',
     ...(rot ? {transform: `rotate(-90 ${x} ${y})`} : {})}).textContent = txt;
   const dim = (x1, y1, x2, y2) => {
-    add('line', {x1, y1, x2, y2, stroke: 'var(--mt-green)', 'stroke-width': 2.5});
+    add('line', {x1, y1, x2, y2, stroke: 'var(--mt-green)', 'stroke-width': 2.5,'data-survey-dimension':kind,'data-from':[x1,y1].join(','),'data-to':[x2,y2].join(',')});
     const v = x1 === x2;
     [[x1, y1], [x2, y2]].forEach(([x, y]) => add('line', v ? {x1: x - 6, y1: y, x2: x + 6, y2: y, stroke: 'var(--mt-green)', 'stroke-width': 2.5}
       : {x1: x, y1: y - 6, x2: x, y2: y + 6, stroke: 'var(--mt-green)', 'stroke-width': 2.5}));
@@ -4939,7 +5071,7 @@ function renderMeasure(m, last) {
     wiz.bufFor = m.id;
   }
   const shown = (wiz.buf === '' ? '—' : wiz.buf) + ' mm';
-  body.append(m.leafKey?leafSurveyFigure(m.leafFig||'leafSealWidth',shown,m.leafKey):m.gasketRef ? gasketMeasureFigure(m, shown) : /^sorm/.test(m.fig||'') ? roundedMeasureFigure() : measureFig(m.fig, shown,m));
+  body.append(m.leafKey?leafSurveyFigure(m.leafFig||'leafSealWidth',shown,m.leafKey):m.gasketRef ? gasketMeasureFigure(m, shown) : /^sorm/.test(m.fig||'') ? roundedMeasureFigure(m.overlapRef,shown) : measureFig(m.fig, shown,m));
   if(/^sorm/.test(m.fig||''))renderOverlapOrderList(body,null,m.overlapRef||null);
   const val = document.createElement('div');
   val.className = 'mt-wiz-value';
@@ -5003,7 +5135,7 @@ function buildApp() {
   $('[data-dock=tagli]').append($('[data-panel=frame] .mt-cut-results'));
   slot('door-canvas').append($('.mt-door-diagram'));
   $$('[data-door-type]').forEach(button=>{const text=document.createElement('strong');text.textContent=doorTypes[button.dataset.doorType];button.replaceChildren(doorProfileThumb(button.dataset.doorType),text);});
-  slot('door-dock').append($('.mt-door-types'), $('.mt-door-closure'), $('[data-chips=door]'), $('.mt-leaf-gaskets'), $('.mt-leaf-seam'), $('.mt-door-surfaces'), $('.mt-door-edge-controls'), $('.mt-door-bottom-controls'), $('.mt-door-film-note'),
+  slot('door-dock').append($('.mt-leaf-selector'),$('.mt-door-types'), $('.mt-door-closure'), $('[data-chips=door]'), $('.mt-leaf-gaskets'), $('.mt-leaf-seam'), $('.mt-door-surfaces'), $('.mt-door-edge-controls'), $('.mt-door-bottom-controls'), $('.mt-door-film-note'),
     $('[data-panel=door] .mt-total'), $('.mt-door-rows'), $('[data-out=door-error]'));
   slot('total').append($('.mt-summary'), $('[data-panel=total] > p.mt-small'), $('[data-out=summary-error]'), $('.mt-cut-list'));
   slot('gallery').append($('.mt-gallery'));
@@ -5017,22 +5149,26 @@ function currentRows() {
   if (!valid()) return null;
   const parts = geometry().parts;
   if (parts.some(part => gasketError(part) || groups(part).length && (!validFrameCut(partCut(part)) || !validOver(part)))) return null;
-  const needsDoor = doorFaces.some(([key]) => isDoorFaceCovered(key));
-  if (needsDoor && !validDoor()) return null;
+  if (invalidLeaf()) return null;
   const frame = parts.flatMap((part, i) => frameRows(part).map(r => ({...r, partIndex: i})));
-  return posaOrder([...frame, ...(needsDoor ? doorRows() : [])]);
+  return posaOrder([...frame, ...allDoorRows()]);
+}
+function doorClosureRecord() {
+  return{mode:door.closure,reference:door.reference,bearing:doorBearing(),stopTarget:doorStopTarget(),stopKey:geometry().leaf?.stopKey||null,
+    projection:doorProjection(),actualProjection:geometry().leaf?.frontProjection??null,edge:door.type,lip:doorLip(),rebateAt:doorRebateAt(),
+    ...(door.type==='double'?{lip2:door.lip2,rebateAt2:doorRebateAt2(),seamKey:leafSeam()?.edge.stateKey||null}:{}),
+    fitBasis:door.fitBasis,leafGaskets:leafGasketSpans().map(span=>({surfaceKey:span.key,start:span.start,width:span.width,full:!!span.full,depth:span.depth}))};
 }
 function addToJob() {
   const rows = currentRows();
   if (!rows) { setTab('total'); return; }
   const letter = String.fromCharCode(65 + (job.seq % 26)) + (job.seq >= 26 ? Math.floor(job.seq / 26) : '');
   job.seq++;
+  const leaves=eachLeaf(index=>({index,name:leafName(index),width:door.width,height:door.height,thickness:door.thickness,closure:doorClosureRecord()}));
   job.types.push({id: 't' + job.seq, name: 'Tipo ' + letter, qty: 1,
-    desc: `${model().name} · ${doorClosureName()} · luce ${fmt(luce.W)} × ${fmt(luce.H)} · anta ${fmt(door.width)} × ${fmt(door.height)}`,
-    closure:{mode:door.closure,reference:door.reference,bearing:doorBearing(),stopTarget:doorStopTarget(),stopKey:geometry().leaf?.stopKey||null,
-      projection:doorProjection(),actualProjection:geometry().leaf?.frontProjection??null,edge:door.type,lip:doorLip(),rebateAt:doorRebateAt(),
-      ...(door.type==='double'?{lip2:door.lip2,rebateAt2:doorRebateAt2(),seamKey:leafSeam()?.edge.stateKey||null}:{}),
-      fitBasis:door.fitBasis,leafGaskets:leafGasketSpans().map(span=>({surfaceKey:span.key,start:span.start,width:span.width,full:!!span.full,depth:span.depth}))},
+    desc: `${model().name} · ${doorClosureName()} · luce ${fmt(luce.W)} × ${fmt(luce.H)} · `+leaves.map(leaf=>leaf.name.toLocaleLowerCase('it-IT')+' '+fmt(leaf.width)+' × '+fmt(leaf.height)).join(' / ')+(state.hasHead===false?' · senza traverso':''),
+    opening:{hasHead:state.hasHead!==false,leafCount:state.leafCount},leaves,
+    closure:leaves[0].closure,
     film:{brand:'Cover Styl',reference:null,edgeMethod:'Metodo di posa definito dall’utente'},
     rows: rows.map(r => ({label: r.name, width: roundCut(r.width), length: roundCut(r.height)}))});
   vibrate();

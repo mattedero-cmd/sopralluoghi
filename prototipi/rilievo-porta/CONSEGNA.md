@@ -12,6 +12,24 @@ semplice consegna; una pubblicazione dovrà essere richiesta separatamente.
 
 ## Decisioni da conservare
 
+- Quote presenti in ogni passaggio numerico, comprese profondità e spessori
+  D/E/I/s/sI del telaio senza coprifili. `quoteKey` risolve gli estremi reali
+  nelle quote del pezzo; raggi e sormonti hanno il proprio segno di misura.
+  `automaticDoorReference` salta il passo e nasconde il controllo quando il
+  piano è unico, oltre al caso della battuta sul coprifilo.
+- `state.hasHead` distingue il traverso presente o assente. Senza traverso si
+  salta il passo degli angoli, `partCut.head` vale zero per tutti i profili,
+  i montanti usano l'altezza rilevata senza maggiorazione di giunto e il
+  prospetto non disegna il membro superiore. Le esclusioni manuali sono conservate.
+- `state.leafCount` distingue una/due ante; `leafRecords`, `withLeaf` e
+  `setActiveLeaf` conservano le misure, il profilo, le guarnizioni, i fogli,
+  il fondo e le abbondanze di ciascuna. La guida rileva le ante in successione
+  con ID distinti; le quote del telaio già rilevate non vengono chieste due volte.
+  Il selettore dell'anta è disponibile anche nella sezione dello stipite.
+  `allDoorRows` e `invalidLeaf` alimentano riepilogo, lavoro e bobine con tutte
+  le ante: una non valida blocca la porta completa, il telaio non raddoppia.
+  Il lavoro salva `opening` e `leaves`, conservando anche `closure` della prima
+  anta per compatibilità. Tornare a un'anta esclude la seconda senza perderne i dati.
 - Appoggio della battuta dell'anta: `door.stopTarget` distingue `jamb` da
   `casing`, separatamente da chiusura e piano di riferimento. Il caso coprifilo
   usa il primo scalino dell'anta sul frontale reale del coprifilo esterno;
@@ -152,15 +170,12 @@ semplice consegna; una pubblicazione dovrà essere richiesta separatamente.
 
 ## Verifica dello stato consegnato
 
-HTML SHA256: `5c85920b612578ee86eefd0df9de9f693793ac8d13af3e08a7ed6cebcdf876bb`.
+HTML SHA256: `a2032b248b17b1b7e3fdfca54d7e41b8004a589329c522753181c0c0419a4722`.
 
-La rimozione della domanda sul piano di riferimento è verificata con 78 gruppi
-in 11 esecuzioni: sei guide complete sul coprifilo, ritorno allo stipite con
-ripristino del piano scelto, normalizzazione del vecchio riferimento, contatti,
-invarianza dei tagli, lavoro e bobine. L'editor non propone il riferimento in
-questo caso; la scelta resta disponibile quando l'appoggio è sullo stipite.
-
-La precedente versione aveva superato 235 gruppi in 28 esecuzioni:
+Superati 256 gruppi in 31 esecuzioni. Le nuove verifiche comprendono 11 gruppi
+su tutte le quote numeriche, riferimenti automatici, traverso assente, due ante
+indipendenti e conteggi; due creazioni complete con ante disuguali, con e senza
+traverso, 5 gruppi ciascuna, fino al lavoro e al piano bobine. I restanti 235:
 appoggio sul coprifilo 13,
 sei creazioni complete sul coprifilo (uno/due scalini, quote da anta/stipite/entrambi)
 5 ciascuna; guarnizioni 17, profili raggiati/smussati 21,

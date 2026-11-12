@@ -69,6 +69,21 @@ Le ulteriori battute seguono le quote dell'anta o del telaio secondo la fonte
 scelta esplicitamente. Con «entrambi» le misure rilevate restano indipendenti.
 Queste sono relazioni del modello schematico di contatto, non quote di norma.
 
+Ogni domanda numerica della guida mostra una quota: anche D/E/I e gli spessori
+s/sI del telaio senza coprifili, con estremi presi dal profilo reale. Con un
+solo piano disponibile la scelta del riferimento è automatica e il passaggio
+viene saltato.
+
+Su richiesta dell'utente, il rilievo distingue la presenza del traverso
+superiore e una o due ante. Senza traverso non si chiedono gli angoli e non si
+generano i relativi pezzi, né l'estensione dei montanti dovuta al giunto in alto.
+Due ante non significa doppia battuta: ciascuna conserva misure, profilo e
+guarnizioni propri, anche con larghezze differenti, sul telaio comune.
+Il prospetto numera le ante; la sezione mostra quella selezionata in appoggio
+al telaio. Il telaio entra una volta nella distinta; i fogli di entrambe le
+ante entrano nel piano bobine, con larghezza uniforme fra fronte e retro di
+ciascuna. Non vengono ricostruiti inserti proprietari non rilevati.
+
 Le guarnizioni dell'anta e dello stipite possono lavorare su due appoggi
 distinti. Per l'appoggio sul coprifilo si verifica anche la copertura completa
 della fascia di gomma: un contatto parziale vicino a un raggio, smusso o

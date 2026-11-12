@@ -25,7 +25,8 @@ senza lo schema isolato a Z.
 1. **Creazione guidata del modello**, una scelta alla volta:
    battuta (nessuna, singola, doppia, con imbotte) → coprifilo (senza coprifili / filomuro, squadrato, smussato,
    raggiato, modanato, a gradino, telescopico, a sormonto, integrato) → posizione del
-   coprifilo per lato (a filo, arretrato, sporgente) → angoli (montanti passanti,
+   coprifilo per lato (a filo, arretrato, sporgente) → presenza del traverso superiore
+   → una o due ante → angoli, se il traverso è presente (montanti passanti,
    traverso passante, 45°) → riepilogo.
 2. **Misure guidate**, una per schermata, con disegno e tastierino: luce L e H, bordo
    dell'anta (squadrato, uno scalino, due scalini o arrotondato), L/H/S dell'anta
@@ -39,6 +40,10 @@ senza lo schema isolato a Z.
    mostra le misure calcolate. Per ogni battuta chiede la sua
    larghezza, se c'è la guarnizione e se copre tutta la battuta oppure la sua
    larghezza e la distanza di inizio dal primo spigolo.
+   Ogni passaggio numerico mostra la linea di quota: comprende profondità e
+   spessori del telaio a vista, anche con imbotte, raggi e sormonti. Il piano di
+   riferimento si chiede solo se esiste una scelta effettiva; con un solo piano
+   o con battuta sul coprifilo viene impostato automaticamente.
 3. **Sezione a mano** nel banco di lavoro: si trascinano i lati del pezzo (1 mm ogni
    7 px), il coprifilo si sposta su e giù prendendolo dal centro, un tocco apre il
    tastierino accanto alla quota. Nella sezione piccola restano solo le quote
@@ -265,6 +270,24 @@ senza lo schema isolato a Z.
 - Abbondanze iniziali: **25 mm su ogni lato dell'anta**, **15 mm a ogni estremità
   di stipiti, coprifili e imbotte**. Restano modificabili e vengono sommate dopo
   lo sviluppo dei risvolti: 2 × abbondanza su larghezza e altezza di ciascun foglio.
+
+### Traverso e due ante
+
+- **Senza traverso:** nel prospetto restano i due montanti. La guida salta gli
+  angoli e chiede l'altezza dei montanti, indicandola nel disegno. I tagli del
+  traverso sono assenti per tutti i profili; la lunghezza dei montanti non
+  aggiunge l'estensione degli angoli superiori. Le esclusioni manuali esistenti
+  restano conservate quando si rimette il traverso.
+- **Due ante, anche disuguali:** ciascuna ha larghezza, altezza, spessore, profilo,
+  guarnizioni, facce, bordo inferiore e abbondanza propri. Le ante sono numerate
+  nel prospetto: 1 a sinistra, 2 a destra. La guida le rileva in successione;
+  struttura e quote comuni del telaio sono rilevate una volta sola. Il selettore
+  è disponibile nella scheda Anta e nella sezione dello stipite.
+- **Tagli e bobine:** il telaio compare una sola volta; i fogli e gli eventuali
+  bordi separati di entrambe le ante confluiscono in riepilogo, lavoro e piano
+  bobine. Fronte e retro hanno la stessa larghezza di taglio per ciascuna anta.
+  Un'anta non valida impedisce di aggiungere la porta completa al lavoro.
+  Tornare a un'anta esclude la seconda dai pezzi, conservandone le misure.
 
 ### Sequenza di posa
 
