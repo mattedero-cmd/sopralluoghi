@@ -16,6 +16,12 @@ integrato nell'app Sopralluoghi**.
 
 ## Come si usa
 
+La revisione della guida mostra **una scelta per schermata** e una sola
+anteprima grande, con la quota sulla zona interessata. Scalini dell’anta,
+sporgenza/rientro, posizione della battuta e guarnizioni hanno linee di quota
+con riferimenti sul profilo reale. La battuta è mostrata con l’anta in sezione,
+senza lo schema isolato a Z.
+
 1. **Creazione guidata del modello**, una scelta alla volta:
    battuta (nessuna, singola, doppia, con imbotte) → coprifilo (senza coprifili / filomuro, squadrato, smussato,
    raggiato, modanato, a gradino, telescopico, a sormonto, integrato) → posizione del
@@ -151,6 +157,17 @@ integrato nell'app Sopralluoghi**.
 
 ### Anta
 
+- Per le ante battentate la guida chiede **da quale pezzo si prendono le quote**:
+  anta, stipite oppure entrambi. Non sceglie una fonte di misura al posto
+  dell’utente. Nei profili corrispondenti, Misuro l’anta calcola le battute
+  dello stipite; Misuro lo stipite calcola gli scalini dell’anta. Le quote
+  calcolate non vengono chieste nuovamente e sono protette nell’editor.
+  Misuro entrambi conserva le quote rilevate e consente solo la conferma
+  degli abbinamenti coerenti. I profili senza una corrispondenza gestita
+  richiedono il rilievo di entrambi, senza inventare un accoppiamento.
+- Chiusura, piano di riferimento, parte dell’anta in appoggio e battuta
+  del telaio sono passaggi distinti. Ognuno mostra una sola anteprima grande
+  e pulsanti con nomi brevi. Le combinazioni incompatibili sono disabilitate.
 - La sagoma del legno e le guarnizioni si rilevano separatamente. La ricerca
   su fonti ECO Schulte, Westag e Sebino è in [RICERCA-ANTE.md](RICERCA-ANTE.md).
   Oltre ai profili precedenti, **Due scalini** aggiunge Lb2 e Sb2 indipendenti
@@ -158,7 +175,9 @@ integrato nell'app Sopralluoghi**.
 - **Guarnizioni sull’anta** è una sezione apribile nella scheda Anta, distinta
   da Guarnizioni della Maestà. La guida parte da Sì e richiede la superficie;
   si sceglie tutto il tratto oppure larghezza e inizio dal suo spigolo 0.
-  Le fasce si modificano, aggiungono o eliminano per ogni tratto rettilineo.
+  Nelle ante battentate le fasce si configurano **solo sugli scalini verticali**,
+  sul primo, sul secondo oppure su entrambi. I piani del bordo non sono proposti.
+  Ogni scalino selezionato ha larghezza e inizio propri.
   La configurazione vale sopra e sui due lati; il bordo inferiore resta separato.
 - Una guarnizione sull’anta interrompe il rivestimento. I fogli si arrestano
   ai suoi bordi; eventuali tratti isolati diventano strisce separate sui tre
@@ -167,6 +186,10 @@ integrato nell'app Sopralluoghi**.
 - La sezione verifica separatamente i contatti delle guarnizioni dell’anta
   con il telaio, anche con guarnizioni su entrambi. Segnala ciascuna fascia
   che non trova appoggio. Le quote della gomma non aumentano quelle del legno.
+- La stessa zona di contatto non può ospitare due guarnizioni contrapposte.
+  Inserirla sull’anta rimuove solo quella del telaio sulla superficie
+  corrispondente; le altre rimangono. La guida impedisce di aggiungerla
+  nuovamente sullo stesso appoggio del telaio.
 - **Sopra e sui lati** il rivestimento è completo: prima il foglio destro, poi
   il sinistro sopra. Nell'anta semplice entrambi girano su tutto lo spessore S;
   nell'anta battentata si sovrappongono solo sul tratto verticale Lb, chiudendo
@@ -191,7 +214,9 @@ integrato nell'app Sopralluoghi**.
   Non vale la precedente regola universale «per il filo serve la doppia battuta».
   Anche una battuta singola può permettere la complanarità, con un profilo adatto.
   La guida chiede come chiude l'anta e rispetto a quale piano.
-- **Lb e Sb sono quote dell'anta**: non cambiano modificando b1 dello stipite.
+- **Lb e Sb sono quote dell'anta**: non cambiano modificando b1 dello stipite
+  nel rilievo indipendente. Il collegamento è ora possibile scegliendo
+  esplicitamente nella guida quale elemento misurare e quale calcolare.
   Il vecchio automatismo Lb=b1 e il pulsante che lo ripristinava sono rimossi.
   I valori iniziali (Lb 6, Sb S/2, sporgenza 10 mm) sono esempi, non standard di
   fabbricazione. Nella guida le misure effettive si inseriscono sul disegno.

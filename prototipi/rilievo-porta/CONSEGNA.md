@@ -38,6 +38,24 @@ semplice consegna; una pubblicazione dovrà essere richiesta separatamente.
   su fonti ECO Schulte, Westag e Sebino. L’utente conferma guarnizioni su entrambi
   gli elementi. Dalla foto non si identifica un ulteriore inserto rigido certo:
   nessun dente o sede proprietaria è stato inventato.
+- Revisione guidata richiesta durante la prova: una sola scelta e una sola
+  anteprima grande per schermata. Chiusura, piano di riferimento, superficie
+  dell’anta e arresto del telaio sono quattro passaggi distinti. Le quote
+  Sb/Lb/Sb2/Lb2 hanno linee di quota; sporgenza e P/P1/P2 hanno uno zoom con
+  riferimenti sui punti effettivi. Le figure delle guarnizioni comprendono
+  telaio e anta, senza lo schema isolato a Z.
+- `fitBasis` richiede una scelta esplicita: anta, stipite o entrambi.
+  `fitPairs`, `syncFitGeometry` e `fitCandidate` collegano solo le superfici
+  corrispondenti gestite dal modello. Anta calcola le battute del telaio;
+  stipite calcola gli scalini dell’anta. Le quote dipendenti sono protette
+  nell’editor e saltate nella guida. Con entrambi si conservano le quote
+  rilevate e si impedisce la conferma degli abbinamenti incompatibili.
+  Non estendere queste relazioni a profili proprietari non rilevati.
+- Le guarnizioni delle ante battentate si inseriscono solo sugli scalini
+  verticali: primo, secondo o entrambi, con misure separate. Nessuna sui
+  piani del bordo. Una guarnizione sull’anta esclude quella contrapposta
+  sulla superficie del telaio che la riceve: le altre restano indipendenti.
+  `leafSealOnFrameSurface` impedisce la reinserzione sul medesimo appoggio.
 - **Due scalini** aggiunge Lb2 e Sb2 indipendenti dal telaio. `doorProfileEdges`
   è la sagoma comune per sezione, film e tagli. Senza guarnizioni si sceglie
   esplicitamente lo scalino del sormonto; non si deduce dall’arresto del telaio.
@@ -63,14 +81,15 @@ semplice consegna; una pubblicazione dovrà essere richiesta separatamente.
   «singola sopra il coprifilo, doppia obbligatoria per il filo». Bordo dell'anta,
   gradini dello stipite e complanarità sono scelte indipendenti. Le fonti dei
   produttori sono consultabili anche nei dettagli della guida.
-- Nuovo passaggio **Come chiude l'anta?**: sovrapposta, a filo, rientrata;
+- Passaggio **Come chiude l'anta?**: sovrapposta, a filo, rientrata;
   riferimento coprifilo o estremità dello stipite, parete nel filomuro.
-  Si sceglie se appoggia la faccia oppure lo scalino della battentata e, con
-  più battute, su quale avviene l'arresto. `selectedDoorStop` usa le stesse
+  Negli ulteriori passaggi separati si scelgono riferimento, parte dell’anta
+  in appoggio e battuta del telaio. `selectedDoorStop` usa le stesse
   chiavi semantiche delle guarnizioni e non ripiega su un'altra battuta se
   quella selezionata manca.
-- Lb e Sb rimangono quote dell'anta. Sono rimossi l'automatismo Lb=b1 e il
-  relativo pulsante; cambiare b1 non cambia i fogli di un'anta già quotata.
+- Lb e Sb rimangono quote dell'anta nel rilievo indipendente. Il vecchio
+  automatismo universale Lb=b1 è rimosso; il nuovo collegamento vale soltanto
+  scegliendo esplicitamente nella guida quale elemento misurare e quale calcolare.
   Lb 6, Sb S/2 e sporgenza 10 mm sono esempi iniziali dichiarati, non norme.
 - `closedDoorLeaf` verifica contatti di superficie reali sulla faccia o sullo
   scalino selezionato. La sezione mantiene il linguaggio grafico precedente,
@@ -104,21 +123,26 @@ semplice consegna; una pubblicazione dovrà essere richiesta separatamente.
 
 ## Verifica dello stato consegnato
 
-HTML SHA256: `d0589fc394655e3dd1ebea2a078a46dbba0f772efdd2448d6b75e6352baa8403`.
+HTML SHA256: `4d1692e8860e31a16e00cc0e13d487be56a7c82a0848f89ca41db687133eb9fe`.
 
-Superati 144 gruppi di verifica: guarnizioni 17, profili raggiati/smussati 21,
+Superati 166 gruppi di verifica: guarnizioni 17, profili raggiati/smussati 21,
 ordine grafico dei sormonti 10, sormonti automatici 8, anta e tagli 12, sezione
 e scorte 9, bobine uniformi e luce minima 9, sezione e appoggio dell'anta 8,
 regole di chiusura 4, aggancio stabile delle superfici 6, nuovo modello di
 chiusura 12, flusso dell'interfaccia 5, profili e guarnizioni dell’anta 17,
-flusso completo dell’anta e dei suoi controlli 6. Le vecchie prove che imponevano la
+guida e vincoli geometrici 13, tre flussi completi dell’anta e dei controlli
+5 ciascuno. Le vecchie prove che imponevano la
 regola singola/doppia o Lb=b1 sono state aggiornate ai requisiti documentati;
 i confronti di taglio usano le stesse quote fisiche esplicite.
 
 Verificati sintassi, JavaScript effettivo in Node VM, avvio completo e creazione
-filomuro e anta battentata con guarnizioni su entrambi gli elementi in jsdom,
+filomuro e tre creazioni a due scalini (quote da anta, stipite o entrambi),
+con guarnizioni sui due elementi in jsdom,
 con elementi ed eventi DOM reali, tastierino a due decimali, distinta e bobine.
-Verificati conservazione del materiale, tratti isolati e fasce fuori misura.
+Verificati conservazione del materiale, tratti isolati, fasce fuori misura,
+quote dipendenti, assenza di vuoto fra gli scalini e guarnizioni contrapposte
+impedite. Le vecchie prove delle guarnizioni sui piani sono aggiornate ai
+soli scalini richiesti dall’utente.
 Esportate sezioni SVG reali in entrambi i temi e ispezionate le immagini
 PNG dei casi principali, comprese doppia battuta e sezione riflessa.
 La verifica in jsdom non è una verifica di rendering

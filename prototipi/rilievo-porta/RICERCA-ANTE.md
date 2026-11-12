@@ -27,7 +27,9 @@ lo stile del prototipo; non riproducono i dettagli costruttivi dei produttori.
   non viene indovinata. Poi si sceglie tutto il tratto o si misurano larghezza
   e distanza dal primo spigolo, indicato con 0.
 - Nella scheda Anta le guarnizioni si aggiungono, quotano ed eliminano
-  indipendentemente. Ogni tratto rettilineo può ospitare una fascia. La fascia
+  indipendentemente. Nelle ante battentate vengono proposti soltanto gli
+  scalini verticali, anche entrambi, secondo la successiva indicazione
+  dell’utente. I piani del bordo non sono sedi proposte. La fascia
   configurata corre sul bordo superiore e sui due lati; sotto resta la scelta
   separata già prevista. Le guarnizioni degli archi non sono modellate.
 - Le fasce hanno identità stabili all’interno della rispettiva sagoma:
@@ -59,3 +61,23 @@ stipite. La prospettiva non permette di misurare gli scalini o identificare
 con certezza un ulteriore «inserto» rigido. Non viene quindi aggiunto un
 dente, una sede nascosta o un componente proprietario inventato. Un profilo
 con gole o inserti differenti richiederà la descrizione e le quote effettive.
+
+## Revisione della guida durante la prova dell’utente
+
+L’utente ha richiesto quote grafiche al posto delle descrizioni, anteprime
+grandi con una sola scelta alla volta, nessun vuoto artificiale fra i due
+scalini e nessuna guarnizione contrapposta a un’altra sullo stesso appoggio.
+Questi sono requisiti del prototipo concordati con l’utente; non vengono
+presentati come prescrizioni universali dei produttori.
+
+La guida chiede quale elemento misurare. Per i profili corrispondenti, il
+modello collega posizione e altezza degli scalini scegliendo esplicitamente
+l’anta oppure lo stipite come fonte. Nell’opzione di rilievo di entrambi,
+le quote vengono conservate e verificate. La relazione vale per il modello
+di contatto rappresentato: non assegna una fuga o una compressione della
+gomma non misurate e non ricostruisce profili proprietari diversi.
+
+Le guarnizioni dell’anta occupano gli scalini scelti. Sul tratto del telaio
+che riceve quella guarnizione l’app impedisce un’altra fascia contrapposta;
+gli altri appoggi possono conservare le proprie guarnizioni. La sottrazione
+dei relativi ingombri aggiorna gli sviluppi e il piano bobine.
