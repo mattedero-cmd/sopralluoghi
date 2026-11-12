@@ -12,6 +12,21 @@ semplice consegna; una pubblicazione dovrà essere richiesta separatamente.
 
 ## Decisioni da conservare
 
+- Appoggio della battuta dell'anta: `door.stopTarget` distingue `jamb` da
+  `casing`, separatamente da chiusura e piano di riferimento. Il caso coprifilo
+  usa il primo scalino dell'anta sul frontale reale del coprifilo esterno;
+  le ulteriori superfici seguono le battute dello stipite. Una sola anteprima
+  ingrandita indica il contatto e la sporgenza calcolata. I profili a due scalini
+  sono gestiti anche con due guarnizioni su appoggi distinti.
+  `casingFitPairs`/`syncCasingFit` rispettano la fonte delle quote: anta calcola
+  il telaio, telaio calcola le quote dipendenti dell'anta, entrambi conserva
+  quelle misurate. Non si impone una distanza di sporgenza indipendente.
+  `seatChoices` conserva le scelte di chiusura precedenti tornando allo stipite.
+  Tutta la larghezza delle guarnizioni deve incontrare una superficie reale;
+  raggi, smussi e distanze dei coprifili non vengono compensati spostando la gomma.
+  `closure.stopTarget` e la superficie di arresto vengono salvati nel lavoro;
+  film, distinta e bobine continuano a usare il profilo effettivo dell'anta.
+  Fonti primarie Köhnlein ed ECO Schulte in `RICERCA-CHIUSURE.md`.
 - Sormonti di giunzione aggiornati automaticamente fino allo spigolo adiacente.
   Una sola linguetta marrone separa le due pellicole verdi: il percorso esterno
   appartiene al pezzo posato per ultimo, che copre quello sottostante.
@@ -135,9 +150,11 @@ semplice consegna; una pubblicazione dovrà essere richiesta separatamente.
 
 ## Verifica dello stato consegnato
 
-HTML SHA256: `0993a4182162565bcd1f9490c626a2fd2761cd108a307eed595f48a1b9ccb3ea`.
+HTML SHA256: `5464cc0104a671c6f823afa8658d2ed1f68fa0602534e08309251079d6fc5237`.
 
-Superati 192 gruppi di verifica: guarnizioni 17, profili raggiati/smussati 21,
+Superati 235 gruppi di verifica in 28 esecuzioni: appoggio sul coprifilo 13,
+sei creazioni complete sul coprifilo (uno/due scalini, quote da anta/stipite/entrambi)
+5 ciascuna; guarnizioni 17, profili raggiati/smussati 21,
 ordine grafico dei sormonti 10, sormonti automatici 8, anta e tagli 12, sezione
 e scorte 9, bobine uniformi e luce minima 9, sezione e appoggio dell'anta 8,
 regole di chiusura 4, aggancio stabile delle superfici 6, nuovo modello di
@@ -159,6 +176,10 @@ impedite. Le vecchie prove delle guarnizioni sui piani sono aggiornate ai
 soli scalini richiesti dall’utente.
 Verificato il cambiamento reale Sì/No, l’assegnazione della sede unica,
 il rifiuto dell’appoggio con vuoto e il mantenimento dei casi Faccia validi.
+Verificati appoggio sul coprifilo, contatti separati delle guarnizioni,
+copertura completa della gomma anche vicino a raggi e smussi, protezione della
+sporgenza calcolata, ritorno allo stipite e riapertura del passo corretto della
+guida. Le sei creazioni aggiuntive arrivano al lavoro e al piano bobine.
 Le prove dei tagli grezzi restano distinte dall’ammissibilità dell’insieme:
 un profilo impossibile non viene più considerato esportabile solo perché
 le singole superfici sono quotate.

@@ -18,6 +18,7 @@ sull’anta è documentata in [RICERCA-ANTE.md](RICERCA-ANTE.md).
 | Anta sovrapposta | Faccia sporgente rispetto a quel piano, con distanza da rilevare. |
 | Anta rientrata | Faccia arretrata rispetto a quel piano; caso misurato, non valore iniziale universale. |
 | Filomuro | Riferimento alla parete e assenza dei coprifili tradizionali. Il telaio resta specifico del sistema. |
+| Battuta sul coprifilo | Il risalto dell'anta incontra il frontale del coprifilo di battuta, parte del sistema del telaio. L'allineamento della faccia resta un dato distinto. |
 
 Il numero di gradini del telaio non determina da solo la complanarità o la
 geometria del bordo. Le quote del telaio e quelle dell'anta si rilevano
@@ -26,6 +27,15 @@ del telaio del produttore.
 
 ## Fonti sulla chiusura
 
+- [Köhnlein Türen, glossario tecnico ufficiale](https://www.koehnlein-tueren.de/innentueren/weiterfuehrendes/tuerenlexikon/#collapse-35778):
+  la voce *Einfachfalz* descrive la battuta dell'anta che chiude nella
+  *Falzbekleidung*. Le voci *Bekleidungen* e *Falzbekleidung* distinguono il
+  coprifilo di battuta fissato al telaio dalla finitura sul lato opposto.
+  Non è una proprietà di qualsiasi cornice decorativa separata.
+- [ECO Schulte, Bandtechnik, p. 628, figura 1b](https://www.eco-schulte.com/fileadmin/downloads/intro/eco_intro_bandtechnik.pdf#page=6):
+  sezione di anta battentata con guarnizione nel risalto, distinta dalla
+  guarnizione interna del telaio. Il termine generico *Zarge* del disegno
+  non identifica da solo un coprifilo decorativo separato.
 - [SIMONSWERK, TECTUS TE 240 3D](https://selector.simonswerk.com/en/products/detail/te-240-3d)
   e relativa scheda: contempla ante senza battuta e ante battentate complanari.
   Questo contraddice una deduzione universale del tipo «filo = due gradini».
@@ -47,6 +57,23 @@ La guida chiede tipo di bordo, piano di confronto, chiusura, superficie
 dell'anta in appoggio e battuta effettiva di arresto. Le sezioni e la posizione
 delle guarnizioni verificano questi dati. Le misure inserite o confermate non
 sono riscritte per far combaciare un esempio.
+
+Per le ante con scalino e coprifili esiste un passo dedicato «Dove appoggia la
+battuta dell'anta?»: stipite oppure coprifilo. Una sola anteprima ingrandita
+evidenzia il contatto scelto. Nel secondo caso il primo scalino incontra il
+frontale del coprifilo; la sporgenza è un risultato di Sb e del piano di
+riferimento, protetto nell'editor e non richiesto come quota indipendente.
+Le ulteriori battute seguono le quote dell'anta o del telaio secondo la fonte
+scelta esplicitamente. Con «entrambi» le misure rilevate restano indipendenti.
+Queste sono relazioni del modello schematico di contatto, non quote di norma.
+
+Le guarnizioni dell'anta e dello stipite possono lavorare su due appoggi
+distinti. Per l'appoggio sul coprifilo si verifica anche la copertura completa
+della fascia di gomma: un contatto parziale vicino a un raggio, smusso o
+coprifilo arretrato non basta. La fascia deve essere misurata nella sua
+posizione reale; non viene accorciata o spostata in automatico. I vuoti sotto
+lo stipite e le guarnizioni contrapposte sul medesimo contatto restano esclusi.
+Distinta e bobine usano gli stessi profili e le stesse interruzioni di pellicola.
 
 Il contatto è rappresentato sul piano della guarnizione; il tratto giallo ha
 spessore grafico simbolico. Non si assegnano una compressione della guarnizione
