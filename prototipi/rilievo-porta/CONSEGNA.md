@@ -21,7 +21,9 @@ semplice consegna; una pubblicazione dovrà essere richiesta separatamente.
   `casingFitPairs`/`syncCasingFit` rispettano la fonte delle quote: anta calcola
   il telaio, telaio calcola le quote dipendenti dell'anta, entrambi conserva
   quelle misurate. Non si impone una distanza di sporgenza indipendente.
-  `seatChoices` conserva le scelte di chiusura precedenti tornando allo stipite.
+  Il riferimento è automaticamente il coprifilo, senza domanda sul piano né
+  controlli di riferimento nell'editor. `seatChoices` conserva anche il piano
+  scelto prima per ripristinarlo tornando allo stipite.
   Tutta la larghezza delle guarnizioni deve incontrare una superficie reale;
   raggi, smussi e distanze dei coprifili non vengono compensati spostando la gomma.
   `closure.stopTarget` e la superficie di arresto vengono salvati nel lavoro;
@@ -150,9 +152,16 @@ semplice consegna; una pubblicazione dovrà essere richiesta separatamente.
 
 ## Verifica dello stato consegnato
 
-HTML SHA256: `5464cc0104a671c6f823afa8658d2ed1f68fa0602534e08309251079d6fc5237`.
+HTML SHA256: `5c85920b612578ee86eefd0df9de9f693793ac8d13af3e08a7ed6cebcdf876bb`.
 
-Superati 235 gruppi di verifica in 28 esecuzioni: appoggio sul coprifilo 13,
+La rimozione della domanda sul piano di riferimento è verificata con 78 gruppi
+in 11 esecuzioni: sei guide complete sul coprifilo, ritorno allo stipite con
+ripristino del piano scelto, normalizzazione del vecchio riferimento, contatti,
+invarianza dei tagli, lavoro e bobine. L'editor non propone il riferimento in
+questo caso; la scelta resta disponibile quando l'appoggio è sullo stipite.
+
+La precedente versione aveva superato 235 gruppi in 28 esecuzioni:
+appoggio sul coprifilo 13,
 sei creazioni complete sul coprifilo (uno/due scalini, quote da anta/stipite/entrambi)
 5 ciascuna; guarnizioni 17, profili raggiati/smussati 21,
 ordine grafico dei sormonti 10, sormonti automatici 8, anta e tagli 12, sezione

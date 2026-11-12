@@ -2937,6 +2937,7 @@ function casingFitPairs() {
   return[];
 }
 function syncCasingFit() {
+  door.reference='casing';
   const p=draft().p,basis=door.fitBasis,pairs=casingFitPairs(),back=pairs.find(pair=>pair.at==='thickness');
   if(basis!=='frame'&&door.type==='double'&&model().jamb==='double'&&door.rebateAt==null)
     door.rebateAt=Math.min(door.thickness/2,doorRebateAt2()-p.tE-Math.max(5,casingSeatNeed(p,model())));
@@ -2954,9 +2955,9 @@ function syncCasingFit() {
   door.projection=plane+p.tE+doorRebateAt();
 }
 function doorTargetChange(target) {
-  if(target==='casing')return{stopTarget:target,bearing:'rebate',stopSurfaceKey:'auto',closure:'overlap'};
+  if(target==='casing')return{stopTarget:target,reference:'casing',bearing:'rebate',stopSurfaceKey:'auto',closure:'overlap'};
   if(doorStopTarget()==='jamb')return{stopTarget:'jamb'};
-  return{stopTarget:'jamb',...(door.seatChoices?.jamb||{bearing:door.type==='double'?'rebate2':steppedDoor()?'rebate':'face',stopSurfaceKey:'auto',closure:'overlap',projection:5})};
+  return{stopTarget:'jamb',reference:'casing',...(door.seatChoices?.jamb||{bearing:door.type==='double'?'rebate2':steppedDoor()?'rebate':'face',stopSurfaceKey:'auto',closure:'overlap',projection:5})};
 }
 function doorTargetOptions() {
   return[{id:'jamb',name:'Sullo stipite'},...(steppedDoor()&&model().casing!=='none'?[{id:'casing',name:'Sul coprifilo'}]:[])].map(option=>({...option,disabled:!fitCandidate(doorTargetChange(option.id))}));
@@ -2964,7 +2965,7 @@ function doorTargetOptions() {
 function setDoorStopTarget(target) {
   const change=doorTargetChange(target);if(!doorTargetOptions().some(option=>option.id===target&&!option.disabled))return;
   if(target!==doorStopTarget()){
-    door.seatChoices||={};door.seatChoices[doorStopTarget()]=Object.fromEntries(['bearing','stopSurfaceKey','closure','projection'].map(key=>[key,door[key]]));
+    door.seatChoices||={};door.seatChoices[doorStopTarget()]=Object.fromEntries(['bearing','stopSurfaceKey','closure','reference','projection'].map(key=>[key,door[key]]));
   }
   Object.assign(door,change);refreshDoorSeat();clearFrameSealConflicts();sync();drawDoor();updateBadge();
 }
@@ -3083,6 +3084,7 @@ function projectionLimits() {
   return{min:ceilMeasureLimit(min),max:floorMeasureLimit(max)};
 }
 function fitCandidate(change) {
+  if((change.stopTarget||doorStopTarget())==='casing'&&change.reference&&change.reference!=='casing')return false;
   const keys=['stopTarget','bearing','stopSurfaceKey','closure','reference','projection','lip','lip2','rebateAt','rebateAt2'],saved=Object.fromEntries(keys.map(key=>[key,door[key]])),p={...draft().p};
   try{Object.assign(door,change);if(change.bearing&&!change.stopSurfaceKey&&doorStopTarget()!=='casing'){const match=fitPairs().find(pair=>pair.bearing===change.bearing);if(match)door.stopSurfaceKey=match.stop;}syncFitGeometry();if(doorStopTarget()!=='casing'&&!door.fitBasis&&draft().seatAuto&&!draft().measured?.[doorStopKey()])positionDoorStop(draft().p,model());const g=geometry();return !frameQuoteError()&&!leafGasketError()&&!fitGeometryError(g)&&(g.leaf?.stopKey?!g.leaf.warning:door.stopSurfaceKey==='auto');}
   finally{Object.assign(door,saved);Object.assign(draft().p,p);}
@@ -3131,6 +3133,7 @@ function setDoorClosure(id) {
   refreshDoorSeat();sync();drawDoor();updateBadge();
 }
 function setDoorReference(id) {
+  if(doorStopTarget()==='casing'&&id!=='casing')return;
   if(!doorReferenceOptions().some(t=>t.id===id)||!fitCandidate({reference:id}))return;
   door.reference=id;refreshDoorSeat();sync();drawDoor();updateBadge();
 }
@@ -3160,6 +3163,7 @@ function closureChoiceGrid(container,onChange) {
   container.append(grid);
 }
 function closureReferenceControls(container,onChange) {
+  if(doorStopTarget()==='casing')return;
   const group=document.createElement('div');group.className='mt-closure-references';group.setAttribute('role','group');group.setAttribute('aria-label','Piano di riferimento della chiusura');
   doorReferenceOptions().forEach(option=>{
     const b=document.createElement('button');b.type='button';b.className='mt-chip cursor-interaction';b.textContent=option.name;
@@ -4558,7 +4562,7 @@ function measureSteps() {
       get:()=>doorRebateAt2(),set:value=>setInput('[data-door="rebateAt2"]',value)});
   steps.push(...leafGasketWizardSteps());
   if(doorStopTarget()!=='casing')steps.push({id:'antaModoChiusura',title:'Come chiude l’anta?',choice:'doorClosure',q:''});
-  steps.push({id:'antaRiferimento',title:'Rispetto a quale piano?',choice:'doorReference',q:''});
+  if(doorStopTarget()!=='casing')steps.push({id:'antaRiferimento',title:'Rispetto a quale piano?',choice:'doorReference',q:''});
   if(steppedDoor()){const options=doorBearingOptions(),available=options.filter(option=>!option.disabled);if(available.length!==1||available[0].id!==doorBearing())steps.push({id:'antaAppoggio',title:'Quale parte dell’anta appoggia?',choice:'doorBearing',q:''});}
   if(doorStopTarget()!=='casing'&&rebateEdges().length>1)steps.push({id:'antaBattutaTelaio',title:'Su quale battuta del telaio?',choice:'doorStop',q:''});
   if(door.closure!=='flush'&&doorStopTarget()!=='casing')steps.push({id:'antaChiusura',title:door.closure==='recessed'?'Anta chiusa · rientro':'Anta chiusa · sporgenza',

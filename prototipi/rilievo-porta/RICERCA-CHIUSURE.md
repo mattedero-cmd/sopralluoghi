@@ -61,8 +61,10 @@ sono riscritte per far combaciare un esempio.
 Per le ante con scalino e coprifili esiste un passo dedicato «Dove appoggia la
 battuta dell'anta?»: stipite oppure coprifilo. Una sola anteprima ingrandita
 evidenzia il contatto scelto. Nel secondo caso il primo scalino incontra il
-frontale del coprifilo; la sporgenza è un risultato di Sb e del piano di
-riferimento, protetto nell'editor e non richiesto come quota indipendente.
+frontale del coprifilo; il riferimento è automaticamente il coprifilo e la
+domanda sul piano viene saltata. La sporgenza è un risultato di Sb, protetto
+nell'editor e non richiesto come quota indipendente. Tornando allo stipite
+si ripristina il precedente piano di riferimento scelto.
 Le ulteriori battute seguono le quote dell'anta o del telaio secondo la fonte
 scelta esplicitamente. Con «entrambi» le misure rilevate restano indipendenti.
 Queste sono relazioni del modello schematico di contatto, non quote di norma.

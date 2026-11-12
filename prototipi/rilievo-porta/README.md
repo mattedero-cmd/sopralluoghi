@@ -272,8 +272,10 @@ La guida distingue anche **dove appoggia la battuta dell'anta**: sullo stipite
 oppure sul coprifilo di battuta, con zoom sul contatto effettivo. La seconda
 opzione riguarda i profili con scalino e un frontale di appoggio compatibile;
 non attribuisce una funzione di battuta a ogni cornice decorativa.
-In questo caso la sporgenza è calcolata dallo scalino dell'anta e dal piano
-scelto, senza chiedere una quota indipendente che contraddica il contatto.
+In questo caso il riferimento è automaticamente il coprifilo: la domanda
+«Rispetto a quale piano?» viene saltata e non compare neppure nell'editor.
+La sporgenza è calcolata dallo scalino dell'anta rispetto al coprifilo,
+senza chiedere una quota indipendente che contraddica il contatto.
 Guarnizioni su anta e telaio lavorano su superfici distinte. Raggi, smussi e
 spostamenti dei coprifili non possono lasciare una guarnizione solo parzialmente
 in appoggio: si correggono le misure effettive prima di generare i tagli.
