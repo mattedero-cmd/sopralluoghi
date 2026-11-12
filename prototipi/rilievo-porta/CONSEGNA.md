@@ -44,6 +44,17 @@ semplice consegna; una pubblicazione dovrà essere richiesta separatamente.
   Sb/Lb/Sb2/Lb2 hanno linee di quota; sporgenza e P/P1/P2 hanno uno zoom con
   riferimenti sui punti effettivi. Le figure delle guarnizioni comprendono
   telaio e anta, senza lo schema isolato a Z.
+- La presenza della guarnizione mostra subito gomma gialla e freccia; No
+  cambia davvero il disegno. Con una sola sede Sì/Avanti la assegna, senza
+  chiedere dove si trova. Con più scalini la scelta resta esplicita.
+  Anche il passo sull’appoggio viene saltato se esiste una sola risposta valida.
+- `doorJambGaps` confronta le superfici orizzontali con l’inviluppo dello stipite.
+  Il controllo è indipendente dalla fonte delle quote e dai tipi di appoggio;
+  scegliere Faccia non può più saltarlo. `fitPairs` include anche il riferimento
+  della faccia per la battuta singola. Configurazioni con un vuoto sono escluse
+  e non producono una distinta valida. Le quote rilevate non vengono falsificate.
+  Gli esempi di anta senza scalini su telaio doppio iniziano sulla prima battuta,
+  senza obbligare una cavità sotto il bordo. Le altre scelte restano verificabili.
 - `fitBasis` richiede una scelta esplicita: anta, stipite o entrambi.
   `fitPairs`, `syncFitGeometry` e `fitCandidate` collegano solo le superfici
   corrispondenti gestite dal modello. Anta calcola le battute del telaio;
@@ -61,7 +72,8 @@ semplice consegna; una pubblicazione dovrà essere richiesta separatamente.
   esplicitamente lo scalino del sormonto; non si deduce dall’arresto del telaio.
 - `door.profileOptions` conserva per sagoma guarnizioni e scelta del sormonto.
   Chiavi `leaf:<tipo>:<superficie>`, separate da quelle della maestà. La guida
-  parte da Sì ma richiede la superficie; non inventa una posizione della gomma.
+  parte da Sì: con una sede unica la assegna, con più sedi chiede quale;
+  non indovina una sede nei profili complessi.
   Le fasce rettilinee si modificano ed eliminano nella scheda Anta. Si estendono
   sopra e sui due lati; sotto restano le tre opzioni precedenti.
 - `leafProfileRanges` sottrae la gomma dallo sviluppo reale. I fogli terminano
@@ -123,26 +135,33 @@ semplice consegna; una pubblicazione dovrà essere richiesta separatamente.
 
 ## Verifica dello stato consegnato
 
-HTML SHA256: `4d1692e8860e31a16e00cc0e13d487be56a7c82a0848f89ca41db687133eb9fe`.
+HTML SHA256: `0993a4182162565bcd1f9490c626a2fd2761cd108a307eed595f48a1b9ccb3ea`.
 
-Superati 166 gruppi di verifica: guarnizioni 17, profili raggiati/smussati 21,
+Superati 192 gruppi di verifica: guarnizioni 17, profili raggiati/smussati 21,
 ordine grafico dei sormonti 10, sormonti automatici 8, anta e tagli 12, sezione
 e scorte 9, bobine uniformi e luce minima 9, sezione e appoggio dell'anta 8,
 regole di chiusura 4, aggancio stabile delle superfici 6, nuovo modello di
 chiusura 12, flusso dell'interfaccia 5, profili e guarnizioni dell’anta 17,
 guida e vincoli geometrici 13, tre flussi completi dell’anta e dei controlli
-5 ciascuno. Le vecchie prove che imponevano la
+5 ciascuno, presenza/sede unica/inviluppo fisico 11 e tre flussi completi
+a battuta singola 5 ciascuno. Le vecchie prove che imponevano la
 regola singola/doppia o Lb=b1 sono state aggiornate ai requisiti documentati;
 i confronti di taglio usano le stesse quote fisiche esplicite.
 
 Verificati sintassi, JavaScript effettivo in Node VM, avvio completo e creazione
-filomuro e tre creazioni a due scalini (quote da anta, stipite o entrambi),
+filomuro, tre creazioni a due scalini e tre a scalino singolo (quote da anta,
+stipite o entrambi),
 con guarnizioni sui due elementi in jsdom,
 con elementi ed eventi DOM reali, tastierino a due decimali, distinta e bobine.
 Verificati conservazione del materiale, tratti isolati, fasce fuori misura,
 quote dipendenti, assenza di vuoto fra gli scalini e guarnizioni contrapposte
 impedite. Le vecchie prove delle guarnizioni sui piani sono aggiornate ai
 soli scalini richiesti dall’utente.
+Verificato il cambiamento reale Sì/No, l’assegnazione della sede unica,
+il rifiuto dell’appoggio con vuoto e il mantenimento dei casi Faccia validi.
+Le prove dei tagli grezzi restano distinte dall’ammissibilità dell’insieme:
+un profilo impossibile non viene più considerato esportabile solo perché
+le singole superfici sono quotate.
 Esportate sezioni SVG reali in entrambi i temi e ispezionate le immagini
 PNG dei casi principali, comprese doppia battuta e sezione riflessa.
 La verifica in jsdom non è una verifica di rendering

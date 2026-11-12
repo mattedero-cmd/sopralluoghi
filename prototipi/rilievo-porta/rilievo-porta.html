@@ -2815,6 +2815,7 @@ function removeLeafGasket(key) {
 function chooseLeafGaskets(present) {
   const options=leafProfileOptions(true);options.choice=present;
   if(!present){options.gaskets={};options.activeKey=null;}
+  else {const edges=leafSealEdges();if(edges.length===1&&!options.gaskets?.[edges[0].stateKey])setLeafGasket(edges[0].stateKey,{full:true});}
 }
 function moveLeafGasket(key) {
   const options=leafProfileOptions(true),previous=options.activeKey,raw=options.gaskets?.[previous];
@@ -2864,7 +2865,7 @@ function doorProfileThumb(type) {
   const definition=DOOR_PROFILES.find(p=>p.id===type),svg=el('svg',{viewBox:'0 0 100 84','aria-hidden':'true'});
   if(definition)svg.append(el('path',{d:definition.path,fill:'var(--mt-wood)',stroke:'var(--mt-green)','stroke-width':2}));return svg;
 }
-function leafSurfaceFigure(key=null,showGaskets=true) {
+function leafSurfaceFigure(key=null,showGaskets=true,showLabel=true) {
   const svg=el('svg',{class:'mt-wiz-fig',viewBox:'0 0 320 200','aria-hidden':'true'}),edges=doorProfileEdges();
   if(!edges.every(edge=>Number.isFinite(edge.len))||!(door.thickness>0))return svg;
   const boundary=doorProfilePoints(),depth=Math.max(door.thickness*.85,doorTotalRebate()+20),scale=Math.min(255/door.thickness,132/depth),X=x=>32+x*scale,Y=y=>25+y*scale;
@@ -2876,7 +2877,7 @@ function leafSurfaceFigure(key=null,showGaskets=true) {
     if(chosen){svg.append(el('circle',{cx:X(edge.a[0]),cy:Y(edge.a[1]),r:3,fill:'var(--mt-green)'}));svg.append(el('text',{x:X(edge.a[0])-5,y:Y(edge.a[1])-8,'text-anchor':'end','font-size':12},'0'));}
   });
   const label=edges.find(edge=>edge.stateKey===key)?.name||'Profilo dell’anta · gomma separata dal legno';
-  svg.append(el('text',{x:160,y:187,'text-anchor':'middle','font-size':12},label));return svg;
+  if(showLabel)svg.append(el('text',{x:160,y:187,'text-anchor':'middle','font-size':12},label));return svg;
 }
 function refreshLeafControls() {drawDoor();updateBadge();}
 function renderLeafGaskets() {
@@ -2919,10 +2920,10 @@ function doorProjectionMin() {return 0;}
 function doorProjection() {return door.closure==='flush'?0:(door.closure==='recessed'?-1:1)*door.projection;}
 function doorBearing() {return steppedDoor()&&door.bearing==='rebate'?'rebate':door.type==='double'&&door.bearing==='rebate2'?'rebate2':'face';}
 function doorBearingReach() {return doorBearing()==='rebate'?doorRebateAt():doorBearing()==='rebate2'?doorRebateAt2():door.thickness;}
-function doorStopKey(m=model()) {return m.jamb==='extension'?'E':m.jamb==='double'?(door.stopSurfaceKey==='rebate:1'?'P1':'P2'):'P';}
+function doorStopKey(m=model()) {return m.jamb==='extension'?'E':m.jamb==='double'?(door.stopSurfaceKey==='rebate:1'||door.stopSurfaceKey==='auto'&&!steppedDoor()?'P1':'P2'):'P';}
 function selectedDoorStop(g) {
   const stops=rebateEdges(g);
-  return door.stopSurfaceKey==='auto'?stops.at(-1):stops.find(t=>edgeStateKey(t.part,t.index)===door.stopSurfaceKey);
+  return door.stopSurfaceKey==='auto'?(stops.length>1&&!steppedDoor()?stops[0]:stops.at(-1)):stops.find(t=>edgeStateKey(t.part,t.index)===door.stopSurfaceKey);
 }
 function doorReferenceOptions() {return DOOR_REFERENCES.filter(t=>model().casing==='none'?t.id==='wall':t.id!=='wall');}
 function doorReferencePlanes(p,m,depth) {return door.reference!=='casing'||m.casing==='none'?{front:0,back:depth}:{front:-p.tE,back:depth+p.tI};}
@@ -2935,13 +2936,46 @@ function fitPairs() {
   if(door.type==='double'&&model().jamb==='double')return[
     {p:'P1',b:'b1',at:'rebateAt',height:'lip',bearing:'rebate',stop:'rebate:1'},
     {p:'P2',b:'b2',at:'rebateAt2',height:'lip2',bearing:'rebate2',stop:'rebate:2'}];
-  if(door.type==='lip'&&model().jamb==='standard'&&doorBearing()==='rebate')return[{p:'P',b:'b',at:'rebateAt',height:'lip',bearing:'rebate',stop:'rebate:1'}];
+  if(door.type==='lip'&&model().jamb==='standard')return doorBearing()==='rebate'
+    ?[{p:'P',b:'b',at:'rebateAt',height:'lip',bearing:'rebate',stop:'rebate:1'}]
+    :[{p:'P',at:'thickness',bearing:'face',stop:'rebate:1'}];
   if(door.type==='lip'&&model().jamb==='double')return[
     {p:'P1',b:'b1',at:'rebateAt',height:'lip',bearing:'rebate',stop:'rebate:1'},
     {p:'P2',at:'thickness',bearing:'face',stop:'rebate:2'}];
   return[];
 }
 function fitFront() {const depth=model().jamb==='extension'?draft().p.E+draft().p.I:draft().p.D;return doorReferencePlanes(draft().p,model(),depth).front-doorProjection();}
+function leafFieldDerived(key) {return door.fitBasis==='frame'&&fitPairs().some(pair=>pair.height===key||pair.at===key);}
+function doorBearingOptions() {
+  return[{id:'face',name:'Faccia'},{id:'rebate',name:door.type==='double'?'Primo scalino':'Scalino'},...(door.type==='double'?[{id:'rebate2',name:'Secondo scalino'}]:[])].map(option=>({...option,disabled:!fitCandidate({bearing:option.id})}));
+}
+// Confronto fisico indipendente dal tipo di appoggio e dalla fonte delle quote.
+// Ogni piano dell'anta deve incontrare l'inviluppo inferiore dello stipite
+// nel tratto in cui i due profili si sovrappongono. I coprifili restano distinti.
+function doorJambGaps(g=geometry()) {
+  if(!g.leaf)return[];
+  const supports=[];
+  g.parts.filter(part=>['jamb','integrated','extension'].includes(part.key)).forEach(part=>{
+    const outline=[...part.edges.map(edge=>edge.a),part.edges.at(-1).b,...part.hidden];
+    const area=outline.reduce((sum,p,i)=>{const q=outline[(i+1)%outline.length];return sum+p[0]*q[1]-q[0]*p[1];},0),direction=area>0?-1:1;
+    part.edges.forEach(edge=>{if(edge.kind==='line'&&Math.abs(edge.a[1]-edge.b[1])<1e-6&&(edge.b[0]-edge.a[0])*direction>1e-6)supports.push({from:Math.min(edge.a[0],edge.b[0]),to:Math.max(edge.a[0],edge.b[0]),y:edge.a[1]});});
+  });
+  const gaps=[];
+  g.leaf.topEdges.filter(edge=>edge.kind==='line'&&Math.abs(edge.a[1]-edge.b[1])<1e-6).forEach(edge=>{
+    const from=Math.min(edge.a[0],edge.b[0]),to=Math.max(edge.a[0],edge.b[0]),cuts=[...new Set([from,to,...supports.flatMap(s=>[Math.max(from,s.from),Math.min(to,s.to)]).filter(x=>x>from&&x<to)])].sort((a,b)=>a-b);
+    for(let i=1;i<cuts.length;i++){
+      const a=cuts[i-1],b=cuts[i],mid=(a+b)/2;if(b-a<=1e-6)continue;
+      const candidates=supports.filter(s=>mid>s.from-1e-6&&mid<s.to+1e-6);if(!candidates.length)continue;
+      const y=Math.max(...candidates.map(s=>s.y)),depth=edge.a[1]-y;
+      if(depth>.011)gaps.push({from:a,to:b,y,leafY:edge.a[1],depth,surfaceKey:edge.stateKey});
+    }
+  });return gaps;
+}
+function physicalDoorFitError(g=geometry()) {
+  if(doorJambGaps(g).length)return 'Questo appoggio lascerebbe un vuoto tra anta e stipite.';
+  if(g.leaf?.unseatedLeafSeals.length)return 'Questo appoggio non corrisponde alla guarnizione dell’anta.';
+  return '';
+}
 function syncFitGeometry() {
   const basis=door.fitBasis,pairs=fitPairs();if(!basis||!pairs.length)return;
   const p=draft().p,front=fitFront();
@@ -2952,6 +2986,7 @@ function syncFitGeometry() {
   });
 }
 function fitGeometryError(g=geometry()) {
+  const physical=physicalDoorFitError(g);if(physical)return physical;
   if(!door.fitBasis)return '';
   if(steppedDoor()&&(!(doorRebateAt()>0&&doorRebateAt()<door.thickness)||!(doorLip()>0)||door.type==='double'&&(!(doorRebateAt2()>doorRebateAt()&&doorRebateAt2()<door.thickness)||!(door.lip2>0))))return 'Gli scalini devono rientrare nello spessore dell’anta.';
   const pairs=fitPairs(),front=fitFront(),p=draft().p;
@@ -2974,16 +3009,15 @@ function projectionLimits() {
     min=Math.max(min,out?plane+.01-p[first.p]:p[last.p]-plane-door.thickness+.01);
     max=Math.min(max,out?plane+door.thickness-.01-p[last.p]:p[first.p]-plane-.01);
   }else{
-    const a=first.at==='rebateAt'?doorRebateAt():doorRebateAt2(),b=last.at==='thickness'?door.thickness:last.at==='rebateAt2'?doorRebateAt2():doorRebateAt();
+    const a=first.at==='thickness'?door.thickness:first.at==='rebateAt'?doorRebateAt():doorRebateAt2(),b=last.at==='thickness'?door.thickness:last.at==='rebateAt2'?doorRebateAt2():doorRebateAt();
     min=Math.max(min,out?plane+b-depth+.01:casingSeatNeed(p,model())-plane-a);
     max=Math.min(max,out?plane+a-casingSeatNeed(p,model()):depth-.01-plane-b);
   }
   return{min:ceilMeasureLimit(min),max:floorMeasureLimit(max)};
 }
 function fitCandidate(change) {
-  if(!door.fitBasis)return true;
   const keys=['bearing','stopSurfaceKey','closure','reference','projection','lip','lip2','rebateAt','rebateAt2'],saved=Object.fromEntries(keys.map(key=>[key,door[key]])),p={...draft().p};
-  try{Object.assign(door,change);if(change.bearing&&!change.stopSurfaceKey){const match=fitPairs().find(pair=>pair.bearing===change.bearing);if(match)door.stopSurfaceKey=match.stop;}syncFitGeometry();return !frameQuoteError()&&!leafGasketError()&&!fitGeometryError();}
+  try{Object.assign(door,change);if(change.bearing&&!change.stopSurfaceKey){const match=fitPairs().find(pair=>pair.bearing===change.bearing);if(match)door.stopSurfaceKey=match.stop;}syncFitGeometry();if(!door.fitBasis&&draft().seatAuto&&!draft().measured?.[doorStopKey()])positionDoorStop(draft().p,model());const g=geometry();return !frameQuoteError()&&!leafGasketError()&&!fitGeometryError(g)&&(g.leaf?.stopKey?!g.leaf.warning:door.stopSurfaceKey==='auto');}
   finally{Object.assign(door,saved);Object.assign(draft().p,p);}
 }
 function setFitBasis(basis) {
@@ -3009,7 +3043,7 @@ function positionDoorStop(p,m,measured=p===draft().p?draft().measured:{}) {
   const stop=side==='I'?planes.back+projection-reach:planes.front-projection+reach;
   if(!Number.isFinite(stop))return;
   if(m.jamb==='extension') {p.E=stop;if(!measured?.I)p.I=depth-stop;}
-  else if(m.jamb==='double'&&door.stopSurfaceKey==='rebate:1') {
+  else if(m.jamb==='double'&&doorStopKey(m)==='P1') {
     const spacing=p.P2>p.P1?p.P2-p.P1:base.P2-base.P1;p.P1=stop;
     if(!measured?.P2&&p.P2<=stop)p.P2=Math.min(depth-.01,stop+spacing);
   }
@@ -3894,6 +3928,7 @@ function refreshAfterEdit() {
 function afterUpdate() {
   prepInputs();
   if (activePanel === 'frame') redrawFull();
+  else if(activePanel==='door')drawDoor();
   updateBadge();
 }
 function updateBadge() {
@@ -4390,15 +4425,16 @@ function gasketWizardSteps() {
 }
 function leafGasketWizardSteps() {
   const owner=door.type,currentType=()=>door.type===owner,present=()=>leafProfileOptions().choice!==false;
-  const steps=[{id:'anta-guarnizione',title:'Guarnizione sull’anta',choice:'leafGasketPresence',q:'',present,
+  const edges=leafSealEdges(),unique=edges.length===1;
+  const steps=[{id:'anta-guarnizione',title:unique&&steppedDoor()?'C’è la guarnizione su questo scalino?':'C’è una guarnizione sull’anta?',choice:'leafGasketPresence',q:'',present,
     choose:value=>{if(!currentType())return;chooseLeafGaskets(value);refreshLeafControls();},
-    confirm:()=>{if(currentType()&&leafProfileOptions().choice===undefined)chooseLeafGaskets(true);}}];
+    confirm:()=>{if(currentType())chooseLeafGaskets(present());}}];
   if(!present())return steps;
-  steps.push({id:'anta-guarnizione-tratto',title:door.type==='double'?'Su quale scalino?':'Dove si trova la guarnizione?',choice:'leafGasketSurface',q:'',
+  if(!unique)steps.push({id:'anta-guarnizione-tratto',title:door.type==='double'?'Su quale scalino?':'Dove si trova la guarnizione?',choice:'leafGasketSurface',q:'',
     eligible:leafSealEdges,selected:selectedLeafSealKeys,
     choose:keys=>{if(!currentType())return;chooseLeafSealSurfaces(keys);refreshLeafControls();}});
-  selectedLeafSealKeys().forEach((key,index)=>{
-    const span=leafGasketSpan(key),suffix=index?'-'+(index+1):'',current=()=>currentType()?leafGasketSpan(key):null;
+  (unique?[edges[0].stateKey]:selectedLeafSealKeys()).forEach((key,index)=>{
+    const span=leafGasketSpan(key)||{edge:edges[0],full:true},suffix=index?'-'+(index+1):'',current=()=>currentType()?leafGasketSpan(key):null;
     const name=span.edge.name;
     steps.push({id:'anta-guarnizione-estensione'+suffix,title:name+' · guarnizione',choice:'leafGasketExtent',leafKey:key,q:'',full:()=>!!current()?.full,
       choose:full=>{if(!current())return;setLeafGasket(key,{full});refreshLeafControls();}});
@@ -4434,14 +4470,14 @@ function measureSteps() {
       get:()=>draft().p[key],confirm:()=>{(draft().measured||(draft().measured={}))[key]=true;},set:value=>{draft().p[key]=value;(draft().measured||(draft().measured={}))[key]=true;refreshDoorSeat();sync();},min:.1,max:key==='s'||key==='sI'?150:500}));
     steps.splice(2,0,...fields);
   }
-  if (steppedDoor()&&!(door.fitBasis==='frame'&&fitPairs().length)) steps.push({id: 'antaLb', title: 'Anta: primo scalino', q:'', fig: 'antaLb',
+  if (steppedDoor()&&!leafFieldDerived('lip')) steps.push({id: 'antaLb', title: 'Anta: primo scalino', q:'', fig: 'antaLb',
     get: () => doorLip(), set: v => setInput('[data-door="lip"]', v), min: .1});
-  if (steppedDoor()&&!(door.fitBasis==='frame'&&fitPairs().length)) steps.push({id:'antaSb',title:'Anta: primo scalino nello spessore',
+  if (steppedDoor()&&!leafFieldDerived('rebateAt')) steps.push({id:'antaSb',title:'Anta: primo scalino nello spessore',
     q:'',fig:'antaSb',
     get:()=>doorRebateAt(),set:v=>setInput('[data-door="rebateAt"]',v),min:.1,max:floorMeasureLimit((door.type==='double'?doorRebateAt2():door.thickness)-.01)});
   if (door.type === 'round') steps.push({id: 'antaR', title: 'Anta: raggio', q: 'Che raggio ha lo spigolo del bordo?', fig: 'antaR',
     get: () => inputNum('[data-door="radius"]'), set: v => setInput('[data-door="radius"]', v), min: .1});
-  if(door.type==='double'&&!(door.fitBasis==='frame'&&fitPairs().length))steps.push(
+  if(door.type==='double'&&!leafFieldDerived('lip2'))steps.push(
     {id:'antaLb2',title:'Anta: secondo scalino',q:'',fig:'antaLb2',min:.01,max:100,
       get:()=>door.lip2,set:value=>setInput('[data-door="lip2"]',value)},
     {id:'antaSb2',title:'Anta: secondo scalino nello spessore',q:'',fig:'antaSb2',min:ceilMeasureLimit(doorRebateAt()+.01),max:floorMeasureLimit(door.thickness-.01),
@@ -4449,7 +4485,7 @@ function measureSteps() {
   steps.push(...leafGasketWizardSteps());
   steps.push({id:'antaModoChiusura',title:'Come chiude l’anta?',choice:'doorClosure',q:''});
   steps.push({id:'antaRiferimento',title:'Rispetto a quale piano?',choice:'doorReference',q:''});
-  if(steppedDoor())steps.push({id:'antaAppoggio',title:'Quale parte dell’anta appoggia?',choice:'doorBearing',q:''});
+  if(steppedDoor()){const options=doorBearingOptions(),available=options.filter(option=>!option.disabled);if(available.length!==1||available[0].id!==doorBearing())steps.push({id:'antaAppoggio',title:'Quale parte dell’anta appoggia?',choice:'doorBearing',q:''});}
   if(rebateEdges().length>1)steps.push({id:'antaBattutaTelaio',title:'Su quale battuta del telaio?',choice:'doorStop',q:''});
   if(door.closure!=='flush')steps.push({id:'antaChiusura',title:door.closure==='recessed'?'Anta chiusa · rientro':'Anta chiusa · sporgenza',
     q:'',fig:'antaChiusura',get:()=>door.projection,set:v=>setInput('[data-door="projection"]',v),min:projectionLimits().min,max:projectionLimits().max,
@@ -4547,10 +4583,24 @@ function leafSurveyFigure(field,value,sealKey=null) {
   }
   return svg;
 }
-function leafSealChoiceFigure(keys) {
-  const svg=leafSurfaceFigure(null,false),edges=doorProfileEdges(),S=door.thickness,depth=Math.max(S*.85,doorTotalRebate()+20),k=Math.min(255/S,132/depth),X=x=>32+x*k,Y=y=>25+y*k;
+function leafSealChoiceFigure(keys,actual=false,candidate=false) {
+  const svg=leafSurfaceFigure(null,false,false),edges=doorProfileEdges(),S=door.thickness,depth=Math.max(S*.85,doorTotalRebate()+20),k=Math.min(255/S,132/depth),X=x=>32+x*k,Y=y=>25+y*k;
   svg.setAttribute('class','mt-wiz-fig mt-survey-figure');svg.setAttribute('data-survey-figure','leaf-seal-surfaces');
-  keys.forEach(key=>{const edge=edges.find(edge=>edge.stateKey===key);if(edge)drawGasketBand(svg,{key:'leaf-choice',edges:[edge]},0,X,Y,k,true,{valid:true,start:0,width:edge.len,end:edge.len,full:true});});
+  keys.forEach(key=>{const edge=edges.find(edge=>edge.stateKey===key),saved=actual?leafGasketSpan(key):null;if(edge){const drawn=drawGasketBand(svg,{key:'leaf-choice',edges:[edge]},0,X,Y,k,true,saved||{valid:true,start:0,width:edge.len,end:edge.len,full:true});if(candidate&&drawn){drawn.path.setAttribute('stroke-dasharray','5 3');drawn.path.setAttribute('data-gasket-candidate','true');}}});
+  return svg;
+}
+function leafGasketPresenceFigure(present) {
+  const edges=leafSealEdges(),selected=selectedLeafSealKeys(),keys=selected.length?selected:edges.map(edge=>edge.stateKey),candidate=present&&keys.length>1&&!selected.length,svg=leafSealChoiceFigure(present?keys:[],true,candidate);
+  svg.removeAttribute?.('aria-hidden');svg.setAttribute('role','img');
+  svg.setAttribute('data-leaf-presence',present?'yes':'no');svg.setAttribute('aria-label',present?'Guarnizione gialla sul bordo dell’anta':'Stesso bordo dell’anta senza guarnizione');
+  const S=door.thickness,depth=Math.max(S*.85,doorTotalRebate()+20),k=Math.min(255/S,132/depth),X=x=>32+x*k,Y=y=>25+y*k;
+  const first=edges.find(edge=>edge.stateKey===keys[0]);if(!first)return svg;
+  const span=leafGasketSpan(first.stateKey),at=span?.valid?(span.start+span.end)/2:first.len/2,point=overlapEdgePoint(first,at/first.len),x=X(point[0]),y=Y(point[1]);
+  const labelX=Math.min(230,Math.max(190,x+55)),labelY=Math.max(18,Math.min(135,y-14));
+  svg.append(el('path',{d:`M ${x+7} ${y} L ${labelX-8} ${labelY+7}`,stroke:'var(--mt-ink)','stroke-width':1.3,fill:'none','data-gasket-callout':'true'}));
+  svg.append(el('circle',{cx:x,cy:y,r:3,fill:present?'var(--mt-gasket)':'var(--mt-paper)',stroke:'var(--mt-ink)','stroke-width':1}));
+  const label=present?(keys.length>1&&!selected.length?'Sedi possibili':'Guarnizione'):'Senza gomma';
+  svg.append(el('text',{x:labelX,y:labelY,'text-anchor':'middle','font-size':14,'font-weight':600,fill:'var(--mt-ink)',stroke:'var(--mt-paper)','stroke-width':3,'paint-order':'stroke'},label));
   return svg;
 }
 function sectionSurveyFigure(kind='closure',options={}) {
@@ -4687,7 +4737,7 @@ function renderMeasure(m, last) {
   next.disabled = false;
   if(m.choice==='leafGasketPresence'||m.choice==='leafGasketExtent'){
     const presence=m.choice==='leafGasketPresence',span=m.leafKey?leafGasketSpan(m.leafKey):null;
-    body.append(presence?leafSealChoiceFigure(selectedLeafSealKeys()):leafSurveyFigure('leafSealWidth',fmt(span?.width||0)+' mm',m.leafKey));
+    body.append(presence?leafGasketPresenceFigure(m.present()):leafSurveyFigure('leafSealWidth',fmt(span?.width||0)+' mm',m.leafKey));
     const selected=(presence?m.present():m.full())?'yes':'no';
     surveyOptions(body,presence?[{id:'yes',name:'Sì'},{id:'no',name:'No'}]:[{id:'yes',name:'Tutto lo scalino'},{id:'no',name:'Misure precise'}],selected,id=>m.choose(id==='yes'));return;
   }
@@ -4739,8 +4789,7 @@ function renderMeasure(m, last) {
     if(m.choice==='doorClosure'){options=DOOR_CLOSURES.map(option=>({...option,disabled:!fitCandidate({closure:option.id})}));selected=door.closure;pick=setDoorClosure;}
     if(m.choice==='doorReference'){options=doorReferenceOptions().map(option=>({...option,disabled:!fitCandidate({reference:option.id})}));selected=door.reference;pick=setDoorReference;kind='closureReference';}
     if(m.choice==='doorBearing'){
-      options=[{id:'face',name:'Faccia'},{id:'rebate',name:door.type==='double'?'Primo scalino':'Scalino'},...(door.type==='double'?[{id:'rebate2',name:'Secondo scalino'}]:[])];
-      options=options.map(option=>({...option,disabled:!fitCandidate({bearing:option.id})}));
+      options=doorBearingOptions();
       selected=doorBearing();pick=id=>{if(!fitCandidate({bearing:id}))return;door.bearing=id;door.bearingMeasured=true;const match=fitPairs().find(pair=>pair.bearing===id);if(match)door.stopSurfaceKey=match.stop;refreshDoorSeat();clearFrameSealConflicts();sync();drawDoor();updateBadge();};kind='closureBearing';
     }
     if(m.choice==='doorStop'){

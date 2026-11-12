@@ -23,8 +23,9 @@ lo stile del prototipo; non riproducono i dettagli costruttivi dei produttori.
   arrotondato. Il secondo scalino ha altezza Lb2 e posizione Sb2 proprie.
   Occorre `0 < Sb < Sb2 < S`. Le quote del telaio non riscrivono quelle dell’anta.
 - La guida distingue la guarnizione sull’anta da quella sullo stipite.
-  La presenza iniziale è Sì, ma la superficie dell’anta deve essere scelta:
-  non viene indovinata. Poi si sceglie tutto il tratto o si misurano larghezza
+  La presenza iniziale è Sì, con guarnizione visibile nel disegno. Una sede
+  unica è assegnata senza una domanda ridondante; nei profili complessi
+  viene scelta esplicitamente. Poi si sceglie tutto il tratto o si misurano larghezza
   e distanza dal primo spigolo, indicato con 0.
 - Nella scheda Anta le guarnizioni si aggiungono, quotano ed eliminano
   indipendentemente. Nelle ante battentate vengono proposti soltanto gli
@@ -81,3 +82,11 @@ Le guarnizioni dell’anta occupano gli scalini scelti. Sul tratto del telaio
 che riceve quella guarnizione l’app impedisce un’altra fascia contrapposta;
 gli altri appoggi possono conservare le proprie guarnizioni. La sottrazione
 dei relativi ingombri aggiorna gli sviluppi e il piano bobine.
+
+La successiva verifica dell’utente ha evidenziato tre correzioni: il disegno
+della presenza deve cambiare tra Sì e No, la sede unica non va richiesta e
+la scelta della faccia non deve aggirare il controllo dell’appoggio. Il nuovo
+confronto dei piani effettivi dell’anta con l’inviluppo inferiore dello stipite
+esclude il vuoto mostrato nella schermata, indipendentemente dalla relazione
+parametrica usata. Non si riempie il vuoto solo graficamente e non si riscrivono
+quote rilevate per mascherare l’incompatibilità.

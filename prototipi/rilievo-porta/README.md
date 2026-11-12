@@ -30,7 +30,7 @@ senza lo schema isolato a Z.
 2. **Misure guidate**, una per schermata, con disegno e tastierino: luce L e H, bordo
    dell'anta (squadrato, uno scalino, due scalini o arrotondato), L/H/S dell'anta
    (+ altezze e posizioni degli scalini oppure raggio), guarnizione sull’anta
-   (superficie, tutta la larghezza o misure precise),
+   (sede automatica se unica, altrimenti scelta; tutta la larghezza o misure precise),
    **chiusura sovrapposta, a filo o rientrata**, piano di riferimento (coprifilo,
    estremità dello stipite o parete nel filomuro), superficie di appoggio
    dell'anta e battuta del telaio. Poi posizione rilevata dell'arresto, facce
@@ -168,13 +168,17 @@ senza lo schema isolato a Z.
 - Chiusura, piano di riferimento, parte dell’anta in appoggio e battuta
   del telaio sono passaggi distinti. Ognuno mostra una sola anteprima grande
   e pulsanti con nomi brevi. Le combinazioni incompatibili sono disabilitate.
+  Se resta un unico appoggio valido già selezionato, il passaggio viene saltato.
 - La sagoma del legno e le guarnizioni si rilevano separatamente. La ricerca
   su fonti ECO Schulte, Westag e Sebino è in [RICERCA-ANTE.md](RICERCA-ANTE.md).
   Oltre ai profili precedenti, **Due scalini** aggiunge Lb2 e Sb2 indipendenti
   dal telaio. La guida non ricava la sagoma da quella dello stipite.
 - **Guarnizioni sull’anta** è una sezione apribile nella scheda Anta, distinta
-  da Guarnizioni della Maestà. La guida parte da Sì e richiede la superficie;
-  si sceglie tutto il tratto oppure larghezza e inizio dal suo spigolo 0.
+  da Guarnizioni della Maestà. La guida parte da Sì e mostra subito la fascia
+  gialla con una freccia; No mostra lo stesso profilo senza gomma. Con una
+  sola sede, Sì o Avanti la assegna direttamente e salta la domanda sulla
+  superficie. La scelta della sede resta per i profili più complessi.
+  Si sceglie tutto il tratto oppure larghezza e inizio dal suo spigolo 0.
   Nelle ante battentate le fasce si configurano **solo sugli scalini verticali**,
   sul primo, sul secondo oppure su entrambi. I piani del bordo non sono proposti.
   Ogni scalino selezionato ha larghezza e inizio propri.
@@ -190,6 +194,11 @@ senza lo schema isolato a Z.
   Inserirla sull’anta rimuove solo quella del telaio sulla superficie
   corrispondente; le altre rimangono. La guida impedisce di aggiungerla
   nuovamente sullo stesso appoggio del telaio.
+- Un controllo geometrico confronta i piani dell’anta con l’inviluppo dello
+  stipite, anche cambiando appoggio o fonte delle quote. Un vuoto sotto lo
+  stipite rende la combinazione non selezionabile e blocca i tagli di un
+  insieme incoerente già misurato. Scegliere Faccia non disattiva il controllo.
+  La faccia resta disponibile se le quote producono un contatto reale.
 - **Sopra e sui lati** il rivestimento è completo: prima il foglio destro, poi
   il sinistro sopra. Nell'anta semplice entrambi girano su tutto lo spessore S;
   nell'anta battentata si sovrappongono solo sul tratto verticale Lb, chiudendo
