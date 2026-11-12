@@ -1,4 +1,4 @@
-# Consegna del prototipo a Claude — 11 novembre 2026
+# Consegna del prototipo a Claude — 12 novembre 2026
 
 ## Ambito
 
@@ -38,27 +38,39 @@ semplice consegna; una pubblicazione dovrà essere richiesta separatamente.
   15 mm a ogni estremità. Misure visibili e inseribili con massimo due decimali.
 - L/H indicano la luce minima sulla parte più spessa dello stipite, mai la
   distanza fra coprifili. I livelli e le lunghezze dei pezzi usano quel piano.
-- Battuta singola, anche con imbotte: anta sopra il coprifilo, con sporgenza
-  iniziale pari a Sb. Per l'anta a filo serve la doppia battuta, inizialmente
-  con sporgenza 0. La guida applica il minimo corrispondente e non propone
-  la singola a filo. Le posizioni rilevate vengono conservate.
-- Doppia battuta: Lb iniziale segue b1, senza il vuoto prodotto dal vecchio
-  valore fisso 12 quando b1 era 6. Una Lb misurata rimane distinta dall'automatica;
-  il pulsante «Lb come prima battuta» ripristina l'automatismo. Disegno e tagli
-  condividono il medesimo valore. Modificare b1 aggiorna anche il materiale previsto.
-- Sezione dell'anta basata sugli esempi fotografici di ante in battuta:
-  bordo di chiusura continuo con scalino effettivo, riempimento leggero,
-  fianchi tratteggiati e interruzione grafica del corpo. Una fuga di riferimento
-  separa i bordi paralleli. La guarnizione principale appoggia sulla faccia
-  posteriore, anche per l'anta battentata; lo scalino non determina più
-  l'appoggio principale. Nella doppia battuta si verificano distintamente il
-  contatto dello scalino e quello della faccia. Il labbro può scavalcare il
-  coprifilo, con sporgenza derivata dalle quote. La chiusura specchiata usa
-  la faccia opposta e il riferimento del coprifilo interno.
-- Le battute dello stipite non si allargano per forzare un'anta singola a filo.
-  Le quote inserite a mano o nella guida non si sovrascrivono. Se non c'è un contatto di superficie reale
-  compare un avviso: non basta toccare uno spigolo per dichiarare l'appoggio.
-  A parità di quote rilevate e parametri dell'anta gli sviluppi restano identici.
+- La ricerca in `RICERCA-CHIUSURE.md` sostituisce la vecchia deduzione
+  «singola sopra il coprifilo, doppia obbligatoria per il filo». Bordo dell'anta,
+  gradini dello stipite e complanarità sono scelte indipendenti. Le fonti dei
+  produttori sono consultabili anche nei dettagli della guida.
+- Nuovo passaggio **Come chiude l'anta?**: sovrapposta, a filo, rientrata;
+  riferimento coprifilo o estremità dello stipite, parete nel filomuro.
+  Si sceglie se appoggia la faccia oppure lo scalino della battentata e, con
+  più battute, su quale avviene l'arresto. `selectedDoorStop` usa le stesse
+  chiavi semantiche delle guarnizioni e non ripiega su un'altra battuta se
+  quella selezionata manca.
+- Lb e Sb rimangono quote dell'anta. Sono rimossi l'automatismo Lb=b1 e il
+  relativo pulsante; cambiare b1 non cambia i fogli di un'anta già quotata.
+  Lb 6, Sb S/2 e sporgenza 10 mm sono esempi iniziali dichiarati, non norme.
+- `closedDoorLeaf` verifica contatti di superficie reali sulla faccia o sullo
+  scalino selezionato. La sezione mantiene il linguaggio grafico precedente,
+  con un segno sul contatto effettivo e il piano di confronto nella guida.
+  È rimossa la fuga numerica convenzionale da 2 mm. Il giallo ha spessore
+  grafico simbolico: non simula una compressione misurata della guarnizione.
+- Le posizioni automatiche compongono solo quote ancora di esempio. Il nuovo
+  passo di misura dell'arresto registra la quota anche premendo Avanti senza
+  digitare un altro valore (`confirm`). Chiusura, sporgenza e tipo di bordo
+  non sovrascrivono le posizioni rilevate. Le incompatibilità compaiono come
+  avvisi; non si allarga il telaio o si modifica Lb per ottenere un contatto.
+- **Senza coprifili / filomuro**: `casing:'none'`, riferimento `wall`.
+  La sezione contiene solo telaio/imbotte a vista da rilevare. I tratti di
+  parete si escludono in Pellicola, i dettagli incassati non si ricostruiscono.
+  Distinta e bobine non contengono coprifili o sormonti verso pezzi assenti.
+- Lavoro salva metadati di chiusura (scelta e distanza effettiva), profilo,
+  appoggio e materiale insieme alla distinta. Il materiale è **Cover Styl**;
+  l'utente usa più finiture e ha confermato di conservare il proprio metodo
+  sui bordi. Nessun minimo di sormonto 3M o generico Cover Styl viene applicato
+  automaticamente a una battuta della porta. Restano da associare le eventuali
+  istruzioni specifiche alla referenza effettiva.
 - Le facce dell'anta usano sempre la stessa larghezza di taglio bobina, la
   maggiore necessaria; le lunghezze rimangono specifiche dei due fogli.
 - Avanzi fino a 50 mm: una famiglia si allarga solo se tutti i suoi rotoli,
@@ -71,17 +83,22 @@ semplice consegna; una pubblicazione dovrà essere richiesta separatamente.
 
 ## Verifica dello stato consegnato
 
-HTML SHA256: `9afa2e72062ab488773399cc815af7206438852918ac763405a8fe9dcc20286d`.
+HTML SHA256: `f0c4b339baded7dd5db427afff723811a2c57d83dc8cfd72fc0359a7067f375c`.
 
-Superati 104 gruppi di verifica sul JavaScript effettivo in Node VM e DOM simulato:
-guarnizioni 17, profili raggiati/smussati 21, ordine grafico dei sormonti 10,
-sormonti automatici 8, anta e tagli 12, sezione e scorte 9, bobine uniformi e
-luce minima 9, sezione dell'anta e appoggio 8, regole di chiusura e fuga 4,
-aggancio stabile delle superfici 6. Verificati sintassi e SVG reali
-esportati in PNG, compresa la sezione quotata in modalità chiara e scura. L'ultima
-iterazione non ha una verifica browser completa: gli strumenti di anteprima
-non erano disponibili. Gli script e gli artefatti di sessione restano fuori
-dal prototipo; non sono richiesti per aprire l'HTML.
+Superati 121 gruppi di verifica: guarnizioni 17, profili raggiati/smussati 21,
+ordine grafico dei sormonti 10, sormonti automatici 8, anta e tagli 12, sezione
+e scorte 9, bobine uniformi e luce minima 9, sezione e appoggio dell'anta 8,
+regole di chiusura 4, aggancio stabile delle superfici 6, nuovo modello di
+chiusura 12, flusso dell'interfaccia 5. Le vecchie prove che imponevano la
+regola singola/doppia o Lb=b1 sono state aggiornate ai requisiti documentati;
+i confronti di taglio usano le stesse quote fisiche esplicite.
+
+Verificati sintassi, JavaScript effettivo in Node VM, avvio completo e creazione
+filomuro in jsdom con elementi ed eventi DOM reali, distinta e piano bobine.
+Esportate sei sezioni SVG reali in entrambi i temi e ispezionate le immagini
+PNG dei casi principali. La verifica in jsdom non è una verifica di rendering
+browser: gli strumenti browser previsti non erano disponibili. Script, dipendenze
+di verifica e artefatti rimangono fuori dal prototipo; l'HTML non ha dipendenze.
 
 ## Prossimo lavoro
 

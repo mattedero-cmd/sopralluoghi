@@ -17,12 +17,15 @@ integrato nell'app Sopralluoghi**.
 ## Come si usa
 
 1. **Creazione guidata del modello**, una scelta alla volta:
-   battuta (nessuna, singola, doppia, con imbotte) → coprifilo (squadrato, smussato,
+   battuta (nessuna, singola, doppia, con imbotte) → coprifilo (senza coprifili / filomuro, squadrato, smussato,
    raggiato, modanato, a gradino, telescopico, a sormonto, integrato) → posizione del
    coprifilo per lato (a filo, arretrato, sporgente) → angoli (montanti passanti,
    traverso passante, 45°) → riepilogo.
 2. **Misure guidate**, una per schermata, con disegno e tastierino: luce L e H, bordo
-   dell'anta, L/H/S dell'anta (+ battuta, posizione nello spessore o raggio), facce
+   dell'anta, L/H/S dell'anta (+ battuta, posizione nello spessore o raggio),
+   **chiusura sovrapposta, a filo o rientrata**, piano di riferimento (coprifilo,
+   estremità dello stipite o parete nel filomuro), superficie di appoggio
+   dell'anta e battuta del telaio. Poi posizione rilevata dell'arresto, facce
    da rivestire, chiusura del bordo inferiore e abbondanze di
    maestà e anta. I sormonti di giunzione seguono automaticamente lo spigolo; la guida
    mostra le misure calcolate. Per ogni battuta chiede la sua
@@ -43,6 +46,7 @@ integrato nell'app Sopralluoghi**.
 ## Regole decise
 
 ### Sormonti e abbondanze
+
 - La posa avviene sulla maestà **già montata**: la pellicola non gira mai dietro i pezzi.
 - Il **sormonto** è il tratto con cui una pellicola supera lo spigolo e si sovrappone a
   quella del pezzo vicino, per nascondere il taglio.
@@ -81,6 +85,7 @@ integrato nell'app Sopralluoghi**.
   manuali fuori misura restano conservate e bloccano i tagli fino alla correzione.
 
 ### Guarnizioni
+
 - Ogni guarnizione resta agganciata alla propria superficie. Spostare i coprifili,
   aggiungere o togliere una testa a vista non la trasferisce su un altro tratto.
   Anche le esclusioni di pellicola e le separazioni restano sulla superficie scelta.
@@ -126,6 +131,7 @@ integrato nell'app Sopralluoghi**.
   lunghezza necessaria tra le parti collegate, comprese le rispettive abbondanze.
 
 ### Lunghezze dei pezzi
+
 - Si misura una volta la **luce minima dello stipite** L × H, sulla sua parte
   più spessa (livello 0). Non si misura fra i coprifili. Nel doppio gradino o
   nell’imbotte vale il tratto di stipite che restringe maggiormente il passaggio.
@@ -149,7 +155,7 @@ integrato nell'app Sopralluoghi**.
   nello spigolo basso. La linguetta marrone centrale mostra il sormonto.
 - L e H si misurano sulla faccia destra, lato battuta. La faccia sinistra misura
   L + 2Lb e H + Lb. **Sb** è la posizione della battuta nello spessore, inizialmente
-  S/2 e modificabile, adattata automaticamente allo spazio disponibile nelle sedi:
+  S/2 come esempio modificabile e da rilevare, senza dedurla dallo stipite:
   il sinistro risvolta Sb + Lb, il destro S − Sb + Lb.
 - **Sotto**, verso il pavimento: sormonto completo (iniziale e consigliato),
   due lembi a metà senza sovrapposizione, oppure bordo scoperto. Il bordo inferiore
@@ -161,34 +167,47 @@ integrato nell'app Sopralluoghi**.
   Per il bordo arrotondato si usano gli sviluppi reali degli archi. Con una sola
   faccia rivestita, quel foglio copre tutto il bordo superiore senza inventare
   una seconda pellicola; sotto si sceglie completo o scoperto.
-- Nella **battuta singola**, anche con imbotte, l’anta scavalca il coprifilo:
-  la sporgenza iniziale segue Sb e il labbro cade sopra il coprifilo liscio.
-  Per avere l’anta **a filo serve la doppia battuta**, il cui valore iniziale
-  di sporgenza è 0. La guida applica il minimo del modello scelto.
-  La battuta principale segue l'intero spessore S e la sporgenza; Sb posiziona
-  il contatto secondario nella doppia battuta. Le posizioni rilevate restano salvate.
-- Nella doppia battuta, **Lb iniziale segue la prima battuta b1 dello stipite**,
-  così il piano intermedio lascia soltanto la piccola fuga di chiusura.
-  Disegno, sviluppo e tagli usano la stessa Lb. Se si inserisce una Lb rilevata
-  diversa, viene conservata e l'eventuale vuoto risultante viene segnalato;
-  il comando «Lb come prima battuta» permette di tornare al valore automatico.
-- La sezione dello stipite mostra l'anta chiusa con il profilo scelto:
-  **la faccia posteriore incontra la guarnizione principale**, anche per la
-  battentata. Il labbro può scavalcare il bordo dello stipite e del coprifilo;
-  la sporgenza visibile deriva dalle quote effettive. Nella chiusura specchiata
-  appoggia la faccia opposta. Nella doppia battuta si verificano entrambi i
-  contatti, della faccia e dello scalino, sulle rispettive guarnizioni.
-  Il bordo in battuta ha contorno continuo, corpo leggermente riempito e labbro
-  visibile; i fianchi tratteggiati e la linea di interruzione indicano che l'anta
-  prosegue. Una piccola fuga di riferimento distingue i bordi paralleli senza
-  modificare le quote rilevate o gli sviluppi di pellicola. La guarnizione gialla
-  resta visibile davanti al profilo, nel punto di appoggio.
-  Senza guarnizione l'appoggio è sulla battuta; lo stipite senza battuta mostra
-  comunque l'anta sul suo piano. Quote incompatibili con la posizione della
-  guarnizione vengono segnalate nella sezione.
-- Le battute dello stipite non vengono allargate per forzare l'anta a filo.
-  Le quote già rilevate a mano o nella guida vengono conservate, anche se
-  incompatibili: in quel caso compare l'avviso di mancato appoggio o di fuga eccessiva.
+- **Bordo dell'anta, battuta del telaio e piano di chiusura sono indipendenti**.
+  Non vale la precedente regola universale «per il filo serve la doppia battuta».
+  Anche una battuta singola può permettere la complanarità, con un profilo adatto.
+  La guida chiede come chiude l'anta e rispetto a quale piano.
+- **Lb e Sb sono quote dell'anta**: non cambiano modificando b1 dello stipite.
+  Il vecchio automatismo Lb=b1 e il pulsante che lo ripristinava sono rimossi.
+  I valori iniziali (Lb 6, Sb S/2, sporgenza 10 mm) sono esempi, non standard di
+  fabbricazione. Nella guida le misure effettive si inseriscono sul disegno.
+- **Sovrapposta**: distanza positiva oltre il piano scelto; **a filo**: distanza
+  0; **rientrata**: distanza positiva di arretramento. Il rientro rimane un caso
+  rilevato, senza trasformarlo nel comportamento iniziale di tutte le porte.
+- L'**appoggio** si sceglie sulla faccia oppure, per un'anta battentata, sullo
+  scalino. Con più battute si sceglie quella effettiva di arresto. L'app verifica
+  l'intersezione reale delle superfici con le guarnizioni, anche per i contatti
+  secondari. Un solo spigolo coincidente non basta per dichiarare il contatto.
+  Senza guarnizione l'appoggio è sulla battuta; se manca anche la superficie di
+  arresto, il disegno segnala «appoggio non rilevato».
+- La sezione mantiene corpo chiaro, contorno continuo in battuta, fianchi
+  tratteggiati e interruzione del corpo. Un segno individua il contatto effettivo;
+  nella guida una linea indica il piano scelto. Il giallo rappresenta la
+  guarnizione: lo spessore grafico è simbolico, la lunghezza segue la misura.
+  È rimossa la precedente fuga numerica di riferimento da 2 mm: non viene
+  inventata una distanza o simulata la compressione della guarnizione.
+- Le posizioni automatiche servono a comporre l'esempio iniziale. Una posizione
+  dello stipite inserita o **confermata con Avanti** diventa una quota rilevata.
+  Cambiare chiusura, sporgenza o bordo dell'anta non la sovrascrive. Se le quote
+  non corrispondono alla chiusura scelta, l'app mostra la distanza effettiva e
+  l'incompatibilità; non allarga il telaio o modifica la battuta dell'anta.
+- **Filomuro**: scegli Senza coprifili e il riferimento Parete. Si quotano il
+  telaio e le superfici a vista; la sezione non ricostruisce dettagli proprietari
+  incassati. Un tratto di parete si può escludere in Pellicola. Non esistono
+  pezzi di coprifilo o sormonti verso coprifili assenti. I tagli e il piano bobine
+  consumano la stessa lista delle superfici effettivamente selezionate.
+- Nel Lavoro ogni porta conserva i dati di chiusura, profilo e appoggio insieme
+  alla propria distinta. Un cambiamento del solo piano di chiusura non cambia
+  i fogli di un'anta le cui quote L/H/S/Lb/Sb sono rimaste uguali.
+- **Materiale: Cover Styl**, con più finiture. L'utente ha confermato di mantenere
+  il proprio metodo sui bordi. Le indicazioni generali sulle giunzioni fra teli
+  non diventano automaticamente misure di sormonto sul bordo della porta.
+  Fonti, distinzioni e limiti sono in [RICERCA-CHIUSURE.md](RICERCA-CHIUSURE.md)
+  e nei dettagli «Tipi di chiusura e fonti tecniche» della guida.
 - Abbondanze iniziali: **25 mm su ogni lato dell'anta**, **15 mm a ogni estremità
   di stipiti, coprifili e imbotte**. Restano modificabili e vengono sommate dopo
   lo sviluppo dei risvolti: 2 × abbondanza su larghezza e altezza di ciascun foglio.
@@ -206,6 +225,7 @@ Per le altre famiglie:
 Il numero di posa (P01…) è anche il numero del taglio. L'ordine si può cambiare a mano.
 
 ### Piano bobine (lavori con molte porte)
+
 - Bobina da 1220 mm, tutta utile; rotoli da 50 m.
 - **Stessa misura per comodità**: larghezze entro 20 mm vanno nello stesso rotolo.
 - Una misura che riempie almeno un rotolo da 50 m ha il suo rotolo. Quelle che non lo
