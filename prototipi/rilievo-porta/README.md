@@ -84,6 +84,8 @@ scalini sotto. Facce: ciascuna scheda sta dal lato in cui il disegno mostra la
 faccia (il disegno segue la maniglia). Nelle misure di battuta, bordo dell'anta
 e sezione del telaio, la vista è quella che hai a porta aperta dal lato della
 maniglia, con le scritte ESTERNO (tiri da qui) e INTERNO sui lati.
+Il bordo dell'anta nelle misure è capovolto come lo vede chi sta di taglio
+davanti all'anta aperta: lo scalino e le quote sono in basso, verso chi misura.
 Predefinite: coprifilo esterno a filo, interno arretrato, angoli a 45°,
 coprifili uguali, entrambe le facce, sormonto completo sotto. Nelle sezioni la
 parete porta la scritta PARETE; le quote nella lente seguono il disegno

@@ -4962,7 +4962,20 @@ function orientSurveySvg(svg,width=null){
   });
   svg.setAttribute('data-view-mirrored','true');
 }
-function orientWizardFigures(){$('.mt-wiz-body').querySelectorAll('svg').forEach(svg=>orientSurveySvg(svg));}
+// Bordo dell'anta durante le misure: chi misura sta di taglio davanti all'anta
+// aperta, quindi lo scalino è rivolto verso di lui. Il disegno si capovolge
+// dall'alto in basso (scalino e quote in basso); destra e sinistra restano
+// quelle della maniglia. Le scritte restano diritte.
+function flipLeafEdge(svg){
+  if(svg.getAttribute('data-leaf-edge')!=='true'||svg.getAttribute('data-edge-flipped')==='true')return;
+  const vb=(svg.getAttribute('viewBox')||'0 0 320 230').split(/[\s,]+/).map(Number),H=2*(vb[1]||0)+(vb[3]||230);
+  const group=el('g',{transform:'translate(0 '+H+') scale(1 -1)','data-view-orientation':'edge-toward-you'});
+  [...svg.childNodes].forEach(node=>group.append(node));svg.append(group);
+  group.querySelectorAll('text').forEach(text=>{const y=Number(text.getAttribute('y')||0),old=text.getAttribute('transform')||'';
+    text.setAttribute('transform',(old+' translate(0 '+(2*y)+') scale(1 -1)').trim());});
+  svg.setAttribute('data-edge-flipped','true');
+}
+function orientWizardFigures(){$('.mt-wiz-body').querySelectorAll('svg').forEach(svg=>{flipLeafEdge(svg);orientSurveySvg(svg);});}
 function surveyMaterials(svg){
   const serial=++surveyFigureSerial,defs=el('defs'),wall='mt-survey-wall-'+serial,jamb='mt-survey-jamb-'+serial;
   [[wall,'M -2 2 L 2 -2 M 0 8 L 8 0 M 6 10 L 10 6','var(--mt-wall)'],[jamb,'M 0 0 L 8 8 M 8 0 L 0 8','var(--mt-wood)']].forEach(([id,d,fill])=>{
@@ -5114,7 +5127,8 @@ function surveyDimension(svg,from,to,axis,value,key) {
   svg.append(group);
 }
 function leafSurveyFigure(field,value,sealKey=null) {
-  const svg=surveyFigure(field),edges=doorProfileEdges(),S=door.thickness,b=doorTotalRebate(),depth=Math.max(S*.7,b+20);
+  const svg=surveyFigure(field);svg.setAttribute('data-leaf-edge','true');
+  const edges=doorProfileEdges(),S=door.thickness,b=doorTotalRebate(),depth=Math.max(S*.7,b+20);
   if(!edges.length||!(S>0)||!edges.every(edge=>Number.isFinite(edge.len)))return svg;
   const k=Math.min(216/S,145/depth),X=x=>30+x*k,Y=y=>52+y*k;
   svg.append(el('polygon',{points:[...doorProfilePoints(),[S,depth],[0,depth]].map(([x,y])=>X(x)+','+Y(y)).join(' '),fill:'var(--mt-wood)',stroke:'var(--mt-secondary)','stroke-width':1.2}));
@@ -5123,7 +5137,7 @@ function leafSurveyFigure(field,value,sealKey=null) {
   // maniglia, e si specchia con la maniglia come la vedi tu.
   const faceY=Math.min(208,Y(depth)+15);
   svg.append(el('text',{x:X(0),y:faceY,'text-anchor':'start','font-size':12,'font-weight':700,fill:'var(--mt-green)','data-face-side':'front'},'ESTERNO'));
-  svg.append(el('text',{x:X(0),y:faceY+13,'text-anchor':'start','font-size':10,fill:'var(--mt-green)'},'tiri da qui'));
+  svg.append(el('text',{x:X(0),y:faceY-13,'text-anchor':'start','font-size':10,fill:'var(--mt-green)'},'tiri da qui')); // capovolto nella guida: finisce sotto ESTERNO
   svg.append(el('text',{x:X(S),y:faceY,'text-anchor':'end','font-size':12,'font-weight':700,fill:'var(--mt-secondary)','data-face-side':'back'},'INTERNO'));
   leafGasketSpans().forEach(span=>drawGasketBand(svg,{key:'leaf-'+door.type,edges:[span.edge]},0,X,Y,k,false,span));
   let from,to,axis='h';
@@ -5152,7 +5166,7 @@ function leafSurveyFigure(field,value,sealKey=null) {
 }
 function leafSealChoiceFigure(keys,actual=false,candidate=false) {
   const svg=leafSurfaceFigure(null,false,false),edges=doorProfileEdges(),S=door.thickness,depth=Math.max(S*.85,doorTotalRebate()+20),k=Math.min(255/S,132/depth),X=x=>32+x*k,Y=y=>25+y*k;
-  svg.setAttribute('class','mt-wiz-fig mt-survey-figure');svg.setAttribute('data-survey-figure','leaf-seal-surfaces');
+  svg.setAttribute('class','mt-wiz-fig mt-survey-figure');svg.setAttribute('data-survey-figure','leaf-seal-surfaces');svg.setAttribute('data-leaf-edge','true');
   keys.forEach(key=>{const edge=edges.find(edge=>edge.stateKey===key),saved=actual?leafGasketSpan(key):null;if(edge){const drawn=drawGasketBand(svg,{key:'leaf-choice',edges:[edge]},0,X,Y,k,true,saved||{valid:true,start:0,width:edge.len,end:edge.len,full:true});if(candidate&&drawn){drawn.path.setAttribute('stroke-dasharray','5 3');drawn.path.setAttribute('data-gasket-candidate','true');}}});
   return svg;
 }
