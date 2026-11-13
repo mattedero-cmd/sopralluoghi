@@ -225,3 +225,23 @@ Verifica in Chromium: guida completa senza errori; la prova delle 576
 combinazioni dà gli stessi risultati della prima revisione.
 
 HTML SHA256 dopo la seconda revisione: `eb688d44f7bae7ef25b64163d4b9d02397acf5a1ede8582d9b10a5ed31ee0b77`.
+
+## Terza revisione con l'utente (13 novembre 2026)
+
+Richiesta strutturata dell'utente (configurazione guidata completa, schermata
+di verifica, disposizione uniforme delle scelte), applicata:
+
+- Scelte: 2 affiancate, 3 a triangolo con la predefinita sotto, 4 in 2×2;
+  anteprime uniformi; PARETE scritto nelle pareti; traverso senza anta;
+  posizione dei coprifili con maestà intera e lente; quote tecniche nella lente.
+- Guida completa: quote di coprifili e stipite (A/B, tE/tI, eE/eI condizionali,
+  D 120, s, forma del coprifilo). Le quote delle battute che dipendono dalle
+  scelte sull'anta stanno dopo quelle scelte (evita lo scorrimento dei passi).
+- Maestà come verifica: quattro viste quotate, «Rifai la guida», «Modifica
+  avanzata» per l'editor completo; scheda Anta ridotta al sormonto sull'anta.
+
+Verifica in Chromium: guida completa senza errori anche con due ante e con le
+combinazioni anta/stipite che non combaciano; prova delle 576 combinazioni
+invariata; tastierino visibile da 560 px di altezza.
+
+HTML SHA256 dopo la terza revisione: `fc5de996b85ce0acb295bb8d1e06ee577826e010a5c443aef79109539fe924da`.

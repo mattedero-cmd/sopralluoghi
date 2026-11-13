@@ -63,6 +63,27 @@ La guida non si blocca mai e non mostra avvisi su misure non ancora prese:
 ogni scelta resta toccabile. Il controllo che anta e stipite combacino si fa
 alla fine, nella scheda Anta, come avviso: non annulla i tagli della pellicola.
 
+**Flusso in tre fasi.** 1) La guida definisce tutta la porta: alla fine non
+manca nessuna quota. Oltre a luce, anta e battute chiede le quote di coprifili
+e stipite: larghezza A/B, spessore tE/tI, eE/eI solo se il coprifilo è
+arretrato o sporgente, larghezza dello stipite D (120 di default), spessore s
+e le quote della forma del coprifilo. Le quote delle battute che dipendono
+dalle scelte sull'anta si chiedono dopo quelle scelte. 2) La schermata
+**Maestà è di verifica**: maestà vista di fronte, sezione della maestà, anta
+vista di fronte e sezione del battente, con le quote; in alto «Rifai la guida»
+e «Modifica avanzata» (l'editor completo, con «‹ Verifica» per tornare).
+Nella scheda Anta restano il disegno della pellicola, il **sormonto sull'anta**
+e i pezzi; tipo di anta, numero di ante, guarnizioni, chiusura, facce e bordo
+inferiore si cambiano con la guida (o in Modifica avanzata). 3) Riepilogo e
+Lavoro, invariati.
+
+**Disposizione delle scelte:** 2 affiancate, 3 a triangolo con la predefinita
+sotto e centrata, 4 in griglia 2×2; anteprime tutte con la stessa proporzione.
+Predefinite: coprifilo esterno a filo, interno arretrato, angoli a 45°,
+coprifili uguali, entrambe le facce, sormonto completo sotto. Nelle sezioni la
+parete porta la scritta PARETE; le quote nella lente seguono il disegno
+tecnico (richiami, frecce, valore sopra la linea, sul lato libero).
+
 **Scelte con anteprima:** quando ci sono più scelte, ognuna è una scheda con il
 proprio disegno da toccare direttamente (maniglia, traverso, numero di ante,
 posizione del coprifilo, coprifili uguali, appoggio e chiusura dell'anta,
