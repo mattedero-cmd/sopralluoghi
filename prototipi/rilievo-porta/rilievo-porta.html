@@ -389,6 +389,12 @@
 #maesta-tecnica .mt-film-development summary{padding:5px 0;cursor:pointer}
 #maesta-tecnica .mt-over-note .mt-overlap-order{margin:5px 0}
 #maesta-tecnica .mt-over-note .mt-overlap-order summary{padding:5px 0;cursor:pointer}
+#maesta-tecnica .mt-roll-chips{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 8px}
+#maesta-tecnica .mt-roll-chip{display:flex;flex-direction:column;align-items:center;gap:1px;min-width:74px;padding:6px 8px}
+#maesta-tecnica .mt-roll-chip svg{width:44px;height:30px;pointer-events:none}
+#maesta-tecnica .mt-roll-chip strong{font-size:16px;font-variant-numeric:tabular-nums}
+#maesta-tecnica .mt-roll-chip span{font-size:11px;color:var(--mt-secondary)}
+#maesta-tecnica .mt-pattern-bar span.cursor-interaction{cursor:pointer}
 #maesta-tecnica .mt-stock-summary{font-size:13px;line-height:1.4;overflow-wrap:anywhere}
 #maesta-tecnica .mt-stock-rows{display:grid;gap:6px;margin:8px 0}
 #maesta-tecnica .mt-stock-row{display:grid;grid-template-columns:minmax(0,1fr) 126px 36px;gap:5px;align-items:center}
@@ -6081,66 +6087,60 @@ function spareOptions(free,groupsW) {
   return [{kind:'whole'},...suggestions,{kind:'none'}];
 }
 const optionKey=o=>o.kind+':'+spareRows(o).sort((a,b)=>a.width-b.width).map(row=>row.width+'x'+row.qty).join('+')+':'+!!o.rest;
-function renderSpareComposer(container,p,groupsW) {
-  const chosen=plan.decisions[p.key];
-  const drafts=plan.spareDrafts||(plan.spareDrafts={});
-  const draft=drafts[p.key]||(drafts[p.key]={rows:spareRows(chosen),rest:chosen?.kind==='none'?false:chosen?.rest!==false});
-  const dec=document.createElement('div');dec.className='mt-decide'+(p.pending?' open':'');dec.setAttribute('data-stock-composer',p.key);
-  const title=document.createElement('p');title.textContent=`Componi le scorte · ${fmt(p.free)} mm disponibili`;dec.append(title);
-  if(p.n>1){const note=document.createElement('small');note.textContent=`Quantità per bobina: questa composizione vale per ciascuna delle ${p.n} bobine uguali.`;dec.append(note);}
-  const rowsBox=document.createElement('div');rowsBox.className='mt-stock-rows';dec.append(rowsBox);
-  const status=document.createElement('div');status.className='mt-stock-status';status.setAttribute('aria-live','polite');
-  const error=document.createElement('p');error.className='mt-error';error.setAttribute('role','alert');
-  const apply=document.createElement('button');apply.type='button';apply.className='mt-stock-apply';apply.textContent=chosen?'Aggiorna scorte':'Applica scorte';apply.setAttribute('data-stock-action','apply');
-  const add=document.createElement('button');add.type='button';add.textContent='+ Aggiungi una misura';add.setAttribute('data-stock-action','add');
-  const rest=document.createElement('div');rest.className='mt-stock-rest';
-  const restButtons=[];
-  const feedback=()=>{
-    const used=draft.rows.reduce((sum,row)=>sum+(Number.isFinite(row.width)&&Number.isFinite(row.qty)?row.width*row.qty:0),0),left=p.free-used;
-    const message=spareDecisionError({kind:'custom',rows:draft.rows},p.free);
-    status.textContent=`Scorte ${fmt(used)} mm · ${left>=0?'restano '+fmt(left)+' mm':'eccedenza '+fmt(-left)+' mm'}`;
-    error.hidden=!draft.rows.length||!message;error.textContent=message;apply.disabled=!!message;add.disabled=left<5;
-    restButtons.forEach(([button,value])=>button.setAttribute('aria-pressed',String(draft.rest===value)));
-  };
-  draft.rows.forEach((row,index)=>{
-    const line=document.createElement('div');line.className='mt-stock-row';
-    const field=(key,label)=>{
-      const id=p.key+'|'+index+'|'+key,input=document.createElement('input');input.type='number';input.hidden=true;input.readOnly=true;input.min=key==='width'?'5':'1';input.max=String(key==='width'?p.free:Math.floor(p.free/5));input.step=key==='width'?'5':'1';input.value=Number.isFinite(row[key])?String(row[key]):'';
-      input.setAttribute('data-spare',id);input.setAttribute('inputmode','none');input.setAttribute('aria-label',`Scorta ${index+1} · ${label}`);
-      spareFields.set(id,{draft,free:p.free});
-      const button=document.createElement('button');button.type='button';button.className=key==='width'?'mt-stock-width':'';
-      button.setAttribute('aria-label',`Modifica ${label.toLowerCase()} della scorta ${index+1}`);
-      const value=document.createElement('strong');
-      const name=document.createElement('span');name.textContent=key==='width'?'Larghezza':'Rotoli';button.append(name);
-      button.append(value);
-      const show=()=>{value.textContent=(Number.isFinite(row[key])?fmt(row[key]):'—')+(key==='width'?' mm':'');};show();
-      input.addEventListener('input',()=>{row[key]=input.value===''?NaN:Number(input.value);show();feedback();});
-      button.onclick=ev=>openPad(`[data-spare="${id}"]`,['width','qty'].map(k=>`[data-spare="${p.key}|${index}|${k}"]`),ev.currentTarget.getBoundingClientRect());
-      return {input,button};
-    };
-    const width=field('width','Larghezza'),qty=field('qty','Quantità');
-    const counter=document.createElement('div');counter.className='mt-stock-qty';
-    const change=(label,amount)=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.setAttribute('aria-label',amount>0?'Aggiungi un rotolo di scorta':'Togli un rotolo di scorta');
-      b.onclick=()=>{qty.input.value=String(Math.max(1,(Number.isFinite(row.qty)?row.qty:1)+amount));qty.input.dispatchEvent(new Event('input',{bubbles:true}));};return b;};
-    counter.append(change('−',-1),qty.button,change('+',1));
-    const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.setAttribute('aria-label','Elimina scorta '+(index+1));remove.onclick=()=>{closePad();draft.rows.splice(index,1);renderJob();};
-    line.append(width.input,qty.input,width.button,counter,remove);rowsBox.append(line);
+// Scorte: nel riquadro ci sono solo i rotolini delle misure del lavoro che
+// entrano nello spazio libero, ognuno con le scorte che ha su tutto il lavoro.
+// Un tocco mette il rotolo nella bobina (e in ognuna delle bobine uguali);
+// toccando una scorta nella barra la si toglie; OK chiude: il resto è avanzo.
+function spareComposition(p){const d=plan.decisions[p.key];return d?.kind==='custom'?spareRows(d):[];}
+function setSpareComposition(p,rows,open){
+  if(!rows.length&&!open){plan.decisions[p.key]={kind:'none'};return;}
+  plan.decisions[p.key]={kind:'custom',rows:spareRows({rows}),rest:false,open};
+}
+function removeSpareRoll(p,width){
+  const rows=spareComposition(p),row=rows.find(r=>r.width===width);if(!row)return;
+  row.qty--;setSpareComposition(p,rows.filter(r=>r.qty>0),true);renderJob();
+}
+function rollIcon(width){
+  const svg=el('svg',{viewBox:'0 0 44 30','aria-hidden':'true'});
+  svg.append(el('rect',{x:6,y:5,width:30,height:20,fill:'var(--mt-tint)',stroke:'var(--mt-green)','stroke-width':1.5}));
+  svg.append(el('ellipse',{cx:36,cy:15,rx:4,ry:10,fill:'var(--mt-paper)',stroke:'var(--mt-green)','stroke-width':1.5}));
+  svg.append(el('ellipse',{cx:36,cy:15,rx:1.6,ry:4,fill:'var(--mt-green)'}));
+  return svg;
+}
+function renderSpareComposer(container,p,groupsW,spareByWidth=new Map()) {
+  const d=plan.decisions[p.key],rows=spareComposition(p);
+  const used=rows.reduce((n,r)=>n+r.width*r.qty,0),left=p.free-used,open=!d||d.kind==='custom'&&d.open;
+  const dec=document.createElement('div');dec.className='mt-decide'+(open?' open':'');dec.setAttribute('data-stock-composer',p.key);
+  if(!open){
+    const text=document.createElement('p');
+    text.textContent=(d.kind==='whole'?'Resto tenuto intero':(rows.length?'Scorte: '+stockSummary(d)+' · ':'Nessuna scorta · ')+'avanzo '+fmt(left)+' mm')+'. Tocca la barra per cambiare.';
+    dec.append(text);container.append(dec);return;
+  }
+  const title=document.createElement('p');
+  title.textContent=`Spazio libero ${fmt(left)} mm`+(p.n>1?` · vale per ${p.n} bobine uguali`:'')+' · tocca un rotolino per metterlo';
+  dec.append(title);
+  const widths=[...new Set(groupsW.map(g=>g.width))].filter(w=>w>=5&&w<=left+1e-6).sort((a,b)=>b-a);
+  const box=document.createElement('div');box.className='mt-roll-chips';
+  widths.forEach(width=>{
+    const b=document.createElement('button');b.type='button';b.className='mt-roll-chip cursor-interaction';b.setAttribute('data-spare-roll',width);
+    const w=document.createElement('strong');w.textContent=fmt(width);
+    // Pezzi di scorta su tutto il lavoro: margine sui rotoli del lavoro più i
+    // pezzi dei rotoli di scorta già messi (pezzo più lungo di quella misura).
+    const g=groupsW.find(item=>item.width===width),maxLen=g?Math.max(...g.items.map(item=>item.l)):0;
+    const pieces=(g?.marginPieces||0)+(spareByWidth.get(width)||0)*(maxLen>0?Math.floor(plan.rollLen*1000/maxLen):0);
+    const n=document.createElement('span');n.textContent='scorta '+pieces+' pz';
+    b.append(rollIcon(width),w,n);
+    b.setAttribute('aria-label','Aggiungi un rotolo da '+fmt(width)+' mm come scorta');
+    b.onclick=()=>{closePad();vibrate();const next=spareComposition(p);const row=next.find(r=>r.width===width);if(row)row.qty++;else next.push({width,qty:1});setSpareComposition(p,next,true);renderJob();};
+    box.append(b);
   });
-  add.onclick=()=>{closePad();const used=draft.rows.reduce((sum,row)=>sum+(Number.isFinite(row.width)&&Number.isFinite(row.qty)?row.width*row.qty:0),0),left=Math.max(0,p.free-used);
-    const candidate=groupsW.slice().sort((a,b)=>Number(b.need)-Number(a.need)||a.width-b.width).find(g=>g.width<=left);
-    const width=candidate?.width||Math.floor(left/5)*5;if(width>=5)draft.rows.push({width,qty:1});renderJob();};
-  [[true,'Lascia il resto intero'],[false,'Resto come avanzo']].forEach(([value,label])=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.onclick=()=>{draft.rest=value;feedback();};rest.append(b);restButtons.push([b,value]);});
-  apply.onclick=()=>{if(spareDecisionError({kind:'custom',rows:draft.rows},p.free))return;closePad();plan.decisions[p.key]={kind:'custom',rows:spareRows({rows:draft.rows}),rest:draft.rest};renderJob();};
-  dec.append(add,status,rest,error,apply);
-  const actions=document.createElement('div');actions.className='mt-stock-actions';
-  spareOptions(p.free,groupsW).filter(o=>o.kind!=='custom').forEach(option=>{const b=document.createElement('button');b.type='button';b.textContent=option.kind==='whole'?`Tieni ${fmt(p.free)} mm interi`:'Nessuna scorta';b.setAttribute('aria-pressed',String(chosen?.kind===option.kind));
-    b.onclick=()=>{closePad();plan.decisions[p.key]=option;delete drafts[p.key];renderJob();};actions.append(b);});dec.append(actions);
-  const suggestions=spareOptions(p.free,groupsW).filter(o=>o.kind==='custom');
-  if(suggestions.length){const details=document.createElement('details');details.className='mt-stock-suggestions';const summary=document.createElement('summary');summary.textContent=suggestions.length>1?'Due idee rapide':'Un’idea rapida';details.append(summary);
-    suggestions.forEach(option=>{const b=document.createElement('button');b.type='button';b.textContent=stockSummary(option)+` · resto ${fmt(p.free-option.rows.reduce((n,r)=>n+r.width*r.qty,0))} mm intero`;
-      b.onclick=()=>{closePad();plan.decisions[p.key]=option;delete drafts[p.key];renderJob();};details.append(b);});dec.append(details);}
-  if(chosen){const reset=document.createElement('button');reset.type='button';reset.className='mt-decide-undo';reset.textContent='Azzera scelta';reset.onclick=()=>{closePad();delete plan.decisions[p.key];delete drafts[p.key];renderJob();};dec.append(reset);}
-  feedback();container.append(dec);
+  if(!widths.length){const none=document.createElement('small');none.className='mt-small';none.textContent='Nessuna misura del lavoro entra nello spazio rimasto.';box.append(none);}
+  dec.append(box);
+  if(rows.length){const hint=document.createElement('small');hint.className='mt-small';hint.textContent='Tocca una scorta nella barra per toglierla.';dec.append(hint);}
+  const ok=document.createElement('button');ok.type='button';ok.className='mt-stock-apply';ok.setAttribute('data-stock-action','ok');
+  ok.textContent='OK · '+(rows.length?'scorte '+stockSummary({rows})+', ':'nessuna scorta, ')+'avanzo '+fmt(left)+' mm';
+  ok.onclick=()=>{closePad();setSpareComposition(p,rows,false);renderJob();};
+  dec.append(ok);container.append(dec);
 }
 function cutPatternSummary(cuts) {
   const grouped=new Map();cuts.forEach(c=>{const w=c.w+c.add,key=w+':'+(c.spare?'spare':c.whole?'whole':'job');const row=grouped.get(key)||{w,spare:c.spare,whole:c.whole,qty:0};row.qty++;grouped.set(key,row);});
@@ -6170,8 +6170,9 @@ function planMasters(groupsW) {
           spareRows(d).forEach(row=>{const g=groupsW.find(group=>group.width===row.width)||null;
             for(let i=0;i<row.qty;i++){m.cuts.push({g,w:row.width,add:0,spare:true,fixed:true});m.used+=row.width;}
           });
-          m.fixedRemainder=true;
-          if(d.rest&&plan.masterW-m.used>1e-6){m.cuts.push({g:null,w:plan.masterW-m.used,add:0,whole:true});m.used=plan.masterW;}
+          if(d.open)m.pending=true;
+          else{m.fixedRemainder=true;
+            if(d.rest&&plan.masterW-m.used>1e-6){m.cuts.push({g:null,w:plan.masterW-m.used,add:0,whole:true});m.used=plan.masterW;}}
         }
       }
     }
@@ -6327,6 +6328,9 @@ function renderJob() {
   out.append(t);
 
   const h2 = document.createElement('h4'); h2.textContent = 'Come far tagliare le bobine'; out.append(h2);
+  // Scorte già previste su tutto il lavoro, per larghezza.
+  const spareByWidth = new Map();
+  patterns.forEach(p => p.cuts.forEach(c => { if (c.spare) { const w = c.w + c.add; spareByWidth.set(w, (spareByWidth.get(w) || 0) + p.n); } }));
   patterns.forEach(p => {
     const box = document.createElement('div');
     box.className = 'mt-pattern';
@@ -6341,8 +6345,16 @@ function renderJob() {
       if (cls) sp.className = cls; sp.textContent = txt; bar.append(sp); };
     p.cuts.forEach(c => seg(c.w + c.add, c.spare ? 'spare' : c.whole ? 'whole' : '', label(c)));
     if (left > 0) seg(left, p.pending ? 'free' : 'waste', left >= 30 ? (p.pending ? fmt(left) + ' ?' : fmt(left)) : '');
+    if (p.free > ABSORB_LIMIT && !p.over) {
+      const decision = plan.decisions[p.key], editing = decision?.kind === 'custom' && decision.open;
+      [...bar.children].forEach((span, index) => {
+        const c = p.cuts[index];
+        if (editing && c?.spare) { span.classList.add('cursor-interaction'); span.title = 'Togli questa scorta'; span.onclick = () => removeSpareRoll(p, c.w); }
+        else if (!p.pending) { span.classList.add('cursor-interaction'); span.onclick = () => { setSpareComposition(p, spareComposition(p), true); renderJob(); }; }
+      });
+    }
     box.append(head, bar);
-    if(p.free>ABSORB_LIMIT&&!p.over)renderSpareComposer(box,p,gw);
+    if(p.free>ABSORB_LIMIT&&!p.over)renderSpareComposer(box,p,gw,spareByWidth);
     const absorbed = p.cuts.filter(c => c.add);
     if (absorbed.length) {
       const note = document.createElement('small');

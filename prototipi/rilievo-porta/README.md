@@ -437,16 +437,15 @@ Il numero di posa (P01…) è anche il numero del taglio. L'ordine si può cambi
   aumentare allo stesso modo entro lo spazio e le abbondanze consentite.
   Se anche uno non può farlo, gli altri non cambiano: resta il piccolo scarto.
   Le scorte manuali e il residuo scelto dall'utente restano esatti.
-- **Spazio libero oltre i 50 mm**: lo compone l'utente. Ogni riga contiene una
-  larghezza (multipli di 5 mm) e la quantità di rotoli per bobina; si possono
-  aggiungere misure diverse da quelle del lavoro, eliminare righe e controllare
-  il residuo. Un pulsante applica la composizione, validata tutta insieme.
-- Il residuo si può tenere intero o lasciare come avanzo. Le scorte manuali
-  conservano esattamente la larghezza scelta: non assorbono automaticamente
-  l'ultimo avanzo. Restano le azioni rapide Tieni intero e Nessuna scorta.
-- Al massimo **due suggerimenti**, raggruppati come quantità × larghezza,
-  sono disponibili in un dettaglio inizialmente chiuso. Anche il riepilogo
-  della bobina raggruppa le misure ripetute, senza lunghe somme di rotolini.
+- **Spazio libero oltre i 50 mm**: si compone toccando i **rotolini**, senza
+  pulsanti. Nel riquadro ci sono le larghezze del lavoro che entrano nello spazio
+  rimasto, ognuna con «scorta N pz»: i pezzi di scorta di quella misura su tutto
+  il lavoro (margine sui rotoli del lavoro più i pezzi dei rotoli di scorta già
+  messi). Un tocco mette il rotolo nella bobina (in ciascuna delle bobine
+  uguali); lo spazio giallo si riduce e le misure che non entrano spariscono.
+  Toccando una scorta nella barra la si toglie. **OK** chiude: il resto è
+  avanzo. Toccando la barra di una bobina chiusa la composizione si riapre.
+  Le scorte conservano esattamente la loro larghezza e non assorbono l'avanzo.
 - Una composizione non valida o divenuta troppo larga non viene applicata
   parzialmente: la bobina torna da decidere. La quantità di ogni riga vale per
   ciascuna bobina della stessa combinazione, indicata nell'interfaccia.
