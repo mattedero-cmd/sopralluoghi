@@ -6055,10 +6055,12 @@ function sectionNumbersFigure(rows,piece){
       const part=g.parts.find(q=>q.key===r.partKey);if(!part)return;
       const list=strips(part,piece),strip=list[Math.min(r.strip||0,list.length-1)];if(!strip?.segs?.length)return;
       const seg=strip.segs[Math.floor((strip.segs.length-1)/2)],e=part.edges[seg.i],pt=overlapEdgePoint(e,((seg.start+seg.end)/2)/e.len);
-      const sx=X(pt[0]),sy=Y(pt[1]),out=isCasingPart(part)?-1:1,lx=sx+(isCasingPart(part)?(part.key==='inner'?26:-26):0),ly=sy+out*30+(n%2)*8;
+      const sx=X(pt[0]),sy=Y(pt[1]),out=isCasingPart(part)?-1:1,lx=sx+(isCasingPart(part)?(part.key==='inner'?26:-26):0),ly=sy+out*30+(parseInt(n,10)%2)*8;
       target.append(el('line',{x1:sx,y1:sy,x2:lx,y2:ly,stroke:'#56636d','stroke-width':.9}));
-      target.append(el('circle',{cx:lx,cy:ly,r:10,fill:'#fff',stroke:'#087b70','stroke-width':1.6}));
-      target.append(el('text',{x:lx,y:ly+4,'text-anchor':'middle','font-size':12,'font-weight':700,fill:'#087b70'},String(n)));
+      // Un numero (cerchio) o due numeri dello stesso pezzo, destro e sinistro (etichetta allungata).
+      const label=String(n),wide=label.length>2?label.length*7+10:20;
+      target.append(el('rect',{x:lx-wide/2,y:ly-10,width:wide,height:20,rx:10,fill:'#fff',stroke:'#087b70','stroke-width':1.6}));
+      target.append(el('text',{x:lx,y:ly+4,'text-anchor':'middle','font-size':12,'font-weight':700,fill:'#087b70'},label));
     });
   }});
   return svg;
@@ -6122,8 +6124,12 @@ async function buildInstructions(type){
     const numbered=key=>frame.map((r,i)=>({r,n:i+1})).filter(x=>x.r.piece===key);
     y=30;
     if(state.hasHead!==false){doc.setFont('helvetica','bold');doc.setFontSize(11);doc.text('Traverso',M,y);y+=2;y+=await image(sectionNumbersFigure(numbered('head'),'head'),560,330,M,y,PW-2*M)+6;}
-    doc.setFont('helvetica','bold');doc.setFontSize(11);doc.text('Montanti (sinistro; il destro è uguale, specchiato)',M,y);y+=2;
-    await image(sectionNumbersFigure(numbered('length'),'length'),560,330,M,y,PW-2*M);
+    // Montanti: stesso profilo a destra e a sinistra, quindi un solo disegno con i due numeri.
+    const posts=numbered('length').map(x=>{const twin=numbered('right').find(y=>y.r.partKey===x.r.partKey&&y.r.strip===x.r.strip);
+      return{r:x.r,n:twin?[x.n,twin.n].sort((a,b)=>a-b).join(' · '):x.n};});
+    numbered('right').forEach(x=>{if(!posts.some(p=>p.r.partKey===x.r.partKey&&p.r.strip===x.r.strip))posts.push(x);});
+    doc.setFont('helvetica','bold');doc.setFontSize(11);doc.text(pdfText('Montanti (destro e sinistro: stesso profilo, i due numeri sono lo stesso pezzo sui due lati)'),M,y);y+=2;
+    await image(sectionNumbersFigure(posts,'length'),560,330,M,y,PW-2*M);
     // 3. anta
     for(let index=0;index<(state.leafCount===2?2:1);index++){
       setActiveLeaf(index,false);{
