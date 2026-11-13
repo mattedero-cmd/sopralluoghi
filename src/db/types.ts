@@ -1415,6 +1415,12 @@ export interface RigaPorta {
   lunghezza: number;
   /** pezzo dell'anta (gli altri sono della maestà) */
   anta: boolean;
+  /**
+   * Sigla corta del pezzo senza la porta («E-MDX-CF»): lato, posizione, tipo.
+   * Davanti va la porta: «PA-E-MDX-CF». Le porte salvate prima non l'hanno:
+   * si ricava dal nome (vedi utils/sigle).
+   */
+  sigla?: string;
 }
 
 /**

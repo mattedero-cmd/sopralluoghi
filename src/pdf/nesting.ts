@@ -13,7 +13,7 @@ import { calcolaNestingAuto } from '../geometry/nestingSagome';
 import { misureForma } from '../geometry/sagome';
 import { frasiRitagli, ritagliUtili, segmentaBobina } from '../geometry/segmenti';
 import { OPZIONI_PDF_PREDEFINITE, type OpzioniPdfNesting } from './opzioni';
-import { contenutoBobinePorte } from './porte';
+import { contenutoBobinePorte, legendaSigle } from './porte';
 import {
   etichettaSupporto,
   opzioniRicerca,
@@ -685,6 +685,8 @@ export function contenutoNesting(
     distinte.push({ text: m.nome, style: 'h2' });
     distinte.push({ text: dati.join('\n'), style: 'dati' });
     distinte.push(distinta(m, esito));
+    // i pezzi dei kit delle porte si chiamano con le sigle: qui la loro legenda
+    if (m.id === doc.porte?.materialeKit) distinte.push(legendaSigle());
 
     for (const foglio of fogli) pagine.push(...paginaFoglio(m, foglio));
   }

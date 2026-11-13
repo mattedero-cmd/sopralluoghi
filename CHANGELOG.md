@@ -10,6 +10,22 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.92.0 — Sigle corte sui pezzi delle porte
+
+- Ogni pezzo della porta ha una **sigla da scrivere sul pezzo tagliato**:
+  porta, lato, posizione e tipo. Esempio **PA-E-MDX-CF** = porta A, lato
+  esterno, montante destro, coprifilo. E/I lato esterno/interno; T traverso,
+  MDX/MSX montante destro/sinistro, A anta (ASX/ADX con due ante); CF
+  coprifilo, S stipite (S1, S2 se più strisce sullo stesso lato), IM imbotte.
+- Nei **kit** i pezzi si chiamano con la sigla (prima «Porta A · Montanti ·
+  Coprifilo esterno»); i due montanti restano pezzi separati, MDX e MSX.
+- **Elenco pezzi di ogni porta** con la colonna Sigla accanto al numero dei
+  disegni; **legenda delle sigle** prima degli elenchi di ogni gruppo di
+  istruzioni, nel PDF del piano di taglio sotto l'essenza dei kit e nel PDF di
+  montaggio della singola porta. Nei pezzi previsti per rotolo c'è la sigla.
+- Le porte salvate prima ricavano la sigla dal nome dei pezzi; risalvandole
+  (Aggiorna) prendono quella esatta del rilievo porta.
+
 ## 1.91.0 — Scritte leggibili nella guida, anche sul telefono
 
 - Nelle figure piccole della guida una scritta (PARETE, una quota) poteva

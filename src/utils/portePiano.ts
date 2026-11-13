@@ -23,6 +23,7 @@ import type { DocumentoNesting, MaterialeNesting } from './documentoNesting';
 import { materialeNuovo } from './documentoNesting';
 import { nuovoId } from './id';
 import { prossimaTinta } from './tinte';
+import { siglaPezzo } from './sigle';
 
 export type ModoPorta = 'kit' | 'strisce';
 
@@ -43,7 +44,7 @@ export interface RiepilogoStrisce {
     /** rotoli di scorta di questa larghezza */
     scorta?: number;
     /** pezzi previsti, porta per porta */
-    dettaglio?: Array<{ pezzo: string; porta: string; quantita: number; larghezza: number; lunghezza: number }>;
+    dettaglio?: Array<{ sigla?: string; pezzo: string; porta: string; quantita: number; larghezza: number; lunghezza: number }>;
   }>;
   /** come si taglia ogni gruppo di bobine uguali */
   tagli: Array<{
@@ -101,25 +102,16 @@ export function pezziKit(
     if (modoPorta(modi, p.id) !== 'kit') continue;
     const qty = conto.get(p.id) ?? 0;
     if (qty <= 0) continue;
-    // pezzi uguali della stessa porta (i due montanti) diventano una riga
-    const righe = new Map<string, { nome: string; larghezza: number; lunghezza: number; n: number }>();
-    for (const r of p.righe) {
-      // «Montante DX · Stipite» e «Montante SX · Stipite» sono lo stesso pezzo
-      const nome = r.nome.replace(/^Montante (DX|SX)\b/, 'Montanti');
-      const chiave = `${nome}|${r.larghezza}|${r.lunghezza}`;
-      const g = righe.get(chiave);
-      if (g) g.n++;
-      else righe.set(chiave, { nome, larghezza: r.larghezza, lunghezza: r.lunghezza, n: 1 });
-    }
-    [...righe.values()].forEach((r, i) => {
+    // un pezzo per sigla: sul pezzo tagliato si scrive la sigla (PA-E-MDX-CF)
+    p.righe.forEach((r, i) => {
       // orizzontale: fibra lungo la larghezza del supporto → lunghezza in orizzontale
       const sdraiato = venatura === 'orizzontale';
       pezzi.push({
         id: `porta-${p.id}-${i}`,
-        nome: `${p.nome} · ${r.nome}`,
+        nome: siglaPezzo(p, r),
         larghezza: sdraiato ? r.lunghezza : r.larghezza,
         altezza: sdraiato ? r.larghezza : r.lunghezza,
-        quantita: r.n * qty,
+        quantita: qty,
         ruotabile: venatura === 'nessuna'
       });
     });

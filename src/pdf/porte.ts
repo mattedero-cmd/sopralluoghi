@@ -12,6 +12,46 @@ import type { Content, TableCell } from 'pdfmake/interfaces';
 import { formattaNumero } from '../utils/format';
 import type { RiepilogoStrisce } from '../utils/portePiano';
 import type { MontaggioPorta, PorteDelReport } from '../utils/porteDocumento';
+import { LEGENDA_SIGLE, siglaPezzo } from '../utils/sigle';
+
+/** Legenda delle sigle da scrivere sui pezzi (PA-E-MDX-CF). */
+export function legendaSigle(): Content {
+  return {
+    stack: [
+      {
+        text: [
+          { text: 'LEGENDA SIGLE', bold: true, color: VERDE, characterSpacing: 0.6 },
+          { text: '   esempio: ', color: '#56636d' },
+          { text: 'PA-E-MDX-CF', bold: true },
+          { text: ' = porta A, lato esterno, montante destro, coprifilo', color: '#56636d' }
+        ],
+        fontSize: 9.5,
+        margin: [0, 0, 0, 4]
+      },
+      {
+        table: {
+          widths: [62, '*', 62, '*'],
+          body: (() => {
+            const righe: TableCell[][] = [];
+            for (let i = 0; i < LEGENDA_SIGLE.length; i += 2) {
+              const [a, b] = [LEGENDA_SIGLE[i], LEGENDA_SIGLE[i + 1]];
+              righe.push([
+                { text: a[0], bold: true, fontSize: 9.5 },
+                { text: a[1], fontSize: 9 },
+                { text: b?.[0] ?? '', bold: true, fontSize: 9.5 },
+                { text: b?.[1] ?? '', fontSize: 9 }
+              ]);
+            }
+            return righe;
+          })()
+        },
+        layout: 'noBorders'
+      }
+    ],
+    fillColor: '#f2f5f7',
+    margin: [0, 0, 0, 10]
+  } as Content;
+}
 
 const mm = (v: number) => formattaNumero(Math.round(v * 10) / 10);
 const VERDE = '#087b70';
@@ -204,6 +244,7 @@ export function contenutoBobinePorte(r: RiepilogoStrisce): Content[] {
     const righe: TableCell[][] = (g.dettaglio && g.dettaglio.length
       ? g.dettaglio
       : g.pezzi.map((p) => ({
+          sigla: '',
           pezzo: p.nomi.join(', '),
           porta: '',
           quantita: p.quantita,
@@ -211,8 +252,8 @@ export function contenutoBobinePorte(r: RiepilogoStrisce): Content[] {
           lunghezza: p.lunghezza
         }))
     ).map((d) => [
-      td(d.pezzo),
-      td(d.porta.replace(/^Porta\s+/, ''), { alignment: 'center' }),
+      td(d.sigla || d.porta.replace(/^Porta\s+/, 'P'), { bold: true }),
+      td(d.pezzo, { fontSize: 8.5, color: '#56636d' }),
       td(String(d.quantita), { alignment: 'center', bold: true }),
       td(`${mm(d.larghezza)} × ${mm(d.lunghezza)}`, { alignment: 'right' })
     ]);
@@ -220,9 +261,9 @@ export function contenutoBobinePorte(r: RiepilogoStrisce): Content[] {
       stack: [
         { text: `Rotolo ${mm(g.larghezza)} mm`, bold: true, fontSize: 10.5, color: VERDE, margin: [0, 4, 0, 0] },
         tabella(
-          [th('Pezzo'), th('Porta', 'center'), th('Q.tà', 'center'), th('Dimensioni di taglio (mm)', 'right')],
+          [th('Sigla'), th('Pezzo'), th('Q.tà', 'center'), th('Dimensioni di taglio (mm)', 'right')],
           righe,
-          ['*', 40, 40, 130],
+          [92, '*', 36, 110],
           [0, 2, 0, 8]
         )
       ]
@@ -231,46 +272,16 @@ export function contenutoBobinePorte(r: RiepilogoStrisce): Content[] {
   return out;
 }
 
-/** Una riga della distinta: i pezzi uguali (montante destro e sinistro) insieme. */
-interface RigaDistinta {
-  numeri: number[];
-  nome: string;
-  larghezza: number;
-  lunghezza: number;
-  perPorta: number;
-}
-
-function righeDistinta(righe: MontaggioPorta['porta']['righe']): { maesta: RigaDistinta[]; anta: RigaDistinta[] } {
-  const raccogli = (lista: typeof righe) => {
-    const out: Array<RigaDistinta & { originale: string }> = [];
-    lista.forEach((r, i) => {
-      const nome = r.nome.replace(/^Montante (DX|SX)\b/, 'Montanti');
-      const gia =
-        nome !== r.nome
-          ? out.find((x) => x.nome === nome && x.larghezza === r.larghezza && x.lunghezza === r.lunghezza)
-          : undefined;
-      if (gia) {
-        gia.numeri.push(i + 1);
-        gia.perPorta++;
-      } else {
-        out.push({ numeri: [i + 1], nome, originale: r.nome, larghezza: r.larghezza, lunghezza: r.lunghezza, perPorta: 1 });
-      }
-    });
-    // un montante rimasto solo (destro e sinistro di misure diverse) riprende il suo nome
-    return out.map(({ originale, ...x }) => (x.perPorta === 1 ? { ...x, nome: originale } : x));
-  };
-  return { maesta: raccogli(righe.filter((r) => !r.anta)), anta: raccogli(righe.filter((r) => r.anta)) };
-}
-
-/** Elenco dei pezzi di UNA porta: maestà e anta, con quantità e misure. */
+/** Elenco dei pezzi di UNA porta: sigla, maestà e anta, quantità e misure. */
 function distintaPorta(m: MontaggioPorta, rotolo: (larghezza: number) => number | null): Content[] {
-  const { maesta, anta } = righeDistinta(m.porta.righe);
   const taglio = (w: number) => {
     if (m.modo === 'kit') return 'Kit';
     const r = rotolo(w);
     return r ? `Rotolo ${mm(r)}` : '—';
   };
-  const sezione = (titolo: string, righe: RigaDistinta[]): TableCell[][] =>
+  const numerate = (anta: boolean) =>
+    m.porta.righe.filter((r) => r.anta === anta).map((r, i) => ({ r, n: i + 1 }));
+  const sezione = (titolo: string, righe: ReturnType<typeof numerate>): TableCell[][] =>
     righe.length === 0
       ? []
       : [
@@ -278,13 +289,13 @@ function distintaPorta(m: MontaggioPorta, rotolo: (larghezza: number) => number 
             { text: titolo.toUpperCase(), colSpan: 7, bold: true, fontSize: 9, color: VERDE, fillColor: '#eef6f4', characterSpacing: 0.6 },
             {}, {}, {}, {}, {}, {}
           ] as TableCell[],
-          ...righe.map((r) => [
-            td(r.numeri.join(' · '), { alignment: 'center', color: '#56636d' }),
-            td(r.nome),
+          ...righe.map(({ r, n }) => [
+            td(String(n), { alignment: 'center', color: '#56636d' }),
+            td(siglaPezzo(m.porta, r), { bold: true }),
+            td(r.nome, { fontSize: 8.5, color: '#56636d' }),
             td(mm(r.larghezza), { alignment: 'right', bold: true }),
             td(mm(r.lunghezza), { alignment: 'right', bold: true }),
-            td(String(r.perPorta), { alignment: 'center' }),
-            td(String(r.perPorta * m.quantita), { alignment: 'center', bold: true }),
+            td(String(m.quantita), { alignment: 'center', bold: true }),
             td(taglio(r.larghezza))
           ])
         ];
@@ -302,18 +313,18 @@ function distintaPorta(m: MontaggioPorta, rotolo: (larghezza: number) => number 
     tabella(
       [
         th('N°', 'center'),
+        th('Sigla'),
         th('Pezzo'),
         th('Larghezza', 'right'),
         th('Lunghezza', 'right'),
-        th('Per porta', 'center'),
-        th('Totale', 'center'),
+        th('Q.tà', 'center'),
         th('Taglio')
       ],
-      [...sezione('Maestà', maesta), ...sezione('Anta', anta)],
-      [34, '*', 54, 54, 44, 38, 62]
+      [...sezione('Maestà', numerate(false)), ...sezione('Anta', numerate(true))],
+      [24, 82, '*', 50, 52, 30, 56]
     ),
     {
-      text: 'Misure in mm, già comprese di sormonti e abbondanze. I numeri sono quelli dei disegni di montaggio.',
+      text: 'Misure in mm, già comprese di sormonti e abbondanze. N° = numero nei disegni di montaggio. Sul pezzo tagliato si scrive la sigla.',
       fontSize: 8,
       color: '#56636d',
       margin: [0, -6, 0, 6]
@@ -360,8 +371,9 @@ export function contenutoPorte(
     g.pagine.forEach((img, i) => {
       out.push({ image: img, fit: area, alignment: 'center', ...(i > 0 ? { pageBreak: 'before' } : {}) } as Content);
     });
-    // le distinte, una per porta, dopo le istruzioni comuni
+    // le distinte, una per porta, dopo le istruzioni comuni, con la legenda delle sigle
     out.push({ text: '', pageBreak: 'before' } as Content);
+    out.push(legendaSigle());
     for (const p of g.porte) out.push(...distintaPorta(p, rotolo));
   }
   return out;

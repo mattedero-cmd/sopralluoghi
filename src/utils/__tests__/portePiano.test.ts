@@ -28,22 +28,28 @@ function documento(modi: Record<string, 'kit' | 'strisce'>): DocumentoNesting {
 }
 
 describe('porte nel piano di taglio', () => {
-  it('in kit i montanti uguali diventano una riga, moltiplicata per le porte', () => {
+  it('in kit ogni pezzo porta la sua sigla e la quantità delle porte', () => {
     const pezzi = pezziKit([porta('a', 'A')], new Map([['a', 12]]), { modi: { a: 'kit' } });
     expect(pezzi.map((p) => [p.nome, p.quantita])).toEqual([
-      ['Porta A · Traverso · Stipite', 12],
-      ['Porta A · Montanti · Stipite', 24],
-      ['Porta A · Anta · Faccia interna', 12]
+      ['PA-T-S', 12],
+      ['PA-MDX-S', 12],
+      ['PA-MSX-S', 12],
+      ['PA-I-A', 12]
     ]);
+  });
+
+  it('la sigla salvata dal rilievo porta comanda sul nome', () => {
+    const p = { ...porta('a', 'A'), righe: [{ ...righe[1], sigla: 'E-MDX-S' }] };
+    expect(pezziKit([p], new Map([['a', 1]]), { modi: { a: 'kit' } })[0].nome).toBe('PA-E-MDX-S');
   });
 
   it('con la venatura il lato lungo va nel verso della fibra e il pezzo non gira', () => {
     const conto = new Map([['a', 1]]);
     const v = pezziKit([porta('a', 'A')], conto, { modi: { a: 'kit' } }, 'verticale');
-    const traverso = v.find((p) => p.nome.includes('Traverso'))!;
+    const traverso = v.find((p) => p.nome.includes('-T-'))!;
     expect([traverso.larghezza, traverso.altezza, traverso.ruotabile]).toEqual([158, 854, false]);
     const o = pezziKit([porta('a', 'A')], conto, { modi: { a: 'kit' } }, 'orizzontale');
-    const montante = o.find((p) => p.nome.includes('Montanti'))!;
+    const montante = o.find((p) => p.nome.includes('-MDX-'))!;
     expect([montante.larghezza, montante.altezza, montante.ruotabile]).toEqual([2142, 158, false]);
     // senza venatura il motore li gira come conviene
     expect(pezziKit([porta('a', 'A')], conto, { modi: { a: 'kit' } }).every((p) => p.ruotabile)).toBe(true);
@@ -64,7 +70,7 @@ describe('porte nel piano di taglio', () => {
     const d3 = sincronizzaKit(d2, porte, conto);
     const kit = d3.materiali.find((m) => m.id === id)!;
     expect(kit.orientamenti).toEqual({});
-    const traverso = kit.pezzi.find((p) => p.nome.includes('Traverso'))!;
+    const traverso = kit.pezzi.find((p) => p.nome.includes('-T-'))!;
     expect([traverso.larghezza, traverso.altezza, traverso.ruotabile]).toEqual([854, 158, false]);
   });
 
@@ -80,7 +86,7 @@ describe('porte nel piano di taglio', () => {
     const kit = d1.materiali.find((m) => m.id === d1.porte?.materialeKit)!;
     expect(kit.nome).toBe(NOME_MATERIALE_KIT);
     expect(kit.modo).toBe('bobina');
-    expect(kit.pezzi.every((p) => p.nome.startsWith('Porta A'))).toBe(true);
+    expect(kit.pezzi.every((p) => p.nome.startsWith('PA-'))).toBe(true);
     // stessa situazione: stesso documento
     expect(sincronizzaKit(d1, porte, conto)).toBe(d1);
     // le etichette cambiano: le quantità seguono
