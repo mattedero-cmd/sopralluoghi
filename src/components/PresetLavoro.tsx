@@ -73,52 +73,70 @@ export function PresetLavoro({
   preset,
   quanteForme,
   onSalva,
-  onApplicaAbbondanza,
+  onApplicaTutto,
   onChiudi
 }: {
   preset: PresetProgetto | undefined;
   /** quante forme ci sono già nel lavoro, per il comando «applica a tutte» */
   quanteForme: number;
   onSalva: (p: PresetProgetto) => void;
-  /** scrive l'abbondanza del preset su tutte le forme già disegnate */
-  onApplicaAbbondanza: (abb: AbbondanzaPreset) => void;
+  /** salva e porta TUTTO il preset — abbondanze e teli — su quello che c'è già */
+  onApplicaTutto: (p: PresetProgetto) => void;
   onChiudi: () => void;
 }) {
   const p0 = preset ?? PRESET_INIZIALE;
   const inCm = (mm: number | undefined) => (mm ? String(mm / 10).replace('.', ',') : '');
   const [abb, setAbb] = useState(inCm(p0.abbPerimetroMm));
-  const [base, setBase] = useState(inCm(p0.abbBaseMm));
-  const [alt, setAlt] = useState(inCm(p0.abbAltezzaMm));
+  // i due campi vecchi (base e altezza) si leggono ancora: la base era
+  // sinistra e destra insieme, l'altezza sopra e sotto
+  const [sx, setSx] = useState(inCm(p0.abbSinistraMm ?? p0.abbBaseMm));
+  const [dx, setDx] = useState(inCm(p0.abbDestraMm ?? p0.abbBaseMm));
+  const [sopra, setSopra] = useState(inCm(p0.abbSopraMm ?? p0.abbAltezzaMm));
+  const [sotto, setSotto] = useState(inCm(p0.abbSottoMm ?? p0.abbAltezzaMm));
   /**
    * DUE MODI DI DIRE LA STESSA COSA, e uno solo per volta.
    *
-   * «Uguale su ogni lato» è un numero; «base e altezza» sono due. Tenerli
-   * tutti e tre accesi insieme vorrebbe dire una terza regola da spiegare —
-   * quale vince — e sarebbe la regola di nessuno: chi dà due centimetri di
-   * lato e cinque sopra non ha anche un'abbondanza attorno.
+   * «Uguale attorno» è un numero; «lato per lato» sono quattro. Tenerli
+   * accesi tutti insieme vorrebbe dire una regola in più da spiegare — quale
+   * vince — e sarebbe la regola di nessuno: chi dà due centimetri di lato e
+   * cinque sopra non ha anche un'abbondanza attorno.
    */
-  const [perLati, setPerLati] = useState(!!(p0.abbBaseMm || p0.abbAltezzaMm));
+  const [perLati, setPerLati] = useState(
+    !!(p0.abbSinistraMm || p0.abbDestraMm || p0.abbSopraMm || p0.abbSottoMm ||
+      p0.abbBaseMm || p0.abbAltezzaMm)
+  );
   const [sup, setSup] = useState(p0.supporto ?? PRESET_INIZIALE.supporto);
   const [teli, setTeli] = useState(p0.teli ?? PRESET_INIZIALE.teli);
 
   const mm = (t: string) => Math.max(0, (analizzaMisura(t) ?? 0) * 10);
   const abbMm = mm(abb);
-  const baseMm = mm(base);
-  const altMm = mm(alt);
-  /** i tre campi dell'abbondanza come stanno adesso: il modo spento resta vuoto */
+  const lati = { sinistra: mm(sx), destra: mm(dx), sopra: mm(sopra), sotto: mm(sotto) };
+  /** i campi dell'abbondanza come stanno adesso: il modo spento resta vuoto */
   const abbOra = (): AbbondanzaPreset => ({
     abbPerimetroMm: perLati ? undefined : abbMm || undefined,
-    abbBaseMm: perLati ? baseMm || undefined : undefined,
-    abbAltezzaMm: perLati ? altMm || undefined : undefined
+    abbSinistraMm: perLati ? lati.sinistra || undefined : undefined,
+    abbDestraMm: perLati ? lati.destra || undefined : undefined,
+    abbSopraMm: perLati ? lati.sopra || undefined : undefined,
+    abbSottoMm: perLati ? lati.sotto || undefined : undefined,
+    // i campi vecchi si spengono: li rileggerebbe `abbAiLati` come se
+    // valessero ancora
+    abbBaseMm: undefined,
+    abbAltezzaMm: undefined
   });
-  const qualcosa = perLati ? baseMm > 0 || altMm > 0 : abbMm > 0;
-  /** cosa scriverà il comando «applica a tutte», detto in centimetri */
-  const detta = () => {
-    if (!perLati) return `${formattaNumero(abbMm / 10)} cm attorno`;
-    const pezzi: string[] = [];
-    if (baseMm > 0) pezzi.push(`${formattaNumero(baseMm / 10)} cm di lato`);
-    if (altMm > 0) pezzi.push(`${formattaNumero(altMm / 10)}${baseMm > 0 ? '' : ' cm'} sopra e sotto`);
-    return pezzi.join(' e ');
+  /**
+   * PASSANDO A «LATO PER LATO» i quattro campi partono dal numero di prima.
+   *
+   * Chi ha scritto due centimetri attorno e poi vuole cinque sopra non deve
+   * riscrivere gli altri tre: li trova già a due, e cambia quello che cambia.
+   */
+  const aLati = () => {
+    if (!Object.values(lati).some((v) => v > 0) && abb.trim()) {
+      setSx(abb);
+      setDx(abb);
+      setSopra(abb);
+      setSotto(abb);
+    }
+    setPerLati(true);
   };
   const costruito = (): PresetProgetto => ({
     ...abbOra(),
@@ -131,6 +149,13 @@ export function PresetLavoro({
     onChiudi();
   };
 
+  const applicaTutto = () => {
+    const p = costruito();
+    onSalva(p);
+    onApplicaTutto(p);
+    onChiudi();
+  };
+
   const numero = (v: number) => (v ? String(v).replace('.', ',') : '');
   const scriviSup = (m: Partial<typeof sup>) => setSup((s) => ({ ...s, ...m }));
 
@@ -139,37 +164,42 @@ export function PresetLavoro({
       <div className="preset-lavoro">
       <p className="aiuto" style={{ marginTop: 0 }}>
         Da qui partono le cose nuove di questo sopralluogo: l’abbondanza di una forma appena
-        disegnata, la divisione in teli, il piano di taglio. Quello che è già fatto non si tocca.
+        disegnata, la divisione in teli, il piano di taglio. Quello che è già disegnato resta
+        com’è — finché non tocchi «salva e applica a tutto», qui sotto.
       </p>
 
       <div className="campo">
-        <label>Abbondanza attorno alle forme nuove</label>
+        <label>Abbondanza attorno alle forme</label>
         {/*
-          UN NUMERO O DUE: «attorno» è come si ragiona su una parete, «base e
-          altezza» come si ragiona su una finestra. Due centimetri di lato per
-          entrare sotto i fermavetro e cinque sopra e sotto per avere da tirare
-          sono due numeri diversi, e con un numero solo uno dei due è sbagliato.
+          UN NUMERO O QUATTRO: «attorno» è come si ragiona su una parete,
+          lato per lato come si ragiona su una finestra. Due centimetri di
+          lato per entrare sotto i fermavetro, cinque sopra per avere da
+          tirare e zero sotto dove il pezzo va a filo del davanzale sono
+          quattro numeri, e con un numero solo tre sono sbagliati.
         */}
         <span className="segmenti piena" role="group" aria-label="Come si dà l’abbondanza">
           <button className={perLati ? '' : 'attivo'} onClick={() => setPerLati(false)}>
             Uguale attorno
           </button>
-          <button className={perLati ? 'attivo' : ''} onClick={() => setPerLati(true)}>
-            Base e altezza
+          <button className={perLati ? 'attivo' : ''} onClick={aLati}>
+            Lato per lato
           </button>
         </span>
         {perLati ? (
           <>
-            <Numero etichetta="Sulla base (b)" valore={base} onCambia={setBase} unita="cm" suggerito="0" />
-            <Numero etichetta="Sull’altezza (h)" valore={alt} onCambia={setAlt} unita="cm" suggerito="0" />
+            <Numero etichetta="A sinistra" valore={sx} onCambia={setSx} unita="cm" suggerito="0" />
+            <Numero etichetta="A destra" valore={dx} onCambia={setDx} unita="cm" suggerito="0" />
+            <Numero etichetta="Sopra" valore={sopra} onCambia={setSopra} unita="cm" suggerito="0" />
+            <Numero etichetta="Sotto" valore={sotto} onCambia={setSotto} unita="cm" suggerito="0" />
             <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
-              Centimetri PER PARTE: 2 sulla base sono 2 a sinistra e 2 a destra, e una finestra da
-              120 × 80 si taglia{' '}
+              Quanto esce il pezzo oltre il vetro, da quella parte: una finestra da 120 × 80 si
+              taglia{' '}
               <strong>
-                {formattaNumero(120 + baseMm / 5)} × {formattaNumero(80 + altMm / 5)} cm
+                {formattaNumero(120 + (lati.sinistra + lati.destra) / 10)} ×{' '}
+                {formattaNumero(80 + (lati.sopra + lati.sotto) / 10)} cm
               </strong>
-              . Vale sulle forme a quattro lati; su una polilinea, dove una base non c’è, vale il
-              più grande dei due tutt’intorno.
+              . Vale sulle forme a quattro lati; su una polilinea, dove un «sopra» non c’è, vale il
+              più grande dei quattro tutt’intorno.
             </span>
           </>
         ) : (
@@ -182,33 +212,14 @@ export function PresetLavoro({
               suggerito="0"
             />
             <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
-              La stessa che scriveresti a mano nella forma, sotto «abbondanza perimetrale». Un lato
-              che ne vuole una sua la dichiara da solo, e il preset non gliela tocca.
+              La stessa che scriveresti a mano nella forma, sotto «abbondanza perimetrale». Una
+              finestra da 120 × 80 si taglia{' '}
+              <strong>
+                {formattaNumero(120 + abbMm / 5)} × {formattaNumero(80 + abbMm / 5)} cm
+              </strong>
+              .
             </span>
           </>
-        )}
-        {/*
-          IL COMANDO STA ATTACCATO AL NUMERO CHE APPLICA, non in fondo alla
-          schermata: era là sotto, dopo tutto il resto, e spariva del tutto
-          quando l'abbondanza era a zero — cioè proprio mentre uno la stava
-          impostando. Un comando che non si trova è un comando che non c'è.
-        */}
-        {quanteForme > 0 && (
-          <div className="applica-gia-fatte">
-            <button
-              className="btn"
-              disabled={!qualcosa}
-              onClick={() => onApplicaAbbondanza(abbOra())}
-            >
-              <Icona nome="matita" dimensione={18} /> Applica anche alle{' '}
-              {quanteForme === 1 ? 'forma già disegnata' : `${quanteForme} forme già disegnate`}
-            </button>
-            <span>
-              {qualcosa
-                ? `Scrive ${detta()} su tutte quelle che ci sono già, al posto dell’abbondanza che avevano. I teli non si rifanno: restano come li hai messi.`
-                : 'Scrivi qui sopra quanti centimetri, e con questo tasto li porti anche su quello che hai già disegnato.'}
-            </span>
-          </div>
         )}
       </div>
 
@@ -365,17 +376,35 @@ export function PresetLavoro({
         </div>
         <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 6 }}>
           «A fascia» fa i teli larghi quanto il supporto, che è come si taglia davvero; «uguali» li
-          divide in parti uguali. Vale per le divisioni NUOVE: una parete già divisa coi giunti
-          spostati a mano resta com’è.
+          divide in parti uguali. Quanti teli lo dice la fascia: quello che ci sta in un telo solo
+          non si divide.
         </span>
       </div>
 
-      <div className="azioni">
+      {/*
+        SALVA, OPPURE SALVA E APPLICA A TUTTO.
+        Il preset da solo vale per le cose NUOVE. Su un albergo da cinquanta
+        stanze già misurate questo non basta: il lavoro c'è già, ed è lì che
+        serve. Il secondo tasto fa quello — e lo dice prima, perché rifà anche
+        le divisioni in teli.
+      */}
+      {quanteForme > 0 && (
+        <span className="nota-applica">
+          «Applica a tutto» riscrive abbondanze e teli sulle{' '}
+          {quanteForme === 1 ? 'forma già disegnata' : `${quanteForme} forme già disegnate`} di
+          questo sopralluogo, al posto di quello che avevano: anche le giunzioni spostate a mano si
+          rifanno.
+        </span>
+      )}
+      <div className="riga-pulsanti">
         <button className="btn" onClick={onChiudi}>
           Annulla
         </button>
-        <button className="btn primario" onClick={salva}>
-          Salva il preset
+        <button className="btn" onClick={salva}>
+          Salva
+        </button>
+        <button className="btn primario" disabled={quanteForme === 0} onClick={applicaTutto}>
+          <Icona nome="matita" dimensione={18} /> Salva e applica a tutto
         </button>
       </div>
       </div>

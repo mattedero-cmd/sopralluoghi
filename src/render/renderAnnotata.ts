@@ -1,4 +1,5 @@
 import type { Annotazione, Callout, Foto } from '../db/types';
+import { abbondanzeAVista } from '../db/types';
 import { primitiveAnnotazione, primitiveCatene, type Primitiva } from '../geometry/primitive';
 import { vociLegenda } from '../geometry/nomenclatura';
 import { blobOrigine, canvasInBlob, caricaImmagine } from '../utils/image';
@@ -92,7 +93,7 @@ export async function renderFotoAnnotata(
   const ordinate = [...annotazioni].sort((a, b) => a.zIndex - b.zIndex);
   for (const ann of ordinate) {
     for (const p of primitiveAnnotazione(ann, risolvi, codiceForma, () => voci, {
-      abbondanze: foto.mostraAbbondanze,
+      abbondanze: abbondanzeAVista(foto),
       // le pareti da cinque lati in su ricostruiscono la sagoma dalle misure,
       // e il piano di riferimento raddrizza il disegno: senza, la giunzione
       // stampata non sarebbe quella della distinta

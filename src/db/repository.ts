@@ -13,12 +13,13 @@ import {
   type PianoProspettiva,
   type Porta,
   type Preventivo,
+  type PresetProgetto,
   type Progetto,
   type Sezione
 } from './types';
 import { nuovoId } from '../utils/id';
-import { conAbbondanzaDelPreset } from '../utils/preset';
-import type { AbbondanzaPreset } from '../utils/preset';
+import { conAbbondanzaDelPreset, teliDelPreset } from '../utils/preset';
+import type { Pannellizzazione } from '../geometry/pannelli';
 import { blobMiniatura, blobOrigine } from '../utils/image';
 import { inizioSalvataggio, fineSalvataggio } from '../state/saveStatus';
 import { mostraToast } from '../state/toast';
@@ -898,45 +899,86 @@ export async function salvaAnnotazioniFoto(fotoId: ID, annotazioni: Annotazione[
   );
 }
 
+/** vero se due divisioni in teli dicono la stessa cosa */
+function stessiTeli(
+  a: Pannellizzazione | undefined,
+  b: Pannellizzazione | undefined
+): boolean {
+  if (!a || !b) return !a && !b;
+  const giro = (p: Pannellizzazione) =>
+    JSON.stringify([
+      p.asse,
+      p.verso,
+      Math.round(p.sormonto * 1e4),
+      p.giunti.map((g: number) => Math.round(g * 1e4))
+    ]);
+  return giro(a) === giro(b);
+}
+
 /**
- * SCRIVE L'ABBONDANZA DEL PRESET SU PIÙ FORME IN UNA VOLTA.
+ * IL PRESET PORTATO SU TUTTO QUELLO CHE C'È GIÀ.
  *
- * È il comando «applica il preset a quello che c'è già»: su un sopralluogo
- * di trenta pareti farlo a mano, una per una, è il lavoro che il preset
- * doveva togliere. Tocca solo le abbondanze — tutto il resto della forma,
- * teli compresi, resta dov'è.
+ * È il comando «applica a tutto»: su un sopralluogo da cinquanta stanze
+ * aprire ogni parete, scrivere le stesse abbondanze e rifare la stessa
+ * divisione in teli è esattamente il lavoro che il preset doveva togliere.
  *
- * RISCRIVE: quello che una forma aveva addosso — perimetrale, per lato o
- * sulle misure — va via, e al suo posto va il preset. È quello che il
- * comando promette, e lasciare mezze abbondanze vecchie vorrebbe dire che la
- * regola del «vince il più grande» tiene in piedi un numero che l'utente
- * credeva di aver sostituito.
+ * Fa DUE cose su ogni forma del sopralluogo:
  *
- * I numeri del preset sono in millimetri: ogni forma ha la sua unità, e la
- * conversione la fa `conAbbondanzaDelPreset`, una volta per tutti.
+ * 1. le ABBONDANZE del preset, riscritte. Quello che una forma aveva addosso
+ *    — perimetrale, per lato o sulle misure — va via, e al suo posto va il
+ *    preset: lasciare mezze abbondanze vecchie vorrebbe dire che la regola
+ *    del «vince il più grande» tiene in piedi un numero che si credeva
+ *    sostituito.
+ *
+ * 2. la DIVISIONE IN TELI, rifatta con la fascia del supporto, il sormonto e
+ *    il verso del preset. Le giunzioni spostate a mano si perdono: è il
+ *    senso del comando. Una forma che sta in un telo solo resta intera, e
+ *    una divisione vecchia le viene tolta.
+ *
+ * Torna quante forme ha guardato e quante ne ha cambiate, perché chi lo
+ * lancia su cinquanta stanze deve poter vedere che è successo qualcosa.
  */
-export async function scriviAbbondanzaPreset(
-  ids: ID[],
-  abb: AbbondanzaPreset
-): Promise<number> {
-  if (ids.length === 0) return 0;
-  return scrivi("scrivere l'abbondanza sulle forme", async () => {
-    const toccate = new Set<ID>();
-    let quante = 0;
+export async function applicaPresetATutto(
+  progettoId: ID,
+  preset: PresetProgetto
+): Promise<{ forme: number; abbondanze: number; teli: number }> {
+  return scrivi('applicare il preset al sopralluogo', async () => {
+    const foto = await db.foto.where('progettoId').equals(progettoId).toArray();
+    let forme = 0;
+    let abbondanze = 0;
+    let teli = 0;
     await db.transaction('rw', [db.annotazioni, db.foto], async () => {
-      for (const id of ids) {
-        const a = await db.annotazioni.get(id);
-        if (!a) continue;
-        const nuova = conAbbondanzaDelPreset(a, abb, true);
-        if (!nuova) continue;
-        await db.annotazioni.put(nuova);
-        toccate.add(a.fotoId);
-        quante++;
+      const toccate = new Set<ID>();
+      for (const f of foto) {
+        const dentro = await db.annotazioni.where('fotoId').equals(f.id).toArray();
+        for (const a of dentro) {
+          if (a.tipo !== 'quotaPoligono' && a.tipo !== 'quotaRett') continue;
+          // le copie «solo etichetta» non sono forme: sono il codice di una
+          // forma che sta altrove, e la misura è di quella
+          if (a.tipo === 'quotaPoligono' && a.soloEtichetta) continue;
+          forme++;
+          const conAbb = conAbbondanzaDelPreset(a, preset, true);
+          let nuova = conAbb ?? a;
+          if (conAbb) abbondanze++;
+          if (preset.teli) {
+            // i teli si contano DOPO le abbondanze: sono le abbondanze a
+            // decidere quanto materiale serve, e quindi quanti teli
+            const pann = teliDelPreset(nuova, f, preset) ?? undefined;
+            if (!stessiTeli(nuova.pannelli, pann)) {
+              nuova = { ...nuova, pannelli: pann };
+              teli++;
+            }
+          }
+          if (nuova !== a) {
+            await db.annotazioni.put(nuova);
+            toccate.add(a.fotoId);
+          }
+        }
       }
       const adesso = ora();
-      for (const f of toccate) await db.foto.update(f, { modificataIl: adesso });
+      for (const id of toccate) await db.foto.update(id, { modificataIl: adesso });
     });
-    return quante;
+    return { forme, abbondanze, teli };
   });
 }
 

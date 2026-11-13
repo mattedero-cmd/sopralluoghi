@@ -4710,22 +4710,18 @@ a {
 
 /* il comando che porta l'abbondanza su quello che c'è già: staccato dal
    campo da cui dipende, ma attaccato a lui — non in fondo alla schermata */
-.applica-gia-fatte {
-  margin-top: 10px;
-  padding-top: 10px;
+/* la riga che spiega «applica a tutto», appena sopra i tasti: un comando che
+   riscrive cinquanta stanze deve dire prima cosa riscrive */
+.nota-applica {
+  display: block;
+  margin-top: 14px;
+  padding-top: 12px;
   border-top: 1px solid color-mix(in srgb, var(--bordo) 60%, transparent);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  align-items: flex-start;
-}
-
-.applica-gia-fatte > span {
   color: var(--testo-2);
   font-size: 13px;
 }
 
-.applica-gia-fatte .btn:disabled {
+.preset-lavoro .riga-pulsanti .btn:disabled {
   opacity: 0.45;
 }
 

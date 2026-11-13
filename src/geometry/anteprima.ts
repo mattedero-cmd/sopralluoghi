@@ -18,6 +18,7 @@
  */
 
 import type { Annotazione, Foto } from '../db/types';
+import { abbondanzeAVista } from '../db/types';
 import { primitiveAnnotazione, type Primitiva } from './primitive';
 
 /** un segno dell'anteprima: una spezzata, oppure un cerchio */
@@ -42,7 +43,7 @@ export function segniDellAnteprima(
     try {
       prim = primitiveAnnotazione(a, undefined, undefined, undefined, {
         foto,
-        abbondanze: foto.mostraAbbondanze
+        abbondanze: abbondanzeAVista(foto)
       });
     } catch {
       // una forma che non si sa disegnare non deve far sparire l'anteprima

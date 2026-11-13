@@ -41,26 +41,30 @@ export interface PresetProgetto {
    */
   abbPerimetroMm?: number;
   /**
-   * ABBONDANZA DIVERSA IN LARGHEZZA E IN ALTEZZA, in MILLIMETRI.
+   * ABBONDANZA LATO PER LATO, in MILLIMETRI: quanto a sinistra, quanto a
+   * destra, quanto sopra, quanto sotto.
    *
-   * Sul rettangolo l'abbondanza non si pensa «attorno»: si pensa per misura
-   * — tanto di più sulla base, tanto di più sull'altezza — perché le due non
-   * servono alla stessa cosa. Due centimetri di lato per entrare sotto i
-   * fermavetro, cinque sopra e sotto per avere da tirare: sono due numeri, e
-   * con un numero solo uno dei due è sbagliato.
+   * Attorno a una finestra l'abbondanza non è la stessa da tutte le parti.
+   * Due centimetri di lato per entrare sotto i fermavetro, cinque sopra per
+   * avere da tirare, e zero sotto dove il pezzo va a filo del davanzale:
+   * sono quattro numeri, e con un numero solo tre sono sbagliati — o si
+   * butta pellicola, o il pezzo non arriva.
    *
-   * Sono per LATO, come quella perimetrale: `abbBaseMm` 20 su una base da
-   * 120 taglia 124 — venti millimetri a destra e venti a sinistra.
+   * Vanno sulle forme a QUATTRO LATI, dove sinistra e destra, sopra e sotto
+   * vogliono dire qualcosa, e si scrivono come abbondanza SULLE DUE QUOTE:
+   * ai capi della base stanno sinistra e destra, ai capi dell'altezza sopra
+   * e sotto. È il modo in cui le scriverebbe a mano chi misura, e tutto il
+   * resto dell'app — contorno di taglio, distinta, teli, piano di taglio —
+   * le legge già da lì. Su una polilinea, dove un «sopra» non c'è, vale il
+   * più grande dei quattro tutt'attorno.
    *
-   * Valgono sulle forme a QUATTRO LATI, dove una base e un'altezza esistono,
-   * e si scrivono come abbondanza SULLE DUE QUOTE: è il modo in cui le
-   * scriverebbe a mano chi misura, e tutto il resto dell'app — contorno di
-   * taglio, distinta, piano di taglio — le legge già da lì. Su una polilinea
-   * non c'è niente da chiamare base: lì vale il più grande dei due,
-   * tutt'attorno.
-   *
-   * Assenti (o a zero) = comanda `abbPerimetroMm`.
+   * Tutti e quattro assenti (o a zero) = comanda `abbPerimetroMm`.
    */
+  abbSinistraMm?: number;
+  abbDestraMm?: number;
+  abbSopraMm?: number;
+  abbSottoMm?: number;
+  /** LEGACY (1.85.0): l'abbondanza detta per base e altezza, due numeri soli */
   abbBaseMm?: number;
   abbAltezzaMm?: number;
   /**
@@ -323,14 +327,30 @@ export interface Foto {
   /** true quando il rilevamento automatico dei volti è già stato eseguito */
   voltiCercati?: boolean;
   /**
-   * ABBONDANZE A VISTA: con l'interruttore acceso ogni forma abbondata mostra
-   * sulla foto il contorno del pezzo da tagliare (filetto verde tratteggiato).
-   * Vale anche per il PDF e per le immagini condivise: quello che si vede è
-   * quello che si stampa.
+   * ABBONDANZE A VISTA: ogni forma abbondata mostra sulla foto il contorno
+   * del pezzo da tagliare (filetto verde tratteggiato). Vale anche per il
+   * PDF e per le immagini condivise: quello che si vede è quello che si
+   * stampa.
+   *
+   * ASSENTE VUOL DIRE ACCESO (vedi `abbondanzeAVista`). Nasceva spento, e
+   * era una trappola: uno scriveva due centimetri di abbondanza — a mano o
+   * col preset — e sulla foto non cambiava niente, perché l'interruttore
+   * stava in fondo alle impostazioni di una foto per volta. Un'abbondanza
+   * che non si vede è un'abbondanza di cui non ti fidi. Chi vuole la foto
+   * pulita lo spegne, e resta spento.
    */
   mostraAbbondanze?: boolean;
   creataIl: number;
   modificataIl: number;
+}
+
+/**
+ * Le abbondanze si vedono, a meno che qualcuno non le abbia spente su questa
+ * foto. Il campo assente è «mai deciso», e il valore giusto per chi non ha
+ * mai deciso è vederle: se le ha scritte, le vuole vedere.
+ */
+export function abbondanzeAVista(f: Pick<Foto, 'mostraAbbondanze'>): boolean {
+  return f.mostraAbbondanze !== false;
 }
 
 /**

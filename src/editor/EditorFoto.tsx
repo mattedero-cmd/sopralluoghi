@@ -32,6 +32,7 @@ import type {
 import {
   COLORE_QUOTA,
   IMPOSTAZIONI_DEFAULT,
+  abbondanzeAVista,
   quadrilateroQuotaRett,
   segmentiPoligono,
   segmentoELato
@@ -5566,13 +5567,13 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             <label>Abbondanze a vista</label>
             <span className="segmenti" role="group" aria-label="Contorno del pezzo da tagliare">
               <button
-                className={foto.mostraAbbondanze ? 'attivo' : ''}
+                className={abbondanzeAVista(foto) ? 'attivo' : ''}
                 onClick={() => void aggiornaFoto(foto.id, { mostraAbbondanze: true })}
               >
                 <Icona nome="griglia" dimensione={18} /> Mostra
               </button>
               <button
-                className={!foto.mostraAbbondanze ? 'attivo' : ''}
+                className={!abbondanzeAVista(foto) ? 'attivo' : ''}
                 onClick={() => void aggiornaFoto(foto.id, { mostraAbbondanze: false })}
               >
                 Nascondi
