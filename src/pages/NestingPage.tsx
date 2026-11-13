@@ -66,6 +66,15 @@ import {
   salvaPdfNesting
 } from '../db/repository';
 import type { LavoroNesting } from '../db/types';
+import { contaPorte, portePerProgetto } from '../db/repository';
+import type { Porta } from '../db/types';
+import { RilievoPorta } from '../components/RilievoPorta';
+import {
+  firmaStrisce,
+  modoPorta,
+  sincronizzaKit,
+  type ModoPorta
+} from '../utils/portePiano';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { mostraToast } from '../state/toast';
@@ -277,6 +286,28 @@ export function NestingPage({
     return undefined;
   });
   const [caricamento, setCaricamento] = useState(!!id);
+  // PORTE del sopralluogo: tipi, e quante ne dicono le etichette sulle foto
+  const porteProgetto = useLiveQuery(
+    () => (progettoId ? portePerProgetto(progettoId) : Promise.resolve([] as Porta[])),
+    [progettoId]
+  );
+  const contoPorte = useLiveQuery(
+    () => (progettoId ? contaPorte(progettoId) : Promise.resolve(new Map<string, number>())),
+    [progettoId]
+  );
+  /** piano delle bobine delle porte a strisce, aperto a tutto schermo */
+  const [pianoStrisce, setPianoStrisce] = useState(false);
+  // l'essenza dei kit segue porte, etichette e scelte, da sola
+  useEffect(() => {
+    if (caricamento || !porteProgetto || !contoPorte) return;
+    setDoc((d) => sincronizzaKit(d, porteProgetto, contoPorte));
+  }, [caricamento, porteProgetto, contoPorte, doc.porte?.modi]);
+  const impostaModoPorta = (id: string, modo: ModoPorta) =>
+    setDoc((d) => ({ ...d, porte: { ...(d.porte ?? { modi: {} }), modi: { ...(d.porte?.modi ?? {}), [id]: modo } } }));
+  const porteStrisce = (porteProgetto ?? []).filter(
+    (p) => modoPorta(doc.porte, p.id) === 'strisce' && (contoPorte?.get(p.id) ?? 0) > 0
+  );
+  const firmaAttuale = firmaStrisce(porteStrisce, contoPorte ?? new Map());
   const [incolla, setIncolla] = useState(false);
   const [trasferimento, setTrasferimento] = useState(false);
   /** pezzo aperto nell'ambiente che lo divide in teli */
@@ -1100,6 +1131,103 @@ export function NestingPage({
               : 'Bozza. Con ✓ finisce in archivio, con il suo PDF sempre aggiornato.'}
           </small>
         </label>
+
+        {/* --- Porte del sopralluogo ------------------------------------- */}
+        {progettoId && (porteProgetto?.length ?? 0) > 0 && (
+          <>
+            <h2 className="nest-titolo">Porte</h2>
+            {!doc.porte ? (
+              <div className="nest-porte">
+                <p className="aiuto">
+                  Nel sopralluogo ci sono {porteProgetto!.length}{' '}
+                  {porteProgetto!.length === 1 ? 'tipo di porta' : 'tipi di porta'} (
+                  {porteProgetto!.reduce((n, p) => n + (contoPorte?.get(p.id) ?? 0), 0)} porte).
+                </p>
+                <button
+                  className="btn primario"
+                  onClick={() => setDoc((d) => ({ ...d, porte: { modi: {} } }))}
+                >
+                  Porta le porte nel piano di taglio
+                </button>
+              </div>
+            ) : (
+              <div className="nest-porte">
+                {porteProgetto!.map((p) => {
+                  const q = contoPorte?.get(p.id) ?? 0;
+                  const modo = modoPorta(doc.porte, p.id);
+                  return (
+                    <div key={p.id} className="nest-porta">
+                      <div className="nest-porta-testo">
+                        <strong>
+                          {p.nome} <span className="nest-porta-qty">× {q}</span>
+                        </strong>
+                        <small>{p.descrizione}</small>
+                      </div>
+                      <div className="segmenti" role="group" aria-label={`Come si taglia ${p.nome}`}>
+                        <button
+                          className={modo === 'kit' ? 'attivo' : ''}
+                          onClick={() => impostaModoPorta(p.id, 'kit')}
+                        >
+                          Kit
+                        </button>
+                        <button
+                          className={modo === 'strisce' ? 'attivo' : ''}
+                          onClick={() => impostaModoPorta(p.id, 'strisce')}
+                        >
+                          Strisce
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+                {porteStrisce.length > 0 && (
+                  <button className="btn largo nest-porte-piano" onClick={() => setPianoStrisce(true)}>
+                    <Icona nome="porta" dimensione={18} />
+                    <span>
+                      <strong>Bobine delle porte a strisce</strong>
+                      <small>
+                        {!doc.porte.riepilogo || doc.porte.firma !== firmaAttuale
+                          ? 'Da fare: tocca per tagliare le bobine e decidere le scorte'
+                          : `${doc.porte.riepilogo.bobine} ${doc.porte.riepilogo.bobine === 1 ? 'bobina' : 'bobine'} da ${formattaNumero(doc.porte.riepilogo.larghezza)} mm · rotoli ${doc.porte.riepilogo.rotoli
+                              .map((r) => `${formattaNumero(r.larghezza)} ×${r.rotoli}`)
+                              .join(', ')}${doc.porte.riepilogo.tagli.some((t) => t.daDecidere) ? ' · scorte da decidere' : ''}`}
+                      </small>
+                    </span>
+                  </button>
+                )}
+                {doc.porte.materialeKit && doc.materiali.some((m) => m.id === doc.porte?.materialeKit) && (
+                  <button
+                    className="btn largo"
+                    onClick={() => setDoc((d) => ({ ...d, attivo: d.porte?.materialeKit ?? d.attivo }))}
+                  >
+                    Porte in kit: essenza «{doc.materiali.find((m) => m.id === doc.porte?.materialeKit)?.nome}»
+                  </button>
+                )}
+                <small className="aiuto">
+                  Il numero di porte viene dalle etichette sulle foto (×N compreso). Kit: ogni pezzo
+                  alla sua misura, in un’essenza a parte che si aggiorna da sola. Strisce: rotoli
+                  ricavati dalle bobine, con le scorte.
+                </small>
+              </div>
+            )}
+          </>
+        )}
+        {pianoStrisce && progettoId && (
+          <RilievoPorta
+            progettoId={progettoId}
+            modo="lavoro"
+            onChiudi={() => setPianoStrisce(false)}
+            lavoro={{
+              portaIds: porteStrisce.map((p) => p.id),
+              piano: doc.porte?.piano,
+              onPiano: (piano, riepilogo) =>
+                setDoc((d) => ({
+                  ...d,
+                  porte: { ...(d.porte ?? { modi: {} }), piano, riepilogo, firma: firmaAttuale }
+                }))
+            }}
+          />
+        )}
 
         {/* --- Essenze --------------------------------------------------- */}
         <h2 className="nest-titolo">Essenze</h2>

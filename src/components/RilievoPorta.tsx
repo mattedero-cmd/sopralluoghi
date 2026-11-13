@@ -4,6 +4,7 @@ import { contaPorte, portePerProgetto, salvaPorta } from '../db/repository';
 import { ModaleAnteprimaPdf } from './ModaleAnteprimaPdf';
 import { Modale } from './comuni';
 import { Icona } from './Icona';
+import type { RiepilogoStrisce } from '../utils/portePiano';
 
 /**
  * IL RILIEVO PORTA DENTRO L'APP.
@@ -19,7 +20,18 @@ import { Icona } from './Icona';
  * - `scheda`: la parte finale (le quattro viste, modifica veloce e avanzata);
  * - `copia`: la porta richiamata si duplica e si apre in modifica veloce.
  */
-export type ModoRilievo = 'nuova' | 'scheda' | 'copia';
+export type ModoRilievo = 'nuova' | 'scheda' | 'copia' | 'lavoro';
+
+/**
+ * `lavoro`: il piano delle strisce delle porte, dentro il piano di taglio. Si
+ * passano le porte da tagliare a strisce e le scelte salvate; ogni modifica
+ * torna con `onPiano` (scelte + riepilogo per il PDF).
+ */
+export interface OpzioniLavoro {
+  portaIds: ID[];
+  piano?: Record<string, unknown>;
+  onPiano: (piano: Record<string, unknown>, riepilogo: RiepilogoStrisce | null) => void;
+}
 
 export function RilievoPorta({
   progettoId,
@@ -27,7 +39,8 @@ export function RilievoPorta({
   portaId,
   fotoId,
   onSalvata,
-  onChiudi
+  onChiudi,
+  lavoro
 }: {
   progettoId: ID;
   modo: ModoRilievo;
@@ -35,8 +48,9 @@ export function RilievoPorta({
   /** foto da cui si rileva (diventa la foto del rilievo della porta nuova) */
   fotoId?: ID;
   /** `nuova` vero se la porta è stata creata adesso (e non aggiornata) */
-  onSalvata: (porta: Porta, nuova: boolean) => void;
+  onSalvata?: (porta: Porta, nuova: boolean) => void;
   onChiudi: () => void;
+  lavoro?: OpzioniLavoro;
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const [pdf, setPdf] = useState<{ blob: Blob; nome: string } | null>(null);
@@ -44,8 +58,8 @@ export function RilievoPorta({
   const [titolo, setTitolo] = useState('Rilievo porta');
   // la porta di questa apertura: dopo il primo salvataggio, aggiornarla
   const corrente = useRef<ID | null>(modo === 'scheda' ? portaId ?? null : null);
-  const callback = useRef({ onSalvata, onChiudi });
-  callback.current = { onSalvata, onChiudi };
+  const callback = useRef({ onSalvata, onChiudi, lavoro });
+  callback.current = { onSalvata, onChiudi, lavoro };
 
   useEffect(() => {
     const manda = (msg: Record<string, unknown>) =>
@@ -74,6 +88,17 @@ export function RilievoPorta({
       if (m.tipo === 'pronta') {
         const { porte, perIframe } = await elenco();
         const p = porte.find((x) => x.id === portaId);
+        if (modo === 'lavoro') {
+          const l = callback.current.lavoro;
+          setTitolo('Porte a strisce · bobine');
+          manda({
+            tipo: 'apri',
+            modo,
+            porte: perIframe.filter((x) => l?.portaIds.includes(x.id)),
+            piano: l?.piano ?? null
+          });
+          return;
+        }
         setTitolo(
           modo === 'scheda' && p ? p.nome : modo === 'copia' && p ? `Copia di ${p.nome}` : 'Rilievo porta'
         );
@@ -93,7 +118,12 @@ export function RilievoPorta({
         setTitolo(porta.nome);
         const { perIframe } = await elenco();
         manda({ tipo: 'salvata', id: porta.id, nome: porta.nome, porte: perIframe });
-        callback.current.onSalvata(porta, nuova);
+        callback.current.onSalvata?.(porta, nuova);
+      } else if (m.tipo === 'piano' && m.piano && typeof m.piano === 'object') {
+        callback.current.lavoro?.onPiano(
+          m.piano as Record<string, unknown>,
+          (m.riepilogo as RiepilogoStrisce | null) ?? null
+        );
       } else if (m.tipo === 'file' && m.blob instanceof Blob) {
         setPdf({ blob: m.blob, nome: String(m.nome ?? 'Istruzioni montaggio').replace(/\.pdf$/i, '') });
       } else if (m.tipo === 'stato') {
@@ -107,7 +137,8 @@ export function RilievoPorta({
 
   const chiudi = () => {
     const w = frame.current?.contentWindow;
-    if (!w) return onChiudi();
+    // il piano delle strisce si salva a ogni modifica: si esce e basta
+    if (!w || modo === 'lavoro') return onChiudi();
     w.postMessage({ destinazione: 'rilievo-porta', tipo: 'stato' }, window.location.origin);
   };
 

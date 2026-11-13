@@ -10,6 +10,26 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.87.0 — Le porte nel piano di taglio
+
+- **Sezione Porte nel piano di taglio.** Il piano di un sopralluogo con porte
+  rilevate mostra ogni tipo di porta col numero che danno le etichette sulle
+  foto (×N compreso), e per ognuno la scelta **Kit** o **Strisce**.
+- **Kit**: i pezzi della porta alla misura esatta, moltiplicati per il numero
+  di porte (i due montanti uguali in una riga sola), vanno in un'essenza tutta
+  loro, «Porte (kit)», su bobina: si impaginano fra loro, mai con le forme
+  delle pareti. L'essenza si aggiorna da sola quando cambiano porte o
+  etichette, e sparisce se nessuna porta è più in kit.
+- **Strisce**: «Bobine delle porte a strisce» apre il piano delle bobine del
+  rilievo porta (larghezza della bobina, rotoli, scorte coi rotolini, avanzi).
+  Le scelte restano nel piano di taglio; sotto il pulsante c'è il riepilogo
+  (bobine, rotoli per larghezza, scorte da decidere) e l'avviso «Da fare»
+  quando porte o quantità sono cambiate dopo l'ultimo piano.
+- Un piano di taglio nuovo, fatto da un sopralluogo con porte, le porta già
+  dentro (a strisce). Su un piano esistente basta «Porta le porte nel piano di
+  taglio». Etichetta porta: un secondo tocco sull'etichetta selezionata apre
+  la scheda.
+
 ## 1.86.0 — Il rilievo porta entra nelle foto
 
 - **La porta si rileva sulla sua foto.** Nel menu Misure → Pezzi c'è

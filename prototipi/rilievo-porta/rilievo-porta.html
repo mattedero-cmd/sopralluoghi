@@ -180,7 +180,7 @@
    </section>
    <section class="mt-job-sec">
     <div class="mt-job-head"><h3>Distinta di taglio</h3></div>
-    <p class="mt-small">Tagli uguali sommati, larghezza × lunghezza in mm. Nell’app Sopralluoghi diventerà il piano di taglio, con i nomi per riconoscere i pezzi.</p>
+    <p class="mt-small">Tagli uguali sommati, larghezza × lunghezza in mm. Accanto a ogni misura i nomi, per riconoscere i pezzi.</p>
     <div class="mt-job-list"></div>
    </section>
    <section class="mt-job-sec">
@@ -390,6 +390,9 @@
 #maesta-tecnica .mt-over-note .mt-overlap-order{margin:5px 0}
 #maesta-tecnica .mt-over-note .mt-overlap-order summary{padding:5px 0;cursor:pointer}
 #maesta-tecnica .mt-host [data-app-tab="job"]{display:none}
+#maesta-tecnica .mt-host [data-action="add-job"]{display:none}
+#maesta-tecnica .mt-host-lavoro .mt-app-bar,#maesta-tecnica .mt-host-lavoro .mt-app-tabs{display:none}
+#maesta-tecnica .mt-host-qty{font-size:18px;white-space:nowrap;align-self:center}
 #maesta-tecnica .mt-roll-chips{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 8px}
 #maesta-tecnica .mt-roll-chip{display:flex;flex-direction:column;align-items:center;gap:1px;min-width:74px;padding:6px 8px}
 #maesta-tecnica .mt-roll-chip svg{width:44px;height:30px;pointer-events:none}
@@ -5963,7 +5966,7 @@ const JSPDF_URL='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.mi
 // ha un «lavoro» suo: le porte sono quelle del progetto, che l'app manda a
 // ogni apertura, e «Salva porta» la consegna all'app che la tiene nel progetto.
 const HOST=new URLSearchParams(location.search).has('ospite')&&window.parent!==window;
-const host={saved:null};
+const host={saved:null,lavoro:false,timer:0};
 function hostPost(msg){window.parent.postMessage({sorgente:'rilievo-porta',...msg},location.origin);}
 function hostDesc(){return `${model().name} · ${doorClosureName()} · luce ${fmt(luce.W)} × ${fmt(luce.H)} · `+eachLeaf(i=>leafName(i).toLocaleLowerCase('it-IT')+' '+fmt(door.width)+' × '+fmt(door.height)).join(' / ')+(state.hasHead===false?' · senza traverso':'');}
 function hostDirty(){return host.saved!==JSON.stringify(snapshotConfig());}
@@ -5980,6 +5983,23 @@ async function hostInstructions(button){
   catch(error){reviewMessage='Non riesco a creare il PDF.';}
   finally{if(button){button.disabled=false;button.textContent=label;}renderReview();}
 }
+// Piano delle strisce dentro il piano di taglio dell'app: a ogni modifica si
+// consegnano le scelte (parametri e scorte) e un riepilogo per il PDF.
+function hostPlanSummary(){
+  const dem=jobDemand();if(!dem.length)return null;
+  const gw=planWidths(dem),{masters,patterns}=planMasters(gw);
+  return{larghezza:plan.masterW,metriRotolo:plan.rollLen,bobine:masters.length,
+    rotoli:gw.map(g=>{const w=Math.max(g.width,...masters.flatMap(m=>m.cuts.filter(c=>c.g===g&&!c.spare).map(c=>c.w+c.add)));
+      return{larghezza:w,da:g.min,metri:Math.round(g.m*100)/100,rotoli:g.rolls.length,pezzi:g.items.map(d=>({larghezza:d.w,lunghezza:d.l,quantita:d.qty,nomi:[...d.labels]}))};}),
+    tagli:patterns.map(p=>({bobine:p.n,strisce:p.cuts.map(c=>({larghezza:c.w+c.add,scorta:!!c.spare,intero:!!c.whole})),daDecidere:!!p.pending}))};
+}
+function hostSchedulePlan(){
+  clearTimeout(host.timer);
+  host.timer=setTimeout(()=>{
+    let riepilogo=null;try{riepilogo=hostPlanSummary();}catch(e){}
+    hostPost({tipo:'piano',piano:{masterW:plan.masterW,rollLen:plan.rollLen,same:plan.same,ideal:plan.ideal,max:plan.max,few:plan.few,decisions:JSON.parse(JSON.stringify(plan.decisions))},riepilogo});
+  },250);
+}
 function hostTypes(list){
   job.types=(list||[]).map(p=>({id:p.id,name:p.nome,qty:Math.max(1,p.qty||1),config:p.config,desc:p.descrizione||'',
     rows:(p.righe||[]).map(r=>({label:r.nome,width:r.larghezza,length:r.lunghezza}))}));
@@ -5989,6 +6009,15 @@ function hostMessage(ev){
   const m=ev.data;if(!m||m.destinazione!=='rilievo-porta')return;
   if(m.porte)hostTypes(m.porte);
   const t=m.id?job.types.find(x=>x.id===m.id):null;
+  if(m.tipo==='apri'&&m.modo==='lavoro'){
+    host.lavoro=true;appEl.classList.add('mt-host-lavoro');closeWizard();
+    if(m.piano){
+      ['masterW','rollLen','same','ideal','max','few'].forEach(k=>{if(Number.isFinite(m.piano[k]))plan[k]=m.piano[k];});
+      plan.decisions=m.piano.decisions&&typeof m.piano.decisions==='object'?m.piano.decisions:{};
+      $$('[data-plan]').forEach(i=>{i.value=String(plan[i.dataset.plan]);});
+    }
+    setTab('job');return;
+  }
   if(m.tipo==='apri'){
     if(m.modo==='nuova'||!t){state.editingType=null;host.saved=null;openWizard();return;}
     closeWizard();loadConfig(t.config);state.quick=null;appEl.classList.remove('mt-advanced');
@@ -6471,6 +6500,7 @@ function planMasters(groupsW) {
   return {masters, patterns: [...patterns.values()].sort((a, b) => b.n - a.n)};
 }
 function renderJob() {
+  if (HOST && host.lavoro) hostSchedulePlan();
   spareFields.clear();
   const typesBox = $('.mt-job-types');
   typesBox.replaceChildren();
@@ -6503,6 +6533,15 @@ function renderJob() {
     const qty = btn(String(t.qty), 'Quante porte ' + t.name, ev => openPad(`[data-job="${t.id}"]`, [], ev.currentTarget.getBoundingClientRect()), 'mt-qty');
     const plus = btn('+', 'Una porta in più di ' + t.name, () => { t.qty++; vibrate(); renderJob(); });
     const del = btn('✕', 'Togli ' + t.name + ' dal lavoro', () => { job.types = job.types.filter(x => x !== t); if (state.editingType === t.id) state.editingType = null; vibrate(); renderJob(); });
+    if (HOST) {
+      // dentro l'app il numero viene dalle etichette sulle foto: qui si legge
+      const n = document.createElement('strong'); n.className = 'mt-host-qty'; n.textContent = '× ' + t.qty;
+      row.append(info, n);
+      if (t.config) { const tools = document.createElement('div'); tools.className = 'mt-job-tools';
+        tools.append(btn('Istruzioni PDF', 'Istruzioni di montaggio di ' + t.name, ev => makeInstructions(t, ev.currentTarget))); info.append(tools); }
+      typesBox.append(row);
+      return;
+    }
     row.append(info, minus, qty, plus, del);
     if (t.config) {
       const tools = document.createElement('div'); tools.className = 'mt-job-tools';

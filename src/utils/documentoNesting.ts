@@ -14,6 +14,7 @@ import { FORME, type FormaPezzo } from '../geometry/sagome';
 import { BLOCCO_MANEGGEVOLE } from '../geometry/segmenti';
 import { nuovoId } from './id';
 import { prossimaTinta } from './tinte';
+import { normalizzaPorte, type PorteNesting } from './portePiano';
 
 /**
  * Supporto e venatura stanno nel modello dati (`db/types`), perché il preset
@@ -51,6 +52,8 @@ export interface DocumentoNesting {
    * scelta a mano andrebbe persa al primo salvataggio.
    */
   stampa?: { segmenta: boolean; massimoSegmento: number };
+  /** le porte del sopralluogo: kit o strisce per tipo (vedi utils/portePiano) */
+  porte?: PorteNesting;
 }
 
 export const LASTRA_PREDEFINITA = { larghezza: 2500, altezza: 1250 };
@@ -447,7 +450,15 @@ export function migraDocumento(grezzo: unknown): DocumentoNesting | null {
       typeof g.attivo === 'string' && materiali.some((m) => m.id === g.attivo)
         ? g.attivo
         : materiali[0].id;
-    return { versione: 2, nome, materiali, attivo, stampa: normalizzaStampa(g.stampa) };
+    const porte = normalizzaPorte(g.porte);
+    return {
+      versione: 2,
+      nome,
+      materiali,
+      attivo,
+      stampa: normalizzaStampa(g.stampa),
+      ...(porte ? { porte } : {})
+    };
   }
 
   // formato v1: un unico materiale con i campi in radice

@@ -695,7 +695,11 @@ export function ProgettoPage({ id }: { id: string }) {
           versione: 2,
           nome,
           attivo: materiale.id,
-          materiali: [materiale]
+          materiali: [materiale],
+          // le porte rilevate entrano subito: a strisce, finché non si sceglie il kit
+          ...((await db.porte.where('progettoId').equals(progetto.id).count()) > 0
+            ? { porte: { modi: {} } }
+            : {})
         },
         { cartellaId: progetto.cartellaId, progettoId: progetto.id }
       );

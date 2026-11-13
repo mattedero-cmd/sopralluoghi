@@ -153,8 +153,15 @@ riquadro a tutto schermo (`src/components/RilievoPorta.tsx`) con
 - «Istruzioni PDF» genera il PDF e lo passa all'app, che lo mostra
   nell'anteprima con Condividi.
 
-Messaggi (stessa origine): dall'app `apri` (`modo` nuova / scheda / copia),
-`salvata`, `stato`, `pdf`; dalla porta `pronta`, `salva`, `file`, `stato`,
+Nel piano di taglio dell'app si apre con `modo: 'lavoro'`: solo la scheda
+del lavoro con le porte da tagliare a strisce (quantità dalle etichette, non
+modificabili qui) e le scelte salvate del piano; a ogni modifica la pagina
+manda `piano` (parametri e scorte) con un `riepilogo` per i PDF. Le porte in
+kit non passano di qui: diventano pezzi dell'essenza «Porte (kit)»
+(`src/utils/portePiano.ts`).
+
+Messaggi (stessa origine): dall'app `apri` (`modo` nuova / scheda / copia / lavoro),
+`salvata`, `stato`, `pdf`; dalla porta `pronta`, `salva`, `file`, `stato`, `piano`,
 `errore`.
 
 ## Regole decise

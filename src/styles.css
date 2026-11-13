@@ -4812,3 +4812,52 @@ a {
   border: 1px solid var(--bordo);
   border-radius: 8px;
 }
+
+/* Piano di taglio: porte del sopralluogo */
+.nest-porte {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.nest-porta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--bordo);
+  border-radius: 10px;
+}
+.nest-porta-testo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.nest-porta-testo small {
+  font-size: 12px;
+  opacity: 0.75;
+}
+.nest-porta-qty {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+.nest-porta .segmenti {
+  flex-shrink: 0;
+}
+.nest-porte-piano {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+.nest-porte-piano span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.nest-porte-piano small {
+  font-size: 12px;
+  opacity: 0.8;
+  font-weight: 400;
+}
