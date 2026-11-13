@@ -1533,6 +1533,24 @@ function roundFilmPlan(g = geometry(), pieceKey = null) {
     links.get(b.id).push({id: a.id, side: bSide, otherSide: aSide});
     return true;
   };
+  // BATTUTA STRETTA (raggiati e smussati a filo). Se da un lato lo spazio fra il
+  // coprifilo e la guarnizione è sotto i 30 mm, quel coprifilo lo prende tutto
+  // fino alla guarnizione (pezzo unico, come sempre); lo stipite invece diventa
+  // un pezzo a sé dalla guarnizione all'altro coprifilo, e l'altro coprifilo a
+  // filo si ferma al suo spigolo, senza sormonto.
+  const reachToGasket = relation => {
+    const part = relation.targetPart, forward = relation.targetWhich === 'start';
+    let total = 0;
+    for (let i = relation.targetEdge; i >= 0 && i < part.edges.length; i += forward ? 1 : -1) {
+      const span = gasketSpan(part, i), len = part.edges[i].len;
+      if (span) return total + (forward ? span.start : len - span.end);
+      if (i !== relation.targetEdge && (forward ? separated(part, i - 1) : separated(part, i))) return Infinity;
+      total += len;
+    }
+    return Infinity;
+  };
+  const narrow = relations.filter(r => r.mode === 'continuous' && reachToGasket(r) < NARROW_STRIP);
+  if (narrow.length) relations.forEach(r => { r.detached = r.mode === 'continuous' && !narrow.includes(r); });
   // Si separa la testa dal piano solo se il coprifilo raggiunge davvero tutta
   // la testa: una guarnizione o un'esclusione interrompe prima quel percorso.
   const assignedHeads = new Set();
@@ -1544,7 +1562,7 @@ function roundFilmPlan(g = geometry(), pieceKey = null) {
       relation.targetWhich === 'end' && separated(relation.targetPart, relation.targetEdge);
     relation.active = relation.mode === 'overlap'
       ? !!source && !!target
-      : !splitAtJunction && connect(source, 'end', target, relation.targetWhich);
+      : !splitAtJunction && !relation.detached && connect(source, 'end', target, relation.targetWhich);
     relation.sourceNode = source; relation.targetNode = target;
     if (relation.active && relation.mode === 'step' && !gasketSpan(relation.targetPart, relation.targetEdge)) {
       assignedHeads.add(relation.targetPart.key + ':' + relation.targetEdge);
@@ -1809,13 +1827,18 @@ function render(svg,g,mini=false,size=null){const box=size||svg.getBoundingClien
  }));
  if(g.leaf?.contact){const contacts=g.leaf.contacts.filter(contact=>contact.gasket),seen=new Set();
   (contacts.length?contacts:[g.leaf.contact]).forEach(contact=>{const point=contact.point,key=point.map(value=>value.toFixed(6)).join(':');if(seen.has(key))return;seen.add(key);
-   const mark=el('circle',{cx:X(point[0]),cy:Y(point[1]),r:3.5,fill:'var(--mt-paper)',stroke:'var(--mt-green)','stroke-width':1.5,'data-door-bearing':g.leaf.bearing,'data-bearing-source':contact.leafGasket?'leaf':'frame','pointer-events':'none'});mark.append(el('title',{},contact.leafGasket?'Guarnizione dell’anta in appoggio su '+contact.partName:contact.gasket?'Appoggio effettivo sulla guarnizione dello stipite':'Appoggio sulla battuta senza guarnizione'));svg.append(mark);
+   const onFrameGasket=contact.gasket&&!contact.leafGasket;
+   const mark=el('circle',{cx:X(point[0]),cy:Y(point[1]),r:onFrameGasket?2.2:3.5,fill:onFrameGasket?'none':'var(--mt-paper)',stroke:'var(--mt-green)','stroke-width':onFrameGasket?1:1.5,'data-door-bearing':g.leaf.bearing,'data-bearing-source':contact.leafGasket?'leaf':'frame','pointer-events':'none'});mark.append(el('title',{},contact.leafGasket?'Guarnizione dell’anta in appoggio su '+contact.partName:contact.gasket?'Appoggio effettivo sulla guarnizione dello stipite':'Appoggio sulla battuta senza guarnizione'));svg.append(mark);
   });}
  svg.append(el('title',{},'Sezione A–A della maestà: esterno a sinistra, interno a destra, contorni pieni delle stecche, parete e anta di riferimento'));
  svg.append(el('text',{x:14,y:20,'font-size':11},'ESTERNO'));svg.append(el('text',{x:w-14,y:20,'font-size':11,'text-anchor':'end'},'INTERNO'));
  if(!clean&&!size?.print)drawFrameQuotes(svg,g,p,X,Y,w,h,compact);
  if((g.wall.right-g.wall.left)*k>75)svg.append(el('text',{x:X(g.depth/2),y:Y((g.wall.top+g.wall.bottom)/2),'text-anchor':'middle','font-size':11,stroke:'var(--mt-wall)','stroke-width':4,'paint-order':'stroke'},'PARETE'));
  if(!clean&&!compact){const part=g.parts[draft().part],e=part.edges[Math.min(draft().edge,part.edges.length-1)];let mx=(X(e.a[0])+X(e.b[0]))/2,my=(Y(e.a[1])+Y(e.b[1]))/2;const vert=Math.abs(e.b[0]-e.a[0])<Math.abs(e.b[1]-e.a[1]);mx+=vert?18:0;my+=vert?0:18;const label=`${draft().part+1}.${draft().edge+1}`,width=label.length*6;mx=Math.max(width,Math.min(w-width,mx));my=Math.min(h-12,my);svg.append(el('text',{x:mx,y:my,'text-anchor':'middle','font-size':11,stroke:'var(--mt-board)','stroke-width':4,'paint-order':'stroke'},label));}
+ if(hasProfileFilmRules()&&!mini)roundFilmPlan(g).relations.filter(r=>r.detached).forEach(r=>{
+   const e=r.sourcePart.edges.at(-1),pt=e.b,d=[X(e.b[0])-X(e.a[0]),Y(e.b[1])-Y(e.a[1])],n=Math.hypot(d[0],d[1])||1,u=[-d[1]/n*6,d[0]/n*6];
+   const tick=el('line',{x1:X(pt[0])-u[0],y1:Y(pt[1])-u[1],x2:X(pt[0])+u[0],y2:Y(pt[1])+u[1],stroke:'var(--mt-ink)','stroke-width':2,'stroke-linecap':'round','pointer-events':'none','data-film-joint':r.sourcePart.key});
+   tick.append(el('title',{},'Giunto: coprifilo e stipite sono due pezzi; il coprifilo si ferma al suo spigolo, lo stipite arriva fino alla sua base.'));svg.append(tick);});
  if(typeof size?.decorate==='function')size.decorate(svg,X,Y,k,g);
  orientSurveySvg(svg,w);
 }
@@ -1834,6 +1857,10 @@ function roundedFilmLabel(relation) {
   return relation.mode === 'step'
     ? `${side}: prima il coprifilo con la prima faccia dello stipite, poi il rivestimento dello stipite.`
     : `${side}: coprifilo e stipite in un unico pezzo${relation.gasketEnd ? ' fino alla guarnizione' : ' continuo fino al bordo o all’interruzione successiva'}.`;
+}
+function roundedDetachedLabel(relation) {
+  const side = relation.sourcePart.key === 'outer' ? 'Sinistra' : 'Destra';
+  return `${side}: battuta stretta dall'altro lato, quindi stipite e coprifilo separati. Il coprifilo si ferma al suo spigolo, lo stipite arriva alla sua base, senza sormonto.`;
 }
 function drawRoundedFilm(svg, relations, X, Y, strokeWidth = 3) {
   relations.forEach(relation => {
@@ -2121,6 +2148,12 @@ function refreshOverFields(part) {
       const row = document.createElement('span');
       row.style.display = 'block';
       row.textContent = roundedFilmLabel(relation);
+      details.append(row);
+    });
+    (typeof roundFilmPlan === 'function' ? roundFilmPlan().relations.filter(r => r.detached && (r.sourcePart.key === part.key || r.targetPart.key === part.key)) : []).forEach(relation => {
+      const row = document.createElement('span');
+      row.style.display = 'block';
+      row.textContent = roundedDetachedLabel(relation);
       details.append(row);
     });
   }

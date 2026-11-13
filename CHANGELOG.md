@@ -10,6 +10,17 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.90.0 — Coprifili raggiati a filo con la battuta stretta
+
+- Con coprifili **raggiati o smussati a filo**, quando lo spazio della battuta
+  davanti all'anta (fra coprifilo e guarnizione) è sotto i 30 mm: il coprifilo
+  di quel lato copre la sua testa e lo spazio fino alla guarnizione, lo
+  **stipite è un pezzo a sé** dalla guarnizione all'altro coprifilo e l'altro
+  coprifilo si ferma al suo spigolo. Prima stipite e coprifilo dell'altro lato
+  uscivano in un pezzo unico. Con lo spazio più largo non cambia niente.
+- Nel disegno della sezione il giunto fra i due pezzi si vede, e la
+  guarnizione dello stipite non è più coperta dal pallino dell'appoggio.
+
 ## 1.89.0 — Il PDF delle porte, da consegnare a chi taglia e monta
 
 - **Niente sezioni vuote.** Un'essenza senza pezzi (il «Materiale 1» di un

@@ -245,6 +245,13 @@ Messaggi (stessa origine): dall'app `apri` (`modo` nuova / scheda / copia / lavo
 - A filo, coprifilo e stipite si rivestono con **un unico pezzo fino alla
   guarnizione**. Il disegno, lo sviluppo, la distinta e i totali usano lo stesso
   collegamento, su entrambi i lati della porta.
+- **Battuta stretta** (a filo): se da un lato lo spazio fra il coprifilo e la
+  guarnizione è sotto i 30 mm, quel coprifilo resta un pezzo unico con lo
+  spazio della battuta fino alla guarnizione; lo **stipite diventa un pezzo a
+  sé** dalla guarnizione fino alla base dell'altro coprifilo, e l'altro
+  coprifilo a filo si ferma al suo spigolo, senza sormonto. Nel disegno il
+  giunto è un trattino scuro. Con lo spazio più largo resta il pezzo unico
+  descritto sopra.
 - Con **coprifilo sporgente** si riveste prima lo stipite e poi il coprifilo.
   I tagli restano separati: il lembo dello stipite sormonta soltanto il breve
   tratto a vista del coprifilo subito adiacente allo stipite, senza proseguire
