@@ -410,6 +410,9 @@
 #maesta-tecnica .mt-wiz-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 @media(min-width:620px){#maesta-tecnica .mt-wiz-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 #maesta-tecnica .mt-wiz-grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+#maesta-tecnica .mt-wiz-grid.mt-wiz-previews{grid-template-columns:repeat(2,minmax(0,1fr))}
+#maesta-tecnica .mt-wiz-previews .mt-wiz-card svg{height:auto;aspect-ratio:320/230;min-height:0;max-height:none;flex:none;border:0;background:transparent}
+#maesta-tecnica .mt-wiz-previews .mt-wiz-card[aria-pressed=true] svg{background:var(--mt-paper);border-radius:10px}
 #maesta-tecnica .mt-wiz-card{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px;min-width:0;text-align:center;border-radius:14px}
 #maesta-tecnica .mt-casing-options .mt-wiz-card{padding:6px 4px;min-height:76px}
 #maesta-tecnica .mt-casing-options .mt-wiz-card strong{font-size:12px}
@@ -3098,8 +3101,8 @@ function doorTargetChange(target) {
 function doorTargetOptions() {
   return[{id:'jamb',name:'Sullo stipite'},...(steppedDoor()&&model().casing!=='none'?[{id:'casing',name:'Sul coprifilo'}]:[])].map(option=>({...option,disabled:!fitCandidate(doorTargetChange(option.id))}));
 }
-function setDoorStopTarget(target) {
-  const change=doorTargetChange(target);if(!doorTargetOptions().some(option=>option.id===target&&!option.disabled))return;
+function setDoorStopTarget(target,force=false) {
+  const change=doorTargetChange(target);if(!doorTargetOptions().some(option=>option.id===target&&(force||!option.disabled)))return;
   if(target!==doorStopTarget()){
     door.seatChoices||={};door.seatChoices[doorStopTarget()]=Object.fromEntries(['bearing','stopSurfaceKey','closure','reference','projection'].map(key=>[key,door[key]]));
   }
@@ -3227,6 +3230,12 @@ function fitCandidate(change) {
   try{Object.assign(door,change);if(change.bearing&&!change.stopSurfaceKey&&doorStopTarget()!=='casing'){const match=fitPairs().find(pair=>pair.bearing===change.bearing);if(match)door.stopSurfaceKey=match.stop;}syncFitGeometry();if(doorStopTarget()!=='casing'&&!door.fitBasis&&draft().seatAuto&&!draft().measured?.[doorStopKey()])positionDoorStop(draft().p,model());const g=geometry();return !frameQuoteError()&&!leafGasketError()&&!fitGeometryError(g)&&(g.leaf?.stopKey?!g.leaf.warning:door.stopSurfaceKey==='auto');}
   finally{Object.assign(door,saved);Object.assign(draft().p,p);}
 }
+// Applica una scelta solo per disegnarne l'anteprima, poi ripristina tutto.
+function previewWith(change,fn){
+  const saved=copyLeaf({...door}),p={...draft().p};
+  try{Object.assign(door,change);refreshOneDoorSeat();return fn();}
+  finally{replaceDoor(saved);Object.assign(draft().p,p);}
+}
 function setFitBasis(basis) {
   if(!['leaf','frame','both'].includes(basis))return;
   door.fitBasis=basis;
@@ -3265,15 +3274,15 @@ function positionDoorStop(p,m,measured=p===draft().p?draft().measured:{}) {
 }
 function refreshOneDoorSeat() {const automatic=automaticDoorReference();if(automatic)door.reference=automatic;if(!doorClosureOptions().some(t=>t.id===door.closure))door.closure=doorClosureOptions()[0].id;if(doorStopTarget()==='casing'||door.fitBasis&&fitPairs().length)syncFitGeometry();else if(draft().seatAuto&&!draft().measured?.[doorStopKey()])positionDoorStop(draft().p,model());}
 function refreshDoorSeat() {refreshOneDoorSeat();if(state.leafCount===2)withLeaf(1-state.activeLeaf,()=>{const automatic=automaticDoorReference();if(automatic)door.reference=automatic;if(door.fitBasis==='frame')syncFitGeometry();},true);}
-function setDoorClosure(id) {
-  if(!doorClosureOptions().some(t=>t.id===id)||!fitCandidate({closure:id}))return;
+function setDoorClosure(id,force=false) {
+  if(!doorClosureOptions().some(t=>t.id===id)||!force&&!fitCandidate({closure:id}))return;
   door.closure=id;
   if(id!=='flush'&&!(door.projection>0))door.projection=5;
   refreshDoorSeat();sync();drawDoor();updateBadge();
 }
-function setDoorReference(id) {
+function setDoorReference(id,force=false) {
   if(automaticDoorReference()&&id!==automaticDoorReference())return;
-  if(!doorReferenceOptions().some(t=>t.id===id)||!fitCandidate({reference:id}))return;
+  if(!doorReferenceOptions().some(t=>t.id===id)||!force&&!fitCandidate({reference:id}))return;
   door.reference=id;refreshDoorSeat();sync();drawDoor();updateBadge();
 }
 function closureThumb(mode) {
@@ -4586,22 +4595,16 @@ function renderWizard() {
   const auto = () => setTimeout(() => wizGo(1), 180);
   if(step==='apertura'){
     const pickHand=id=>{wiz.handleSide=id;state.handleSide=id;state.handleChosen=true;};
-    const handFig=openingHandFigure(wiz.handleSide);
-    // Si può anche toccare la porta dal lato della maniglia.
-    [['left',76],['right',160]].forEach(([id,x])=>{const hit=el('rect',{x,y:35,width:84,height:176,fill:'transparent',class:'cursor-interaction','data-pick-handle':id});
-      hit.addEventListener('click',()=>{pickHand(id);vibrate();renderWizard();});handFig.append(hit);});
-    body.append(handFig);
-    surveyOptions(body,[{id:'left',name:'Maniglia a sinistra'},{id:'right',name:'Maniglia a destra'}],wiz.handleSide,pickHand);
+    surveyOptions(body,[{id:'left',name:'Maniglia a sinistra'},{id:'right',name:'Maniglia a destra'}],wiz.handleSide,pickHand,id=>openingHandFigure(id));
+    body.querySelectorAll('[data-survey-choice]').forEach(card=>card.setAttribute('data-pick-handle',card.dataset.surveyChoice));
     next.disabled=!wiz.handleSide;
   }
   if(step==='traverso'){
     $('[data-out=wiz-question]').textContent='';
-    body.append(openingFigure('head',null,{hasHead:wiz.hasHead!==false}));
-    surveyOptions(body,[{id:'yes',name:'Sì'},{id:'no',name:'No'}],wiz.hasHead!==false?'yes':'no',id=>{wiz.hasHead=id==='yes';});
+    surveyOptions(body,[{id:'yes',name:'Sì'},{id:'no',name:'No'}],wiz.hasHead!==false?'yes':'no',id=>{wiz.hasHead=id==='yes';},id=>openingFigure('head',null,{hasHead:id==='yes'}));
   }
   if(step==='ante'){
-    $('[data-out=wiz-question]').textContent='';body.append(openingFigure('count',null,{hasHead:wiz.hasHead!==false,count:wiz.leafCount}));
-    surveyOptions(body,[{id:'one',name:'Un’anta'},{id:'two',name:'Due ante'}],wiz.leafCount===2?'two':'one',id=>{wiz.leafCount=id==='two'?2:1;});
+    $('[data-out=wiz-question]').textContent='';surveyOptions(body,[{id:'one',name:'Un’anta'},{id:'two',name:'Due ante'}],wiz.leafCount===2?'two':'one',id=>{wiz.leafCount=id==='two'?2:1;},id=>openingFigure('count',null,{hasHead:wiz.hasHead!==false,count:id==='two'?2:1}));
   }
   if (step === 'battuta') {
     const g = grid();
@@ -4620,12 +4623,10 @@ function renderWizard() {
   }
   if (step === 'posizioneE'||step==='posizioneI') {
     const side=step.slice(-1);
-    body.append(casingSurveyFigure(wiz.cfg,wiz.pos,side,true));
-    surveyOptions(body,POSITIONS,wiz.pos[side],id=>{wiz.pos[side]=id;});
+    surveyOptions(body,POSITIONS,wiz.pos[side],id=>{wiz.pos[side]=id;},id=>casingSurveyFigure(wiz.cfg,{...wiz.pos,[side]:id},side,true,true));
   }
   if(step==='asimmetria'){
-    body.append(asymFigure(wiz.asym,wiz.handleSide||state.handleSide));
-    surveyOptions(body,[{id:'same',name:'Uguali'},{id:'handle',name:'Diverso lato maniglia'},{id:'hinge',name:'Diverso lato cerniere'}],wiz.asym,id=>{wiz.asym=id;});
+    surveyOptions(body,[{id:'same',name:'Uguali'},{id:'handle',name:'Diverso lato maniglia'},{id:'hinge',name:'Diverso lato cerniere'}],wiz.asym,id=>{wiz.asym=id;},id=>asymFigure(id,wiz.handleSide||state.handleSide));
   }
   if (step === 'angoli') {
     const g = grid('three');
@@ -4946,7 +4947,7 @@ function casingShapeThumb(cfg){
   const k=Math.min(40/Math.max(1,maxX-minX),56/Math.max(1,maxY-minY)),X=x=>40+(x-(minX+maxX)/2)*k,Y=y=>35+(y-(minY+maxY)/2)*k;
   svg.append(el('path',{d:partPath(part,X,Y,k,true),fill:'var(--mt-tint)',stroke:'var(--mt-green)','stroke-width':2}));return svg;
 }
-function casingSurveyFigure(cfg,pos,side='E',position=false){
+function casingSurveyFigure(cfg,pos,side='E',position=false,compact=false){
   const svg=surveyFigure('casing-detail'),m=makeModel(cfg),p=modelDefaults(m);
   ['E','I'].forEach(s=>p['e'+s]=offsetAllowed(cfg.casing,s)?POS_VALUE[pos[s]]:0);
   const g=geometry(p,m,0),inside=side==='I',parts=g.parts,selected=parts.find(part=>part.key===(inside?'inner':'outer'))||parts.find(part=>part.key==='integrated'),bottom=inside?g.yI:g.yE,jambY=inside?g.right:g.y,t=p['t'+side];
@@ -4965,7 +4966,8 @@ function casingSurveyFigure(cfg,pos,side='E',position=false){
       [a,b].forEach(y=>target.append(el('line',{x1:x-8,y1:y,x2:X(edgeX-dir*8),y2:y,stroke:'var(--mt-green)','stroke-width':1.4,'stroke-dasharray':'3 2'})));
       if(Math.abs(a-b)>.1)target.append(el('line',{x1:x,y1:a,x2:x,y2:b,stroke:'var(--mt-green)','stroke-width':3,'data-casing-level':pos[side]}));
     }
-  },{'data-casing-detail':side});
+  },{'data-casing-detail':side},compact);
+  if(compact)return svg;
   if(cfg.casing==='none')svg.append(el('text',{x:88,y:222,'text-anchor':'middle','font-size':13,fill:'var(--mt-secondary)'},'Senza coprifilo'));
   if(position)svg.append(el('text',{x:246,y:210,'font-size':13,'text-anchor':'middle',fill:'var(--mt-green)','font-weight':700},POSITIONS.find(item=>item.id===pos[side]).name));
   svg.setAttribute('aria-label','Maestà intera con il dettaglio del coprifilo '+(inside?'interno':'esterno')+' ingrandito');return svg;
@@ -5111,7 +5113,13 @@ function leafGasketPresenceFigure(present) {
 // lente collegata a destra con il dettaglio ingrandito. paint(target,X,Y,k,box,lens).
 function surveyMapping(b,box){const k=Math.min(box.w/Math.max(1,b.maxX-b.minX),box.h/Math.max(1,b.maxY-b.minY));
   return{k,X:x=>box.x+(box.w-(b.maxX-b.minX)*k)/2+(x-b.minX)*k,Y:y=>box.y+(box.h-(b.maxY-b.minY)*k)/2+(y-b.minY)*k};}
-function detailLens(svg,full,zone,paint,attrs={}){
+function detailLens(svg,full,zone,paint,attrs={},compact=false){
+  if(compact){
+    const box={x:8,y:8,w:304,h:214},Z=surveyMapping(zone,box),id='mt-lens-clip-'+(++surveyFigureSerial),defs=el('defs'),cp=el('clipPath',{id});
+    cp.append(el('rect',{x:0,y:0,width:320,height:230}));defs.append(cp);svg.append(defs);
+    const g=el('g',{'clip-path':'url(#'+id+')','data-detail-lens':'compact',...attrs});paint(g,Z.X,Z.Y,Z.k,{x:0,y:0,w:320,h:230},true);svg.append(g);
+    return{F:Z,Z,lc:[160,115],lr:110,compact:true};
+  }
   const fbox={x:8,y:40,w:164,h:160},F=surveyMapping(full,fbox),whole=el('g',{'data-section-context':'whole'});
   paint(whole,F.X,F.Y,F.k,fbox,false);svg.append(whole);
   const cx=F.X((zone.minX+zone.maxX)/2),cy=F.Y((zone.minY+zone.maxY)/2),mr=Math.max(9,Math.hypot((zone.maxX-zone.minX)*F.k,(zone.maxY-zone.minY)*F.k)/2*.75);
@@ -5187,7 +5195,8 @@ function sectionSurveyFigure(kind='closure',options={}) {
     const full={minX:Math.min(-draft().p.tE,leaf.x)-4,maxX:Math.max(g.depth+draft().p.tI,leaf.x+leaf.w)+4,minY:Math.min(g.yE,g.yI,g.y,leaf.y)-14,maxY:Math.max(leaf.y+doorTotalRebate()+30,g.y+20)};
     const {Z,lc,lr}=detailLens(svg,full,{minX,maxX,minY,maxY},(target,X,Y,k,box,lens)=>{paint(target,X,Y,k,box,lens);
       if(!lens&&k*g.depth>70)target.append(el('text',{x:X(g.depth/2),y:Y(Math.min(g.yE,g.yI,g.y)/2),'text-anchor':'middle','font-size':10,fill:'var(--mt-secondary)'},'PARETE'));},
-      {'data-section-context':hideLeaf?'frame-only':'frame-and-leaf'});
+      {'data-section-context':hideLeaf?'frame-only':'frame-and-leaf'},!!options.compact);
+    if(options.compact)return svg;
     if(from&&to){
       const a=[Z.X(from[0]),Z.Y(from[1])],b=[Z.X(to[0]),Z.Y(to[1])],group=el('g',{'data-survey-dimension':options.dimension||kind,'data-from':a.join(','),'data-to':b.join(','),'data-axis':axis||'v'});
       group.append(el('line',{x1:a[0],y1:a[1],x2:b[0],y2:b[1],stroke:'var(--mt-green)','stroke-width':2}));
@@ -5214,7 +5223,17 @@ function sectionSurveyFigure(kind='closure',options={}) {
   if(from&&to)surveyDimension(svg,[X(from[0]),Y(from[1])],[X(to[0]),Y(to[1])],axis||'v',options.value||'',options.dimension||kind);
   return svg;
 }
-function surveyOptions(container,options,selected,onPick) {
+// Scelte come anteprime da toccare: ogni scheda mostra il disegno di quella scelta.
+function surveyOptions(container,options,selected,onPick,preview=null) {
+  if(preview){
+    const grid=document.createElement('div');grid.className='mt-wiz-grid mt-wiz-previews';
+    options.forEach(option=>{
+      let fig;try{fig=preview(option.id,option);}catch(error){fig=null;}
+      if(!fig)fig=el('svg',{viewBox:'0 0 320 230'});
+      const card=wizCard(option.name,option.note||'',selected===option.id,fig,()=>{if(option.disabled)return;onPick(option.id);renderWizard();});
+      card.setAttribute('data-survey-choice',option.id);card.disabled=!!option.disabled;grid.append(card);
+    });container.append(grid);return;
+  }
   const group=document.createElement('div');group.className='mt-wiz-survey-options';
   options.forEach(option=>{
     const b=document.createElement('button');b.type='button';b.className='cursor-interaction';b.textContent=option.name;
@@ -5288,14 +5307,14 @@ function measureFig(kind, val, context=null) {
   }
   return svg;
 }
-function gasketMeasureFigure(m,value,mode) {
+function gasketMeasureFigure(m,value,mode,compact=false) {
   const target=gasketReference(m.gasketRef);if(!target)return surveyFigure('frame-gasket');
   const {part,index,edge}=target,span=gasketSpan(part,index),surface=m.fig==='gasketSurface';
   const start=mode==='none'||surface||mode==='full'?0:span?.start||0;
   const width=mode==='none'||surface?0:mode==='full'?edge.len:span?.width||Math.min(4,edge.len);
   const from=surface?edge.a:overlapEdgePoint(edge,(m.fig==='gasketStart'?0:start)/edge.len);
   const to=surface?edge.b:overlapEdgePoint(edge,(m.fig==='gasketStart'?start:start+width)/edge.len);
-  return sectionSurveyFigure('frame-gasket',{focus:true,edge,gasketRef:m.gasketRef,
+  return sectionSurveyFigure('frame-gasket',{focus:true,compact,edge,gasketRef:m.gasketRef,
     sealPreview:width>0?{valid:true,start,width,end:start+width,full:mode==='full'}:null,
     ...(value?{from,to,axis:Math.abs(edge.a[0]-edge.b[0])<1e-6?'v':'h',value,dimension:m.fig}:{} )});
 }
@@ -5309,27 +5328,27 @@ function renderMeasure(m, last) {
   next.disabled = false;
   if(m.choice==='leafGasketPresence'||m.choice==='leafGasketExtent'){
     const presence=m.choice==='leafGasketPresence',span=m.leafKey?leafGasketSpan(m.leafKey):null;
-    body.append(presence?leafGasketPresenceFigure(m.present()):leafSurveyFigure('leafSealWidth',fmt(span?.width||0)+' mm',m.leafKey));
     const selected=(presence?m.present():m.full())?'yes':'no';
-    surveyOptions(body,presence?[{id:'yes',name:'Sì'},{id:'no',name:'No'}]:[{id:'yes',name:'Tutto lo scalino'},{id:'no',name:'Misuro larghezza e posizione'}],selected,id=>m.choose(id==='yes'));return;
+    if(presence){surveyOptions(body,[{id:'yes',name:'Sì'},{id:'no',name:'No'}],selected,id=>m.choose(id==='yes'),id=>leafGasketPresenceFigure(id==='yes'));return;}
+    body.append(leafSurveyFigure('leafSealWidth',fmt(span?.width||0)+' mm',m.leafKey));
+    surveyOptions(body,[{id:'yes',name:'Tutto lo scalino'},{id:'no',name:'Misuro larghezza e posizione'}],selected,id=>m.choose(id==='yes'));return;
   }
   if(m.choice==='leafGasketSurface'){
     const selected=m.selected(),edges=m.eligible(),same=(a,b)=>a.length===b.length&&a.every(key=>b.includes(key));
     const options=edges.map(edge=>({id:edge.stateKey,name:edge.name,keys:[edge.stateKey]}));
     if(door.type==='double')options.push({id:'both',name:'Entrambi gli scalini',keys:edges.map(edge=>edge.stateKey)});
     const active=options.find(option=>same(option.keys,selected));
-    body.append(leafSealChoiceFigure(selected));surveyOptions(body,options,active?.id,id=>m.choose(options.find(option=>option.id===id).keys));
+    surveyOptions(body,options,active?.id,id=>m.choose(options.find(option=>option.id===id).keys),(id,option)=>leafSealChoiceFigure(option.keys));
     next.disabled=!active;return;
   }
   if(m.choice==='leafSeam'){
     const selected=leafSeam()?.edge.stateKey,options=doorProfileEdges().filter(edge=>edge.kind==='line'&&Math.abs(edge.b[1]-edge.a[1])>1e-6).map(edge=>({id:edge.stateKey,name:edge.name}));
-    const figure=selected?doorEdgeFigure():leafSurfaceFigure();figure.setAttribute('class','mt-wiz-fig mt-survey-figure');body.append(figure);
-    surveyOptions(body,options,selected,id=>{leafProfileOptions(true).seamKey=id;refreshLeafControls();});next.disabled=!selected;return;
+    surveyOptions(body,options,selected,id=>{leafProfileOptions(true).seamKey=id;refreshLeafControls();},id=>{const o=leafProfileOptions(true),old=o.seamKey;o.seamKey=id;try{const f=doorEdgeFigure();f.setAttribute('class','mt-survey-figure');return f;}finally{o.seamKey=old;}});next.disabled=!selected;return;
   }
   if(m.choice==='gasketPresence'||m.choice==='gasketExtent'){
     const presence=m.choice==='gasketPresence',selected=(presence?m.present():m.full())?'yes':'no';
-    body.append(gasketMeasureFigure(m,null,presence?(m.present()?'full':'none'):m.full()?'full':'partial'));
-    surveyOptions(body,presence?[{id:'yes',name:'Sì',disabled:!!m.blocked},{id:'no',name:'No'}]:[{id:'yes',name:'Tutta la battuta'},{id:'no',name:'Misuro larghezza e posizione'}],selected,id=>m.choose(id==='yes'));return;
+    surveyOptions(body,presence?[{id:'yes',name:'Sì',disabled:!!m.blocked,note:m.blocked?'c’è già sull’anta':''},{id:'no',name:'No'}]:[{id:'yes',name:'Tutta la battuta'},{id:'no',name:'Misuro larghezza e posizione'}],selected,id=>m.choose(id==='yes'),
+      id=>gasketMeasureFigure(m,null,presence?(id==='yes'?'full':'none'):id==='yes'?'full':'partial',true));return;
   }
   if (m.choice === 'roundedFilmInfo' || m.choice === 'autoOverlapInfo') {
     body.append(roundedMeasureFigure());
@@ -5355,29 +5374,29 @@ function renderMeasure(m, last) {
       card.disabled=option.id==='butt'&&!doorFilmPlan().both;grid.append(card);
     });return;
   }
-  if(['doorTarget','doorClosure','doorReference','doorBearing','doorStop','fitBasis'].includes(m.choice)){
-    let options,selected,pick,kind='closure',edge;
-    if(m.choice==='doorTarget'){options=doorTargetOptions();selected=doorStopTarget();pick=setDoorStopTarget;kind='closureTarget';edge=selectedDoorStop(geometry())?.edge;}
-    if(m.choice==='fitBasis'){options=[{id:'leaf',name:'Misuro l’anta',disabled:!['standard','double'].includes(model().jamb)||door.type==='double'&&model().jamb!=='double'},{id:'frame',name:'Misuro lo stipite',disabled:!['standard','double'].includes(model().jamb)||door.type==='double'&&model().jamb!=='double'},{id:'both',name:'Misuro entrambi'}];selected=door.fitBasis;pick=setFitBasis;kind='fitBasis';next.disabled=!selected;}
-    if(m.choice==='doorClosure'){kind='closureMode';options=doorClosureOptions().map(option=>({...option,disabled:!fitCandidate({closure:option.id})}));selected=door.closure;pick=setDoorClosure;}
-    if(m.choice==='doorReference'){options=doorReferenceOptions().map(option=>({...option,disabled:!fitCandidate({reference:option.id})}));selected=door.reference;pick=setDoorReference;kind='closureReference';}
+  if(['doorTarget','doorClosure','doorReference','doorBearing','doorStop'].includes(m.choice)){
+    // Anteprime della sezione per ogni scelta. Il rilievo comanda: anche una
+    // scelta che non combacia con le misure del momento si può toccare.
+    let options,selected,pick,kind='closure',changeOf,edgeOf=()=>null;
+    const refresh=()=>{refreshDoorSeat();clearFrameSealConflicts();sync();drawDoor();updateBadge();};
+    if(m.choice==='doorTarget'){options=doorTargetOptions();selected=doorStopTarget();pick=id=>setDoorStopTarget(id,true);kind='closureTarget';changeOf=id=>doorTargetChange(id);edgeOf=()=>selectedDoorStop(geometry())?.edge;}
+    if(m.choice==='doorClosure'){kind='closureMode';options=doorClosureOptions().map(option=>({...option,disabled:!fitCandidate({closure:option.id})}));selected=door.closure;pick=id=>setDoorClosure(id,true);changeOf=id=>({closure:id,...(id!=='flush'&&!(door.projection>0)?{projection:5}:{})});}
+    if(m.choice==='doorReference'){options=doorReferenceOptions().map(option=>({...option,disabled:!fitCandidate({reference:option.id})}));selected=door.reference;pick=id=>setDoorReference(id,true);kind='closureReference';changeOf=id=>({reference:id});}
     if(m.choice==='doorBearing'){
-      options=doorBearingOptions();
-      selected=doorBearing();pick=id=>{if(!fitCandidate({bearing:id}))return;door.bearing=id;door.bearingMeasured=true;const match=fitPairs().find(pair=>pair.bearing===id);if(match)door.stopSurfaceKey=match.stop;refreshDoorSeat();clearFrameSealConflicts();sync();drawDoor();updateBadge();};kind='closureBearing';
+      options=doorBearingOptions();selected=doorBearing();kind='closureBearing';
+      changeOf=id=>{const match=fitPairs().find(pair=>pair.bearing===id);return{bearing:id,bearingMeasured:true,...(match?{stopSurfaceKey:match.stop}:{})};};
+      pick=id=>{Object.assign(door,changeOf(id));refresh();};
     }
     if(m.choice==='doorStop'){
       options=rebateEdges().map(stop=>({id:edgeStateKey(stop.part,stop.index),name:stop.label,disabled:!fitCandidate({stopSurfaceKey:edgeStateKey(stop.part,stop.index)})}));
-      selected=selectedDoorStop(geometry())?.edge.stateKey;pick=id=>{door.stopSurfaceKey=id;refreshDoorSeat();sync();drawDoor();updateBadge();};edge=selectedDoorStop(geometry())?.edge;
+      selected=selectedDoorStop(geometry())?.edge.stateKey;changeOf=id=>({stopSurfaceKey:id});pick=id=>{door.stopSurfaceKey=id;refresh();};edgeOf=()=>selectedDoorStop(geometry())?.edge;
     }
-    body.append(sectionSurveyFigure(kind,{focus:m.choice==='doorBearing'||m.choice==='doorTarget',edge}));surveyOptions(body,options,selected,pick);
-    // Il rilievo comanda: la guida non si blocca mai. Se con le misure attuali
-    // anta e stipite non combaciano, si avvisa e si può proseguire.
-    if(m.choice!=='fitBasis'){
-      const ok=options.some(option=>option.id===selected&&!option.disabled);
-      next.disabled=!options.some(option=>option.id===selected);
-      if(!ok&&selected){const note=document.createElement('p');note.className='mt-error';note.setAttribute('data-fit-warning','true');
-        note.textContent='Con le misure attuali anta e stipite non combaciano'+(fitGeometryError()?' ('+fitGeometryError().replace(/\.$/,'').toLocaleLowerCase('it-IT')+')':'')+'. Puoi proseguire: misura lo stipite e controlla l’avviso alla fine.';body.append(note);}
-    }
+    options=options.map(option=>({...option,disabled:false,note:option.disabled?'non combacia con le misure':''}));
+    surveyOptions(body,options,selected,pick,id=>previewWith(changeOf(id),()=>sectionSurveyFigure(kind,{focus:true,compact:true,edge:edgeOf()})));
+    const ok=!options.find(option=>option.id===selected)?.note;
+    next.disabled=!options.some(option=>option.id===selected);
+    if(!ok&&selected){const note=document.createElement('p');note.className='mt-error';note.setAttribute('data-fit-warning','true');
+      note.textContent='Con le misure attuali anta e stipite non combaciano'+(fitGeometryError()?' ('+fitGeometryError().replace(/\.$/,'').toLocaleLowerCase('it-IT')+')':'')+'. Puoi proseguire: misura lo stipite e controlla l’avviso alla fine.';body.append(note);}
     return;
   }
   if (m.choice) {

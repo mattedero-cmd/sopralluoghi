@@ -60,7 +60,15 @@ luce minima.
 stipite si misurano sempre entrambi, ciascuno per conto suo (con la doppia
 battuta si chiedono P1 e P2); se non combaciano compare un avviso.
 La guida non si blocca mai: se con le misure del momento anta e stipite non
-combaciano, il passo mostra l'avviso e «Avanti» resta attivo. Il mancato
+combaciano, il passo mostra l'avviso e «Avanti» resta attivo.
+Anche le scelte che non combaciano restano toccabili (scritta «non combacia
+con le misure»).
+
+**Scelte con anteprima:** quando ci sono più scelte, ognuna è una scheda con il
+proprio disegno da toccare direttamente (maniglia, traverso, numero di ante,
+posizione del coprifilo, coprifili uguali, appoggio e chiusura dell'anta,
+guarnizioni). Per le scelte sulla sezione l'anteprima mostra il dettaglio
+ingrandito. Il mancato
 combaciare è un avviso nella scheda Anta e non annulla i tagli della pellicola.
 
 Nei dettagli del coprifilo la **parete è a righe**, lo **stipite ha un
