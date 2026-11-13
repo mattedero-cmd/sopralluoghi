@@ -3767,6 +3767,11 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     // una copia "solo etichetta" non ha un editor proprio (la misura è
     // dell'originale): si può solo spostare o eliminare
     if (a.tipo === 'quotaPoligono' && a.soloEtichetta) return;
+    // PORTA: un secondo tocco sull'etichetta già selezionata apre la sua scheda
+    if (a.tipo === 'etichetta' && a.portaId) {
+      setRilievoAperto({ modo: 'scheda', portaId: a.portaId });
+      return;
+    }
     // PIANTA: niente ambiente dedicato — si lavora tutto sul canvas
     // (quote inline, vincoli tap-tap, comandi della barra della pianta)
     if (a.tipo === 'quotaPoligono' && foto.ePianta) return;
