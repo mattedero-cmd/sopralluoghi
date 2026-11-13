@@ -3949,13 +3949,14 @@ function drawDoorEdge(svg,width,bottom=doorView==='bottom',standalone=false) {
   svg.append(group);
   const line=(a,c)=>svg.append(el('line',{x1:a[0],y1:a[1],x2:c[0],y2:c[1],stroke:'var(--mt-secondary)','stroke-width':.75}));
   const dim=(a,c,label,x,y)=>{line(a,c);[a,c].forEach(p=>line([p[0]-2.5,p[1]+2.5],[p[0]+2.5,p[1]-2.5]));svg.append(el('text',{x,y,'text-anchor':'middle','font-size':12},label));};
-  dim([X(0),32],[X(S),32],'S '+fmt(S),cx,23);
+  // tre righe di quote ben distanziate: sul telefono non si sovrappongono
+  dim([X(0),20],[X(S),20],'S '+fmt(S),cx,15);
   if(b){
     const qx=X(S)+12,first=doorLip(),firstLabelY=(Y(0)+Y(first))/2+4;dim([qx,Y(0)],[qx,Y(first)],'Lb '+fmt(first),qx+20,firstLabelY);
-    dim([X(0),45],[X(sb),45],'Sb '+fmt(sb),(X(0)+X(sb))/2,42);
+    dim([X(0),36],[X(sb),36],'Sb '+fmt(sb),(X(0)+X(sb))/2,31);
     if(door.type==='double'){
       dim([qx,Y(first)],[qx,Y(b)],'Lb2 '+fmt(door.lip2),qx+20,Math.max(firstLabelY+14,(Y(first)+Y(b))/2+4));
-      dim([X(0),55],[X(doorRebateAt2()),55],'Sb2 '+fmt(doorRebateAt2()),(X(0)+X(doorRebateAt2()))/2,53);
+      dim([X(0),52],[X(doorRebateAt2()),52],'Sb2 '+fmt(doorRebateAt2()),(X(0)+X(doorRebateAt2()))/2,47);
     }
   }
   const label=bottom?'Sotto · verso il pavimento':'Sopra e lati';
@@ -5078,7 +5079,33 @@ function flipLeafEdge(svg){
     text.setAttribute('transform',(old+' translate(0 '+(2*y)+') scale(1 -1)').trim());});
   svg.setAttribute('data-edge-flipped','true');
 }
-function orientWizardFigures(){$('.mt-wiz-body').querySelectorAll('svg').forEach(svg=>{flipLeafEdge(svg);orientSurveySvg(svg);});}
+function orientWizardFigures(){$('.mt-wiz-body').querySelectorAll('svg').forEach(svg=>{flipLeafEdge(svg);orientSurveySvg(svg);});
+  requestAnimationFrame(()=>$('.mt-wiz-body').querySelectorAll('svg').forEach(svg=>declutterTexts(svg)));}
+// SCRITTE SEMPRE LEGGIBILI. Sul telefono le figure sono piccole e una scritta
+// (PARETE, una quota) può finire sotto un pezzo, la lente o la sua linea, che
+// vengono disegnati dopo. Ogni scritta coperta si ridisegna sopra a tutto, nello
+// stesso punto, con un bordino del colore della carta; l'originale si nasconde.
+function declutterTexts(svg){
+  if(!svg.isConnected||svg.getAttribute('data-decluttered')==='true')return;
+  const box=svg.getBoundingClientRect();if(box.width<20||box.height<20)return;
+  const root=svg.getScreenCTM();if(!root)return;
+  const inv=root.inverse(),scale=Math.hypot(root.a,root.b)||1;
+  [...svg.querySelectorAll('text')].forEach(t=>{
+    if(!(t.textContent||'').trim()||t.getAttribute('data-declutter')==='copy')return;
+    const r=t.getBoundingClientRect();if(r.width<1||r.height<1)return;
+    const cx=(r.left+r.right)/2,cy=(r.top+r.bottom)/2;
+    const points=[[cx,cy],[r.left+r.width*.2,cy],[r.right-r.width*.2,cy]];
+    const covered=points.some(([x,y])=>{const top=document.elementFromPoint(x,y);return top&&svg.contains(top)&&top!==t&&!t.contains(top);});
+    if(!covered)return;
+    const cs=getComputedStyle(t),m=t.getScreenCTM(),k=m?Math.hypot(m.a,m.b)/scale:1;
+    const pt=svg.createSVGPoint();pt.x=cx;pt.y=cy;const q=pt.matrixTransform(inv);
+    const copy=el('text',{x:q.x,y:q.y,'text-anchor':'middle','dominant-baseline':'central','font-size':(parseFloat(cs.fontSize)||11)*k,
+      'font-weight':cs.fontWeight,'letter-spacing':cs.letterSpacing==='normal'?0:cs.letterSpacing,fill:cs.fill,stroke:'var(--mt-paper)','stroke-width':3,
+      'paint-order':'stroke','stroke-linejoin':'round','pointer-events':'none','data-declutter':'copy'},t.textContent);
+    t.setAttribute('opacity','0');svg.append(copy);
+  });
+  svg.setAttribute('data-decluttered','true');
+}
 function surveyMaterials(svg){
   const serial=++surveyFigureSerial,defs=el('defs'),wall='mt-survey-wall-'+serial,jamb='mt-survey-jamb-'+serial;
   [[wall,'M -2 2 L 2 -2 M 0 8 L 8 0 M 6 10 L 10 6','var(--mt-wall)'],[jamb,'M 0 0 L 8 8 M 8 0 L 0 8','var(--mt-wood)']].forEach(([id,d,fill])=>{

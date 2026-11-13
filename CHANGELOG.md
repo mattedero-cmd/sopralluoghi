@@ -10,6 +10,17 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.91.0 — Scritte leggibili nella guida, anche sul telefono
+
+- Nelle figure piccole della guida una scritta (PARETE, una quota) poteva
+  finire sotto un pezzo, la lente o la sua linea. Adesso, a ogni passo, le
+  scritte coperte si ridisegnano sopra la grafica nello stesso punto, con un
+  bordino chiaro.
+- Nella scheda del sormonto sul bordo dell'anta a due scalini le quote dei due
+  scalini erano una sopra l'altra: righe delle quote distanziate.
+- Controllo automatico su tutta la guida (iPhone 13 e iPhone SE, più
+  configurazioni): nessuna scritta tagliata, coperta o sovrapposta.
+
 ## 1.90.0 — Coprifili raggiati a filo con la battuta stretta
 
 - Con coprifili **raggiati o smussati a filo**, quando lo spazio della battuta
