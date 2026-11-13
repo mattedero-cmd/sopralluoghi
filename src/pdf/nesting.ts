@@ -627,8 +627,14 @@ export function contenutoNesting(
     { text: 'Piano di taglio', style: 'h1', pageBreak: 'before', tocItem: true } as Content
   ];
   const pagine: Content[] = [];
+  // solo le essenze con qualcosa da tagliare: un «Materiale 1» vuoto (un
+  // cantiere di sole porte) non deve lasciare intestazioni né tabelle vuote
+  const materiali = doc.materiali.filter((m) =>
+    m.pezzi.some((p) => Math.round(p.quantita) > 0)
+  );
+  if (materiali.length === 0 && !doc.porte?.riepilogo) return [];
 
-  for (const m of doc.materiali) {
+  for (const m of materiali) {
     const par = parametriDi(m);
     // stessi pezzi e stesso motore dell'anteprima: il PDF non può mostrare
     // una disposizione diversa da quella che si vede a schermo
@@ -742,6 +748,7 @@ export async function generaPdfNesting(
       copertinaProf: { fontSize: 10, color: COLORI_PDF.grigio },
       h1: { fontSize: 20, bold: true, color: BLU, margin: [0, 0, 0, 12] },
       h2: { fontSize: 15, bold: true, color: BLU, margin: [0, 10, 0, 4] },
+      h3: { fontSize: 12.5, bold: true, color: '#33424f', margin: [0, 0, 0, 4] },
       sottotitolo: { fontSize: 10, color: COLORI_PDF.grigio },
       dati: { fontSize: 10, color: COLORI_PDF.grigio, lineHeight: 1.3 },
       th: { fontSize: 9, bold: true, color: '#ffffff', fillColor: BLU },

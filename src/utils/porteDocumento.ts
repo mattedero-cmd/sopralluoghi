@@ -16,7 +16,14 @@ import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type { ID, Porta } from '../db/types';
 import { contaPorte, nestingDiProgetto, portePerProgetto } from '../db/repository';
 import { migraDocumento } from './documentoNesting';
-import { modoPorta, type ModoPorta, type PorteNesting, type RiepilogoStrisce } from './portePiano';
+import {
+  gruppiMontaggio,
+  modoPorta,
+  nomePorte,
+  type ModoPorta,
+  type PorteNesting,
+  type RiepilogoStrisce
+} from './portePiano';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -142,12 +149,22 @@ export interface MontaggioPorta {
   porta: Porta;
   quantita: number;
   modo: ModoPorta;
-  /** pagine del PDF di montaggio, come immagini */
+  /** numero del gruppo di istruzioni di montaggio */
+  gruppo: number;
+}
+
+export interface GruppoDelReport {
+  numero: number;
+  /** «Porte A, B, C» */
+  nome: string;
+  porte: MontaggioPorta[];
+  /** pagine delle istruzioni comuni, come immagini (vuoto se non generate) */
   pagine: string[];
 }
 
 export interface PorteDelReport {
   porte: MontaggioPorta[];
+  gruppi: GruppoDelReport[];
   /** piano delle bobine delle porte a strisce (null se non ce ne sono) */
   bobine: RiepilogoStrisce | null;
 }
@@ -177,18 +194,34 @@ export async function porteDelReport(
       rilievo.manda({ tipo: 'apri', modo: 'lavoro', porte: strisce, piano });
       bobine = ((await risposta).riepilogo as RiepilogoStrisce | null) ?? null;
     }
+    // un'istruzione per famiglia costruttiva, fatta sulla prima porta del gruppo
+    const gruppi: GruppoDelReport[] = [];
     const porte: MontaggioPorta[] = [];
-    for (const p of usate) {
-      const porta = ctx.porte.find((x) => x.id === p.id)!;
-      if (!p.config || typeof p.config !== 'object' || !Object.keys(p.config).length) continue;
-      avanzamento?.(`Porte: montaggio ${p.nome}…`);
-      const file = rilievo.aspetta('file', 90000);
-      rilievo.manda({ tipo: 'pdf', id: p.id, porte: usate, piano });
-      const m = await file;
-      if (!(m.blob instanceof Blob)) continue;
-      porte.push({ porta, quantita: p.qty, modo: p.modo, pagine: await pagineInImmagini(m.blob) });
+    for (const g of gruppiMontaggio(ctx.porte.filter((p) => usate.some((u) => u.id === p.id)))) {
+      const membri: MontaggioPorta[] = g.porte.map((porta) => {
+        const u = usate.find((x) => x.id === porta.id)!;
+        return { porta, quantita: u.qty, modo: u.modo, gruppo: g.numero };
+      });
+      porte.push(...membri);
+      const nome = nomePorte(g.porte);
+      const capo = usate.find((x) => x.id === g.porte[0].id)!;
+      let pagine: string[] = [];
+      if (capo.config && typeof capo.config === 'object' && Object.keys(capo.config).length) {
+        avanzamento?.(`Porte: montaggio ${nome}…`);
+        const file = rilievo.aspetta('file', 90000);
+        rilievo.manda({
+          tipo: 'pdf',
+          id: capo.id,
+          porte: usate,
+          piano,
+          gruppo: { nome, qty: membri.reduce((n, m) => n + m.quantita, 0) }
+        });
+        const m = await file;
+        if (m.blob instanceof Blob) pagine = await pagineInImmagini(m.blob);
+      }
+      gruppi.push({ numero: g.numero, nome, porte: membri, pagine });
     }
-    return { porte, bobine };
+    return { porte, gruppi, bobine };
   } finally {
     rilievo.chiudi();
   }

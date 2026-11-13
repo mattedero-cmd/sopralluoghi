@@ -40,6 +40,10 @@ export interface RiepilogoStrisce {
     metri: number;
     rotoli: number;
     pezzi: Array<{ larghezza: number; lunghezza: number; quantita: number; nomi: string[] }>;
+    /** rotoli di scorta di questa larghezza */
+    scorta?: number;
+    /** pezzi previsti, porta per porta */
+    dettaglio?: Array<{ pezzo: string; porta: string; quantita: number; larghezza: number; lunghezza: number }>;
   }>;
   /** come si taglia ogni gruppo di bobine uguali */
   tagli: Array<{
@@ -188,4 +192,35 @@ export function normalizzaPorte(g: unknown): PorteNesting | undefined {
       : {}),
     ...(typeof s.firma === 'string' ? { firma: s.firma } : {})
   };
+}
+
+/** Un gruppo di porte con le stesse istruzioni di montaggio. */
+export interface GruppoMontaggio {
+  /** 1, 2, 3… nell'ordine delle porte */
+  numero: number;
+  porte: Porta[];
+}
+
+/**
+ * STESSE ISTRUZIONI DI MONTAGGIO: porte della stessa famiglia (la porta creata
+ * da zero e le sue copie) con la stessa firma costruttiva. Una porta senza
+ * firma (salvata prima che esistesse) fa gruppo a sé: mai istruzioni comuni
+ * senza la certezza che la costruzione sia la stessa.
+ */
+export function gruppiMontaggio(porte: Porta[]): GruppoMontaggio[] {
+  const gruppi = new Map<string, Porta[]>();
+  for (const p of porte) {
+    const chiave = `${p.famiglia ?? p.id}|${p.firma ?? p.id}`;
+    const g = gruppi.get(chiave);
+    if (g) g.push(p);
+    else gruppi.set(chiave, [p]);
+  }
+  return [...gruppi.values()].map((porte, i) => ({ numero: i + 1, porte }));
+}
+
+/** «Porta A» o «Porte A, B, C». */
+export function nomePorte(porte: Porta[]): string {
+  return porte.length === 1
+    ? porte[0].nome
+    : `Porte ${porte.map((p) => p.lettera).join(', ')}`;
 }

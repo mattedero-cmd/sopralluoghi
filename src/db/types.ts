@@ -1438,6 +1438,18 @@ export interface Porta {
   righe: RigaPorta[];
   /** foto su cui è stata rilevata */
   fotoRilievoId?: ID | null;
+  /**
+   * FAMIGLIA COSTRUTTIVA: la porta creata da zero da cui discende (se stessa
+   * per una porta nuova). Le copie fatte con «Simile» restano nella famiglia.
+   */
+  famiglia?: ID;
+  /**
+   * Firma costruttiva calcolata dal rilievo porta: la configurazione senza le
+   * misure che cambia la modifica veloce. Stessa famiglia e stessa firma =
+   * stesse istruzioni di montaggio; una modifica avanzata che cambia la
+   * costruzione cambia la firma e la porta va in un gruppo suo.
+   */
+  firma?: string;
   creatoIl: number;
   modificatoIl: number;
 }

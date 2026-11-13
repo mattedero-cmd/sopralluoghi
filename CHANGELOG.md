@@ -10,6 +10,31 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.89.0 — Il PDF delle porte, da consegnare a chi taglia e monta
+
+- **Niente sezioni vuote.** Un'essenza senza pezzi (il «Materiale 1» di un
+  cantiere di sole porte) non compare più nei PDF: niente intestazioni né
+  tabelle vuote; se non c'è niente da impaginare manca anche il titolo.
+- **Istruzioni di montaggio per famiglia costruttiva.** Ogni porta ricorda da
+  quale porta creata da zero discende (le copie fatte con «Simile» restano in
+  famiglia) e una firma della sua costruzione. Stessa famiglia e stessa firma
+  = un solo gruppo di istruzioni («GRUPPO 1 – ISTRUZIONI DI MONTAGGIO – PORTE
+  A, B, C»). Una porta rifatta da zero è un modello nuovo; una copia cambiata
+  nella costruzione con la modifica avanzata va in un gruppo suo.
+- **Elenco pezzi di ogni porta**, dopo le istruzioni del suo gruppo: maestà e
+  anta separate, numeri dei disegni (i due montanti uguali insieme, «3 · 5»),
+  larghezza e lunghezza in evidenza, pezzi per porta, totale e rotolo (o kit).
+- **Elenco delle porte** senza la descrizione: porta, quantità, tipo di
+  taglio e gruppo di istruzioni.
+- **Bobine disegnate come nell'app**: ogni bobina con le strisce in
+  proporzione e la loro misura, scorte in giallo, avanzo in grigio. Sopra, in
+  grande, bobine da tagliare, larghezza della bobina e lunghezza del rotolo.
+  Poi i rotoli risultanti (quanti, larghezza e lunghezza in evidenza, senza
+  le misure tra parentesi) e, per ogni rotolo, la tabella dei «Pezzi previsti»
+  con pezzo, porta, quantità e dimensioni di taglio.
+- **Via le sigle dai disegni**: nelle sezioni del PDF non ci sono più «D 120»,
+  «b 12», «s 22»; dove una quota serve resta solo il numero («40»).
+
 ## 1.88.0 — Le porte nel PDF del sopralluogo
 
 - **Capitolo Porte in fondo al PDF del sopralluogo** (interruttore «Porte:

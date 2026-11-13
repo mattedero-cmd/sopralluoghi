@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Porta } from '../../db/types';
 import { materialeNuovo, migraDocumento, type DocumentoNesting } from '../documentoNesting';
-import { firmaStrisce, NOME_MATERIALE_KIT, pezziKit, sincronizzaKit } from '../portePiano';
+import { firmaStrisce, gruppiMontaggio, NOME_MATERIALE_KIT, nomePorte, pezziKit, sincronizzaKit } from '../portePiano';
 
 const righe = [
   { nome: 'Traverso · Stipite', larghezza: 158, lunghezza: 854, anta: false },
@@ -103,5 +103,16 @@ describe('porte nel piano di taglio', () => {
   it('la firma cambia con le quantità', () => {
     const p = [porta('a', 'A')];
     expect(firmaStrisce(p, new Map([['a', 1]]))).not.toBe(firmaStrisce(p, new Map([['a', 2]])));
+  });
+
+  it('stessa famiglia e stessa firma: stesse istruzioni; una porta nuova fa gruppo a sé', () => {
+    const a = { ...porta('a', 'A'), famiglia: 'a', firma: 'x' };
+    const b = { ...porta('b', 'B'), famiglia: 'a', firma: 'x' };
+    const c = { ...porta('c', 'C'), famiglia: 'a', firma: 'y' }; // modificata nella costruzione
+    const d = { ...porta('d', 'D'), famiglia: 'd', firma: 'x' }; // da zero, costruita uguale
+    const e = porta('e', 'E'); // salvata prima delle famiglie
+    const g = gruppiMontaggio([a, b, c, d, e]);
+    expect(g.map((x) => nomePorte(x.porte))).toEqual(['Porte A, B', 'Porta C', 'Porta D', 'Porta E']);
+    expect(g.map((x) => x.numero)).toEqual([1, 2, 3, 4]);
   });
 });

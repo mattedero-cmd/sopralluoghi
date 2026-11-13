@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ID, Porta } from '../db/types';
-import { salvaPorta } from '../db/repository';
+import { leggiPorta, salvaPorta } from '../db/repository';
 import { contestoPorte } from '../utils/porteDocumento';
 import { ModaleAnteprimaPdf } from './ModaleAnteprimaPdf';
 import { Modale } from './comuni';
@@ -102,7 +102,11 @@ export function RilievoPorta({
         manda({ tipo: 'apri', modo, id: portaId ?? null, porte: perIframe, piano });
       } else if (m.tipo === 'salva') {
         const id = (corrente.current ?? null) as ID | null;
+        // una copia («Simile») resta nella famiglia della porta di partenza
+        const origine = !id && modo === 'copia' && portaId ? await leggiPorta(portaId) : undefined;
         const porta = await salvaPorta({
+          famiglia: origine ? (origine.famiglia ?? origine.id) : undefined,
+          firma: typeof m.firma === 'string' ? m.firma : undefined,
           id,
           progettoId,
           descrizione: String(m.descrizione ?? ''),

@@ -404,6 +404,8 @@ export async function duplicaProgetto(id: ID, nuovoNome?: string): Promise<Proge
         porte.map((p) => ({
           ...p,
           id: nuovePorte.get(p.id) as ID,
+          // la famiglia si ritrova fra le porte copiate
+          famiglia: nuovePorte.get(p.famiglia ?? p.id) ?? (nuovePorte.get(p.id) as ID),
           progettoId: copia.id,
           fotoRilievoId: p.fotoRilievoId ? nuoveFoto.get(p.fotoRilievoId) ?? null : null,
           creatoIl: ora(),
@@ -1524,6 +1526,9 @@ export async function salvaPorta(dati: {
   config: unknown;
   righe: Porta['righe'];
   fotoRilievoId?: ID | null;
+  /** famiglia della porta da cui è copiata (assente: porta nuova) */
+  famiglia?: ID;
+  firma?: string;
 }): Promise<Porta> {
   return scrivi('salvare la porta', () =>
     db.transaction('rw', [db.porte], async () => {
@@ -1534,6 +1539,7 @@ export async function salvaPorta(dati: {
           descrizione: dati.descrizione,
           config: dati.config,
           righe: dati.righe,
+          ...(dati.firma ? { firma: dati.firma } : {}),
           modificatoIl: ora()
         };
         await db.porte.put(agg);
@@ -1543,8 +1549,11 @@ export async function salvaPorta(dati: {
         (p) => p.lettera
       );
       const lettera = prossimaLetteraPorta(usate);
+      const id = nuovoId();
       const nuova: Porta = {
-        id: nuovoId(),
+        id,
+        famiglia: dati.famiglia ?? id,
+        ...(dati.firma ? { firma: dati.firma } : {}),
         progettoId: dati.progettoId,
         nome: `Porta ${lettera}`,
         lettera,

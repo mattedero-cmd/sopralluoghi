@@ -1813,7 +1813,7 @@ function render(svg,g,mini=false,size=null){const box=size||svg.getBoundingClien
   });}
  svg.append(el('title',{},'Sezione A–A della maestà: esterno a sinistra, interno a destra, contorni pieni delle stecche, parete e anta di riferimento'));
  svg.append(el('text',{x:14,y:20,'font-size':11},'ESTERNO'));svg.append(el('text',{x:w-14,y:20,'font-size':11,'text-anchor':'end'},'INTERNO'));
- if(!clean)drawFrameQuotes(svg,g,p,X,Y,w,h,compact);
+ if(!clean&&!size?.print)drawFrameQuotes(svg,g,p,X,Y,w,h,compact);
  if((g.wall.right-g.wall.left)*k>75)svg.append(el('text',{x:X(g.depth/2),y:Y((g.wall.top+g.wall.bottom)/2),'text-anchor':'middle','font-size':11,stroke:'var(--mt-wall)','stroke-width':4,'paint-order':'stroke'},'PARETE'));
  if(!clean&&!compact){const part=g.parts[draft().part],e=part.edges[Math.min(draft().edge,part.edges.length-1)];let mx=(X(e.a[0])+X(e.b[0]))/2,my=(Y(e.a[1])+Y(e.b[1]))/2;const vert=Math.abs(e.b[0]-e.a[0])<Math.abs(e.b[1]-e.a[1]);mx+=vert?18:0;my+=vert?0:18;const label=`${draft().part+1}.${draft().edge+1}`,width=label.length*6;mx=Math.max(width,Math.min(w-width,mx));my=Math.min(h-12,my);svg.append(el('text',{x:mx,y:my,'text-anchor':'middle','font-size':11,stroke:'var(--mt-board)','stroke-width':4,'paint-order':'stroke'},label));}
  if(typeof size?.decorate==='function')size.decorate(svg,X,Y,k,g);
@@ -5969,11 +5969,21 @@ const HOST=new URLSearchParams(location.search).has('ospite')&&window.parent!==w
 const host={saved:null,lavoro:false,timer:0};
 function hostPost(msg){window.parent.postMessage({sorgente:'rilievo-porta',...msg},location.origin);}
 function hostDesc(){return `${model().name} · ${doorClosureName()} · luce ${fmt(luce.W)} × ${fmt(luce.H)} · `+eachLeaf(i=>leafName(i).toLocaleLowerCase('it-IT')+' '+fmt(door.width)+' × '+fmt(door.height)).join(' / ')+(state.hasHead===false?' · senza traverso':'');}
+// Due porte con la stessa firma si montano allo stesso modo: la firma è la
+// configurazione senza le misure che cambia la modifica veloce (luce, larghezza
+// e altezza dell'anta) e senza i dati derivati.
+function hostSignature(conf){
+  const c=JSON.parse(JSON.stringify(conf));delete c.luce;delete c.fit;
+  (c.leaves||[]).forEach(l=>{delete l.width;delete l.height;delete l.widthMeasured;delete l.heightMeasured;delete l.fit;});
+  const sort=v=>Array.isArray(v)?v.map(sort):v&&typeof v==='object'?Object.keys(v).sort().reduce((o,k)=>(o[k]=sort(v[k]),o),{}):v;
+  const txt=JSON.stringify(sort(c));let h=0;for(let i=0;i<txt.length;i++)h=(h*31+txt.charCodeAt(i))|0;return 'f'+(h>>>0).toString(36)+'-'+txt.length;
+}
 function hostDirty(){return host.saved!==JSON.stringify(snapshotConfig());}
 function hostSave(){
   const rows=currentRows();
   if(!rows){reviewMessage='Ci sono misure da sistemare: la porta non è stata salvata.';renderReview();return;}
-  hostPost({tipo:'salva',id:state.editingType||null,config:snapshotConfig(),descrizione:hostDesc(),
+  const config=snapshotConfig();
+  hostPost({tipo:'salva',id:state.editingType||null,config,firma:hostSignature(config),descrizione:hostDesc(),
     righe:rows.map(r=>({nome:r.name,larghezza:roundCut(r.width),lunghezza:roundCut(r.height),anta:!!r.door}))});
 }
 async function hostInstructions(button){
@@ -5990,7 +6000,12 @@ function hostPlanSummary(){
   const gw=planWidths(dem),{masters,patterns}=planMasters(gw);
   return{larghezza:plan.masterW,metriRotolo:plan.rollLen,bobine:masters.length,
     rotoli:gw.map(g=>{const w=Math.max(g.width,...masters.flatMap(m=>m.cuts.filter(c=>c.g===g&&!c.spare).map(c=>c.w+c.add)));
-      return{larghezza:w,da:g.min,metri:Math.round(g.m*100)/100,rotoli:g.rolls.length,pezzi:g.items.map(d=>({larghezza:d.w,lunghezza:d.l,quantita:d.qty,nomi:[...d.labels]}))};}),
+      const det=new Map();
+      job.types.filter(t=>t.mode!=='kit').forEach(t=>t.rows.forEach(r=>{if(!g.ws.includes(r.width))return;
+        const nome=r.label.replace(/ · Striscia \d+/,'').replace(/^Montante (DX|SX)\b/,'Montanti'),k=t.name+'|'+nome+'|'+r.width+'|'+r.length;
+        const e=det.get(k)||{pezzo:nome,porta:t.name,quantita:0,larghezza:r.width,lunghezza:r.length};e.quantita+=t.qty;det.set(k,e);}));
+      const scorta=masters.reduce((n,m)=>n+m.cuts.filter(c=>c.g===g&&c.spare).length,0);
+      return{larghezza:w,da:g.min,metri:Math.round(g.m*100)/100,rotoli:g.rolls.length,scorta,pezzi:g.items.map(d=>({larghezza:d.w,lunghezza:d.l,quantita:d.qty,nomi:[...d.labels]})),dettaglio:[...det.values()]};}),
     tagli:patterns.map(p=>({bobine:p.n,strisce:p.cuts.map(c=>({larghezza:c.w+c.add,scorta:!!c.spare,intero:!!c.whole})),daDecidere:!!p.pending}))};
 }
 function hostSchedulePlan(){
@@ -6030,7 +6045,7 @@ function hostMessage(ev){
   }else if(m.tipo==='stato'){
     hostPost({tipo:'stato',modificata:hostDirty()});
   }else if(m.tipo==='pdf'&&t){
-    buildInstructions(t).then(blob=>hostPost({tipo:'file',blob,nome:'Istruzioni montaggio '+t.name+'.pdf'}))
+    buildInstructions(m.gruppo?{...t,name:m.gruppo.nome,qty:m.gruppo.qty,group:true,lists:false}:t).then(blob=>hostPost({tipo:'file',blob,nome:'Istruzioni montaggio '+t.name+'.pdf'}))
       .catch(()=>hostPost({tipo:'errore',testo:'Non riesco a creare il PDF.'}));
   }
 }
@@ -6048,7 +6063,9 @@ function svgForPrint(svg,w,h){
   const clone=svg.cloneNode(true);clone.setAttribute('xmlns',NS);clone.setAttribute('width',w);clone.setAttribute('height',h);
   const fix=v=>v.replace(/var\((--[\w-]+)\)/g,(_,n)=>printColor(n));
   [clone,...clone.querySelectorAll('*')].forEach(node=>[...node.attributes].forEach(a=>{if(a.value.includes('var('))node.setAttribute(a.name,fix(a.value));}));
-  clone.querySelectorAll('text').forEach(t=>{if(!t.getAttribute('fill'))t.setAttribute('fill','#27333b');t.setAttribute('font-family','Helvetica, Arial, sans-serif');});
+  clone.querySelectorAll('text').forEach(t=>{if(!t.getAttribute('fill'))t.setAttribute('fill','#27333b');t.setAttribute('font-family','Helvetica, Arial, sans-serif');
+    // sigle di quota («S 40», «Lb 12»): in stampa resta la misura
+    const m=/^[A-Za-z]{1,3}\d?\s+(-?[\d.,]+(?:\s*mm)?)$/.exec((t.textContent||'').trim());if(m&&!t.children.length)t.textContent=m[1];});
   return new XMLSerializer().serializeToString(clone);
 }
 function svgToPng(svg,w,h,scale=2.5){
@@ -6129,7 +6146,7 @@ function framePerspectiveFigure(items,side){
 }
 function sectionNumbersFigure(rows,piece){
   const svg=el('svg',{role:'img'}),g=geometry();
-  render(svg,g,false,{width:560,height:330,decorate:(target,X,Y,k)=>{
+  render(svg,g,false,{width:560,height:330,print:true,decorate:(target,X,Y,k)=>{
     rows.forEach(({r,n})=>{
       const part=g.parts.find(q=>q.key===r.partKey);if(!part)return;
       const list=strips(part,piece),strip=list[Math.min(r.strip||0,list.length-1)];if(!strip?.segs?.length)return;
@@ -6189,15 +6206,17 @@ async function buildInstructions(type){
       body.forEach(cells=>{if(y>280){doc.addPage();y=18;row(head,true);line();y+=6;}row(cells,false);line();y+=6;});return y;};
     const sizeLine=r=>fmt(r.width)+' x '+fmt(r.height)+' mm';
     const rollLine=r=>{if(type.mode==='kit')return 'kit';const w=pieceRollWidth(roundCut(r.width),groups,masters);return w?'rotolo '+fmt(w)+' mm':'-';};
-    const head=`${model().name} · luce ${fmt(luce.W)} x ${fmt(luce.H)} mm · maniglia a ${state.handleSide==='left'?'sinistra':'destra'} · ${type.qty} ${type.qty===1?'porta':'porte'}`;
+    const group=!!type.group,lists=type.lists!==false;
+    const head=group?`${model().name} · maniglia a ${state.handleSide==='left'?'sinistra':'destra'} · ${type.qty} ${type.qty===1?'porta':'porte'} · disegni e istruzioni comuni, misure nelle distinte di ogni porta`
+      :`${model().name} · luce ${fmt(luce.W)} x ${fmt(luce.H)} mm · maniglia a ${state.handleSide==='left'?'sinistra':'destra'} · ${type.qty} ${type.qty===1?'porta':'porte'}`;
     // 1. maestà a tre quarti e ordine dei pezzi
     title('Istruzioni di montaggio · '+type.name+' · maestà',head+'. Si finisce un lato della porta alla volta: prima l\'esterno, poi l\'interno. Su ogni lato: traverso, montante destro, montante sinistro; in ogni coppia stipite e coprifilo. Il numero nel cerchio è l\'ordine di montaggio.');
     const bySide=side=>frame.map((r,i)=>({r,n:i+1})).filter(x=>posaSide(x.r)===side);
     let y=31;
     y+=await image(framePerspectiveFigure(bySide(0),0),600,400,M,y,PW-2*M)+3;
     y+=await image(framePerspectiveFigure(bySide(1),1),600,400,M,y,PW-2*M)+4;
-    doc.addPage();y=18;doc.setFont('helvetica','bold');doc.setFontSize(12);doc.text(pdfText('Elenco dei pezzi della maestà · '+type.name),M,y);y+=8;
-    table(y,['N.','Pezzo','In bobina','Pezzo da kit'],frame.map((r,i)=>[String(i+1),r.name,rollLine(r),sizeLine(r)]),[10,96,36,40]);
+    if(lists){doc.addPage();y=18;doc.setFont('helvetica','bold');doc.setFontSize(12);doc.text(pdfText('Elenco dei pezzi della maestà · '+type.name),M,y);y+=8;
+    table(y,['N.','Pezzo','In bobina','Pezzo da kit'],frame.map((r,i)=>[String(i+1),r.name,rollLine(r),sizeLine(r)]),[10,96,36,40]);}
     // 2. sezioni: traverso e montanti con tutte le pellicole
     doc.addPage();title('Sezioni · come si sormontano le pellicole',head+'. Linea verde: pellicola. Grigio: sormonto. Giallo: guarnizione (la pellicola si ferma).');
     const numbered=key=>frame.map((r,i)=>({r,n:i+1})).filter(x=>x.r.piece===key);
@@ -6214,9 +6233,9 @@ async function buildInstructions(type){
       setActiveLeaf(index,false);{
         doc.addPage();
         const leafRows=leaf.filter(r=>state.leafCount!==2||(r.leafIndex??0)===index||!('leafIndex' in r));
-        title('Anta'+(state.leafCount===2?' · '+leafName(index):'')+' · '+type.name,`Anta ${fmt(door.width)} x ${fmt(door.height)} x ${fmt(door.thickness)} mm. Monta per primo il lato con il numero 1, poi il 2.`);
+        title('Anta'+(state.leafCount===2?' · '+leafName(index):'')+' · '+type.name,(group?`Spessore ${fmt(door.thickness)} mm.`:`Anta ${fmt(door.width)} x ${fmt(door.height)} x ${fmt(door.thickness)} mm.`)+' Monta per primo il lato con il numero 1, poi il 2.');
         let yy=30;yy+=await image(leafPerspectiveFigure(leafRows),600,640,M+40,yy,PW-2*M-80)+3;
-        yy=table(yy,['N.','Pezzo','In bobina','Pezzo da kit'],leafRows.map((r,i)=>[String(i+1),r.name,rollLine(r),sizeLine(r)]),[10,96,36,40])+2;
+        if(lists)yy=table(yy,['N.','Pezzo','In bobina','Pezzo da kit'],leafRows.map((r,i)=>[String(i+1),r.name,rollLine(r),sizeLine(r)]),[10,96,36,40])+2;
         if(yy>215){doc.addPage();yy=18;}
         const dw=(PW-2*M-8)/3;doc.setFont('helvetica','bold');doc.setFontSize(10);
         ['Battuta (lato maniglia)','Sopra','Sotto'].forEach((t,i)=>doc.text(t,M+i*(dw+4),yy+4));
