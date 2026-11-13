@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ID, Porta } from '../db/types';
-import { contaPorte, portePerProgetto, salvaPorta } from '../db/repository';
+import { salvaPorta } from '../db/repository';
+import { contestoPorte } from '../utils/porteDocumento';
 import { ModaleAnteprimaPdf } from './ModaleAnteprimaPdf';
 import { Modale } from './comuni';
 import { Icona } from './Icona';
@@ -67,18 +68,14 @@ export function RilievoPorta({
         { destinazione: 'rilievo-porta', ...msg },
         window.location.origin
       );
+    // porte, quantità, kit o strisce e scelte del piano di taglio: il PDF di
+    // montaggio aperto da qui dice gli stessi rotoli del piano di taglio
     const elenco = async () => {
-      const [porte, conto] = await Promise.all([portePerProgetto(progettoId), contaPorte(progettoId)]);
+      const ctx = await contestoPorte(progettoId);
       return {
-        porte,
-        perIframe: porte.map((p) => ({
-          id: p.id,
-          nome: p.nome,
-          qty: conto.get(p.id) ?? 1,
-          config: p.config,
-          descrizione: p.descrizione,
-          righe: p.righe
-        }))
+        porte: ctx.porte,
+        piano: ctx.sezione?.piano ?? null,
+        perIframe: ctx.perRilievo.map((p) => ({ ...p, qty: Math.max(1, p.qty) }))
       };
     };
     const ascolta = async (ev: MessageEvent) => {
@@ -86,7 +83,7 @@ export function RilievoPorta({
       const m = ev.data as { sorgente?: string; tipo?: string; [k: string]: unknown };
       if (!m || m.sorgente !== 'rilievo-porta') return;
       if (m.tipo === 'pronta') {
-        const { porte, perIframe } = await elenco();
+        const { porte, perIframe, piano } = await elenco();
         const p = porte.find((x) => x.id === portaId);
         if (modo === 'lavoro') {
           const l = callback.current.lavoro;
@@ -102,7 +99,7 @@ export function RilievoPorta({
         setTitolo(
           modo === 'scheda' && p ? p.nome : modo === 'copia' && p ? `Copia di ${p.nome}` : 'Rilievo porta'
         );
-        manda({ tipo: 'apri', modo, id: portaId ?? null, porte: perIframe });
+        manda({ tipo: 'apri', modo, id: portaId ?? null, porte: perIframe, piano });
       } else if (m.tipo === 'salva') {
         const id = (corrente.current ?? null) as ID | null;
         const porta = await salvaPorta({

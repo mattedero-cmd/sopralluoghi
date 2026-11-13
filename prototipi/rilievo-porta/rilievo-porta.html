@@ -6001,7 +6001,7 @@ function hostSchedulePlan(){
   },250);
 }
 function hostTypes(list){
-  job.types=(list||[]).map(p=>({id:p.id,name:p.nome,qty:Math.max(1,p.qty||1),config:p.config,desc:p.descrizione||'',
+  job.types=(list||[]).map(p=>({id:p.id,name:p.nome,qty:Math.max(1,p.qty||1),config:p.config,desc:p.descrizione||'',mode:p.modo==='kit'?'kit':'strisce',
     rows:(p.righe||[]).map(r=>({label:r.nome,width:r.larghezza,length:r.lunghezza}))}));
 }
 function hostMessage(ev){
@@ -6009,13 +6009,13 @@ function hostMessage(ev){
   const m=ev.data;if(!m||m.destinazione!=='rilievo-porta')return;
   if(m.porte)hostTypes(m.porte);
   const t=m.id?job.types.find(x=>x.id===m.id):null;
+  if(m.piano){
+    ['masterW','rollLen','same','ideal','max','few'].forEach(k=>{if(Number.isFinite(m.piano[k]))plan[k]=m.piano[k];});
+    plan.decisions=m.piano.decisions&&typeof m.piano.decisions==='object'?m.piano.decisions:{};
+    $$('[data-plan]').forEach(i=>{i.value=String(plan[i.dataset.plan]);});
+  }
   if(m.tipo==='apri'&&m.modo==='lavoro'){
     host.lavoro=true;appEl.classList.add('mt-host-lavoro');closeWizard();
-    if(m.piano){
-      ['masterW','rollLen','same','ideal','max','few'].forEach(k=>{if(Number.isFinite(m.piano[k]))plan[k]=m.piano[k];});
-      plan.decisions=m.piano.decisions&&typeof m.piano.decisions==='object'?m.piano.decisions:{};
-      $$('[data-plan]').forEach(i=>{i.value=String(plan[i.dataset.plan]);});
-    }
     setTab('job');return;
   }
   if(m.tipo==='apri'){
@@ -6188,7 +6188,7 @@ async function buildInstructions(type){
       row(head,true);line();y+=6;
       body.forEach(cells=>{if(y>280){doc.addPage();y=18;row(head,true);line();y+=6;}row(cells,false);line();y+=6;});return y;};
     const sizeLine=r=>fmt(r.width)+' x '+fmt(r.height)+' mm';
-    const rollLine=r=>{const w=pieceRollWidth(roundCut(r.width),groups,masters);return w?'rotolo '+fmt(w)+' mm':'-';};
+    const rollLine=r=>{if(type.mode==='kit')return 'kit';const w=pieceRollWidth(roundCut(r.width),groups,masters);return w?'rotolo '+fmt(w)+' mm':'-';};
     const head=`${model().name} · luce ${fmt(luce.W)} x ${fmt(luce.H)} mm · maniglia a ${state.handleSide==='left'?'sinistra':'destra'} · ${type.qty} ${type.qty===1?'porta':'porte'}`;
     // 1. maestà a tre quarti e ordine dei pezzi
     title('Istruzioni di montaggio · '+type.name+' · maestà',head+'. Si finisce un lato della porta alla volta: prima l\'esterno, poi l\'interno. Su ogni lato: traverso, montante destro, montante sinistro; in ogni coppia stipite e coprifilo. Il numero nel cerchio è l\'ordine di montaggio.');
@@ -6279,7 +6279,7 @@ function addToJob() {
 // Tagli di tutto il lavoro: pezzi uguali (stessa larghezza e lunghezza) sommati.
 function jobDemand() {
   const map = new Map();
-  job.types.forEach(t => t.rows.forEach(r => {
+  job.types.filter(t => t.mode !== 'kit').forEach(t => t.rows.forEach(r => {
     const key = r.width + 'x' + r.length;
     const e = map.get(key) || {w: r.width, l: r.length, qty: 0, labels: new Set()};
     e.qty += t.qty;

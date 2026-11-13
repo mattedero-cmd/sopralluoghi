@@ -13,6 +13,7 @@ import { calcolaNestingAuto } from '../geometry/nestingSagome';
 import { misureForma } from '../geometry/sagome';
 import { frasiRitagli, ritagliUtili, segmentaBobina } from '../geometry/segmenti';
 import { OPZIONI_PDF_PREDEFINITE, type OpzioniPdfNesting } from './opzioni';
+import { contenutoBobinePorte } from './porte';
 import {
   etichettaSupporto,
   opzioniRicerca,
@@ -681,6 +682,10 @@ export function contenutoNesting(
 
     for (const foglio of fogli) pagine.push(...paginaFoglio(m, foglio));
   }
+
+  // le porte a strisce non passano dal nesting: il loro piano delle bobine
+  // (fatto nel piano di taglio) va in coda alle distinte
+  if (doc.porte?.riepilogo) distinte.push(...contenutoBobinePorte(doc.porte.riepilogo));
 
   return [...distinte, ...pagine];
 }

@@ -9,6 +9,7 @@ import {
 } from '../geometry/pezziDaSopralluogo';
 import { nestingDiProgetto } from '../db/repository';
 import { contenutoNesting } from './nesting';
+import { contenutoPorte } from './porte';
 import { materialeNuovo, migraDocumento, type DocumentoNesting } from '../utils/documentoNesting';
 import { prossimaTinta } from '../utils/tinte';
 import { pdfMake } from './engine';
@@ -104,6 +105,11 @@ export interface OpzioniReport {
    * report, «separato» lo lascia al chiamante (che esporta due file).
    */
   pianoDiTaglio?: 'no' | 'allegato' | 'separato';
+  /**
+   * Capitolo PORTE in fondo: tipi e quantità, bobine delle porte a strisce e
+   * istruzioni di montaggio di ogni porta. Assente = sì, se ci sono porte.
+   */
+  includiPorte?: boolean;
 }
 
 export const OPZIONI_REPORT_DEFAULT: OpzioniReport = {
@@ -427,7 +433,32 @@ export async function generaReportPdf(
   // portare in cantiere e in laboratorio
   if (opzioni.pianoDiTaglio === 'allegato') {
     const taglio = await documentoTaglioProgetto(progetto);
-    if (taglio) contenuto.push(...contenutoNesting(taglio));
+    // le bobine delle porte le racconta il capitolo Porte, qui sotto
+    if (taglio)
+      contenuto.push(
+        ...contenutoNesting(
+          opzioni.includiPorte === false ? taglio : { ...taglio, porte: undefined }
+        )
+      );
+  }
+
+  // --- Porte: bobine e istruzioni di montaggio, alla fine ----------------------
+  if (opzioni.includiPorte !== false) {
+    try {
+      const { porteDelReport } = await import('../utils/porteDocumento');
+      const porte = await porteDelReport(progetto.id, avanzamento);
+      if (porte) {
+        contenuto.push(...contenutoPorte(porte, { bobine: true, orizzontale: opzioni.orizzontale }));
+      }
+    } catch (e) {
+      // senza il rilievo porta (o con un errore suo) il report si fa lo stesso
+      console.error(e);
+      contenuto.push({
+        text: 'Porte: non è stato possibile preparare le istruzioni di montaggio.',
+        style: 'dati',
+        pageBreak: 'before'
+      } as Content);
+    }
   }
 
   const pieDiPagina = impostazioni.pdf.pieDiPagina.trim() || prof.azienda || prof.nome || '';

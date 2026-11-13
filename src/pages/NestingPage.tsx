@@ -300,7 +300,15 @@ export function NestingPage({
   // l'essenza dei kit segue porte, etichette e scelte, da sola
   useEffect(() => {
     if (caricamento || !porteProgetto || !contoPorte) return;
-    setDoc((d) => sincronizzaKit(d, porteProgetto, contoPorte));
+    setDoc((d) => {
+      const k = sincronizzaKit(d, porteProgetto, contoPorte);
+      // nessuna porta più a strisce: il vecchio piano delle bobine non vale
+      const strisce = porteProgetto.some(
+        (p) => modoPorta(k.porte, p.id) === 'strisce' && (contoPorte.get(p.id) ?? 0) > 0
+      );
+      if (!strisce && k.porte?.riepilogo) return { ...k, porte: { ...k.porte, riepilogo: null } };
+      return k;
+    });
     // anche la venatura dell'essenza dei kit: decide il verso dei pezzi
   }, [
     caricamento,

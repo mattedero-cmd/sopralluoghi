@@ -43,6 +43,7 @@ export function PannelloOpzioniPdf({
   const [includiNoteDato, setIncludiNoteDato] = useState(true);
   const [includiTabellaMisure, setIncludiTabellaMisure] = useState(true);
   const [includiDistinta, setIncludiDistinta] = useState(true);
+  const [includiPorte, setIncludiPorte] = useState(true);
   const [pianoDiTaglio, setPianoDiTaglio] = useState<'no' | 'allegato' | 'separato'>('no');
   const [avanzate, setAvanzate] = useState(false);
   const [scegliFoto, setScegliFoto] = useState(false);
@@ -67,6 +68,7 @@ export function PannelloOpzioniPdf({
     includiNoteDato: griglia ? false : includiNoteDato,
     includiTabellaMisure: griglia ? false : includiTabellaMisure,
     includiDistinta,
+    includiPorte,
     pianoDiTaglio
   });
 
@@ -96,7 +98,7 @@ export function PannelloOpzioniPdf({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const chiaveOpzioni = `${fotoPerPagina}|${orizzontale}|${includiIndice}|${includiRiepilogo}|${includiNoteDato}|${includiTabellaMisure}|${includiDistinta}|${pianoDiTaglio}|${Array.from(selezione).sort().join(',')}`;
+  const chiaveOpzioni = `${fotoPerPagina}|${orizzontale}|${includiIndice}|${includiRiepilogo}|${includiNoteDato}|${includiTabellaMisure}|${includiDistinta}|${includiPorte}|${pianoDiTaglio}|${Array.from(selezione).sort().join(',')}`;
 
   // ricompone il PDF quando cambiano le opzioni (debounce)
   useEffect(() => {
@@ -322,6 +324,7 @@ export function PannelloOpzioniPdf({
             )}
             <Interruttore attivo={includiRiepilogo} onCommuta={() => setIncludiRiepilogo((v) => !v)} testo="Riepilogo finale delle misure" />
             <Interruttore attivo={includiDistinta} onCommuta={() => setIncludiDistinta((v) => !v)} testo="Distinta di taglio" />
+            <Interruttore attivo={includiPorte} onCommuta={() => setIncludiPorte((v) => !v)} testo="Porte: bobine e montaggio" />
           </div>
         )}
       </div>

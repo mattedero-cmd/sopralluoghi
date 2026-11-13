@@ -10,6 +10,21 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.88.0 — Le porte nel PDF del sopralluogo
+
+- **Capitolo Porte in fondo al PDF del sopralluogo** (interruttore «Porte:
+  bobine e montaggio» nelle opzioni, acceso): l'elenco dei tipi di porta con
+  quante sono e se vanno in kit o a strisce, il **piano delle bobine** delle
+  porte a strisce (come tagliare ogni bobina, scorte, avanzi, rotoli che
+  escono e i pezzi che ci vanno) e le **istruzioni di montaggio** di ogni
+  porta, pagina per pagina. Tutto nell'indice.
+- Il piano delle bobine si rifà al momento del PDF con le scelte salvate nel
+  piano di taglio, quindi è sempre aggiornato alle etichette sulle foto.
+- Il PDF del **piano di taglio** riporta anche le bobine delle porte a
+  strisce; i kit ci sono già, come essenza «Porte (kit)».
+- Il PDF di montaggio aperto dall'etichetta della porta usa gli stessi rotoli
+  del piano di taglio; per le porte in kit la colonna del rotolo dice «kit».
+
 ## 1.87.0 — Le porte nel piano di taglio
 
 - **Sezione Porte nel piano di taglio.** Il piano di un sopralluogo con porte
