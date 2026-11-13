@@ -59,6 +59,9 @@ luce minima.
 **Procedura standard:** non si chiede più «da quale pezzo misuri». Anta e
 stipite si misurano sempre entrambi, ciascuno per conto suo (con la doppia
 battuta si chiedono P1 e P2); se non combaciano compare un avviso.
+La guida non si blocca mai: se con le misure del momento anta e stipite non
+combaciano, il passo mostra l'avviso e «Avanti» resta attivo. Il mancato
+combaciare è un avviso nella scheda Anta e non annulla i tagli della pellicola.
 
 Nei dettagli del coprifilo la **parete è a righe**, lo **stipite ha un
 tratteggio incrociato** e il **coprifilo è pieno**; i tre elementi hanno il
