@@ -18,14 +18,20 @@ integrato nell'app Sopralluoghi**.
 
 La guida presenta una domanda per schermata e una sola anteprima grande.
 La prima scelta è **la posizione della maniglia**, guardando la porta dal lato
-in cui si tira verso di sé: maniglia e cerniere indicano come orientare la vista.
-Le anteprime e la sezione seguono quel verso; quote e tagli non cambiano.
+in cui si tira verso di sé: si sceglie con i pulsanti o toccando la porta dal
+lato della maniglia. La sezione rappresenta lo stipite dal lato della maniglia,
+con la luce in basso: con la maniglia a destra il lato da cui si tira (dove sta
+l'anta) è a destra. Anteprime e sezione seguono quel verso; quote e tagli no.
 
 1. **Modello:** lato della maniglia → battuta → forma del coprifilo →
    posizione del coprifilo esterno e interno in due passaggi distinti →
-   traverso superiore presente/assente → una/due ante → angoli, se presenti.
+   traverso superiore presente/assente → una/due ante → angoli, se presenti →
+   **coprifili uguali sui due lati?** (uguali, diverso lato maniglia, diverso
+   lato cerniere), con la porta disegnata dal lato in cui si tira.
    Non c’è più il riepilogo «Pronto per le misure».
-2. **Misure:** luce minima dello stipite, senza anta nel disegno; poi bordo,
+2. **Misure:** luce minima dello stipite, sulla maestà intera vista di fronte
+   con una lente sul punto da cui misurare; se un coprifilo è diverso, la sua
+   larghezza (esterno e interno); poi bordo,
    larghezza, altezza e spessore dell’anta. Larghezza e altezza dell’anta si
    rilevano sulla **faccia più grande, comprese le battute**: la figura mostra
    solo l’anta, la maniglia e la quota esterna, senza maestà.
@@ -44,6 +50,15 @@ Le anteprime e la sezione seguono quel verso; quote e tagli non cambiano.
 5. **Banco di lavoro:** Misure, Pellicola, Guarnizioni e Tagli; poi Riepilogo
    e Lavoro, con porte tipo, distinta e piano bobine. Quote manuali, eliminazione
    delle guarnizioni, dettagli dei sormonti e scorte rimangono modificabili.
+
+**Dettagli con la lente:** ogni figura di dettaglio mostra sempre tutta la
+sezione della maestà; un cerchietto indica il punto e una lente collegata lo
+ingrandisce, con la quota. Vale per coprifili, battute, guarnizioni, chiusura e
+luce minima.
+
+**Procedura standard:** non si chiede più «da quale pezzo misuri». Anta e
+stipite si misurano sempre entrambi, ciascuno per conto suo (con la doppia
+battuta si chiedono P1 e P2); se non combaciano compare un avviso.
 
 Nei dettagli del coprifilo la **parete è a righe**, lo **stipite ha un
 tratteggio incrociato** e il **coprifilo è pieno**; i tre elementi hanno il
@@ -152,25 +167,38 @@ rimangono pulsanti compatti. Il posizionamento mostra un solo lato alla volta.
 - Ogni tratto ha un **livello** rispetto al piano più spesso dello stipite.
   Per esempio, con battuta singola b, il piano spesso è 0, l’altro piano è +b
   e il coprifilo esterno arriva fino a +(A+b).
-- Superfici rivolte verso il passaggio o verso il muro: montante H + livello,
-  traverso L + 2 × livello, qualunque sia la giunzione. Per questo le battute si
+- Superfici rivolte verso il passaggio: montante H + livello, traverso
+  L + 2 × livello, qualunque sia la giunzione. Per questo le battute si
   incontrano a H − b.
+- Superfici rivolte verso l'esterno (per esempio il bordo esterno del
+  coprifilo): a 45° come sopra; nei giunti di testa il pezzo che si ferma è
+  tagliato al filo verso la luce del pezzo che passa. Coprifilo largo A, a filo:
+  - montanti passanti → montanti H + A, traverso L
+  - traverso passante → montanti H, traverso L + 2A
+  - 45° → montanti H + A, traverso L + 2A
+  Lo stipite non cambia con la giunzione: le sue facce in vista guardano tutte
+  la luce e il lato verso il muro non si riveste.
 - Facce frontali (faccia del coprifilo, gradino della battuta, teste a vista):
   - montanti passanti → montante H + liv. max, traverso L + 2 × liv. min
   - traverso passante → montante H + liv. min, traverso L + 2 × liv. max
   - 45° → montante H + liv. max, traverso L + 2 × liv. max
 - Una striscia di più tratti si taglia sulla lunghezza del tratto più lungo.
+- **Striscia fra coprifilo e guarnizione** (copre lo stipite e il lato del
+  coprifilo): sotto i **30 mm** entra nel pezzo del coprifilo, che prosegue sul
+  lato e sullo stipite fino alla guarnizione; altrimenti è un pezzo a sé, più
+  largo dell'abbondanza della maestà (15 mm di default). Il pezzo principale
+  dello stipite resta com'è.
+- **Coprifili asimmetrici:** il montante del lato diverso cambia larghezza; il
+  traverso cambia lunghezza solo se copre i montanti (45° o traverso passante).
+  Nella distinta il montante porta il nome del lato (maniglia o cerniere).
+- Gli angoli si scelgono una volta nella guida; in Tagli non si cambiano più
+  pezzo per pezzo.
 
 ### Anta
 
-- Per le ante battentate la guida chiede **da quale pezzo si prendono le quote**:
-  anta, stipite oppure entrambi. Non sceglie una fonte di misura al posto
-  dell’utente. Nei profili corrispondenti, Misuro l’anta calcola le battute
-  dello stipite; Misuro lo stipite calcola gli scalini dell’anta. Le quote
-  calcolate non vengono chieste nuovamente e sono protette nell’editor.
-  Misuro entrambi conserva le quote rilevate e consente solo la conferma
-  degli abbinamenti coerenti. I profili senza una corrispondenza gestita
-  richiedono il rilievo di entrambi, senza inventare un accoppiamento.
+- Per le ante battentate si misurano sempre **anta e stipite**, ciascuno per
+  conto suo (procedura standard). La guida non chiede più da quale pezzo
+  prendere le quote e non ne calcola uno dall'altro.
 - Chiusura, piano di riferimento, parte dell’anta in appoggio e battuta
   del telaio sono passaggi distinti. Ognuno mostra una sola anteprima grande
   e pulsanti con nomi brevi. Le combinazioni incompatibili sono disabilitate.
@@ -271,8 +299,8 @@ rimangono pulsanti compatti. Il posizionamento mostra un solo lato alla volta.
 - Le posizioni automatiche servono a comporre l'esempio iniziale. Una posizione
   dello stipite inserita o **confermata con Avanti** diventa una quota rilevata.
   Cambiare chiusura, sporgenza o bordo dell'anta non la sovrascrive.
-  **Il rilievo comanda**: nemmeno «Misuro l'anta» riscrive una quota dello stipite
-  già rilevata; calcola solo quelle non ancora misurate. Se le quote
+  **Il rilievo comanda**: una quota rilevata non viene mai riscritta per far
+  combaciare anta e stipite. Se le quote
   non corrispondono alla chiusura scelta, l'app mostra la distanza effettiva e
   l'incompatibilità; non allarga il telaio o modifica la battuta dell'anta.
 - **Filomuro**: scegli Senza coprifili e il riferimento Parete. Si quotano il
@@ -363,8 +391,9 @@ Il numero di posa (P01…) è anche il numero del taglio. L'ordine si può cambi
 - Una composizione non valida o divenuta troppo larga non viene applicata
   parzialmente: la bobina torna da decidere. La quantità di ogni riga vale per
   ciascuna bobina della stessa combinazione, indicata nell'interfaccia.
-- La **distinta di taglio** si copia in CSV (larghezza; lunghezza; quantità; pezzi) per il
-  nesting.
+- La **distinta di taglio** non si esporta: nell'app Sopralluoghi diventerà
+  il piano di taglio, con i nomi per riconoscere i pezzi. Il numero di porte
+  si inserisce senza unità di misura.
 
 Tutti i parametri del piano bobine si possono modificare dalla scheda Lavoro.
 

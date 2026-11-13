@@ -198,3 +198,30 @@ avvisi corretti solo per lo stipite senza battuta (l'anta non ha dove chiudere)
 e per l'anta a due scalini su telaio a battuta singola.
 
 HTML SHA256 dopo la revisione: `aed9fad80d466d27cdac9feead56baba7f21dfee0c7d7ae58dd0a750334f145f`.
+
+## Seconda revisione con l'utente (13 novembre 2026)
+
+Richieste dell'utente dopo la prova sul telefono, applicate:
+
+- **Lunghezze per tipo di angolo** (errore di calcolo): i bordi esterni
+  dei pezzi usavano sempre la regola dei 45°. Nei giunti di testa il pezzo
+  che si ferma è ora tagliato al filo verso la luce del pezzo che passa
+  (coprifilo interno 70 mm, L 800, H 2100: montanti passanti 2170/800,
+  traverso passante 2100/940, 45° 2170/940).
+- **Striscia fra coprifilo e guarnizione**: sotto 30 mm entra nel pezzo del
+  coprifilo; altrimenti pezzo a sé con l'abbondanza della maestà (15 mm).
+- **Orientamento dalla maniglia invertito**: la sezione è lo stipite dal lato
+  della maniglia visto dal lato a tirare; con maniglia a destra l'anta è a destra.
+- **Dettagli con la lente**: sezione intera, cerchietto sul punto, lente
+  ingrandita con la quota (sezione, coprifili, luce minima vista di fronte).
+- **Guida**: maniglia scelta anche toccando la porta; tolto «Da quale pezzo
+  misuri?» (anta e stipite si misurano sempre entrambi, P1 e P2 con la doppia
+  battuta); nuovo ultimo passo del modello «Coprifili uguali sui due lati?»
+  con larghezze del lato diverso nelle misure.
+- **Pulizie**: niente scelta degli angoli pezzo per pezzo in Tagli, niente
+  copia CSV della distinta, niente «mm» sul numero di porte.
+
+Verifica in Chromium: guida completa senza errori; la prova delle 576
+combinazioni dà gli stessi risultati della prima revisione.
+
+HTML SHA256 dopo la seconda revisione: `eb688d44f7bae7ef25b64163d4b9d02397acf5a1ede8582d9b10a5ed31ee0b77`.
