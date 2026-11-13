@@ -25,6 +25,11 @@ in cui la copia in cache è stata generata.
   Le scelte restano nel piano di taglio; sotto il pulsante c'è il riepilogo
   (bobine, rotoli per larghezza, scorte da decidere) e l'avviso «Da fare»
   quando porte o quantità sono cambiate dopo l'ultimo piano.
+- **Kit e venatura**: in ogni pezzo della porta la fibra segue il lato lungo
+  (montante dal basso verso l'alto, traverso da destra a sinistra, faccia
+  dell'anta per l'altezza). Se l'essenza dei kit ha una venatura, i pezzi si
+  mettono con la lunghezza nel verso della fibra e non si girano; senza
+  venatura il motore li gira come conviene.
 - Un piano di taglio nuovo, fatto da un sopralluogo con porte, le porta già
   dentro (a strisce). Su un piano esistente basta «Porta le porte nel piano di
   taglio». Etichetta porta: un secondo tocco sull'etichetta selezionata apre

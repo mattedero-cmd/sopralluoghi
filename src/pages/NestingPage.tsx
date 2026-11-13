@@ -301,7 +301,14 @@ export function NestingPage({
   useEffect(() => {
     if (caricamento || !porteProgetto || !contoPorte) return;
     setDoc((d) => sincronizzaKit(d, porteProgetto, contoPorte));
-  }, [caricamento, porteProgetto, contoPorte, doc.porte?.modi]);
+    // anche la venatura dell'essenza dei kit: decide il verso dei pezzi
+  }, [
+    caricamento,
+    porteProgetto,
+    contoPorte,
+    doc.porte?.modi,
+    doc.materiali.find((m) => m.id === doc.porte?.materialeKit)?.venatura
+  ]);
   const impostaModoPorta = (id: string, modo: ModoPorta) =>
     setDoc((d) => ({ ...d, porte: { ...(d.porte ?? { modi: {} }), modi: { ...(d.porte?.modi ?? {}), [id]: modo } } }));
   const porteStrisce = (porteProgetto ?? []).filter(

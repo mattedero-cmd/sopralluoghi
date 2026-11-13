@@ -17,7 +17,7 @@
  * etichette o la scelta: non si modificano a mano.
  */
 
-import type { Porta } from '../db/types';
+import type { Porta, Venatura } from '../db/types';
 import type { PezzoNesting } from '../geometry/nesting';
 import type { DocumentoNesting, MaterialeNesting } from './documentoNesting';
 import { materialeNuovo } from './documentoNesting';
@@ -76,11 +76,21 @@ export function modoPorta(porte: PorteNesting | undefined, id: string): ModoPort
   return porte?.modi[id] ?? 'strisce';
 }
 
-/** I pezzi dei kit: per ogni porta in kit, i suoi pezzi per il numero di porte. */
+/**
+ * I pezzi dei kit: per ogni porta in kit, i suoi pezzi per il numero di porte.
+ *
+ * LA VENATURA VA PER IL LATO LUNGO. Il montante ha la fibra dal basso verso
+ * l'alto, il traverso da destra a sinistra, la faccia dell'anta per la sua
+ * altezza: in ogni pezzo della porta la fibra segue la LUNGHEZZA. Su un
+ * materiale venato il pezzo si mette quindi con la lunghezza nel verso della
+ * venatura e non si gira: un traverso con la fibra in piedi si vede subito.
+ * Senza venatura il motore è libero di girarli come conviene.
+ */
 export function pezziKit(
   porte: Porta[],
   conto: Map<string, number>,
-  modi: PorteNesting
+  modi: PorteNesting,
+  venatura: Venatura = 'nessuna'
 ): Omit<PezzoNesting, 'tinta'>[] {
   const pezzi: Omit<PezzoNesting, 'tinta'>[] = [];
   for (const p of porte) {
@@ -98,13 +108,15 @@ export function pezziKit(
       else righe.set(chiave, { nome, larghezza: r.larghezza, lunghezza: r.lunghezza, n: 1 });
     }
     [...righe.values()].forEach((r, i) => {
+      // orizzontale: fibra lungo la larghezza del supporto → lunghezza in orizzontale
+      const sdraiato = venatura === 'orizzontale';
       pezzi.push({
         id: `porta-${p.id}-${i}`,
         nome: `${p.nome} · ${r.nome}`,
-        larghezza: r.larghezza,
-        altezza: r.lunghezza,
+        larghezza: sdraiato ? r.lunghezza : r.larghezza,
+        altezza: sdraiato ? r.larghezza : r.lunghezza,
         quantita: r.n * qty,
-        ruotabile: true
+        ruotabile: venatura === 'nessuna'
       });
     });
   }
@@ -122,10 +134,10 @@ export function sincronizzaKit(
 ): DocumentoNesting {
   const sez = doc.porte;
   if (!sez) return doc;
-  const nuovi = pezziKit(porte, conto, sez);
   const esistente = sez.materialeKit
     ? doc.materiali.find((m) => m.id === sez.materialeKit)
     : undefined;
+  const nuovi = pezziKit(porte, conto, sez, esistente?.venatura ?? 'nessuna');
 
   if (nuovi.length === 0) {
     if (!esistente && !sez.materialeKit) return doc;
@@ -142,13 +154,15 @@ export function sincronizzaKit(
 
   const tinte = new Map((esistente?.pezzi ?? []).map((p) => [p.id, p.tinta]));
   const pezzi: PezzoNesting[] = nuovi.map((p, i) => ({ ...p, tinta: tinte.get(p.id) ?? prossimaTinta(i) }));
-  if (esistente && JSON.stringify(esistente.pezzi) === JSON.stringify(pezzi)) return doc;
+  const versiLiberi = Object.keys(esistente?.orientamenti ?? {}).length === 0;
+  if (esistente && versiLiberi && JSON.stringify(esistente.pezzi) === JSON.stringify(pezzi)) return doc;
 
   const base: MaterialeNesting = esistente ?? {
     ...materialeNuovo(nuovoId(), NOME_MATERIALE_KIT),
     modo: 'bobina'
   };
-  const aggiornato: MaterialeNesting = { ...base, pezzi };
+  // il verso dei pezzi lo decide la venatura: niente versi girati a mano
+  const aggiornato: MaterialeNesting = { ...base, pezzi, orientamenti: {} };
   const materiali = esistente
     ? doc.materiali.map((m) => (m.id === esistente.id ? aggiornato : m))
     : [...doc.materiali, aggiornato];

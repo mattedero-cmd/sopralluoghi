@@ -37,6 +37,37 @@ describe('porte nel piano di taglio', () => {
     ]);
   });
 
+  it('con la venatura il lato lungo va nel verso della fibra e il pezzo non gira', () => {
+    const conto = new Map([['a', 1]]);
+    const v = pezziKit([porta('a', 'A')], conto, { modi: { a: 'kit' } }, 'verticale');
+    const traverso = v.find((p) => p.nome.includes('Traverso'))!;
+    expect([traverso.larghezza, traverso.altezza, traverso.ruotabile]).toEqual([158, 854, false]);
+    const o = pezziKit([porta('a', 'A')], conto, { modi: { a: 'kit' } }, 'orizzontale');
+    const montante = o.find((p) => p.nome.includes('Montanti'))!;
+    expect([montante.larghezza, montante.altezza, montante.ruotabile]).toEqual([2142, 158, false]);
+    // senza venatura il motore li gira come conviene
+    expect(pezziKit([porta('a', 'A')], conto, { modi: { a: 'kit' } }).every((p) => p.ruotabile)).toBe(true);
+  });
+
+  it('cambiando la venatura dell\'essenza dei kit i pezzi si rimettono nel verso giusto', () => {
+    const porte = [porta('a', 'A')];
+    const conto = new Map([['a', 1]]);
+    const d1 = sincronizzaKit(documento({ a: 'kit' }), porte, conto);
+    const id = d1.porte!.materialeKit!;
+    // l'utente mette venatura orizzontale e gira a mano una copia
+    const d2 = {
+      ...d1,
+      materiali: d1.materiali.map((m) =>
+        m.id === id ? { ...m, venatura: 'orizzontale' as const, orientamenti: { 'x#0': true } } : m
+      )
+    };
+    const d3 = sincronizzaKit(d2, porte, conto);
+    const kit = d3.materiali.find((m) => m.id === id)!;
+    expect(kit.orientamenti).toEqual({});
+    const traverso = kit.pezzi.find((p) => p.nome.includes('Traverso'))!;
+    expect([traverso.larghezza, traverso.altezza, traverso.ruotabile]).toEqual([854, 158, false]);
+  });
+
   it('a strisce (il predefinito) non entra niente nei kit', () => {
     expect(pezziKit([porta('a', 'A')], new Map([['a', 3]]), { modi: {} })).toHaveLength(0);
   });
