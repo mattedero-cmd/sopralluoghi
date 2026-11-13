@@ -11,6 +11,7 @@ import {
   type Impostazioni,
   type LavoroNesting,
   type PianoProspettiva,
+  type Porta,
   type Preventivo,
   type Progetto,
   type Sezione
@@ -247,9 +248,10 @@ export async function eliminaProgetto(id: ID): Promise<void> {
   await scrivi('eliminare il progetto', () =>
     db.transaction(
       'rw',
-      [db.progetti, db.foto, db.annotazioni, db.preventivi, db.nesting, db.disegni],
+      [db.progetti, db.foto, db.annotazioni, db.preventivi, db.nesting, db.disegni, db.porte],
       async () => {
         const foto = await db.foto.where('progettoId').equals(id).primaryKeys();
+        await db.porte.where('progettoId').equals(id).delete();
         await db.annotazioni.where('fotoId').anyOf(foto).delete();
         await db.foto.bulkDelete(foto);
         // i preventivi sono documenti commerciali: si scollegano, non si eliminano
@@ -281,8 +283,10 @@ async function copiaFoto(
   originali: Foto[],
   aProgettoId: ID,
   sezioneDi: (f: Foto) => ID | undefined,
-  daOrdine: number
-): Promise<EsitoTrasloco> {
+  daOrdine: number,
+  /** dove è finita una porta copiata insieme alle foto (assente: stessa porta) */
+  portaDi?: (vecchio: ID) => ID | undefined
+): Promise<EsitoTrasloco & { nuoveFoto: Map<ID, ID> }> {
   const nuoveFoto = new Map<ID, ID>(originali.map((f) => [f.id, nuovoId()]));
   const nuoveAnn = new Map<ID, ID>();
   const annPerFoto = new Map<ID, Annotazione[]>();
@@ -315,11 +319,14 @@ async function copiaFoto(
       (annPerFoto.get(f.id) ?? []).map((a) => ({
         ...a,
         id: nuoveAnn.get(a.id) as ID,
-        fotoId: id
+        fotoId: id,
+        ...(a.tipo === 'etichetta' && a.portaId && portaDi?.(a.portaId)
+          ? { portaId: portaDi(a.portaId) }
+          : {})
       }))
     );
   }
-  return { foto: originali.length, legamiSciolti };
+  return { foto: originali.length, legamiSciolti, nuoveFoto };
 }
 
 /**
@@ -372,7 +379,7 @@ function riscriviLegami(
  */
 export async function duplicaProgetto(id: ID, nuovoNome?: string): Promise<Progetto> {
   return scrivi('duplicare il progetto', () =>
-    db.transaction('rw', [db.progetti, db.foto, db.annotazioni], async () => {
+    db.transaction('rw', [db.progetti, db.foto, db.annotazioni, db.porte], async () => {
       const orig = await db.progetti.get(id);
       if (!orig) throw new Error('Progetto non trovato');
       const copia: Progetto = {
@@ -384,8 +391,24 @@ export async function duplicaProgetto(id: ID, nuovoNome?: string): Promise<Proge
       };
       await db.progetti.add(copia);
       const fotoOrig = await db.foto.where('progettoId').equals(id).toArray();
+      // le porte rilevate si copiano anche loro: modificare una porta della
+      // copia non deve cambiare quella del progetto di partenza
+      const porte = await db.porte.where('progettoId').equals(id).toArray();
+      const nuovePorte = new Map<ID, ID>(porte.map((p) => [p.id, nuovoId()]));
       // le sezioni del progetto copiato sono le stesse: le foto le ritrovano
-      await copiaFoto(fotoOrig, copia.id, (f) => f.sezioneId, 0);
+      const { nuoveFoto } = await copiaFoto(fotoOrig, copia.id, (f) => f.sezioneId, 0, (v) =>
+        nuovePorte.get(v)
+      );
+      await db.porte.bulkAdd(
+        porte.map((p) => ({
+          ...p,
+          id: nuovePorte.get(p.id) as ID,
+          progettoId: copia.id,
+          fotoRilievoId: p.fotoRilievoId ? nuoveFoto.get(p.fotoRilievoId) ?? null : null,
+          creatoIl: ora(),
+          modificatoIl: ora()
+        }))
+      );
       return copia;
     })
   );
@@ -1419,4 +1442,111 @@ export async function spostaDisegno(id: ID, dove: Destinazione): Promise<void> {
 
 export async function eliminaDisegno(id: ID): Promise<void> {
   await scrivi('eliminare il disegno', () => db.disegni.delete(id));
+}
+
+// ---------------------------------------------------------------------------
+// Porte rilevate (rilievo porta)
+// ---------------------------------------------------------------------------
+
+/** Le porte del progetto, in ordine di lettera (A, B, … Z, AA…). */
+export async function portePerProgetto(progettoId: ID): Promise<Porta[]> {
+  const porte = await db.porte.where('progettoId').equals(progettoId).toArray();
+  return porte.sort(
+    (a, b) => a.lettera.length - b.lettera.length || a.lettera.localeCompare(b.lettera)
+  );
+}
+
+export async function leggiPorta(id: ID): Promise<Porta | undefined> {
+  return db.porte.get(id);
+}
+
+/** La prossima lettera libera del progetto: A, B, … Z, AA, AB… */
+export function prossimaLetteraPorta(usate: string[]): string {
+  const prese = new Set(usate);
+  for (let i = 0; ; i++) {
+    let n = i;
+    let l = '';
+    do {
+      l = String.fromCharCode(65 + (n % 26)) + l;
+      n = Math.floor(n / 26) - 1;
+    } while (n >= 0);
+    if (!prese.has(l)) return l;
+  }
+}
+
+/** Salva una porta nuova (lettera e nome assegnati qui) o ne aggiorna una. */
+export async function salvaPorta(dati: {
+  id?: ID | null;
+  progettoId: ID;
+  descrizione: string;
+  config: unknown;
+  righe: Porta['righe'];
+  fotoRilievoId?: ID | null;
+}): Promise<Porta> {
+  return scrivi('salvare la porta', () =>
+    db.transaction('rw', [db.porte], async () => {
+      const esistente = dati.id ? await db.porte.get(dati.id) : undefined;
+      if (esistente) {
+        const agg: Porta = {
+          ...esistente,
+          descrizione: dati.descrizione,
+          config: dati.config,
+          righe: dati.righe,
+          modificatoIl: ora()
+        };
+        await db.porte.put(agg);
+        return agg;
+      }
+      const usate = (await db.porte.where('progettoId').equals(dati.progettoId).toArray()).map(
+        (p) => p.lettera
+      );
+      const lettera = prossimaLetteraPorta(usate);
+      const nuova: Porta = {
+        id: nuovoId(),
+        progettoId: dati.progettoId,
+        nome: `Porta ${lettera}`,
+        lettera,
+        descrizione: dati.descrizione,
+        config: dati.config,
+        righe: dati.righe,
+        fotoRilievoId: dati.fotoRilievoId ?? null,
+        creatoIl: ora(),
+        modificatoIl: ora()
+      };
+      await db.porte.add(nuova);
+      return nuova;
+    })
+  );
+}
+
+/** Elimina una porta e tutte le sue etichette sulle foto. */
+export async function eliminaPorta(id: ID): Promise<void> {
+  await scrivi('eliminare la porta', () =>
+    db.transaction('rw', [db.porte, db.foto, db.annotazioni], async () => {
+      const porta = await db.porte.get(id);
+      if (!porta) return;
+      const foto = await db.foto.where('progettoId').equals(porta.progettoId).primaryKeys();
+      const ann = await db.annotazioni.where('fotoId').anyOf(foto).toArray();
+      await db.annotazioni.bulkDelete(
+        ann.filter((a) => a.tipo === 'etichetta' && a.portaId === id).map((a) => a.id)
+      );
+      await db.porte.delete(id);
+    })
+  );
+}
+
+/**
+ * QUANTE PORTE DI OGNI TIPO: ogni etichetta sulle foto del progetto vale una
+ * porta, o il suo moltiplicatore (×N) se rappresenta più porte uguali. Conta
+ * anche l'etichetta della foto su cui la porta è stata rilevata.
+ */
+export async function contaPorte(progettoId: ID): Promise<Map<ID, number>> {
+  const foto = await db.foto.where('progettoId').equals(progettoId).primaryKeys();
+  const ann = await db.annotazioni.where('fotoId').anyOf(foto).toArray();
+  const conto = new Map<ID, number>();
+  for (const a of ann) {
+    if (a.tipo !== 'etichetta' || !a.portaId) continue;
+    conto.set(a.portaId, (conto.get(a.portaId) ?? 0) + Math.max(1, a.moltiplicatore ?? 1));
+  }
+  return conto;
 }

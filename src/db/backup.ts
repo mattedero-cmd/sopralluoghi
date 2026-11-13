@@ -5,6 +5,7 @@ import type {
   Cartella,
   Cliente,
   DisegnoSvg,
+  Porta,
   ConfigCloud,
   Foto,
   Impostazioni,
@@ -13,7 +14,7 @@ import type {
   Progetto
 } from './types';
 
-const VERSIONE_BACKUP = 4;
+const VERSIONE_BACKUP = 5;
 
 /**
  * Callback di avanzamento: messaggio per l'utente e, quando è nota, la
@@ -38,6 +39,8 @@ interface ManifestBackup {
   nesting?: LavoroNesting[];
   /** dalla versione 4: i disegni SVG in archivio */
   disegni?: DisegnoSvg[];
+  /** dalla versione 5: le porte del rilievo porta */
+  porte?: Porta[];
 }
 
 /**
@@ -46,7 +49,7 @@ interface ManifestBackup {
  */
 export async function esportaBackup(avanzamento?: Avanzamento): Promise<Blob> {
   avanzamento?.('Lettura archivio…');
-  const [cartelle, progetti, foto, annotazioni, impostazioni, clienti, preventivi, nesting, disegni] =
+  const [cartelle, progetti, foto, annotazioni, impostazioni, clienti, preventivi, nesting, disegni, porte] =
     await Promise.all([
       db.cartelle.toArray(),
       db.progetti.toArray(),
@@ -56,7 +59,8 @@ export async function esportaBackup(avanzamento?: Avanzamento): Promise<Blob> {
       db.clienti.toArray(),
       db.preventivi.toArray(),
       db.nesting.toArray(),
-      db.disegni.toArray()
+      db.disegni.toArray(),
+      db.porte.toArray()
     ]);
 
   const manifest: ManifestBackup = {
@@ -75,7 +79,8 @@ export async function esportaBackup(avanzamento?: Avanzamento): Promise<Blob> {
     preventivi,
     nesting: nesting.map(({ pdf: _pdf, pdfIl: _pdfIl, ...resto }) => resto),
     // il testo di un SVG è già JSON-compatibile: viaggia intero
-    disegni
+    disegni,
+    porte
   };
 
   const zip = new JSZip();
@@ -173,7 +178,8 @@ export async function importaBackup(
       db.clienti,
       db.preventivi,
       db.nesting,
-      db.disegni
+      db.disegni,
+      db.porte
     ],
     async () => {
       await db.cartelle.bulkPut(manifest.cartelle);
@@ -193,6 +199,8 @@ export async function importaBackup(
       if (manifest.nesting) await db.nesting.bulkPut(manifest.nesting);
       // presenti dalla versione 4 del backup
       if (manifest.disegni) await db.disegni.bulkPut(manifest.disegni);
+      // presenti dalla versione 5 del backup
+      if (manifest.porte) await db.porte.bulkPut(manifest.porte);
     }
   );
 
@@ -225,12 +233,14 @@ export interface IndiceArchivio {
   nesting?: LavoroNesting[];
   /** dalla versione 4 */
   disegni?: DisegnoSvg[];
+  /** dalla versione 5 */
+  porte?: Porta[];
   impostazioni: Impostazioni | null;
 }
 
 /** Costruisce l'indice dell'archivio locale (metadati, niente binari) da pubblicare sul cloud. */
 export async function costruisciIndice(): Promise<IndiceArchivio> {
-  const [cartelle, progetti, foto, annotazioni, impostazioni, clienti, preventivi, nesting, disegni] =
+  const [cartelle, progetti, foto, annotazioni, impostazioni, clienti, preventivi, nesting, disegni, porte] =
     await Promise.all([
       db.cartelle.toArray(),
       db.progetti.toArray(),
@@ -240,7 +250,8 @@ export async function costruisciIndice(): Promise<IndiceArchivio> {
       db.clienti.toArray(),
       db.preventivi.toArray(),
       db.nesting.toArray(),
-      db.disegni.toArray()
+      db.disegni.toArray(),
+      db.porte.toArray()
     ]);
   return {
     app: 'sopralluoghi',
@@ -255,6 +266,7 @@ export async function costruisciIndice(): Promise<IndiceArchivio> {
     // come nel backup: il Blob del PDF non viaggia, si rigenera
     nesting: nesting.map(({ pdf: _pdf, pdfIl: _pdfIl, ...resto }) => resto),
     disegni,
+    porte,
     // mai pubblicare la sessione cloud (token) nell'indice condiviso
     impostazioni: impostazioni ? { ...impostazioni, cloud: null } : null
   };
@@ -284,7 +296,8 @@ export async function applicaMetadati(indice: IndiceArchivio): Promise<void> {
       db.clienti,
       db.preventivi,
       db.nesting,
-      db.disegni
+      db.disegni,
+      db.porte
     ],
     async () => {
       await db.cartelle.bulkPut(indice.cartelle);
@@ -294,6 +307,7 @@ export async function applicaMetadati(indice: IndiceArchivio): Promise<void> {
       if (indice.preventivi) await db.preventivi.bulkPut(indice.preventivi);
       if (indice.nesting) await db.nesting.bulkPut(indice.nesting);
       if (indice.disegni) await db.disegni.bulkPut(indice.disegni);
+      if (indice.porte) await db.porte.bulkPut(indice.porte);
       if (impRemoteNuove) {
         await db.impostazioni.put({ ...indice.impostazioni!, cloud: cloudLocale });
       }

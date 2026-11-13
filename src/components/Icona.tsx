@@ -115,6 +115,7 @@ export type NomeIcona =
   | 'dritto-elimina'
   | 'dritto-sblocca'
   | 'porta-pianta'
+  | 'porta'
   | 'dist-distanza'
   | 'dritto-unisci';
 
@@ -716,6 +717,14 @@ const FORME: Record<NomeIcona, JSX.Element> = {
       <path d="M4 18V7h16v11" />
       <path d="M4 18h16" strokeDasharray="2.5 2.5" />
       <path d="M9 20.5l6-5M9 15.5l6 5" />
+    </>
+  ),
+  porta: (
+    <>
+      <path d="M5 21V3.5h11V21" />
+      <path d="M3 21h15" />
+      <path d="M16 3.5l3 1.5v16" />
+      <circle cx="13.2" cy="12.5" r="0.9" />
     </>
   ),
   'porta-pianta': (

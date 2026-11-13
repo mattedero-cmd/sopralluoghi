@@ -138,6 +138,25 @@ tratteggio incrociato** e il **coprifilo è pieno**; i tre elementi hanno il
 proprio nome. La forma selezionata ha un dettaglio grande e le altre forme
 rimangono pulsanti compatti. Il posizionamento mostra un solo lato alla volta.
 
+## Dentro l'app dei sopralluoghi
+
+Il file resta un'app a sé (si prova da solo e si pubblica come pagina), ma
+l'app lo serve anche come `/rilievo-porta.html` (plugin in `vite.config.ts`,
+insieme a `vendor/jspdf.umd.min.js` per i PDF offline) e lo apre in un
+riquadro a tutto schermo (`src/components/RilievoPorta.tsx`) con
+`?ospite`. In quel caso:
+
+- niente scheda «Lavoro»: le porte sono quelle del **progetto** (tabella
+  `porte`), che l'app manda a ogni apertura con il numero di etichette;
+- «Salva porta» consegna configurazione, descrizione e pezzi all'app, che
+  assegna la lettera (Porta A, B…) e risponde col nome;
+- «Istruzioni PDF» genera il PDF e lo passa all'app, che lo mostra
+  nell'anteprima con Condividi.
+
+Messaggi (stessa origine): dall'app `apri` (`modo` nuova / scheda / copia),
+`salvata`, `stato`, `pdf`; dalla porta `pronta`, `salva`, `file`, `stato`,
+`errore`.
+
 ## Regole decise
 
 ### Sormonti e abbondanze

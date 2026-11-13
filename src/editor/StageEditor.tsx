@@ -22,7 +22,7 @@ import {
   type TipoForma
 } from '../db/types';
 import { primitiveAnnotazione, primitiveCatene, latiQuotaRett } from '../geometry/primitive';
-import { geometriaQuota, posizioneEtichettaBase, posizioneEtichettaPoligono } from '../geometry/primitive';
+import { geometriaQuota, posizioneEtichettaBase, posizioneEtichettaPoligono, testoEtichettaPorta } from '../geometry/primitive';
 import { geomQuotaDistanza } from '../geometry/parametrico';
 import { disegnaPrimitiva } from '../render/renderAnnotata';
 import type { ImmagineDisegnabile } from '../utils/image';
@@ -2446,9 +2446,11 @@ function boxAnnotazione(a: Annotazione): Rettangolo {
       break;
     case 'etichetta': {
       const r = a.stile.dimensioneTesto * 1.2;
+      // la pillola di una porta è più larga che alta
+      const rx = a.portaId ? a.stile.dimensioneTesto * (0.6 + testoEtichettaPorta(a).length * 0.32) : r;
       punti.push(
-        { x: a.posizione.x - r, y: a.posizione.y - r },
-        { x: a.posizione.x + r, y: a.posizione.y + r }
+        { x: a.posizione.x - rx, y: a.posizione.y - r },
+        { x: a.posizione.x + rx, y: a.posizione.y + r }
       );
       break;
     }

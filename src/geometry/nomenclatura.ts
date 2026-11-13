@@ -62,7 +62,8 @@ export function vociLegenda(annotazioni: Annotazione[]): VoceLegenda[] {
   const descrizioni = new Map<string, string>();
   const conteggio = new Map<string, number>();
   for (const a of annotazioni) {
-    if (a.tipo !== 'etichetta') continue;
+    // le etichette delle porte non sono voci della legenda: hanno la loro scheda
+    if (a.tipo !== 'etichetta' || a.portaId) continue;
     conteggio.set(a.lettera, (conteggio.get(a.lettera) ?? 0) + 1);
     const esistente = descrizioni.get(a.lettera);
     // preferisci una descrizione non vuota se disponibile

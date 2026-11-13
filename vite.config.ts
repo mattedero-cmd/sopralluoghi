@@ -1,10 +1,43 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { readFileSync } from 'node:fs';
+import type { Plugin } from 'vite';
+
+/**
+ * Il RILIEVO PORTA è un'app a sé, scritta in un file HTML unico che resta
+ * provabile da solo (prototipi/rilievo-porta). L'app la apre in un riquadro:
+ * qui la si serve così com'è, insieme al generatore di PDF, perché funzioni
+ * anche offline (il precache li prende come tutti gli altri file).
+ */
+const FILE_PORTA: Record<string, string> = {
+  'rilievo-porta.html': 'prototipi/rilievo-porta/rilievo-porta.html',
+  'vendor/jspdf.umd.min.js': 'node_modules/jspdf/dist/jspdf.umd.min.js'
+};
+function rilievoPorta(): Plugin {
+  return {
+    name: 'rilievo-porta',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const nome = (req.url ?? '').split('?')[0].replace(/^\//, '');
+        const sorgente = FILE_PORTA[nome];
+        if (!sorgente) return next();
+        res.setHeader('Content-Type', nome.endsWith('.js') ? 'text/javascript' : 'text/html; charset=utf-8');
+        res.end(readFileSync(sorgente));
+      });
+    },
+    generateBundle() {
+      for (const [nome, sorgente] of Object.entries(FILE_PORTA)) {
+        this.emitFile({ type: 'asset', fileName: nome, source: readFileSync(sorgente) });
+      }
+    }
+  };
+}
 
 export default defineConfig({
   plugins: [
     react(),
+    rilievoPorta(),
     VitePWA({
       // aggiornamento automatico: sul campo nessuno deve gestire gli update;
       // la nuova versione si attiva da sola alla prima apertura con rete
@@ -49,6 +82,8 @@ export default defineConfig({
         // pdfmake con i font incorporati supera il limite predefinito di 2 MiB
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
         navigateFallback: '/index.html',
+        // il riquadro del rilievo porta è una pagina sua, non l'app
+        navigateFallbackDenylist: [/^\/rilievo-porta/],
         cleanupOutdatedCaches: true
       }
     })

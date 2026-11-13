@@ -4742,3 +4742,77 @@ a {
   flex: 1 1 0;
   min-width: 0;
 }
+
+/* Rilievo porta: l'app della porta a tutto schermo, con la sua barra */
+.rilievo-porta {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  background: var(--sfondo);
+}
+.rilievo-porta-barra {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: calc(env(safe-area-inset-top, 0px) + 6px) 12px 6px;
+  background: var(--sfondo-2);
+  border-bottom: 1px solid var(--bordo, rgba(255, 255, 255, 0.12));
+}
+.rilievo-porta-barra strong {
+  font-size: 16px;
+}
+.rilievo-porta iframe {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  background: #fff;
+}
+
+/* Menu del rilievo porta e moltiplicatore dell'etichetta */
+.lista-porte {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+.voce-porta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--bordo);
+  border-radius: 10px;
+}
+.voce-porta-testo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.voce-porta-testo span {
+  font-size: 13px;
+  opacity: 0.8;
+}
+.riga-moltiplicatore {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.campo-moltiplicatore {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-weight: 600;
+}
+.campo-moltiplicatore input {
+  width: 4.2em;
+  min-height: 40px;
+  text-align: center;
+  font-size: 16px;
+  color: inherit;
+  background: var(--sfondo-3);
+  border: 1px solid var(--bordo);
+  border-radius: 8px;
+}

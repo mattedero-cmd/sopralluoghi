@@ -952,6 +952,16 @@ export interface Etichetta extends AnnotazioneBase {
   lettera: string;
   /** descrizione associata, compilata nell'ambiente della legenda */
   descrizione?: string;
+  /**
+   * ETICHETTA DI UNA PORTA rilevata (tabella `porte`). Non è una lettera
+   * della legenda: il badge mostra il nome della porta e toccarlo apre la
+   * sua scheda. Sulla foto dove la porta è stata misurata vale `rilievo`.
+   */
+  portaId?: ID;
+  /** questa è la foto su cui la porta è stata rilevata */
+  rilievo?: boolean;
+  /** quante porte uguali rappresenta l'etichetta (×N); assente = 1 */
+  moltiplicatore?: number;
 }
 
 /**
@@ -1374,6 +1384,42 @@ export interface DisegnoSvg {
   origine?: 'taglio' | 'file';
   /** piano di taglio da cui è stato esportato, se è nato qui */
   nestingId?: ID | null;
+}
+
+/** Un pezzo di pellicola della porta, come lo calcola il rilievo porta. */
+export interface RigaPorta {
+  nome: string;
+  /** mm */
+  larghezza: number;
+  /** mm */
+  lunghezza: number;
+  /** pezzo dell'anta (gli altri sono della maestà) */
+  anta: boolean;
+}
+
+/**
+ * UNA PORTA RILEVATA nel progetto (tipo di porta: Porta A, Porta B…).
+ *
+ * La misura si prende una volta, sulla foto della porta campione; sulle altre
+ * foto la porta torna come etichetta. `config` è lo stato completo del
+ * rilievo porta (lo legge e lo scrive solo lui); `righe` sono i pezzi che ne
+ * escono, per il piano di taglio e il report.
+ */
+export interface Porta {
+  id: ID;
+  progettoId: ID;
+  /** «Porta A» */
+  nome: string;
+  /** «A»: la lettera che segue la sequenza del progetto */
+  lettera: string;
+  /** riassunto leggibile (modello, chiusura, luce, anta) */
+  descrizione: string;
+  config: unknown;
+  righe: RigaPorta[];
+  /** foto su cui è stata rilevata */
+  fotoRilievoId?: ID | null;
+  creatoIl: number;
+  modificatoIl: number;
 }
 
 export interface LavoroNesting {

@@ -10,6 +10,27 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.86.0 — Il rilievo porta entra nelle foto
+
+- **La porta si rileva sulla sua foto.** Nel menu Misure → Pezzi c'è
+  «Rilievo porta»: si apre a tutto schermo il rilievo porta (la guida, le
+  quattro viste, modifica veloce e avanzata, istruzioni di montaggio in PDF).
+  «Salva porta» la tiene nel progetto come **Porta A**, **Porta B**… e sulla
+  foto resta un'etichetta-nota a pillola: «Porta A · rilievo».
+- **Le porte già rilevate si richiamano.** Dallo stesso comando, o da «Ripeti
+  una misura»: **Uguale** mette solo l'etichetta («Porta A»); **Simile** la
+  duplica e la apre in modifica veloce, e salvandola diventa una porta nuova
+  con la sua etichetta di rilievo; **Scheda** la apre per consultarla.
+- **Quante porte.** Ogni etichetta vale una porta; sull'etichetta si scrive
+  ×N quando una foto rappresenta più porte uguali (un piano tipo). Il conteggio
+  serve al piano di taglio (prossima tappa) e al PDF di montaggio.
+- **Toccando l'etichetta** si seleziona: «Apri Porta A» apre la scheda con
+  tutte le misure e le istruzioni PDF. Togliendo l'ultima etichetta di una
+  porta l'app chiede se eliminare anche il rilievo.
+- Le porte sono nel backup, nella sincronizzazione e nella copia del progetto
+  (la copia ha porte sue). Il rilievo porta e il generatore di PDF sono nella
+  cache: funzionano anche senza rete.
+
 ## 1.73.0 — La polilinea arriva al taglio con la sua forma vera
 
 - **Una parete sotto falda non è sempre un quadrilatero.** Quella della camera

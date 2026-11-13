@@ -36,7 +36,9 @@ import {
   segmentiPoligono,
   segmentoELato
 } from '../db/types';
-import { aggiornaFoto, aggiungiFoto, creaPiantaDaFoto, eliminaFoto, impostaSfondoPianta, incorporaCensureFoto, leggiImpostazioni, salvaAnnotazione, salvaAnnotazioniFoto } from '../db/repository';
+import { aggiornaFoto, aggiungiFoto, contaPorte, creaPiantaDaFoto, eliminaFoto, eliminaPorta, impostaSfondoPianta, incorporaCensureFoto, leggiImpostazioni, portePerProgetto, salvaAnnotazione, salvaAnnotazioniFoto } from '../db/repository';
+import { RilievoPorta, type ModoRilievo } from '../components/RilievoPorta';
+import type { Porta } from '../db/types';
 import {
   blobOrigine,
   canvasInBlob,
@@ -225,7 +227,7 @@ type GruppoStrumenti = {
      * togliere la calibrazione non sta più qui: è la striscia sotto
      * l'intestazione, dove si vede sempre.
      */
-    comando?: 'apriPianta';
+    comando?: 'apriPianta' | 'rilievoPorta';
   }>;
 };
 
@@ -277,7 +279,9 @@ const GRUPPI_MISURE: GruppoStrumenti[] = [
       // strumento del menu Pianta e apriva su una foto normale un ambiente
       // parametrico che quel documento non sa eseguire: tutti i rami sono
       // chiusi da `foto.ePianta`. Adesso il passaggio è esplicito.
-      { s: 'seleziona', icona: 'porta-pianta', testo: 'Pianta della stanza', comando: 'apriPianta' }
+      { s: 'seleziona', icona: 'porta-pianta', testo: 'Pianta della stanza', comando: 'apriPianta' },
+      // la PORTA si rileva qui, sulla sua foto: sulla foto resta l'etichetta
+      { s: 'seleziona', icona: 'porta', testo: 'Rilievo porta', comando: 'rilievoPorta' }
     ]
   },
   {
@@ -631,6 +635,15 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   const [modoVolti, setModoVolti] = useState(false);
   /** richiesta di conferma per le operazioni irreversibili (oscuramento definitivo) */
   const [conferma, setConferma] = useState<RichiestaConferma | null>(null);
+  /** porte rilevate nel progetto (rilievo porta), per richiamarle */
+  const porteProgetto = useLiveQuery(
+    () => (foto ? portePerProgetto(foto.progettoId) : Promise.resolve([] as Porta[])),
+    [foto?.progettoId]
+  );
+  /** menu «Rilievo porta»: nuova porta o una già rilevata */
+  const [menuPorta, setMenuPorta] = useState(false);
+  /** rilievo porta aperto a tutto schermo */
+  const [rilievoAperto, setRilievoAperto] = useState<{ modo: ModoRilievo; portaId?: string } | null>(null);
   /** rilevamento volti in corso (bottone in attesa) */
   const [voltiInCorso, setVoltiInCorso] = useState(false);
   /** oggetto dello schizzo selezionato come entità A SÉ STANTE */
@@ -826,7 +839,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   useEffect(() => {
     if (strumento !== 'etichetta') return;
     const usate = (annotazioni ?? [])
-      .filter((a): a is Etichetta => a.tipo === 'etichetta')
+      .filter((a): a is Etichetta => a.tipo === 'etichetta' && !a.portaId)
       .map((a) => a.lettera);
     setLetteraAttiva(prossimaLetteraLibera(usate));
     // solo all'ingresso nello strumento, non a ogni modifica delle annotazioni
@@ -2729,7 +2742,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   /** Apre il menu circolare proponendo la prima lettera libera dopo le usate. */
   const apriMenuEtichetta = (schermo: Punto) => {
     const usate = (annotazioni ?? [])
-      .filter((a): a is Etichetta => a.tipo === 'etichetta')
+      .filter((a): a is Etichetta => a.tipo === 'etichetta' && !a.portaId)
       .map((a) => a.lettera);
     const proposta = prossimaLetteraLibera(usate);
     const idx = SEQUENZA_ETICHETTE.indexOf(proposta);
@@ -3031,8 +3044,50 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
 
   const eliminaSelezionata = () => {
     if (!annotazioni || !selezioneId) return;
+    const via = annotazioni.find((a) => a.id === selezioneId);
     commit(annotazioni.filter((a) => a.id !== selezioneId));
     setSelezioneId(null);
+    if (via?.tipo === 'etichetta' && via.portaId) void chiediSeEliminarePorta(via.portaId, via.id);
+  };
+
+  // ---------------------------------------------------------------------------
+  // Porte (rilievo porta): la porta si misura sulla sua foto e lascia
+  // un'etichetta; sulle altre foto torna come etichetta richiamata.
+  // ---------------------------------------------------------------------------
+
+  /** Mette l'etichetta di una porta al centro della foto (poi si trascina). */
+  const mettiEtichettaPorta = (porta: Porta, rilievo: boolean, base?: Annotazione[]) => {
+    const correnti = base ?? annotazioni;
+    if (!fabbrica || !correnti || !foto) return;
+    const et: Etichetta = {
+      ...fabbrica.etichetta({ x: foto.larghezzaPx / 2, y: foto.altezzaPx / 2 }, porta.nome, correnti),
+      portaId: porta.id,
+      ...(rilievo ? { rilievo: true } : {})
+    };
+    commit([...correnti, et]);
+    setSelezioneId(et.id);
+    mostraToast('info', 'Trascina l’etichetta sulla porta.');
+  };
+
+  /** Tolta l'ultima etichetta di una porta: si chiede se eliminare anche il rilievo. */
+  const chiediSeEliminarePorta = async (portaId: string, tolta: string) => {
+    if (!foto) return;
+    // il salvataggio delle annotazioni è differito: l'etichetta appena tolta
+    // può essere ancora nel database, e non va contata
+    const conto = await contaPorte(foto.progettoId);
+    const qui = (annotazioniProgetto ?? []).filter(
+      (a) => a.id === tolta && a.tipo === 'etichetta' && a.portaId === portaId
+    );
+    const resto = (conto.get(portaId) ?? 0) - qui.reduce((n, a) => n + Math.max(1, (a as Etichetta).moltiplicatore ?? 1), 0);
+    if (resto > 0) return;
+    const porta = (porteProgetto ?? []).find((p) => p.id === portaId);
+    if (!porta) return;
+    setConferma({
+      titolo: `Eliminare anche ${porta.nome}?`,
+      messaggio: `Non ci sono più etichette di ${porta.nome} nel progetto. Vuoi eliminare anche il suo rilievo? Se lo tieni, puoi rimettere l’etichetta da «Rilievo porta».`,
+      testoConferma: `Elimina ${porta.nome}`,
+      onConferma: () => void eliminaPorta(portaId)
+    });
   };
 
   /** scala spessore + testo della quota selezionata (pulsanti A−/A＋ flottanti) */
@@ -4296,6 +4351,83 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
 
       <ConfermaDialog richiesta={conferma} onChiudi={() => setConferma(null)} />
 
+      {/* RILIEVO PORTA: nuova porta, o una già rilevata nel progetto */}
+      {menuPorta && (
+        <Modale titolo="Rilievo porta" onChiudi={() => setMenuPorta(false)}>
+          <button
+            className="btn primario largo"
+            onClick={() => {
+              setMenuPorta(false);
+              setRilievoAperto({ modo: 'nuova' });
+            }}
+          >
+            <Icona nome="porta" dimensione={18} /> Rileva una porta nuova
+          </button>
+          {(porteProgetto ?? []).length > 0 && (
+            <>
+              <p className="aiuto">
+                Porte già rilevate in questo progetto. <strong>Uguale</strong>: sulla foto va solo
+                l’etichetta. <strong>Simile</strong>: si duplica e la modifichi (larghezza, altezza o
+                tutto il resto) come porta nuova.
+              </p>
+              <div className="lista-porte">
+                {(porteProgetto ?? []).map((p) => (
+                  <div key={p.id} className="voce-porta">
+                    <div className="voce-porta-testo">
+                      <strong>{p.nome}</strong>
+                      <span>{p.descrizione}</span>
+                    </div>
+                    <div className="riga-pulsanti">
+                      <button
+                        className="btn"
+                        onClick={() => {
+                          setMenuPorta(false);
+                          mettiEtichettaPorta(p, false);
+                        }}
+                      >
+                        Uguale
+                      </button>
+                      <button
+                        className="btn"
+                        onClick={() => {
+                          setMenuPorta(false);
+                          setRilievoAperto({ modo: 'copia', portaId: p.id });
+                        }}
+                      >
+                        Simile
+                      </button>
+                      <button
+                        className="btn"
+                        onClick={() => {
+                          setMenuPorta(false);
+                          setRilievoAperto({ modo: 'scheda', portaId: p.id });
+                        }}
+                      >
+                        Scheda
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </Modale>
+      )}
+      {rilievoAperto && foto && (
+        <RilievoPorta
+          progettoId={foto.progettoId}
+          modo={rilievoAperto.modo}
+          portaId={rilievoAperto.portaId}
+          fotoId={foto.id}
+          onSalvata={(porta, nuova) => {
+            if (!nuova) return;
+            // la porta misurata qui: sulla foto resta l'etichetta del rilievo
+            mettiEtichettaPorta(porta, true);
+          }}
+          onChiudi={() => setRilievoAperto(null)}
+        />
+      )}
+
       {menuEtichetta && (
         <MenuCircolareEtichette
           centro={{ x: menuEtichetta.x, y: menuEtichetta.y }}
@@ -4348,6 +4480,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             onModificaTesto={() => setTestoInModifica(selezionata.id)}
             onModificaLegenda={() => setLegendaAperta(true)}
             onModificaEtichetta={() => setEtichettaInModifica(selezionata.id)}
+            onApriPorta={(id) => setRilievoAperto({ modo: 'scheda', portaId: id })}
             onModificaQuota={() => setQuotaInModifica({ tipo: 'quota', id: selezionata.id })}
             onModificaSegmento={(indice) =>
               setQuotaInModifica({ tipo: 'segmento', id: selezionata.id, indice })
@@ -4946,7 +5079,31 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             Scegli una misura già presa: la riporti su questa foto toccando gli elementi
             uguali, senza rimisurarla. Vengono mostrate solo le misure originali.
           </p>
-          {misureRichiamabili.length === 0 ? (
+          {(porteProgetto ?? []).length > 0 && (
+            <div className="lista-richiamo" role="menu" aria-label="Porte">
+              {(porteProgetto ?? []).map((p) => (
+                <button
+                  key={p.id}
+                  className="voce-richiamo"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuRichiamo(false);
+                    mettiEtichettaPorta(p, false);
+                  }}
+                >
+                  <span className="codice">{p.nome}</span>
+                  <span className="dettaglio">
+                    <span className="misura">Porta</span>
+                    <span className="dove">{p.descrizione}</span>
+                  </span>
+                  <span className="freccia">
+                    <Icona nome="duplica" dimensione={20} />
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          {misureRichiamabili.length === 0 && (porteProgetto ?? []).length === 0 ? (
             <p className="vuoto">Nessuna misura ancora creata in questo progetto.</p>
           ) : (
             <div className="lista-richiamo" role="menu">
@@ -5260,6 +5417,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                       setMenuAperto(null);
                       if (v.comando === 'apriPianta') {
                         void apriPianta();
+                        return;
+                      }
+                      if (v.comando === 'rilievoPorta') {
+                        setMenuPorta(true);
                         return;
                       }
                       if (STRUMENTI_POSA_TECNICA.has(v.s)) {
@@ -8806,6 +8967,7 @@ function PannelloProprieta({
   onModificaTesto,
   onModificaLegenda,
   onModificaEtichetta,
+  onApriPorta,
   onModificaQuota,
   onModificaSegmento,
   onPannellizza,
@@ -8820,6 +8982,8 @@ function PannelloProprieta({
   onModificaTesto: () => void;
   onModificaLegenda: () => void;
   onModificaEtichetta: () => void;
+  /** etichetta di una porta: apre la sua scheda nel rilievo porta */
+  onApriPorta: (portaId: string) => void;
   onModificaQuota: () => void;
   onModificaSegmento: (indice: number) => void;
   /** apre l'ambiente che divide la forma in teli con sormonto */
@@ -8888,7 +9052,45 @@ function PannelloProprieta({
             <Icona nome="matita" dimensione={18} /> Modifica testo
           </button>
         )}
-        {ann.tipo === 'etichetta' && (
+        {ann.tipo === 'etichetta' && ann.portaId && (
+          <>
+            <button className="btn primario" onClick={() => onApriPorta(ann.portaId as string)}>
+              <Icona nome="porta" dimensione={18} /> Apri {ann.lettera}
+            </button>
+            <div className="riga-moltiplicatore" aria-label="Quante porte uguali">
+              <button
+                className="btn"
+                aria-label="Una porta in meno"
+                disabled={(ann.moltiplicatore ?? 1) <= 1}
+                onClick={() => onModifica({ moltiplicatore: Math.max(1, (ann.moltiplicatore ?? 1) - 1) } as Partial<Annotazione>)}
+              >
+                −
+              </button>
+              <label className="campo-moltiplicatore">
+                ×
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  value={ann.moltiplicatore ?? 1}
+                  aria-label="Numero di porte uguali"
+                  onChange={(e) => {
+                    const n = Math.round(Number(e.target.value));
+                    if (n >= 1) onModifica({ moltiplicatore: n } as Partial<Annotazione>);
+                  }}
+                />
+              </label>
+              <button
+                className="btn"
+                aria-label="Una porta in più"
+                onClick={() => onModifica({ moltiplicatore: (ann.moltiplicatore ?? 1) + 1 } as Partial<Annotazione>)}
+              >
+                +
+              </button>
+            </div>
+          </>
+        )}
+        {ann.tipo === 'etichetta' && !ann.portaId && (
           <>
             <span className="badge-legenda" aria-label={`Etichetta ${ann.lettera}`}>{ann.lettera}</span>
             <button className="btn primario" onClick={onModificaEtichetta}>

@@ -1217,8 +1217,41 @@ export function coloreContrasto(sfondo: string): string {
 }
 
 /** Etichetta alfabetica: badge circolare pieno con la lettera (colore automatico). */
+/** Testo del badge di una porta: «Porta A · rilievo», «Porta A ×12». */
+export function testoEtichettaPorta(a: Etichetta): string {
+  const n = Math.max(1, a.moltiplicatore ?? 1);
+  return a.lettera + (a.rilievo ? ' · rilievo' : '') + (n > 1 ? ` ×${n}` : '');
+}
+
 export function primitiveEtichetta(a: Etichetta): Primitiva[] {
   const dim = a.stile.dimensioneTesto;
+  if (a.portaId) {
+    // PORTA: un'etichetta che è anche una nota breve, a pillola (il cerchio è
+    // delle lettere della legenda)
+    const testo = testoEtichettaPorta(a);
+    const w = misuraLarghezzaTesto(testo, dim) + dim * 1.2;
+    const h = dim * 1.7;
+    const colore = a.stile.colore;
+    return [
+      {
+        kind: 'rettangolo',
+        rect: { x: a.posizione.x - w / 2, y: a.posizione.y - h / 2, width: w, height: h },
+        colore,
+        spessore: 0,
+        riempimento: colore,
+        raggio: h / 2
+      },
+      {
+        kind: 'testo',
+        testo,
+        posizione: a.posizione,
+        rotazioneDeg: 0,
+        dimensione: dim,
+        colore: coloreContrasto(colore),
+        sfondo: null
+      }
+    ];
+  }
   const raggio = Math.max(dim * 0.95, misuraLarghezzaTesto(a.lettera, dim) / 2 + dim * 0.45);
   const colore = a.stile.colore;
   return [

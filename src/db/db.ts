@@ -7,6 +7,7 @@ import type {
   Foto,
   Impostazioni,
   LavoroNesting,
+  Porta,
   Preventivo,
   Progetto
 } from './types';
@@ -26,6 +27,7 @@ export class SopralluoghiDB extends Dexie {
   preventivi!: Table<Preventivo, string>;
   nesting!: Table<LavoroNesting, string>;
   disegni!: Table<DisegnoSvg, string>;
+  porte!: Table<Porta, string>;
 
   constructor() {
     super('sopralluoghi');
@@ -101,6 +103,19 @@ export class SopralluoghiDB extends Dexie {
       preventivi: 'id, progettoId, clienteId, numero',
       nesting: 'id, nome, cartellaId, progettoId, modificatoIl',
       disegni: 'id, nome, cartellaId, progettoId, modificatoIl'
+    });
+    // Fase 8: porte rilevate col rilievo porta, dentro il progetto
+    this.version(7).stores({
+      cartelle: 'id, parentId',
+      progetti: 'id, cartellaId, clienteId, modificatoIl',
+      foto: 'id, progettoId',
+      annotazioni: 'id, fotoId',
+      impostazioni: 'id',
+      clienti: 'id, nome',
+      preventivi: 'id, progettoId, clienteId, numero',
+      nesting: 'id, nome, cartellaId, progettoId, modificatoIl',
+      disegni: 'id, nome, cartellaId, progettoId, modificatoIl',
+      porte: 'id, progettoId, modificatoIl'
     });
   }
 }

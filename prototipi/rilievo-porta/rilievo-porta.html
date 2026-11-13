@@ -389,6 +389,7 @@
 #maesta-tecnica .mt-film-development summary{padding:5px 0;cursor:pointer}
 #maesta-tecnica .mt-over-note .mt-overlap-order{margin:5px 0}
 #maesta-tecnica .mt-over-note .mt-overlap-order summary{padding:5px 0;cursor:pointer}
+#maesta-tecnica .mt-host [data-app-tab="job"]{display:none}
 #maesta-tecnica .mt-roll-chips{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 8px}
 #maesta-tecnica .mt-roll-chip{display:flex;flex-direction:column;align-items:center;gap:1px;min-width:74px;padding:6px 8px}
 #maesta-tecnica .mt-roll-chip svg{width:44px;height:30px;pointer-events:none}
@@ -5861,7 +5862,7 @@ function loadConfig(c){
 function editingType(){return state.editingType?job.types.find(t=>t.id===state.editingType)||null:null;}
 function duplicateDoor(){
   state.editingType=null;state.quick=null;
-  reviewMessage='Copia creata: è una porta nuova, non ancora nel lavoro. Cambia le misure e salvala.';
+  reviewMessage='Copia creata: è una porta nuova, non ancora '+(HOST?'nel progetto':'nel lavoro')+'. Cambia le misure e salvala.';
   openQuickEdit();
 }
 function openQuickEdit(){
@@ -5893,6 +5894,7 @@ function applyQuick(key,value){
 }
 let reviewMessage='',reviewMessageUntil=0,reviewShown='';
 function saveToJob(){
+  if(HOST){hostSave();return;}
   const t=editingType();
   if(!t){addToJob();return;}
   const rows=currentRows();if(!rows){reviewMessage='Ci sono misure da sistemare: la porta non è stata aggiornata.';renderReview();return;}
@@ -5911,12 +5913,13 @@ function renderReview(){
   button('Modifica avanzata',()=>{state.quick=null;appEl.classList.add('mt-advanced');redrawFull();drawDoor();});
   button('Duplica',()=>duplicateDoor());
   button('Rifai la guida',()=>{state.quick=null;openWizard();});
-  button(editing?'Aggiorna '+editing.name:'Salva nel lavoro',()=>saveToJob());
+  if(HOST)button('Istruzioni PDF',ev=>hostInstructions(ev.currentTarget));
+  button(editing?'Aggiorna '+editing.name:HOST?'Salva porta':'Salva nel lavoro',()=>saveToJob());
   bar.lastChild.classList.add('mt-primary');
   box.append(bar);
   const status=document.createElement('p');status.className='mt-review-status';
   if(reviewMessage){reviewMessageUntil=Date.now()+5000;reviewShown=reviewMessage;reviewMessage='';}
-  status.textContent=(Date.now()<reviewMessageUntil&&reviewShown)||(editing?'Stai modificando '+editing.name+' del lavoro.':'Porta non ancora salvata nel lavoro.');
+  status.textContent=(Date.now()<reviewMessageUntil&&reviewShown)||(editing?'Stai modificando '+editing.name+(HOST?' del progetto.':' del lavoro.'):HOST?'Porta non ancora salvata nel progetto.':'Porta non ancora salvata nel lavoro.');
   box.append(status);
   if(state.quick){
     const q=document.createElement('div');q.className='mt-quick';
@@ -5955,10 +5958,57 @@ function renderReview(){
 // le facce numerate e i dettagli di battuta, sopra e sotto. Per ogni pezzo:
 // rotolo da cui si taglia (lavoro in bobina) e misura del pezzo (kit).
 const JSPDF_URL='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+// ---------- Dentro l'app dei sopralluoghi ----------
+// Aperta in un riquadro dell'app (…/rilievo-porta.html?ospite), la porta non
+// ha un «lavoro» suo: le porte sono quelle del progetto, che l'app manda a
+// ogni apertura, e «Salva porta» la consegna all'app che la tiene nel progetto.
+const HOST=new URLSearchParams(location.search).has('ospite')&&window.parent!==window;
+const host={saved:null};
+function hostPost(msg){window.parent.postMessage({sorgente:'rilievo-porta',...msg},location.origin);}
+function hostDesc(){return `${model().name} · ${doorClosureName()} · luce ${fmt(luce.W)} × ${fmt(luce.H)} · `+eachLeaf(i=>leafName(i).toLocaleLowerCase('it-IT')+' '+fmt(door.width)+' × '+fmt(door.height)).join(' / ')+(state.hasHead===false?' · senza traverso':'');}
+function hostDirty(){return host.saved!==JSON.stringify(snapshotConfig());}
+function hostSave(){
+  const rows=currentRows();
+  if(!rows){reviewMessage='Ci sono misure da sistemare: la porta non è stata salvata.';renderReview();return;}
+  hostPost({tipo:'salva',id:state.editingType||null,config:snapshotConfig(),descrizione:hostDesc(),
+    righe:rows.map(r=>({nome:r.name,larghezza:roundCut(r.width),lunghezza:roundCut(r.height),anta:!!r.door}))});
+}
+async function hostInstructions(button){
+  const t=editingType()||{name:'Porta nuova',qty:1};
+  const label=button?.textContent;if(button){button.disabled=true;button.textContent='Preparo il PDF…';}
+  try{const blob=await buildInstructions({...t,config:snapshotConfig()});hostPost({tipo:'file',blob,nome:'Istruzioni montaggio '+t.name+'.pdf'});}
+  catch(error){reviewMessage='Non riesco a creare il PDF.';}
+  finally{if(button){button.disabled=false;button.textContent=label;}renderReview();}
+}
+function hostTypes(list){
+  job.types=(list||[]).map(p=>({id:p.id,name:p.nome,qty:Math.max(1,p.qty||1),config:p.config,desc:p.descrizione||'',
+    rows:(p.righe||[]).map(r=>({label:r.nome,width:r.larghezza,length:r.lunghezza}))}));
+}
+function hostMessage(ev){
+  if(ev.source!==window.parent||ev.origin!==location.origin)return;
+  const m=ev.data;if(!m||m.destinazione!=='rilievo-porta')return;
+  if(m.porte)hostTypes(m.porte);
+  const t=m.id?job.types.find(x=>x.id===m.id):null;
+  if(m.tipo==='apri'){
+    if(m.modo==='nuova'||!t){state.editingType=null;host.saved=null;openWizard();return;}
+    closeWizard();loadConfig(t.config);state.quick=null;appEl.classList.remove('mt-advanced');
+    if(m.modo==='copia'){host.saved=null;duplicateDoor();}
+    else{state.editingType=t.id;host.saved=JSON.stringify(snapshotConfig());reviewMessage='';}
+    setTab('frame');
+  }else if(m.tipo==='salvata'){
+    state.editingType=m.id;host.saved=JSON.stringify(snapshotConfig());state.quick=null;
+    reviewMessage=m.nome+' salvata nel progetto.';vibrate();renderReview();
+  }else if(m.tipo==='stato'){
+    hostPost({tipo:'stato',modificata:hostDirty()});
+  }else if(m.tipo==='pdf'&&t){
+    buildInstructions(t).then(blob=>hostPost({tipo:'file',blob,nome:'Istruzioni montaggio '+t.name+'.pdf'}))
+      .catch(()=>hostPost({tipo:'errore',testo:'Non riesco a creare il PDF.'}));
+  }
+}
 let jspdfLoading=null;
 function loadJsPdf(){
   if(window.jspdf?.jsPDF)return Promise.resolve(window.jspdf.jsPDF);
-  return jspdfLoading||(jspdfLoading=new Promise((resolve,reject)=>{const sc=document.createElement('script');sc.src=JSPDF_URL;sc.onload=()=>window.jspdf?.jsPDF?resolve(window.jspdf.jsPDF):reject(new Error('jsPDF'));sc.onerror=()=>{jspdfLoading=null;reject(new Error('jsPDF'));};document.head.append(sc);}));
+  return jspdfLoading||(jspdfLoading=new Promise((resolve,reject)=>{const sc=document.createElement('script');sc.src=HOST?'vendor/jspdf.umd.min.js':JSPDF_URL;sc.onload=()=>window.jspdf?.jsPDF?resolve(window.jspdf.jsPDF):reject(new Error('jsPDF'));sc.onerror=()=>{jspdfLoading=null;reject(new Error('jsPDF'));};document.head.append(sc);}));
 }
 // Colori del disegno per la stampa: le variabili diventano colori fissi (tema chiaro).
 function printColor(name){
@@ -6148,6 +6198,7 @@ async function buildInstructions(type){
   }finally{loadConfig(saved);state.editingType=savedEditing;if(savedActive)setActiveLeaf(savedActive,false);}
 }
 async function offerFile(blob,filename){
+  if(HOST){hostPost({tipo:'file',blob,nome:filename});return 'saved';}
   try{const d=window.claude?.use?await window.claude.use('downloads'):null;if(d){await d.save({filename,data:blob});return 'saved';}}
   catch(error){if(error?.code==='declined')return 'declined';}
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;document.body.append(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},4000);return 'saved';
@@ -6720,7 +6771,13 @@ function openFromHash() {
   return false;
 }
 window.addEventListener('hashchange', openFromHash);
-if (!openFromHash()) openWizard();
+if (HOST) {
+  appEl.classList.add('mt-host');
+  // si esce dalla barra dell'app: la ✕ della guida porterebbe a una porta vuota
+  $('[data-wiz=close]').hidden = true;
+  window.addEventListener('message', hostMessage);
+  hostPost({tipo: 'pronta'});
+} else if (!openFromHash()) openWizard();
 
 })();
 </script>
