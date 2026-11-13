@@ -58,7 +58,7 @@ luce minima.
 
 **Procedura standard:** non si chiede più «da quale pezzo misuri». Anta e
 stipite si misurano sempre entrambi, ciascuno per conto suo (con la doppia
-battuta si chiedono P1 e P2); se non combaciano compare un avviso.
+battuta si chiedono P1 e P2).
 La guida non si blocca mai e non mostra avvisi su misure non ancora prese:
 ogni scelta resta toccabile. Il controllo che anta e stipite combacino si fa
 alla fine, nella scheda Anta, come avviso: non annulla i tagli della pellicola.
@@ -67,8 +67,7 @@ alla fine, nella scheda Anta, come avviso: non annulla i tagli della pellicola.
 proprio disegno da toccare direttamente (maniglia, traverso, numero di ante,
 posizione del coprifilo, coprifili uguali, appoggio e chiusura dell'anta,
 guarnizioni). Per le scelte sulla sezione l'anteprima mostra il dettaglio
-ingrandito. Il mancato
-combaciare è un avviso nella scheda Anta e non annulla i tagli della pellicola.
+ingrandito.
 
 Nei dettagli del coprifilo la **parete è a righe**, lo **stipite ha un
 tratteggio incrociato** e il **coprifilo è pieno**; i tre elementi hanno il
