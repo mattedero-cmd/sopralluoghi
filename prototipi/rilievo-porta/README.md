@@ -79,6 +79,11 @@ Lavoro, invariati.
 
 **Disposizione delle scelte:** 2 affiancate, 3 a triangolo con la predefinita
 sotto e centrata, 4 in griglia 2×2; anteprime tutte con la stessa proporzione.
+Bordo dell'anta: Squadrata e Bordo arrotondato sopra, Battentata e Due
+scalini sotto. Facce: ciascuna scheda sta dal lato in cui il disegno mostra la
+faccia (il disegno segue la maniglia). Nelle misure di battuta, bordo dell'anta
+e sezione del telaio, la vista è quella che hai a porta aperta dal lato della
+maniglia, con le scritte ESTERNO (tiri da qui) e INTERNO sui lati.
 Predefinite: coprifilo esterno a filo, interno arretrato, angoli a 45°,
 coprifili uguali, entrambe le facce, sormonto completo sotto. Nelle sezioni la
 parete porta la scritta PARETE; le quote nella lente seguono il disegno

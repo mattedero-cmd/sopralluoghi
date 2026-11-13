@@ -5119,6 +5119,12 @@ function leafSurveyFigure(field,value,sealKey=null) {
   const k=Math.min(216/S,145/depth),X=x=>30+x*k,Y=y=>52+y*k;
   svg.append(el('polygon',{points:[...doorProfilePoints(),[S,depth],[0,depth]].map(([x,y])=>X(x)+','+Y(y)).join(' '),fill:'var(--mt-wood)',stroke:'var(--mt-secondary)','stroke-width':1.2}));
   edges.forEach(edge=>svg.append(el('path',{d:`M ${X(edge.a[0])} ${Y(edge.a[1])} `+edgeCommand(edge,X,Y,k),fill:'none',stroke:'var(--mt-ink)','stroke-width':1.5})));
+  // Riferimenti dei lati: la vista è quella della porta aperta, dal lato della
+  // maniglia, e si specchia con la maniglia come la vedi tu.
+  const faceY=Math.min(208,Y(depth)+15);
+  svg.append(el('text',{x:X(0),y:faceY,'text-anchor':'start','font-size':12,'font-weight':700,fill:'var(--mt-green)','data-face-side':'front'},'ESTERNO'));
+  svg.append(el('text',{x:X(0),y:faceY+13,'text-anchor':'start','font-size':10,fill:'var(--mt-green)'},'tiri da qui'));
+  svg.append(el('text',{x:X(S),y:faceY,'text-anchor':'end','font-size':12,'font-weight':700,fill:'var(--mt-secondary)','data-face-side':'back'},'INTERNO'));
   leafGasketSpans().forEach(span=>drawGasketBand(svg,{key:'leaf-'+door.type,edges:[span.edge]},0,X,Y,k,false,span));
   let from,to,axis='h';
   if(field==='antaSb'){from=[0,0];to=[doorRebateAt(),0];}
@@ -5288,6 +5294,9 @@ function sectionSurveyFigure(kind='closure',options={}) {
     const {Z,lc,lr}=detailLens(svg,full,{minX,maxX,minY,maxY},(target,X,Y,k,box,lens)=>paint(target,X,Y,k,box,lens),
       {'data-section-context':hideLeaf?'frame-only':'frame-and-leaf'},!!options.compact);
     if(options.compact)return svg;
+    const F0=surveyMapping(full,{x:8,y:40,w:164,h:160});
+    svg.append(el('text',{x:F0.X(full.minX),y:36,'text-anchor':'start','font-size':10,'font-weight':700,fill:'var(--mt-green)'},'ESTERNO'));
+    svg.append(el('text',{x:F0.X(full.maxX),y:36,'text-anchor':'end','font-size':10,'font-weight':700,fill:'var(--mt-secondary)'},'INTERNO'));
     if(from&&to){
       // Lato libero: dentro la lente e fuori dai pezzi (e dall'anta, se disegnata).
       const polys=[...g.parts.map(part=>partOutline(part).map(([x,y])=>[Z.X(x),Z.Y(y)])),...(hideLeaf?[]:[leaf.points.map(([x,y])=>[Z.X(x),Z.Y(y)])])];
@@ -5513,13 +5522,17 @@ function renderMeasure(m, last) {
     const edge = d => { const svg = el('svg', {viewBox: '0 0 100 80', 'aria-hidden': 'true'});
       svg.append(el('path', {d, fill: 'var(--mt-wood)', stroke: 'currentColor', 'stroke-width': 1.5})); return svg; };
     if (m.choice === 'door') { g.className = 'mt-wiz-grid mt-wiz-previews'; }
-    if (m.choice === 'door') DOOR_PROFILES.forEach(profile => g.append(wizCard(profile.name, profile.note, door.type === profile.id, doorProfileThumb(profile.id, true), () => {
+    if (m.choice === 'door') ['square','round','lip','double'].map(id => DOOR_PROFILES.find(profile => profile.id === id)).forEach(profile => g.append(wizCard(profile.name, profile.note, door.type === profile.id, doorProfileThumb(profile.id, true), () => {
       setDoorType(profile.id); renderWizard(); setTimeout(() => wizGo(1), 180);
     })));
     if (m.choice === 'faces') g.className = 'mt-wiz-grid mt-wiz-tri';
-    if (m.choice === 'faces') [
+    const faceChoices = [
       ['front', 'Solo esterna', 'una faccia', [true, false]],
-      ['back', 'Solo interna', 'una faccia', [false, true]],
+      ['back', 'Solo interna', 'una faccia', [false, true]]
+    ];
+    // Con la maniglia a destra il disegno è specchiato: l'esterna appare a destra.
+    if (surveyHandleSide() === 'right') faceChoices.reverse();
+    if (m.choice === 'faces') [...faceChoices,
       ['both', 'Entrambe', 'esterna e interna', [true, true]]
     ].forEach(([id, name, note, [fr, bk]]) => {
       const svg = el('svg', {viewBox: '0 0 100 80', 'aria-hidden': 'true'});
