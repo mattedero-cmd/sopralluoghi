@@ -64,9 +64,13 @@ ogni scelta resta toccabile. Il controllo che anta e stipite combacino si fa
 alla fine, nella scheda Anta, come avviso: non annulla i tagli della pellicola.
 
 **Istruzioni di montaggio (PDF).** Nel Lavoro ogni porta ha «Istruzioni PDF»:
-un file per tipo di porta. Pagina 1: maestà in prospettiva a tre quarti, in
-proporzione con le misure e con la giunzione scelta, con i pezzi numerati
-nell'ordine di posa; elenco con numero, nome, rotolo da cui si taglia (lavoro
+un file per tipo di porta. Pagina 1: maestà vista a tre quarti dal basso,
+ingrandita sul traverso, dal lato esterno e dal lato interno, in proporzione e
+con la giunzione scelta; ogni vista numera solo i pezzi di quel lato.
+**Ordine di posa:** si finisce un lato della porta alla volta (prima
+l'esterno, poi l'interno); su ogni lato traverso, montante destro, montante
+sinistro (visti da quel lato); in ogni coppia stipite e coprifilo, salvo le
+eccezioni dei coprifili raggiati. Pagina successiva: elenco con numero, nome, rotolo da cui si taglia (lavoro
 in bobina) e misura del pezzo (kit). Pagina 2: sezioni di traverso e montanti
 con tutte le pellicole, i sormonti e i numeri. Pagina 3 (una per anta): lato
 interno e lato esterno con maniglia e cerniere stilizzate e il numero di posa

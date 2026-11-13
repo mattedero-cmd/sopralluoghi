@@ -3511,12 +3511,14 @@ function frameRows(part) {
         });
         extra = ' + striscia ' + absorbed.map(n => n.owner.name.toLocaleLowerCase('it-IT')).join(', ');
       }
+      const zs = (strip.segs || []).flatMap(sg => { const e = part.edges[sg.i]; return [overlapEdgePoint(e, sg.start / e.len)[0], overlapEdgePoint(e, sg.end / e.len)[0]]; });
+      const zMid = zs.length ? (Math.min(...zs) + Math.max(...zs)) / 2 : g.depth / 2;
       const delta = asymDelta(part), asymKey = asymMontanteKey();
       let asymName = '';
       if (delta && key === asymKey) { width += delta; asymName = ' (lato ' + (state.asym.side === 'handle' ? 'maniglia' : 'cerniere') + ')'; }
       if (delta && key === 'head' && jointOf(part) !== 'posts') height += delta;
       return {
-        id: `${part.key}:${key}:${index}`, piece: key, partKey: part.key, strip: index,
+        id: `${part.key}:${key}:${index}`, piece: key, partKey: part.key, strip: index, zMid,
         partKeys: members.map(member => member.key),
         componentKeys: members.map(member => member.key),
         name: `${name}${asymName} · ${names}${extra}${list.length > 1 ? ` · Striscia ${index + 1}` : ''}`,
@@ -3716,6 +3718,22 @@ function posaPartRank(row) {
   if (keys.some(key => key === 'outer' || key === 'inner')) return 0;
   return keys.includes('jamb') || keys.includes('integrated') ? 1 : 2;
 }
+// Prima si finisce un lato della porta, poi l'altro: lato esterno, poi interno.
+// Su ogni lato: traverso, montante destro, montante sinistro (visti da quel lato);
+// in ogni coppia resta l'ordine stipite/coprifilo già deciso, eccezioni comprese.
+function posaSide(row) {
+  const keys = row.partKeys || [row.partKey];
+  if (keys.includes('inner') || keys.includes('extension')) return 1;
+  if (keys.includes('outer') || keys.includes('integrated')) return 0;
+  const depth = geometry().depth;
+  return Number.isFinite(row.zMid) && row.zMid > depth / 2 + 1e-6 ? 1 : 0;
+}
+function sideOrder(list) {
+  const frame = list.filter(r => !r.door), doors = list.filter(r => r.door);
+  const rank = r => { const side = posaSide(r); return side * 10 + (r.piece === 'head' ? 0 : (r.piece === 'right') === (side === 0) ? 1 : 2); };
+  const sorted = frame.map((r, i) => [r, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(x => x[0]);
+  return [...sorted, ...doors];
+}
 function posaAuto(rows) {
   const ordered = rows.slice().sort((a, b) =>
     (a.door ? 1 : 0) - (b.door ? 1 : 0) ||
@@ -3725,7 +3743,7 @@ function posaAuto(rows) {
     (a.piece === 'right') - (b.piece === 'right') ||
     (a.partIndex ?? 0) - (b.partIndex ?? 0) ||
     a.strip - b.strip);
-  if (!hasProfileFilmRules()) return ordered;
+  if (!hasProfileFilmRules()) return sideOrder(ordered);
   // Ogni lato impone la propria precedenza: uno può richiedere prima il
   // coprifilo, l'altro prima lo stipite. I pezzi unici restano indivisibili.
   const edges = ordered.map(() => new Set()), incoming = ordered.map(() => 0);
@@ -3751,7 +3769,7 @@ function posaAuto(rows) {
     if (index < 0) { result.push(...ordered.filter((row,i) => !used.has(i))); break; }
     used.add(index); result.push(ordered[index]); edges[index].forEach(to => incoming[to]--);
   }
-  return result;
+  return sideOrder(result);
 }
 function posaOrder(rows) {
   const auto = posaAuto(rows), saved = draft().order;
@@ -5970,64 +5988,64 @@ function callouts(svg,items,center,box){
   const draw=(it,c)=>{
     svg.append(el('line',{x1:c[0],y1:c[1],x2:it.pt[0],y2:it.pt[1],stroke:'#56636d','stroke-width':.8}));
     svg.append(el('circle',{cx:it.pt[0],cy:it.pt[1],r:2.4,fill:'#087b70'}));
-    svg.append(el('circle',{cx:c[0],cy:c[1],r:12,fill:'#fff',stroke:'#087b70','stroke-width':1.8}));
-    svg.append(el('text',{x:c[0],y:c[1]+4.5,'text-anchor':'middle','font-size':13,'font-weight':700,fill:'#087b70'},String(it.n)));};
+    svg.append(el('circle',{cx:c[0],cy:c[1],r:14,fill:'#fff',stroke:'#087b70','stroke-width':2}));
+    svg.append(el('text',{x:c[0],y:c[1]+5.5,'text-anchor':'middle','font-size':15,'font-weight':700,fill:'#087b70'},String(it.n)));};
   const spread=(list,axis,min)=>{list.sort((a,b)=>a.pt[axis]-b.pt[axis]);let last=-Infinity;list.forEach(it=>{it.c=Math.max(it.pt[axis],last+min);last=it.c;});};
   const L=items.filter(i=>i.side==='left'),R=items.filter(i=>i.side==='right'),T=items.filter(i=>i.side==='top');
-  spread(L,1,27);spread(R,1,27);spread(T,0,27);
+  spread(L,1,32);spread(R,1,32);spread(T,0,34);
   L.forEach(it=>draw(it,[box.x+16,it.c]));R.forEach(it=>draw(it,[box.x+box.w-16,it.c]));T.forEach(it=>draw(it,[it.c,box.y+18]));
 }
-function framePerspectiveFigure(frameRows){
-  const svg=el('svg',{viewBox:'0 0 600 640'}),g=geometry(),p=draft().p,W=luce.W,H=luce.H,head=state.hasHead!==false;
-  const D=g.depth,tE=p.tE||0,tI=p.tI||0,yL=lightReference(g);
-  const lv=part=>{const v=part.edges.map((e,i)=>trattoLevels(part,i));return{lo:Math.max(0,Math.min(...v.map(x=>x.lo))),hi:Math.max(...v.map(x=>x.hi))};};
+function framePerspectiveFigure(items,side){
+  // items: [{r,n}] dei pezzi di questo lato; side 0 esterno, 1 interno.
+  const svg=el('svg',{viewBox:'0 0 600 400'}),g=geometry(),p=draft().p,W=luce.W,H=luce.H,head=state.hasHead!==false;
+  const D=g.depth,lv=part=>{const v=part.edges.map((e,i)=>trattoLevels(part,i));return{lo:Math.max(0,Math.min(...v.map(x=>x.lo))),hi:Math.max(...v.map(x=>x.hi))};};
   const outer=g.parts.find(q=>q.key==='outer'||q.key==='integrated'),inner=g.parts.find(q=>q.key==='inner');
-  const oL=outer?lv(outer):{lo:0,hi:0},iL=inner?lv(inner):{lo:0,hi:0};
-  const P3=(x,y,z)=>[x+z*OBL.ox,-y-z*OBL.oy];
-  const extent=[P3(-W/2-oL.hi,0,-tE),P3(W/2+Math.max(oL.hi,iL.hi),0,D+tI),P3(-W/2-oL.hi,H+oL.hi,-tE),P3(W/2+iL.hi,H+iL.hi,D+tI)];
-  const xs=extent.map(q=>q[0]),ys=extent.map(q=>q[1]),box={x:0,y:0,w:600,h:640};
-  const k=Math.min(420/(Math.max(...xs)-Math.min(...xs)),520/(Math.max(...ys)-Math.min(...ys)));
-  const cx=300-(Math.max(...xs)+Math.min(...xs))/2*k,cy=345-(Math.max(...ys)+Math.min(...ys))/2*k;
+  const front=side?inner:outer,back=side?outer:inner,tF=side?(p.tI||0):(p.tE||0),tB=side?(p.tE||0):(p.tI||0);
+  const fL=front?lv(front):{lo:0,hi:0},bL=back?lv(back):{lo:0,hi:0};
+  // Dal lato interno si guarda la porta dall'altra parte: x e profondità si girano.
+  const V=(x,y,z)=>[side?-x:x,y,side?D-z:z];
+  // Vista dal basso: le parti più lontane scendono, così si vede il sotto del traverso.
+  const P3=(x,y,z)=>{const [a,b,c]=V(x,y,z);return[a+c*.6,-b+c*.75];};
+  // Inquadratura: parte alta, vicino al traverso, vista un po' dal basso.
+  const yMin=Math.max(0,H-Math.max(420,W*.5)),hi=Math.max(fL.hi,bL.hi);
+  const corners=[[-W/2-hi,yMin,-tF],[W/2+hi,yMin,-tF],[-W/2-hi,H+hi,-tF],[W/2+hi,H+hi,-tF],[-W/2,yMin,D+tB],[W/2,H+hi,D+tB]].map(q=>P3(...(side?[-q[0],q[1],D-q[2]]:q)));
+  const xs=corners.map(q=>q[0]),ys=corners.map(q=>q[1]),k=Math.min(470/(Math.max(...xs)-Math.min(...xs)),290/(Math.max(...ys)-Math.min(...ys)));
+  const cx=300-(Math.max(...xs)+Math.min(...xs))/2*k,cy=205-(Math.max(...ys)+Math.min(...ys))/2*k;
   const S=(x,y,z)=>{const q=P3(x,y,z);return[cx+q[0]*k,cy+q[1]*k];};
-  const poly=(pts,fill,stroke='#27333b',extra={})=>svg.append(el('polygon',{points:pts.map(q=>S(...q).join(',')).join(' '),fill,stroke,'stroke-width':1,'stroke-linejoin':'round',...extra}));
-  // pavimento
-  svg.append(el('line',{x1:20,y1:S(0,0,0)[1],x2:580,y2:S(0,0,0)[1],stroke:'#8d99a3','stroke-width':1}));
-  // coprifilo interno (dietro, tratteggiato)
-  if(inner&&head)poly([[-W/2-iL.hi,0,D+tI],[-W/2-iL.hi,H+iL.hi,D+tI],[W/2+iL.hi,H+iL.hi,D+tI],[W/2+iL.hi,0,D+tI]],'none','#8d99a3',{'stroke-dasharray':'5 4'});
-  // stipite: facce verso la luce (montante sinistro e traverso), con le linee delle strisce
-  const jambFill='#dfe4e8';
-  poly([[-W/2,0,0],[-W/2,0,D],[-W/2,H,D],[-W/2,H,0]],jambFill);
-  if(head)poly([[-W/2,H,0],[-W/2,H,D],[W/2,H,D],[W/2,H,0]],'#cfd6db');
-  poly([[W/2,0,0],[W/2,0,D],[W/2,H,D],[W/2,H,0]],'#e9edf0','#8d99a3',{'stroke-dasharray':'3 3'});
-  const jamb=g.parts.find(q=>['jamb','integrated'].includes(q.key));
-  if(jamb)rebateEdges(g).forEach(r=>{const z=r.edge.a[0];
-    svg.append(el('line',{x1:S(-W/2,0,z)[0],y1:S(-W/2,0,z)[1],x2:S(-W/2,H,z)[0],y2:S(-W/2,H,z)[1],stroke:'#d9a400','stroke-width':2.5}));
-    if(head)svg.append(el('line',{x1:S(-W/2,H,z)[0],y1:S(-W/2,H,z)[1],x2:S(W/2,H,z)[0],y2:S(W/2,H,z)[1],stroke:'#d9a400','stroke-width':2.5}));});
-  // coprifilo esterno davanti, con la giunzione scelta
-  if(outer){const lo=oL.lo,hi=oL.hi,z=-tE,xl=-W/2,xr=W/2,j=head?jointOf(outer):'none',f='#cfe9e3';
-    const q=pts=>poly(pts.map(([x,y])=>[x,y,z]),f);
-    if(j==='miter'){q([[xl-hi,0],[xl-lo,0],[xl-lo,H+lo],[xl-hi,H+hi]]);q([[xr+lo,0],[xr+hi,0],[xr+hi,H+hi],[xr+lo,H+lo]]);q([[xl-hi,H+hi],[xr+hi,H+hi],[xr+lo,H+lo],[xl-lo,H+lo]]);}
-    else if(j==='posts'){q([[xl-hi,0],[xl-lo,0],[xl-lo,H+hi],[xl-hi,H+hi]]);q([[xr+lo,0],[xr+hi,0],[xr+hi,H+hi],[xr+lo,H+hi]]);q([[xl-lo,H+lo],[xr+lo,H+lo],[xr+lo,H+hi],[xl-lo,H+hi]]);}
-    else if(j==='head'){q([[xl-hi,0],[xl-lo,0],[xl-lo,H+lo],[xl-hi,H+lo]]);q([[xr+lo,0],[xr+hi,0],[xr+hi,H+lo],[xr+lo,H+lo]]);q([[xl-hi,H+lo],[xr+hi,H+lo],[xr+hi,H+hi],[xl-hi,H+hi]]);}
-    else{q([[xl-hi,0],[xl-lo,0],[xl-lo,H],[xl-hi,H]]);q([[xr+lo,0],[xr+hi,0],[xr+hi,H],[xr+lo,H]]);}
-    poly([[xl-lo,0,z],[xl-lo,0,0],[xl-lo,H+lo,0],[xl-lo,H+lo,z]],'#b8ddd5');
+  const id='mt-pdf-clip-'+(++surveyFigureSerial),defs=el('defs'),cp=el('clipPath',{id});cp.append(el('rect',{x:46,y:44,width:508,height:316}));defs.append(cp);svg.append(defs);
+  const scene=el('g',{'clip-path':'url(#'+id+')'});svg.append(scene);
+  const poly=(pts,fill,stroke='#27333b',extra={})=>scene.append(el('polygon',{points:pts.map(q=>S(...q).join(',')).join(' '),fill,stroke,'stroke-width':1.1,'stroke-linejoin':'round',...extra}));
+  // coordinate «del lato»: xl è il montante a sinistra di chi guarda da questo lato
+  const L=side?W/2:-W/2,R=-L,zF=side?D:0,zB=side?0:D,zFront=side?D+tF:-tF,zBack=side?-tB:D+tB;
+  if(back&&head)poly([[L+(side?1:-1)*bL.hi,yMin,zBack],[L+(side?1:-1)*bL.hi,H+bL.hi,zBack],[R+(side?-1:1)*bL.hi,H+bL.hi,zBack],[R+(side?-1:1)*bL.hi,yMin,zBack]],'none','#8d99a3',{'stroke-dasharray':'5 4'});
+  poly([[L,yMin,zF],[L,yMin,zB],[L,H,zB],[L,H,zF]],'#dfe4e8');
+  if(head)poly([[L,H,zF],[L,H,zB],[R,H,zB],[R,H,zF]],'#c9d1d7');
+  poly([[R,yMin,zF],[R,yMin,zB],[R,H,zB],[R,H,zF]],'none','#8d99a3',{'stroke-dasharray':'3 3'});
+  rebateEdges(g).forEach(r=>{const z=r.edge.a[0],a=S(L,yMin,z),b=S(L,H,z),c=S(R,H,z);
+    scene.append(el('polyline',{points:[a,b,...(head?[c]:[])].map(q=>q.join(',')).join(' '),fill:'none',stroke:'#d9a400','stroke-width':3}));});
+  if(front){const lo=fL.lo,hi2=fL.hi,j=head?jointOf(front):'none',f='#cfe9e3',dir=side?-1:1;
+    const xl=L,xr=R,o=v=>v*dir; // o() porta verso l'esterno della luce sul lato sinistro di chi guarda
+    const q=pts=>poly(pts.map(([x,y])=>[x,y,zFront]),f);
+    const XL=d=>xl-o(d),XR=d=>xr+o(d);
+    if(j==='miter'){q([[XL(hi2),yMin],[XL(lo),yMin],[XL(lo),H+lo],[XL(hi2),H+hi2]]);q([[XR(lo),yMin],[XR(hi2),yMin],[XR(hi2),H+hi2],[XR(lo),H+lo]]);q([[XL(hi2),H+hi2],[XR(hi2),H+hi2],[XR(lo),H+lo],[XL(lo),H+lo]]);}
+    else if(j==='posts'){q([[XL(hi2),yMin],[XL(lo),yMin],[XL(lo),H+hi2],[XL(hi2),H+hi2]]);q([[XR(lo),yMin],[XR(hi2),yMin],[XR(hi2),H+hi2],[XR(lo),H+hi2]]);q([[XL(lo),H+lo],[XR(lo),H+lo],[XR(lo),H+hi2],[XL(lo),H+hi2]]);}
+    else if(j==='head'){q([[XL(hi2),yMin],[XL(lo),yMin],[XL(lo),H+lo],[XL(hi2),H+lo]]);q([[XR(lo),yMin],[XR(hi2),yMin],[XR(hi2),H+lo],[XR(lo),H+lo]]);q([[XL(hi2),H+lo],[XR(hi2),H+lo],[XR(hi2),H+hi2],[XL(hi2),H+hi2]]);}
+    else{q([[XL(hi2),yMin],[XL(lo),yMin],[XL(lo),H],[XL(hi2),H]]);q([[XR(lo),yMin],[XR(hi2),yMin],[XR(hi2),H],[XR(lo),H]]);}
+    poly([[XL(lo),yMin,zFront],[XL(lo),yMin,zF],[XL(lo),H+lo,zF],[XL(lo),H+lo,zFront]],'#b8ddd5');
+    if(head)poly([[XL(lo),H+lo,zFront],[XL(lo),H+lo,zF],[XR(lo),H+lo,zF],[XR(lo),H+lo,zFront]],'#a9d3c9');
   }
-  svg.append(el('text',{x:S(0,H*.45,0)[0],y:S(0,H*.45,0)[1],'text-anchor':'middle','font-size':13,fill:'#56636d'},'LUCE '+fmt(W)+' x '+fmt(H)));
-  svg.append(el('text',{x:S(-W/2-oL.hi,0,-tE)[0],y:S(0,0,0)[1]+18,'font-size':12,fill:'#56636d'},'ESTERNO (davanti)'));
-  // punti dei pezzi, nell'ordine di posa
-  const items=frameRows.map((r,i)=>{
-    const n=i+1,part=g.parts.find(q=>q.key===r.partKey);if(!part)return null;
-    const list=strips(part,r.piece),strip=list[Math.min(r.strip||0,list.length-1)];
-    const zs=strip?.segs?.length?strip.segs.flatMap(sg=>{const e=part.edges[sg.i];return[overlapEdgePoint(e,sg.start/e.len)[0],overlapEdgePoint(e,sg.end/e.len)[0]];}):[0,D];
-    const zm=(Math.min(...zs)+Math.max(...zs))/2;
-    const casingPart=isCasingPart(part),isInner=part.key==='inner',lvP=lv(part),mid=(lvP.lo+lvP.hi)/2;
-    const zz=casingPart?(isInner?D+tI:-tE):zm;
-    const same=frameRows.filter(x=>x.piece===r.piece),pos=same.indexOf(r),count=same.length;
-    if(r.piece==='head'){const y=casingPart?H+mid:H;return{n,pt:S(-W/2+W*(pos+1)/(count+1),y,zz),side:'top'};}
-    const left=r.piece==='length',x=casingPart?(left?-(W/2+mid):(W/2+mid)):(left?-W/2:W/2);
-    return{n,pt:S(x,H*(.85-.7*(pos+.5)/count),zz),side:left?'left':'right'};
+  svg.append(el('text',{x:300,y:392,'text-anchor':'middle','font-size':14,'font-weight':700,fill:'#27333b'},side?'VISTA DAL LATO INTERNO · dal basso':'VISTA DAL LATO ESTERNO (si tira) · dal basso'));
+  // punti dei pezzi
+  const heads=items.filter(x=>x.r.piece==='head');
+  const points=items.map(({r,n})=>{
+    const part=g.parts.find(q=>q.key===r.partKey);if(!part)return null;
+    const casingPart=isCasingPart(part),lvP=lv(part),mid=(lvP.lo+lvP.hi)/2,z=casingPart?(part.key==='inner'?D+(p.tI||0):-(p.tE||0)):(Number.isFinite(r.zMid)?r.zMid:D/2);
+    if(r.piece==='head'){const i=heads.findIndex(x=>x.r===r),x=-W/2+W*(i+1)/(heads.length+1);return{n,pt:S(side?-x:x,casingPart?H+mid:H,z),side:'top'};}
+    const sxWorld=r.piece==='length'?-1:1,xw=casingPart?sxWorld*(W/2+mid):sxWorld*W/2,y=yMin+(H-yMin)*(casingPart?.4:.55);
+    const pt=S(xw,y,z),leftInView=(side?-xw:xw)<0;
+    return{n,pt,side:leftInView?'left':'right'};
   }).filter(Boolean);
-  callouts(svg,items,300,box);
+  callouts(svg,points,300,{x:0,y:0,w:600,h:400});
   return svg;
 }
 function sectionNumbersFigure(rows,piece){
@@ -6092,9 +6110,12 @@ async function buildInstructions(type){
     const rollLine=r=>{const w=pieceRollWidth(roundCut(r.width),groups,masters);return w?'rotolo '+fmt(w)+' mm':'-';};
     const head=`${model().name} · luce ${fmt(luce.W)} x ${fmt(luce.H)} mm · maniglia a ${state.handleSide==='left'?'sinistra':'destra'} · ${type.qty} ${type.qty===1?'porta':'porte'}`;
     // 1. maestà a tre quarti e ordine dei pezzi
-    title('Istruzioni di montaggio · '+type.name+' · maestà',head+'. Ordine di posa: dall\'alto verso il basso, dall\'interno verso l\'esterno, salvo le eccezioni indicate. Il numero nel cerchio è l\'ordine di montaggio.');
-    let y=30;y+=await image(framePerspectiveFigure(frame),600,640,M+20,y,PW-2*M-40)+4;
-    if(y>200){doc.addPage();y=18;}
+    title('Istruzioni di montaggio · '+type.name+' · maestà',head+'. Si finisce un lato della porta alla volta: prima l\'esterno, poi l\'interno. Su ogni lato: traverso, montante destro, montante sinistro; in ogni coppia stipite e coprifilo. Il numero nel cerchio è l\'ordine di montaggio.');
+    const bySide=side=>frame.map((r,i)=>({r,n:i+1})).filter(x=>posaSide(x.r)===side);
+    let y=31;
+    y+=await image(framePerspectiveFigure(bySide(0),0),600,400,M,y,PW-2*M)+3;
+    y+=await image(framePerspectiveFigure(bySide(1),1),600,400,M,y,PW-2*M)+4;
+    doc.addPage();y=18;doc.setFont('helvetica','bold');doc.setFontSize(12);doc.text(pdfText('Elenco dei pezzi della maestà · '+type.name),M,y);y+=8;
     table(y,['N.','Pezzo','In bobina','Pezzo da kit'],frame.map((r,i)=>[String(i+1),r.name,rollLine(r),sizeLine(r)]),[10,96,36,40]);
     // 2. sezioni: traverso e montanti con tutte le pellicole
     doc.addPage();title('Sezioni · come si sormontano le pellicole',head+'. Linea verde: pellicola. Grigio: sormonto. Giallo: guarnizione (la pellicola si ferma).');
