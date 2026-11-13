@@ -434,16 +434,19 @@
 #maesta-tecnica .mt-wiz-dots{padding:0 10px}
 #maesta-tecnica .mt-wiz-dots i{flex:1;max-width:34px;min-width:6px}
 #maesta-tecnica .mt-wiz-dots i.gap{margin-right:8px}
-#maesta-tecnica .mt-wiz-fig{display:block;width:100%;flex:1;min-height:110px;max-height:230px;background:var(--mt-paper);border:1px solid var(--mt-line);border-radius:14px}
+#maesta-tecnica .mt-wiz-hint{margin:0;min-height:2.6em;font-size:13px;line-height:1.3;text-align:center;color:var(--mt-secondary);flex-shrink:0}
+#maesta-tecnica .mt-wiz-hint.mt-error{margin-top:0;color:var(--mt-error)}
+#maesta-tecnica .mt-wiz-fig{display:block;width:100%;flex:1 1 auto;min-height:60px;max-height:230px;background:var(--mt-paper);border:1px solid var(--mt-line);border-radius:14px}
 #maesta-tecnica .mt-wiz-survey-options{display:flex;flex-wrap:wrap;gap:8px}
 #maesta-tecnica .mt-wiz-survey-options button{flex:1 1 90px;min-height:52px;padding:9px 8px;font-size:15px;line-height:1.2;text-align:center}
-#maesta-tecnica .mt-wiz-body>.mt-survey-figure{flex:0 0 auto;height:clamp(170px,29vh,250px);max-height:250px;min-height:170px}
+#maesta-tecnica .mt-wiz-body>.mt-survey-figure{flex:0 1 auto;height:clamp(170px,29vh,250px);max-height:250px;min-height:90px}
 #maesta-tecnica .mt-wiz-body>.mt-wiz-survey-options{flex:0 0 auto}
 #maesta-tecnica .mt-wiz-q:empty{display:none}
 #maesta-tecnica .mt-wiz-value{text-align:center;font-size:32px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}
 #maesta-tecnica .mt-wiz-keys{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;flex-shrink:0}
 #maesta-tecnica .mt-wiz-keys button{min-height:50px;font-size:22px;touch-action:manipulation}
 #maesta-tecnica .mt-wiz-keys button:active{background:var(--mt-tint)}
+@media (max-height:600px){#maesta-tecnica .mt-wiz-keys button{min-height:36px!important;font-size:18px!important}#maesta-tecnica .mt-wiz-keys{gap:4px}#maesta-tecnica .mt-wiz-value{font-size:22px!important}#maesta-tecnica .mt-wiz-hint{min-height:2.4em;font-size:12px}#maesta-tecnica .mt-wiz-body{gap:8px}}
 @media (max-height:700px){#maesta-tecnica .mt-wiz-keys button{min-height:42px;font-size:19px}#maesta-tecnica .mt-wiz-value{font-size:26px}#maesta-tecnica .mt-wiz-q{font-size:13px}}
 #maesta-tecnica .mt-app .mt-chips,#maesta-tecnica .mt-app .mt-full-chips{display:none!important}
 #maesta-tecnica .mt-app[data-mode=misure] .mt-app-frame>.mt-dock{display:none}
@@ -5453,12 +5456,15 @@ function renderMeasure(m, last) {
   const num = Number(wiz.buf.replace(',', '.'));
   const bad = wiz.buf === '' || !Number.isFinite(num) || num < m.min || (m.max !== undefined && num > m.max + 1e-6) || (m.validate&&!m.validate()) || (last&&!currentRows());
   next.disabled = bad;
-  if (bad && m.max !== undefined) {
-    const error = document.createElement('p');
-    error.className = 'mt-error';
-    error.setAttribute('role', 'alert');
-    error.textContent = m.error?.() || `Inserisci un valore tra ${fmt(m.min)} e ${fmt(m.max)} mm.`;
-    body.append(error);
+  // Spazio riservato al messaggio: il tastierino non si sposta mentre si scrive.
+  // Un numero ancora in scrittura (5 per arrivare a 50) mostra solo l'intervallo.
+  if (m.max !== undefined) {
+    const hint = document.createElement('p');
+    hint.className = 'mt-wiz-hint';
+    const typing = wiz.buf === '' || Number.isFinite(num) && num < m.min && !(m.validate&&!m.validate());
+    if (bad && !typing) { hint.classList.add('mt-error'); hint.setAttribute('role', 'alert'); hint.textContent = m.error?.() || `Inserisci un valore tra ${fmt(m.min)} e ${fmt(m.max)} mm.`; }
+    else if (bad) hint.textContent = `Valore tra ${fmt(m.min)} e ${fmt(m.max)} mm`;
+    body.append(hint);
   }
   const keys = document.createElement('div');
   keys.className = 'mt-wiz-keys';
