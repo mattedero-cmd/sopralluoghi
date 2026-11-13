@@ -63,6 +63,27 @@ La guida non si blocca mai e non mostra avvisi su misure non ancora prese:
 ogni scelta resta toccabile. Il controllo che anta e stipite combacino si fa
 alla fine, nella scheda Anta, come avviso: non annulla i tagli della pellicola.
 
+**Porte del lavoro: duplica, modifica veloce, modifica avanzata.** Ogni porta
+salvata nel lavoro conserva la configurazione completa. Nella schermata Maestà:
+Modifica veloce, Modifica avanzata, Duplica, Rifai la guida e Salva nel lavoro
+(«Aggiorna Tipo …» se la porta è già salvata). Nel Lavoro ogni porta ha Apri e
+Duplica. Una copia è indipendente dall'originale.
+- *Modifica veloce*: solo larghezza e altezza dell'anta (con due ante, le due
+  larghezze). La luce cambia della stessa differenza, quindi giochi, profili,
+  battute, guarnizioni, giunzioni, sormonti e abbondanze restano quelli della
+  porta originale; montanti, traverso, coprifili, stipite e tagli si
+  ricalcolano dalla geometria. «Annulla» ripristina tutto.
+- *Modifica avanzata*: ogni quota comanda solo il suo pezzo. La vista frontale
+  disegna l'anta appesa al lato cerniere con la sua misura: se luce e anta non
+  sono coerenti lo scarto resta visibile, non viene corretto. La barra «✓ Fine»
+  torna alla verifica e aggiorna la porta se è già nel lavoro.
+
+**Altre regole:** lo spessore dello stipite s non si chiede (resta solo nel
+disegno); il coprifilo non ha mai guarnizioni; la vista frontale disegna la
+giunzione scelta, con una lente sull'angolo; la striscia sotto 30 mm unita al
+coprifilo è disegnata senza sormonto; i sormonti sono grigio argento, la
+guarnizione gialla; il bordo dell'anta nelle misure è capovolto e specchiato.
+
 **Flusso in tre fasi.** 1) La guida definisce tutta la porta: alla fine non
 manca nessuna quota. Oltre a luce, anta e battute chiede le quote di coprifili
 e stipite: larghezza A/B, spessore tE/tI, eE/eI solo se il coprifilo è

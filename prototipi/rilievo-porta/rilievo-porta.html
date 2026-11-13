@@ -123,6 +123,12 @@
    <button type="button" class="cursor-interaction" data-app-tab="total" aria-pressed="false">Riepilogo</button>
    <button type="button" class="cursor-interaction" data-app-tab="job" aria-pressed="false">Lavoro</button>
   </nav>
+  <div class="mt-advanced-bar"><span>Modifica avanzata</span><button type="button" class="cursor-interaction" data-action="advanced-done">✓ Fine</button></div>
+  <div class="mt-quick-inputs" hidden>
+   <input type="number" min="100" max="6000" step="0.01" data-quick="W" aria-label="Larghezza anta">
+   <input type="number" min="100" max="6000" step="0.01" data-quick="W2" aria-label="Larghezza anta destra">
+   <input type="number" min="100" max="6000" step="0.01" data-quick="H" aria-label="Altezza anta">
+  </div>
   <div class="mt-app-frame">
    <div class="mt-review" aria-label="Verifica della porta configurata"></div>
    <div class="mt-full-head">
@@ -260,7 +266,7 @@
 #maesta-tecnica .mt-door-film-note{margin:2px 0;line-height:1.4}
 #maesta-tecnica .mt-over-fields input:disabled{opacity:.45}
 #maesta-tecnica .mt-over-note{margin:8px 0 0}
-#maesta-tecnica{--mt-overlap:light-dark(#b56b24,#efb76e)}
+#maesta-tecnica{--mt-overlap:light-dark(#8d99a3,#b9c3cb)}
 #maesta-tecnica .mt-overlap-order{display:grid;gap:8px;margin:10px 0}
 #maesta-tecnica .mt-stack-card{border:1px solid var(--mt-line);border-radius:10px;padding:9px;background:var(--mt-paper);min-width:0}
 #maesta-tecnica .mt-stack-card>strong{display:block;font-size:13px;margin-bottom:5px;color:var(--mt-ink)}
@@ -295,6 +301,8 @@
 #maesta-tecnica .mt-job-type strong{font-size:14px}
 #maesta-tecnica .mt-job-type small{font-size:11px;color:var(--mt-secondary);overflow-wrap:anywhere}
 #maesta-tecnica .mt-job-type button{min-width:40px;min-height:40px;padding:0;font-size:17px}
+#maesta-tecnica .mt-job-tools{display:flex;gap:6px;margin-top:6px}
+#maesta-tecnica .mt-job-tools button{min-width:0!important;min-height:34px!important;padding:2px 12px!important;font-size:13px!important}
 #maesta-tecnica .mt-job-type .mt-qty{min-width:56px;font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
 #maesta-tecnica .mt-plan-params{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
 #maesta-tecnica .mt-plan-params .mt-chip{max-width:none}
@@ -412,6 +420,17 @@
 #maesta-tecnica .mt-wiz-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 @media(min-width:620px){#maesta-tecnica .mt-wiz-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 #maesta-tecnica .mt-wiz-grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+#maesta-tecnica .mt-advanced-bar{display:none;align-items:center;gap:10px;background:var(--mt-tint);border:1px solid var(--mt-green);border-radius:10px;padding:4px 4px 4px 12px;font-weight:600}
+#maesta-tecnica .mt-app.mt-advanced .mt-advanced-bar{display:flex}
+#maesta-tecnica .mt-advanced-bar span{flex:1}
+#maesta-tecnica .mt-advanced-bar button{min-height:40px;background:var(--mt-green);border-color:var(--mt-green);color:var(--mt-on-green);font-weight:600}
+#maesta-tecnica .mt-review-bar{flex-wrap:wrap}
+#maesta-tecnica .mt-review-bar button{flex:1 1 30%}
+#maesta-tecnica .mt-review-bar button.mt-primary{background:var(--mt-green);border-color:var(--mt-green);color:var(--mt-on-green);font-weight:600}
+#maesta-tecnica .mt-review-status{margin:0;font-size:13px;color:var(--mt-secondary)}
+#maesta-tecnica .mt-quick{border:2px solid var(--mt-green);border-radius:12px;padding:10px;background:var(--mt-paper);display:flex;flex-direction:column;gap:8px;flex-shrink:0}
+#maesta-tecnica .mt-quick-row{display:flex;gap:8px}
+#maesta-tecnica .mt-quick-row button{flex:1}
 #maesta-tecnica .mt-review{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:10px;padding-bottom:8px}
 #maesta-tecnica .mt-review-bar{display:flex;gap:8px;flex-shrink:0}
 #maesta-tecnica .mt-review-bar button{flex:1;min-height:42px;font-size:14px}
@@ -1086,10 +1105,8 @@ function leafSealOnFrameSurface(part,index,g=geometry()) {return !!g.leaf?.leafS
 // Superfici del telaio dove può stare una guarnizione: le battute
 // (stipite o coprifilo di battuta) che almeno un'anta preme davvero.
 // Senza un appoggio calcolabile restano ammesse tutte le battute.
-function frameStopSurfaces(g=geometry()) {
-  const stops=rebateEdges(g);if(doorStopTarget()==='casing'){const c=casingDoorStop(g);if(c)stops.push(c);}
-  return stops;
-}
+// Il coprifilo non ha mai guarnizioni: solo le battute dello stipite.
+function frameStopSurfaces(g=geometry()) {return rebateEdges(g);}
 function leafPressesEdge(leaf,edge) {
   if(!leaf?.surfaces||edge.kind!=='line'||Math.abs(edge.a[0]-edge.b[0])>1e-6)return false;
   const normal=edge.b[1]>edge.a[1]?1:-1,low=Math.min(edge.a[1],edge.b[1]),high=Math.max(edge.a[1],edge.b[1]);
@@ -1099,10 +1116,13 @@ function pressedFrameStops() {
   if(!doorSeatReady)return null;
   const keys=new Set();let placed=false;
   eachLeaf(()=>{const g=geometry();if(!g.leaf)return;
+    // Anta posizionata (anche solo sul coprifilo): conta quali battute dello stipite tocca davvero.
+    if(g.leaf.contact||g.leaf.bearingContact)placed=true;
     frameStopSurfaces(g).forEach(stop=>{if(leafPressesEdge(g.leaf,stop.edge)){placed=true;keys.add(edgeStateKey(stop.part,stop.index));}});});
   return placed?keys:null;
 }
 function frameGasketAllowed(part,index,pressed=pressedFrameStops()) {
+  if(isCasingPart(part))return false;
   const key=edgeStateKey(part,index);
   if(pressed)return pressed.has(key);
   const g=geometry(),stops=frameStopSurfaces(g);
@@ -1114,6 +1134,7 @@ function clearFrameSealConflicts() {
   g.parts.forEach(part=>part.edges.forEach((edge,index)=>{
     if(!gasketAt(part,index))return;
     if(leafSealOnFrameSurface(part,index,g)){removeGasket(part,index);return;}
+    if(isCasingPart(part)){const key=edgeStateKey(part,index);delete draft().gaskets[key];if(draft().gasketChoices)delete draft().gasketChoices[key];return;}
     // Guarnizione rimasta su una battuta che nessuna anta tocca più: non esiste.
     if(pressed&&!pressed.has(edgeStateKey(part,index))){const key=edgeStateKey(part,index);delete draft().gaskets[key];if(draft().gasketChoices)delete draft().gasketChoices[key];}
   }));
@@ -2021,7 +2042,14 @@ function maskLapFilm(svg, drawing) {
   };
   Array.from(svg.children).filter(node=>node!==state.defs).forEach(visit);
 }
+function mergedNarrowOverlap(part,which){
+  const list=narrowJambStrips(part).filter(n=>n.merge);if(!list.length)return false;
+  const count=strips(part).length;
+  return list.some(n=>which==='start'?n.index===0:n.index===count-1);
+}
 function drawFilmOverlap(svg, source, which, X, Y, big = false) {
+  // Pellicola unica con il coprifilo: il sormonto non esiste, non si disegna.
+  if(mergedNarrowOverlap(source,which))return;
   const stack = overlapStackInfo(source,which);
   if(!stack)return;
   const {info,used,id,upperPart,lowerPart}=stack;
@@ -4061,7 +4089,7 @@ function bindDoorControls() {
 const padEl = $('.mt-pad'), fullEl = $('.mt-app'), appEl = fullEl;
 const pad = {sel: null, seq: [], buffer: '', fresh: true};
 let fullOpen = true, fullView = 'profile', tool = 'misure';
-const DATA_ATTRS = ['data-dim', 'data-over', 'data-cut', 'data-door', 'data-gasket', 'data-leaf-seal', 'data-luce', 'data-plan', 'data-job', 'data-spare'];
+const DATA_ATTRS = ['data-quick', 'data-dim', 'data-over', 'data-cut', 'data-door', 'data-gasket', 'data-leaf-seal', 'data-luce', 'data-plan', 'data-job', 'data-spare'];
 
 function selectorOf(input) {
   for (const a of DATA_ATTRS) {
@@ -4689,6 +4717,7 @@ function applyWizard() {
 }
 function finishWizard() {
   closeWizard();
+  recordDoorFit();
   appEl.classList.remove('mt-advanced');
   fullView = 'section';
   setTab('frame');
@@ -4718,7 +4747,10 @@ function gasketReference(ref,g=geometry()) {
 function gasketWizardSteps() {
   const steps = [];
   clearFrameSealConflicts();
-  const sealG=geometry(),pressed=pressedFrameStops(),typical=selectedDoorStop(sealG);
+  const sealG=geometry(),pressed=pressedFrameStops(),rebatesNow=rebateEdges(sealG);
+  let typical=selectedDoorStop(sealG);
+  // Con la battuta sul coprifilo la guarnizione tipica resta sulla battuta dello stipite.
+  if(!typical||isCasingPart(typical.part))typical=pressed?rebatesNow.filter(r=>pressed.has(edgeStateKey(r.part,r.index))).at(-1)||null:null;
   const typicalKey=typical?edgeStateKey(typical.part,typical.index):null;
   const anyFrameGasket=()=>sealG.parts.some(part=>part.edges.some((edge,i)=>gasketAt(part,i)));
   const leafHasSeal=()=>Object.keys(leafProfileOptions().gaskets||{}).length>0;
@@ -4827,7 +4859,7 @@ function singleMeasureSteps(includeFrame=true) {
   // Procedura standard: anta e stipite si misurano sempre entrambi, ciascuno per conto suo.
   if(steppedDoor())steps.splice(3,0,...(model().casing!=='none'?[{id:'antaDestinazione',title:'Dove appoggia la battuta dell’anta?',choice:'doorTarget',q:''}]:[]));
   if(model().casing==='none'){
-    const keys=model().jamb==='extension'?['E','I','s','sI']:['D','s'];
+    const keys=model().jamb==='extension'?['E','I','sI']:['D'];
     const fields=keys.map(key=>({id:'telaio-'+key,title:'Telaio a vista · '+(key==='s'?'spessore stipite':key==='sI'?'spessore imbotte':key==='E'?'profondità stipite':key==='I'?'profondità imbotte':'profondità'),
       q:'',fig:'frameProfile',quoteKey:key,
       get:()=>draft().p[key],confirm:()=>{(draft().measured||(draft().measured={}))[key]=true;},set:value=>{draft().p[key]=value;(draft().measured||(draft().measured={}))[key]=true;refreshDoorSeat();sync();},min:.1,max:key==='s'||key==='sI'?150:500}));
@@ -4903,7 +4935,7 @@ function singleMeasureSteps(includeFrame=true) {
     const names={A:'larghezza A',B:'larghezza B',tE:'spessore tE',tI:'spessore tI',D:'larghezza D',s:'spessore s',I:'profondità imbotte I',sI:'spessore imbotte sI',E:'profondità E'};
     const quoteSteps=[],lateSteps=[],order=part=>part.key==='outer'||part.key==='integrated'?0:part.key==='inner'?2:1;
     [...geometry().parts].sort((a,b)=>order(a)-order(b)).forEach(part=>part.quotes.forEach(quote=>{
-      const key=quote.key;if(asked.has(key))return;asked.add(key);
+      const key=quote.key;if(asked.has(key)||key==='s')return;asked.add(key); // s non si misura: resta solo nel disegno
       const offset=/^e[EI]$/.test(key),side=key.slice(-1),p=draft().p;
       if(offset&&!(Math.abs(p[key])>1e-9))return;
       const outward=offset&&p[key]<0,thick=side==='E'?p.s:model().jamb==='extension'?p.sI:p.s+(model().jamb==='plain'?0:model().jamb==='double'?p.b1+p.b2:p.b);
@@ -4951,7 +4983,9 @@ function surveyHandleSide(){return wiz.handleSide||state.handleSide||'right';}
 function orientSurveySvg(svg,width=null){
   // La sezione è lo stipite dal lato della maniglia visto dal lato a tirare, con la luce in basso:
   // maniglia a destra → il lato dove sta l'anta (si tira) è a destra, quindi si specchia.
-  if(surveyHandleSide()!=='right'||svg.getAttribute('data-orientation-fixed')==='true'||svg.getAttribute('data-view-mirrored')==='true')return;
+  // Il bordo dell'anta (data-leaf-edge) si specchia al contrario della sezione del telaio.
+  const mirrorFor=svg.getAttribute('data-leaf-edge')==='true'?'left':'right';
+  if(surveyHandleSide()!==mirrorFor||svg.getAttribute('data-orientation-fixed')==='true'||svg.getAttribute('data-view-mirrored')==='true')return;
   const w=width||Number((svg.getAttribute('viewBox')||'0 0 320 230').split(/\s+/)[2]);
   const group=el('g',{transform:'translate('+w+' 0) scale(-1 1)','data-view-orientation':'right-handle'});
   [...svg.childNodes].forEach(node=>group.append(node));svg.append(group);
@@ -5309,8 +5343,9 @@ function sectionSurveyFigure(kind='closure',options={}) {
       {'data-section-context':hideLeaf?'frame-only':'frame-and-leaf'},!!options.compact);
     if(options.compact)return svg;
     const F0=surveyMapping(full,{x:8,y:40,w:164,h:160});
-    svg.append(el('text',{x:F0.X(full.minX),y:36,'text-anchor':'start','font-size':10,'font-weight':700,fill:'var(--mt-green)'},'ESTERNO'));
-    svg.append(el('text',{x:F0.X(full.maxX),y:36,'text-anchor':'end','font-size':10,'font-weight':700,fill:'var(--mt-secondary)'},'INTERNO'));
+    // Sotto la vista intera, dove non coprono pezzi né quote.
+    svg.append(el('text',{x:F0.X(full.minX),y:216,'text-anchor':'start','font-size':10,'font-weight':700,fill:'var(--mt-green)'},'ESTERNO'));
+    svg.append(el('text',{x:F0.X(full.maxX),y:216,'text-anchor':'end','font-size':10,'font-weight':700,fill:'var(--mt-secondary)'},'INTERNO'));
     if(from&&to){
       // Lato libero: dentro la lente e fuori dai pezzi (e dall'anta, se disegnata).
       const polys=[...g.parts.map(part=>partOutline(part).map(([x,y])=>[Z.X(x),Z.Y(y)])),...(hideLeaf?[]:[leaf.points.map(([x,y])=>[Z.X(x),Z.Y(y)])])];
@@ -5373,7 +5408,7 @@ function measureFig(kind, val, context=null) {
     const g=geometry(),quote=g.parts.flatMap(part=>part.quotes).find(quote=>quote.key===context?.quoteKey);
     if(!quote)return surveyFigure('frame-measure');
     const axis=Math.abs(quote.from[0]-quote.to[0])<1e-6?'v':'h';
-    const svg=sectionSurveyFigure('frame-measure',{geometry:g,focus:axis==='v',from:quote.from,to:quote.to,axis,value:val,dimension:'telaio-'+quote.key});
+    const svg=sectionSurveyFigure('frame-measure',{geometry:g,focus:true,from:quote.from,to:quote.to,axis,value:val,dimension:'telaio-'+quote.key});
     svg.setAttribute('data-quote-key',quote.key);svg.setAttribute('data-world-from',quote.from.join(','));svg.setAttribute('data-world-to',quote.to.join(','));return svg;
   }
   const svg = el('svg', {class: 'mt-wiz-fig', viewBox: '0 0 260 170', 'aria-hidden': 'true'});
@@ -5656,6 +5691,11 @@ function dimLine(svg,a,b,text,ext=[]){
   svg.append(el('text',{x:tx,y:ty,'text-anchor':'middle','font-size':12,'font-weight':700,fill:'var(--mt-green)',stroke:'var(--mt-paper)','stroke-width':3,'paint-order':'stroke',...(vertical?{transform:`rotate(-90 ${tx} ${ty})`}:{})},text));
 }
 const mmText=v=>Number.isFinite(v)?fmt(v):'—';
+// Gioco fra anta e luce registrato a fine guida (o nella modifica veloce):
+// serve a disegnare l'anta al suo posto anche se poi le misure cambiano.
+function leavesTotalWidth(){return state.leafCount===2?eachLeaf(()=>door.width).reduce((a,b)=>a+b,0):door.width;}
+function recordDoorFit(){state.fit={dW:leavesTotalWidth()-luce.W};}
+function doorFit(){return state.fit&&Number.isFinite(state.fit.dW)?state.fit:{dW:leavesTotalWidth()-luce.W};}
 function reviewFrontFigure(){
   const svg=reviewSvg(250),mat=surveyMaterials(svg),g=geometry(),W=luce.W,H=luce.H,head=state.hasHead!==false;
   const shown=g.parts.filter(part=>part.key!=='inner');
@@ -5665,12 +5705,50 @@ function reviewFrontFigure(){
   const oL=Math.max(...bands.map(b=>b.hiL)),oR=Math.max(...bands.map(b=>b.hiR)),oT=head?Math.max(...bands.map(b=>b.hi)):0;
   const M=surveyMapping({minX:-W/2-oL,maxX:W/2+oR,minY:-(H+oT),maxY:0},{x:54,y:34,w:224,h:180}),X=M.X,Y=M.Y,k=M.k;
   svg.append(el('rect',{x:X(-W/2),y:Y(-H),width:W*k,height:H*k,fill:'var(--mt-board)'}));
-  bands.forEach(({part,lo,hiL,hiR,hi})=>{
-    const attrs={fill:isCasingPart(part)?mat.casing:mat.jamb,stroke:'var(--mt-secondary)','stroke-width':.9};
-    const top=head?H+hi:H;
-    svg.append(el('rect',{x:X(-W/2-hiL),y:Y(-top),width:Math.max(.6,(hiL-lo)*k),height:top*k,...attrs}));
-    svg.append(el('rect',{x:X(W/2+lo),y:Y(-top),width:Math.max(.6,(hiR-lo)*k),height:top*k,...attrs}));
-    if(head)svg.append(el('rect',{x:X(-W/2-hiL),y:Y(-H-hi),width:(W+hiL+hiR)*k,height:Math.max(.6,(hi-lo)*k),...attrs}));
+  // Ogni pezzo con la sua giunzione: 45°, montanti passanti o traverso passante.
+  const drawBands=(target,PX,PY,width=.9)=>bands.forEach(({part,lo,hiL,hiR,hi})=>{
+    const attrs={fill:isCasingPart(part)?mat.casing:mat.jamb,stroke:'var(--mt-secondary)','stroke-width':width,'stroke-linejoin':'miter'};
+    const poly=pts=>target.append(el('polygon',{points:pts.map(([x,y])=>PX(x)+','+PY(y)).join(' '),...attrs}));
+    const xl=-W/2,xr=W/2,j=head?jointOf(part):'none';
+    if(j==='none'){poly([[xl-hiL,0],[xl-lo,0],[xl-lo,H],[xl-hiL,H]]);poly([[xr+lo,0],[xr+hiR,0],[xr+hiR,H],[xr+lo,H]]);return;}
+    if(j==='miter'){
+      poly([[xl-hiL,0],[xl-lo,0],[xl-lo,H+lo],[xl-hiL,H+hi]]);
+      poly([[xr+lo,0],[xr+hiR,0],[xr+hiR,H+hi],[xr+lo,H+lo]]);
+      poly([[xl-hiL,H+hi],[xr+hiR,H+hi],[xr+lo,H+lo],[xl-lo,H+lo]]);
+    }else if(j==='posts'){
+      poly([[xl-hiL,0],[xl-lo,0],[xl-lo,H+hi],[xl-hiL,H+hi]]);
+      poly([[xr+lo,0],[xr+hiR,0],[xr+hiR,H+hi],[xr+lo,H+hi]]);
+      poly([[xl-lo,H+lo],[xr+lo,H+lo],[xr+lo,H+hi],[xl-lo,H+hi]]);
+    }else{
+      poly([[xl-hiL,0],[xl-lo,0],[xl-lo,H+lo],[xl-hiL,H+lo]]);
+      poly([[xr+lo,0],[xr+hiR,0],[xr+hiR,H+lo],[xr+lo,H+lo]]);
+      poly([[xl-hiL,H+lo],[xr+hiR,H+lo],[xr+hiR,H+hi],[xl-hiL,H+hi]]);
+    }
+  });
+  drawBands(svg,X,y=>Y(-y));
+  // Lente sull'angolo in alto: la giunzione scelta si vede chiaramente.
+  if(head){
+    const zx=-W/2-oL/2+20,zy=H+oT/2-10,span=Math.max(90,oL+oT)*1.25,lr=40,lc=[294,74],kz=2*lr/span;
+    const PX=x=>lc[0]+(x-zx)*kz,PY=y=>lc[1]-(y-zy)*kz;
+    const id='mt-front-lens-'+(++surveyFigureSerial),defs=el('defs'),cp=el('clipPath',{id});cp.append(el('circle',{cx:lc[0],cy:lc[1],r:lr}));defs.append(cp);svg.append(defs);
+    const lens=el('g',{'clip-path':'url(#'+id+')','data-joint-lens':state.joint});
+    lens.append(el('circle',{cx:lc[0],cy:lc[1],r:lr,fill:'var(--mt-board)'}));drawBands(lens,PX,PY,1.4);svg.append(lens);
+    svg.append(el('circle',{cx:lc[0],cy:lc[1],r:lr,fill:'none',stroke:'var(--mt-secondary)','stroke-width':1.3}));
+    const mx=X(zx),my=Y(-zy);
+    svg.append(el('circle',{cx:mx,cy:my,r:7,fill:'none',stroke:'var(--mt-secondary)','stroke-width':1.1}));
+    const ang=Math.atan2(lc[1]-my,lc[0]-mx);
+    svg.append(el('line',{x1:mx+7*Math.cos(ang),y1:my+7*Math.sin(ang),x2:lc[0]-lr*Math.cos(ang),y2:lc[1]-lr*Math.sin(ang),stroke:'var(--mt-secondary)','stroke-width':1}));
+  }
+  // Anta nella luce: appesa al lato cerniere con la sua misura reale. Se luce e
+  // anta non sono coerenti (modifica avanzata) lo scarto si vede, non si corregge.
+  const leaves=state.leafCount===2?eachLeaf(()=>({w:door.width,h:door.height})):[{w:door.width,h:door.height}];
+  const fit=doorFit(),hingeLeft=(state.handleSide||'right')==='right';
+  leaves.forEach((leaf,index)=>{
+    if(!(leaf.w>0&&leaf.h>0))return;
+    const fromLeft=leaves.length===2?index===0:hingeLeft,x0=fromLeft?-W/2-fit.dW/2:W/2+fit.dW/2-leaf.w;
+    svg.append(el('rect',{x:X(x0),y:Y(-leaf.h),width:leaf.w*k,height:leaf.h*k,fill:'var(--mt-wood)','fill-opacity':.55,stroke:'var(--mt-ink)','stroke-width':1,'stroke-dasharray':'4 2','data-front-leaf':index}));
+    const kx=fromLeft?X(x0+leaf.w)-6:X(x0)+6;
+    svg.append(el('circle',{cx:kx,cy:Y(-leaf.h*.48),r:2.4,fill:'var(--mt-green)'}));
   });
   svg.append(el('line',{x1:20,y1:Y(0),x2:320,y2:Y(0),stroke:'var(--mt-secondary)','stroke-width':1.4}));
   // L dentro la luce; H fuori, a destra, con le linee di richiamo dalla luce.
@@ -5730,14 +5808,104 @@ function reviewLeafSection(){
   if(door.type==='round')svg.append(el('text',{x:X(S)+8,y:Y(0)+14,'font-size':12,'font-weight':700,fill:'var(--mt-green)'},'r '+mmText(door.radius)));
   return svg;
 }
+// ---------- Porte salvate: duplicazione, modifica veloce, salvataggio ----------
+// Ogni porta del lavoro conserva la configurazione completa. Una copia è
+// indipendente: modificarla non cambia l'originale.
+function snapshotConfig(){
+  const leaves=Array.from({length:state.leafCount===2?2:1},(_,i)=>copyLeaf(i===state.activeLeaf?door:(leafRecords[i]||door)));
+  return copyLeaf({cfg:state.cfg,hasHead:state.hasHead,leafCount:state.leafCount,handleSide:state.handleSide,handleChosen:state.handleChosen,
+    joint:state.joint,asym:state.asym,fit:state.fit||null,draft:state.draft,leaves,luce:{W:luce.W,H:luce.H}});
+}
+function loadConfig(c){
+  const conf=copyLeaf(c);
+  Object.assign(state,{cfg:conf.cfg,hasHead:conf.hasHead,leafCount:conf.leafCount,handleSide:conf.handleSide,handleChosen:conf.handleChosen,
+    joint:conf.joint,asym:conf.asym||{side:null,E:null,I:null},fit:conf.fit||null,draft:conf.draft,activeLeaf:0});
+  leafRecords[0]=copyLeaf(conf.leaves[0]);leafRecords[1]=conf.leaves[1]?copyLeaf(conf.leaves[1]):null;
+  replaceDoor(copyLeaf(conf.leaves[0]));
+  luce.W=conf.luce.W;luce.H=conf.luce.H;
+  $$('[data-luce]').forEach(input=>{input.value=String(luce[input.dataset.luce]);});
+  setActiveLeaf(0,false);
+  sync();drawDoor();updateBadge();
+}
+function editingType(){return state.editingType?job.types.find(t=>t.id===state.editingType)||null:null;}
+function duplicateDoor(){
+  state.editingType=null;state.quick=null;
+  reviewMessage='Copia creata: è una porta nuova, non ancora nel lavoro. Cambia le misure e salvala.';
+  openQuickEdit();
+}
+function openQuickEdit(){
+  state.quick={before:snapshotConfig()};
+  renderReview();
+}
+function quickValues(){
+  const leaves=state.leafCount===2?eachLeaf(()=>({w:door.width,h:door.height})):[{w:door.width,h:door.height}];
+  return{W:leaves[0].w,W2:leaves[1]?.w,H:Math.max(...leaves.map(l=>l.h))};
+}
+// Modifica veloce: cambia solo l'anta; la luce cambia della stessa differenza,
+// così giochi, profili e scelte costruttive restano quelli della porta originale.
+// Montanti, traverso, coprifili e stipite si ricalcolano dalla luce.
+function applyQuick(key,value){
+  if(!(value>0))return;
+  const before=quickValues();
+  if(key==='H'){
+    const dH=value-before.H;
+    for(let i=0;i<(state.leafCount===2?2:1);i++)withLeaf(i,()=>{door.height+=dH;door.heightMeasured=true;},true);
+    luce.H+=dH;
+  }else{
+    const index=key==='W2'?1:0,old=key==='W2'?before.W2:before.W,dW=value-old;
+    withLeaf(index,()=>{door.width=value;door.widthMeasured=true;},true);
+    luce.W+=dW;
+  }
+  $$('[data-luce]').forEach(input=>{input.value=String(luce[input.dataset.luce]);});
+  setActiveLeaf(state.activeLeaf,false);
+  recordDoorFit();sync();drawDoor();updateBadge();renderReview();
+}
+let reviewMessage='',reviewMessageUntil=0,reviewShown='';
+function saveToJob(){
+  const t=editingType();
+  if(!t){addToJob();return;}
+  const rows=currentRows();if(!rows){reviewMessage='Ci sono misure da sistemare: la porta non è stata aggiornata.';renderReview();return;}
+  t.rows=rows.map(r=>({label:r.name,width:roundCut(r.width),length:roundCut(r.height)}));
+  t.config=snapshotConfig();
+  t.desc=`${model().name} · ${doorClosureName()} · luce ${fmt(luce.W)} × ${fmt(luce.H)} · `+eachLeaf(i=>leafName(i).toLocaleLowerCase('it-IT')+' '+fmt(door.width)+' × '+fmt(door.height)).join(' / ')+(state.hasHead===false?' · senza traverso':'');
+  reviewMessage=t.name+' aggiornato nel lavoro.';vibrate();renderReview();
+}
 function renderReview(){
   const box=$('.mt-review');if(!box||appEl.classList.contains('mt-advanced'))return;
   box.replaceChildren();
   const bar=document.createElement('div');bar.className='mt-review-bar';
   const button=(text,fn)=>{const b=document.createElement('button');b.type='button';b.className='cursor-interaction';b.textContent=text;b.onclick=fn;bar.append(b);};
-  button('Rifai la guida',()=>openWizard());
-  button('Modifica avanzata',()=>{appEl.classList.add('mt-advanced');redrawFull();drawDoor();});
+  const editing=editingType();
+  button('Modifica veloce',()=>openQuickEdit());
+  button('Modifica avanzata',()=>{state.quick=null;appEl.classList.add('mt-advanced');redrawFull();drawDoor();});
+  button('Duplica',()=>duplicateDoor());
+  button('Rifai la guida',()=>{state.quick=null;openWizard();});
+  button(editing?'Aggiorna '+editing.name:'Salva nel lavoro',()=>saveToJob());
+  bar.lastChild.classList.add('mt-primary');
   box.append(bar);
+  const status=document.createElement('p');status.className='mt-review-status';
+  if(reviewMessage){reviewMessageUntil=Date.now()+5000;reviewShown=reviewMessage;reviewMessage='';}
+  status.textContent=(Date.now()<reviewMessageUntil&&reviewShown)||(editing?'Stai modificando '+editing.name+' del lavoro.':'Porta non ancora salvata nel lavoro.');
+  box.append(status);
+  if(state.quick){
+    const q=document.createElement('div');q.className='mt-quick';
+    const title=document.createElement('strong');title.textContent='Modifica veloce · solo le misure dell’anta';q.append(title);
+    const values=quickValues(),row=document.createElement('div');row.className='mt-quick-row';
+    const field=(key,label,value)=>{const input=inputOf('[data-quick="'+key+'"]');if(input)input.value=String(value);
+      const b=document.createElement('button');b.type='button';b.className='mt-chip cursor-interaction';
+      const a=document.createElement('span');a.textContent=label;const v=document.createElement('strong');v.textContent=fmt(value)+' mm';b.append(a,v);
+      b.onclick=ev=>openPad('[data-quick="'+key+'"]',state.leafCount===2?['[data-quick="W"]','[data-quick="W2"]','[data-quick="H"]']:['[data-quick="W"]','[data-quick="H"]'],ev.currentTarget.getBoundingClientRect());row.append(b);};
+    field('W',state.leafCount===2?'Larghezza anta sinistra':'Larghezza anta',values.W);
+    if(state.leafCount===2)field('W2','Larghezza anta destra',values.W2);
+    field('H','Altezza anta',values.H);
+    q.append(row);
+    const note=document.createElement('p');note.className='mt-small';note.style.margin='0';
+    note.textContent='Luce '+fmt(luce.W)+' × '+fmt(luce.H)+' mm: cambia insieme all’anta, i giochi restano quelli della porta originale.';q.append(note);
+    const actions=document.createElement('div');actions.className='mt-quick-row';
+    const done=document.createElement('button');done.type='button';done.className='cursor-interaction';done.textContent='✓ Fatto';done.onclick=()=>{state.quick=null;renderReview();};
+    const cancel=document.createElement('button');cancel.type='button';cancel.className='cursor-interaction';cancel.textContent='Annulla';cancel.onclick=()=>{const before=state.quick.before;state.quick=null;loadConfig(before);renderReview();};
+    actions.append(cancel,done);q.append(actions);box.append(q);
+  }
   const card=(title,figure)=>{const c=document.createElement('section');c.className='mt-review-card';const h=document.createElement('h4');h.textContent=title;c.append(h,figure);box.append(c);return c;};
   const error=frameQuoteError();
   if(error){const n=document.createElement('p');n.className='mt-review-note';n.textContent=error;box.append(n);}
@@ -5774,7 +5942,8 @@ function addToJob() {
   const letter = String.fromCharCode(65 + (job.seq % 26)) + (job.seq >= 26 ? Math.floor(job.seq / 26) : '');
   job.seq++;
   const leaves=eachLeaf(index=>({index,name:leafName(index),width:door.width,height:door.height,sizeBasis:doorSizeBasis(),thickness:door.thickness,closure:doorClosureRecord()}));
-  job.types.push({id: 't' + job.seq, name: 'Tipo ' + letter, qty: 1,
+  state.editingType = 't' + job.seq;
+  job.types.push({id: 't' + job.seq, name: 'Tipo ' + letter, qty: 1, config: snapshotConfig(),
     desc: `${model().name} · ${doorClosureName()} · luce ${fmt(luce.W)} × ${fmt(luce.H)} · `+leaves.map(leaf=>leaf.name.toLocaleLowerCase('it-IT')+' '+fmt(leaf.width)+' × '+fmt(leaf.height)).join(' / ')+(state.hasHead===false?' · senza traverso':''),
     opening:{hasHead:state.hasHead!==false,leafCount:state.leafCount,handleSide:state.handleSide,view:'pull-side'},leaves,
     closure:leaves[0].closure,
@@ -6043,8 +6212,14 @@ function renderJob() {
     const minus = btn('−', 'Una porta in meno di ' + t.name, () => { t.qty = Math.max(0, t.qty - 1); vibrate(); renderJob(); });
     const qty = btn(String(t.qty), 'Quante porte ' + t.name, ev => openPad(`[data-job="${t.id}"]`, [], ev.currentTarget.getBoundingClientRect()), 'mt-qty');
     const plus = btn('+', 'Una porta in più di ' + t.name, () => { t.qty++; vibrate(); renderJob(); });
-    const del = btn('✕', 'Togli ' + t.name + ' dal lavoro', () => { job.types = job.types.filter(x => x !== t); vibrate(); renderJob(); });
+    const del = btn('✕', 'Togli ' + t.name + ' dal lavoro', () => { job.types = job.types.filter(x => x !== t); if (state.editingType === t.id) state.editingType = null; vibrate(); renderJob(); });
     row.append(info, minus, qty, plus, del);
+    if (t.config) {
+      const tools = document.createElement('div'); tools.className = 'mt-job-tools';
+      const open = btn('Apri', 'Apri ' + t.name, () => { loadConfig(t.config); state.editingType = t.id; state.quick = null; reviewMessage = t.name + ': modifica e poi aggiorna.'; appEl.classList.remove('mt-advanced'); setTab('frame'); });
+      const dup = btn('Duplica', 'Duplica ' + t.name, () => { loadConfig(t.config); appEl.classList.remove('mt-advanced'); setTab('frame'); duplicateDoor(); });
+      tools.append(open, dup); info.append(tools);
+    }
     typesBox.append(row);
   });
   prepInputs();
@@ -6233,6 +6408,9 @@ function bindApp() {
   $$('[data-view]').forEach(b => b.addEventListener('click', () => { fullView = b.dataset.view; closePad(); redrawFull(); }));
   $('[data-action=catalog]').addEventListener('click', openWizard);
   $('[data-action=review]').addEventListener('click', () => { appEl.classList.remove('mt-advanced'); renderReview(); });
+  // Fine della modifica avanzata: torna alla verifica; una porta già nel lavoro viene aggiornata.
+  $('[data-action=advanced-done]').addEventListener('click', () => { closePad(); appEl.classList.remove('mt-advanced'); setTab('frame'); if (editingType()) saveToJob(); });
+  $$('[data-quick]').forEach(input => input.addEventListener('input', () => { const v = Number(input.value); if (state.quick && v > 0) applyQuick(input.dataset.quick, v); }));
   $('[data-wiz=back]').addEventListener('click', () => wizGo(-1));
   $('[data-wiz=close]').addEventListener('click', closeWizard);
   $('[data-wiz=next]').addEventListener('click', () => {

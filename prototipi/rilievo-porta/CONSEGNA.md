@@ -245,3 +245,22 @@ combinazioni anta/stipite che non combaciano; prova delle 576 combinazioni
 invariata; tastierino visibile da 560 px di altezza.
 
 HTML SHA256 dopo la terza revisione: `fc5de996b85ce0acb295bb8d1e06ee577826e010a5c443aef79109539fe924da`.
+
+## Quarta revisione con l'utente (13 novembre 2026)
+
+- Guida: niente spessore s; quote del telaio sempre nel dettaglio con lente;
+  bordo dell'anta capovolto e specchiato nelle misure; nessuna guarnizione e
+  nessun passo sul coprifilo.
+- Verifica: vista frontale con la giunzione scelta e lente sull'angolo; anta
+  disegnata nella luce dal lato cerniere; striscia sotto 30 mm senza sormonto;
+  sormonti grigio argento.
+- Porte del lavoro con configurazione completa: Apri, Duplica, Modifica veloce
+  (solo anta, luce con la stessa differenza), Modifica avanzata con «✓ Fine».
+
+Verifica in Chromium: guida completa, duplicazione con modifica veloce
+(800 → 900: luce 900, traverso coprifilo interno 982 → 1082, originale
+invariato), modifica avanzata e uscita, due ante, lavoro, nessun errore.
+Prova delle 576 combinazioni: differenze solo nei due casi con battuta sul
+coprifilo, dove non c'è più la guarnizione sul coprifilo.
+
+HTML SHA256 dopo la quarta revisione: `f0cb77ef95cf5657dbf2f81125047ed4decae47ce5138c74b96db6c613744145`.
