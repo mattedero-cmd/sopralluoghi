@@ -1792,6 +1792,11 @@ function render(svg,g,mini=false,size=null){const box=size||svg.getBoundingClien
   if(!selected)part.edges.forEach((e,ei)=>filmSegments(part,ei).forEach(seg=>svg.append(el('path',{d:`M ${X(seg.a[0])} ${Y(seg.a[1])} `+edgeCommand(seg,X,Y,k),fill:'none',stroke:'var(--mt-green)','stroke-width':hasProfileFilmRules()?3:1.5,opacity:hasProfileFilmRules()?1:.7,'pointer-events':'none','data-film-segment':part.key+':'+ei,'data-start':seg.start,'data-end':seg.end}))));
  });
  g.parts.forEach((part,pi)=>['start','end'].forEach(which=>drawFilmOverlap(svg,part,which,X,Y,pi===draft().part)));
+ // Striscia sotto 30 mm: un solo pezzo con il coprifilo, lo si scrive sul disegno.
+ g.parts.forEach(part=>narrowJambStrips(part,g).filter(n=>n.merge).forEach(n=>{
+  const seg=n.strip.segs[0],e=part.edges[seg.i],pt=overlapEdgePoint(e,((seg.start+seg.end)/2)/e.len);
+  svg.append(el('text',{x:X(pt[0]),y:Y(pt[1])-7,'text-anchor':'middle','font-size':10,'font-weight':600,fill:'var(--mt-green)',stroke:'var(--mt-board)','stroke-width':3,'paint-order':'stroke','data-merged-strip':part.key},'pezzo unico col coprifilo'));
+ }));
  if(g.leaf?.contact){const contacts=g.leaf.contacts.filter(contact=>contact.gasket),seen=new Set();
   (contacts.length?contacts:[g.leaf.contact]).forEach(contact=>{const point=contact.point,key=point.map(value=>value.toFixed(6)).join(':');if(seen.has(key))return;seen.add(key);
    const mark=el('circle',{cx:X(point[0]),cy:Y(point[1]),r:3.5,fill:'var(--mt-paper)',stroke:'var(--mt-green)','stroke-width':1.5,'data-door-bearing':g.leaf.bearing,'data-bearing-source':contact.leafGasket?'leaf':'frame','pointer-events':'none'});mark.append(el('title',{},contact.leafGasket?'Guarnizione dell’anta in appoggio su '+contact.partName:contact.gasket?'Appoggio effettivo sulla guarnizione dello stipite':'Appoggio sulla battuta senza guarnizione'));svg.append(mark);
@@ -3460,7 +3465,9 @@ function narrowJambStrips(part,g=geometry()) {
   if(inner&&innerJamb===part&&ls.i===part.edges.length-1&&ls.end>edge.len-1e-6&&!last.gEnd&&list.length-1!==0)found.push({index:list.length-1,casing:inner,strip:last});
   // Solo la striscia stretta: il pezzo principale dello stipite resta com'è.
   const widest=Math.max(...list.map(strip=>strip.total));
-  return found.filter(item=>item.strip.total<widest).map(item=>({...item,merge:item.strip.total<NARROW_STRIP}));
+  // Il limite dei 30 mm vale sulla superficie dello stipite fra coprifilo e
+  // guarnizione, senza sormonti né abbondanze.
+  return found.filter(item=>item.strip.total<widest).map(item=>({...item,merge:item.strip.width<NARROW_STRIP}));
 }
 function frameRows(part) {
   if (frameRowsError(part)) return [];
@@ -5728,7 +5735,7 @@ function reviewFrontFigure(){
   drawBands(svg,X,y=>Y(-y));
   // Lente sull'angolo in alto: la giunzione scelta si vede chiaramente.
   if(head){
-    const zx=-W/2-oL/2+20,zy=H+oT/2-10,span=Math.max(90,oL+oT)*1.25,lr=40,lc=[294,74],kz=2*lr/span;
+    const zx=-W/2-oL/2+20,zy=H+oT/2-10,span=Math.max(90,oL+oT)*1.25,lr=40,lc=[46,74],kz=2*lr/span;
     const PX=x=>lc[0]+(x-zx)*kz,PY=y=>lc[1]-(y-zy)*kz;
     const id='mt-front-lens-'+(++surveyFigureSerial),defs=el('defs'),cp=el('clipPath',{id});cp.append(el('circle',{cx:lc[0],cy:lc[1],r:lr}));defs.append(cp);svg.append(defs);
     const lens=el('g',{'clip-path':'url(#'+id+')','data-joint-lens':state.joint});

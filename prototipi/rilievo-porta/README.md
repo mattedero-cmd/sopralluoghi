@@ -81,7 +81,7 @@ Duplica. Una copia è indipendente dall'originale.
 **Altre regole:** lo spessore dello stipite s non si chiede (resta solo nel
 disegno); il coprifilo non ha mai guarnizioni; la vista frontale disegna la
 giunzione scelta, con una lente sull'angolo; la striscia sotto 30 mm unita al
-coprifilo è disegnata senza sormonto; i sormonti sono grigio argento, la
+coprifilo è disegnata senza sormonto, con la scritta «pezzo unico col coprifilo»; i sormonti sono grigio argento, la
 guarnizione gialla; il bordo dell'anta nelle misure è capovolto e specchiato.
 
 **Flusso in tre fasi.** 1) La guida definisce tutta la porta: alla fine non
@@ -242,7 +242,8 @@ rimangono pulsanti compatti. Il posizionamento mostra un solo lato alla volta.
   - 45° → montante H + liv. max, traverso L + 2 × liv. max
 - Una striscia di più tratti si taglia sulla lunghezza del tratto più lungo.
 - **Striscia fra coprifilo e guarnizione** (copre lo stipite e il lato del
-  coprifilo): sotto i **30 mm** entra nel pezzo del coprifilo, che prosegue sul
+  coprifilo): se la sua superficie (dal coprifilo alla guarnizione, senza
+  sormonti né abbondanze) è sotto i **30 mm** entra nel pezzo del coprifilo, che prosegue sul
   lato e sullo stipite fino alla guarnizione; altrimenti è un pezzo a sé, più
   largo dell'abbondanza della maestà (15 mm di default). Il pezzo principale
   dello stipite resta com'è.
