@@ -5391,12 +5391,11 @@ function renderMeasure(m, last) {
       options=rebateEdges().map(stop=>({id:edgeStateKey(stop.part,stop.index),name:stop.label,disabled:!fitCandidate({stopSurfaceKey:edgeStateKey(stop.part,stop.index)})}));
       selected=selectedDoorStop(geometry())?.edge.stateKey;changeOf=id=>({stopSurfaceKey:id});pick=id=>{door.stopSurfaceKey=id;refresh();};edgeOf=()=>selectedDoorStop(geometry())?.edge;
     }
-    options=options.map(option=>({...option,disabled:false,note:option.disabled?'non combacia con le misure':''}));
+    // Nella guida queste scelte arrivano prima delle misure della battuta:
+    // nessun avviso su valori d'esempio. Il controllo resta nella scheda Anta.
+    options=options.map(option=>({...option,disabled:false}));
     surveyOptions(body,options,selected,pick,id=>previewWith(changeOf(id),()=>sectionSurveyFigure(kind,{focus:true,compact:true,edge:edgeOf()})));
-    const ok=!options.find(option=>option.id===selected)?.note;
     next.disabled=!options.some(option=>option.id===selected);
-    if(!ok&&selected){const note=document.createElement('p');note.className='mt-error';note.setAttribute('data-fit-warning','true');
-      note.textContent='Con le misure attuali anta e stipite non combaciano'+(fitGeometryError()?' ('+fitGeometryError().replace(/\.$/,'').toLocaleLowerCase('it-IT')+')':'')+'. Puoi proseguire: misura lo stipite e controlla l’avviso alla fine.';body.append(note);}
     return;
   }
   if (m.choice) {
