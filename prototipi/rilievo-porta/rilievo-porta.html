@@ -1812,6 +1812,7 @@ function render(svg,g,mini=false,size=null){const box=size||svg.getBoundingClien
  if(!clean)drawFrameQuotes(svg,g,p,X,Y,w,h,compact);
  if((g.wall.right-g.wall.left)*k>75)svg.append(el('text',{x:X(g.depth/2),y:Y((g.wall.top+g.wall.bottom)/2),'text-anchor':'middle','font-size':11,stroke:'var(--mt-wall)','stroke-width':4,'paint-order':'stroke'},'PARETE'));
  if(!clean&&!compact){const part=g.parts[draft().part],e=part.edges[Math.min(draft().edge,part.edges.length-1)];let mx=(X(e.a[0])+X(e.b[0]))/2,my=(Y(e.a[1])+Y(e.b[1]))/2;const vert=Math.abs(e.b[0]-e.a[0])<Math.abs(e.b[1]-e.a[1]);mx+=vert?18:0;my+=vert?0:18;const label=`${draft().part+1}.${draft().edge+1}`,width=label.length*6;mx=Math.max(width,Math.min(w-width,mx));my=Math.min(h-12,my);svg.append(el('text',{x:mx,y:my,'text-anchor':'middle','font-size':11,stroke:'var(--mt-board)','stroke-width':4,'paint-order':'stroke'},label));}
+ if(typeof size?.decorate==='function')size.decorate(svg,X,Y,k,g);
  orientSurveySvg(svg,w);
 }
 function roundedRelations(part, g = geometry()) {
@@ -5046,7 +5047,6 @@ function openingHandFigure(side){
   });
   if(side){const x=side==='left'?228:88;
     [70,182].forEach(y=>svg.append(el('rect',{x,y,width:5,height:15,rx:1,fill:'var(--mt-secondary)','data-opening-hinge':side==='left'?'right':'left'})));
-    surveyPartLabel(svg,'Maniglia',[side==='left'?105:215,132],[side==='left'?44:277,144],'handle');
   }
   svg.append(el('text',{x:160,y:26,'text-anchor':'middle','font-size':13,fill:'var(--mt-secondary)'},side?'Da questo lato tiri la porta verso di te':'Tocca la porta dal lato della maniglia'));return svg;
 }
@@ -5931,6 +5931,210 @@ function renderReview(){
   if(fit){const n=document.createElement('p');n.className='mt-review-note';n.textContent='Avviso: '+fit+' Controlla le misure di anta e stipite; i tagli della pellicola restano validi.';box.append(n);}
 }
 
+// ---------- Istruzioni di montaggio (PDF, una per porta del lavoro) ----------
+// Maestà a tre quarti in proporzione con i pezzi numerati nell'ordine di posa,
+// sezioni di traverso e montanti con tutte le pellicole, anta a tre quarti con
+// le facce numerate e i dettagli di battuta, sopra e sotto. Per ogni pezzo:
+// rotolo da cui si taglia (lavoro in bobina) e misura del pezzo (kit).
+const JSPDF_URL='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+let jspdfLoading=null;
+function loadJsPdf(){
+  if(window.jspdf?.jsPDF)return Promise.resolve(window.jspdf.jsPDF);
+  return jspdfLoading||(jspdfLoading=new Promise((resolve,reject)=>{const sc=document.createElement('script');sc.src=JSPDF_URL;sc.onload=()=>window.jspdf?.jsPDF?resolve(window.jspdf.jsPDF):reject(new Error('jsPDF'));sc.onerror=()=>{jspdfLoading=null;reject(new Error('jsPDF'));};document.head.append(sc);}));
+}
+// Colori del disegno per la stampa: le variabili diventano colori fissi (tema chiaro).
+function printColor(name){
+  const raw=getComputedStyle(root).getPropertyValue(name).trim();
+  const m=/^light-dark\(\s*([^,]+),/.exec(raw);return m?m[1].trim():raw||'#000';
+}
+function svgForPrint(svg,w,h){
+  const clone=svg.cloneNode(true);clone.setAttribute('xmlns',NS);clone.setAttribute('width',w);clone.setAttribute('height',h);
+  const fix=v=>v.replace(/var\((--[\w-]+)\)/g,(_,n)=>printColor(n));
+  [clone,...clone.querySelectorAll('*')].forEach(node=>[...node.attributes].forEach(a=>{if(a.value.includes('var('))node.setAttribute(a.name,fix(a.value));}));
+  clone.querySelectorAll('text').forEach(t=>{if(!t.getAttribute('fill'))t.setAttribute('fill','#27333b');t.setAttribute('font-family','Helvetica, Arial, sans-serif');});
+  return new XMLSerializer().serializeToString(clone);
+}
+function svgToPng(svg,w,h,scale=2.5){
+  return new Promise((resolve,reject)=>{
+    const img=new Image(),url='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svgForPrint(svg,w,h));
+    img.onload=()=>{const c=document.createElement('canvas');c.width=w*scale;c.height=h*scale;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(img,0,0,c.width,c.height);resolve(c.toDataURL('image/jpeg',.9));};
+    img.onerror=()=>reject(new Error('svg'));img.src=url;
+  });
+}
+const pdfText=t=>String(t).replace(/[’‘]/g,"'").replace(/[“”«»]/g,'"').replace(/[—–]/g,'-').replace(/→/g,'->').replace(/…/g,'...').replace(/[^\x00-\xFF]/g,'');
+// Proiezione a tre quarti (obliqua): x a destra, y in alto, z nello spessore del muro.
+const OBL={ox:.62,oy:.45};
+function callouts(svg,items,center,box){
+  // items: {n,pt:[x,y],side}; il cerchio sta al margine alla stessa altezza
+  // (o alla stessa x per i pezzi in alto), così i richiami non si incrociano.
+  const draw=(it,c)=>{
+    svg.append(el('line',{x1:c[0],y1:c[1],x2:it.pt[0],y2:it.pt[1],stroke:'#56636d','stroke-width':.8}));
+    svg.append(el('circle',{cx:it.pt[0],cy:it.pt[1],r:2.4,fill:'#087b70'}));
+    svg.append(el('circle',{cx:c[0],cy:c[1],r:12,fill:'#fff',stroke:'#087b70','stroke-width':1.8}));
+    svg.append(el('text',{x:c[0],y:c[1]+4.5,'text-anchor':'middle','font-size':13,'font-weight':700,fill:'#087b70'},String(it.n)));};
+  const spread=(list,axis,min)=>{list.sort((a,b)=>a.pt[axis]-b.pt[axis]);let last=-Infinity;list.forEach(it=>{it.c=Math.max(it.pt[axis],last+min);last=it.c;});};
+  const L=items.filter(i=>i.side==='left'),R=items.filter(i=>i.side==='right'),T=items.filter(i=>i.side==='top');
+  spread(L,1,27);spread(R,1,27);spread(T,0,27);
+  L.forEach(it=>draw(it,[box.x+16,it.c]));R.forEach(it=>draw(it,[box.x+box.w-16,it.c]));T.forEach(it=>draw(it,[it.c,box.y+18]));
+}
+function framePerspectiveFigure(frameRows){
+  const svg=el('svg',{viewBox:'0 0 600 640'}),g=geometry(),p=draft().p,W=luce.W,H=luce.H,head=state.hasHead!==false;
+  const D=g.depth,tE=p.tE||0,tI=p.tI||0,yL=lightReference(g);
+  const lv=part=>{const v=part.edges.map((e,i)=>trattoLevels(part,i));return{lo:Math.max(0,Math.min(...v.map(x=>x.lo))),hi:Math.max(...v.map(x=>x.hi))};};
+  const outer=g.parts.find(q=>q.key==='outer'||q.key==='integrated'),inner=g.parts.find(q=>q.key==='inner');
+  const oL=outer?lv(outer):{lo:0,hi:0},iL=inner?lv(inner):{lo:0,hi:0};
+  const P3=(x,y,z)=>[x+z*OBL.ox,-y-z*OBL.oy];
+  const extent=[P3(-W/2-oL.hi,0,-tE),P3(W/2+Math.max(oL.hi,iL.hi),0,D+tI),P3(-W/2-oL.hi,H+oL.hi,-tE),P3(W/2+iL.hi,H+iL.hi,D+tI)];
+  const xs=extent.map(q=>q[0]),ys=extent.map(q=>q[1]),box={x:0,y:0,w:600,h:640};
+  const k=Math.min(420/(Math.max(...xs)-Math.min(...xs)),520/(Math.max(...ys)-Math.min(...ys)));
+  const cx=300-(Math.max(...xs)+Math.min(...xs))/2*k,cy=345-(Math.max(...ys)+Math.min(...ys))/2*k;
+  const S=(x,y,z)=>{const q=P3(x,y,z);return[cx+q[0]*k,cy+q[1]*k];};
+  const poly=(pts,fill,stroke='#27333b',extra={})=>svg.append(el('polygon',{points:pts.map(q=>S(...q).join(',')).join(' '),fill,stroke,'stroke-width':1,'stroke-linejoin':'round',...extra}));
+  // pavimento
+  svg.append(el('line',{x1:20,y1:S(0,0,0)[1],x2:580,y2:S(0,0,0)[1],stroke:'#8d99a3','stroke-width':1}));
+  // coprifilo interno (dietro, tratteggiato)
+  if(inner&&head)poly([[-W/2-iL.hi,0,D+tI],[-W/2-iL.hi,H+iL.hi,D+tI],[W/2+iL.hi,H+iL.hi,D+tI],[W/2+iL.hi,0,D+tI]],'none','#8d99a3',{'stroke-dasharray':'5 4'});
+  // stipite: facce verso la luce (montante sinistro e traverso), con le linee delle strisce
+  const jambFill='#dfe4e8';
+  poly([[-W/2,0,0],[-W/2,0,D],[-W/2,H,D],[-W/2,H,0]],jambFill);
+  if(head)poly([[-W/2,H,0],[-W/2,H,D],[W/2,H,D],[W/2,H,0]],'#cfd6db');
+  poly([[W/2,0,0],[W/2,0,D],[W/2,H,D],[W/2,H,0]],'#e9edf0','#8d99a3',{'stroke-dasharray':'3 3'});
+  const jamb=g.parts.find(q=>['jamb','integrated'].includes(q.key));
+  if(jamb)rebateEdges(g).forEach(r=>{const z=r.edge.a[0];
+    svg.append(el('line',{x1:S(-W/2,0,z)[0],y1:S(-W/2,0,z)[1],x2:S(-W/2,H,z)[0],y2:S(-W/2,H,z)[1],stroke:'#d9a400','stroke-width':2.5}));
+    if(head)svg.append(el('line',{x1:S(-W/2,H,z)[0],y1:S(-W/2,H,z)[1],x2:S(W/2,H,z)[0],y2:S(W/2,H,z)[1],stroke:'#d9a400','stroke-width':2.5}));});
+  // coprifilo esterno davanti, con la giunzione scelta
+  if(outer){const lo=oL.lo,hi=oL.hi,z=-tE,xl=-W/2,xr=W/2,j=head?jointOf(outer):'none',f='#cfe9e3';
+    const q=pts=>poly(pts.map(([x,y])=>[x,y,z]),f);
+    if(j==='miter'){q([[xl-hi,0],[xl-lo,0],[xl-lo,H+lo],[xl-hi,H+hi]]);q([[xr+lo,0],[xr+hi,0],[xr+hi,H+hi],[xr+lo,H+lo]]);q([[xl-hi,H+hi],[xr+hi,H+hi],[xr+lo,H+lo],[xl-lo,H+lo]]);}
+    else if(j==='posts'){q([[xl-hi,0],[xl-lo,0],[xl-lo,H+hi],[xl-hi,H+hi]]);q([[xr+lo,0],[xr+hi,0],[xr+hi,H+hi],[xr+lo,H+hi]]);q([[xl-lo,H+lo],[xr+lo,H+lo],[xr+lo,H+hi],[xl-lo,H+hi]]);}
+    else if(j==='head'){q([[xl-hi,0],[xl-lo,0],[xl-lo,H+lo],[xl-hi,H+lo]]);q([[xr+lo,0],[xr+hi,0],[xr+hi,H+lo],[xr+lo,H+lo]]);q([[xl-hi,H+lo],[xr+hi,H+lo],[xr+hi,H+hi],[xl-hi,H+hi]]);}
+    else{q([[xl-hi,0],[xl-lo,0],[xl-lo,H],[xl-hi,H]]);q([[xr+lo,0],[xr+hi,0],[xr+hi,H],[xr+lo,H]]);}
+    poly([[xl-lo,0,z],[xl-lo,0,0],[xl-lo,H+lo,0],[xl-lo,H+lo,z]],'#b8ddd5');
+  }
+  svg.append(el('text',{x:S(0,H*.45,0)[0],y:S(0,H*.45,0)[1],'text-anchor':'middle','font-size':13,fill:'#56636d'},'LUCE '+fmt(W)+' x '+fmt(H)));
+  svg.append(el('text',{x:S(-W/2-oL.hi,0,-tE)[0],y:S(0,0,0)[1]+18,'font-size':12,fill:'#56636d'},'ESTERNO (davanti)'));
+  // punti dei pezzi, nell'ordine di posa
+  const items=frameRows.map((r,i)=>{
+    const n=i+1,part=g.parts.find(q=>q.key===r.partKey);if(!part)return null;
+    const list=strips(part,r.piece),strip=list[Math.min(r.strip||0,list.length-1)];
+    const zs=strip?.segs?.length?strip.segs.flatMap(sg=>{const e=part.edges[sg.i];return[overlapEdgePoint(e,sg.start/e.len)[0],overlapEdgePoint(e,sg.end/e.len)[0]];}):[0,D];
+    const zm=(Math.min(...zs)+Math.max(...zs))/2;
+    const casingPart=isCasingPart(part),isInner=part.key==='inner',lvP=lv(part),mid=(lvP.lo+lvP.hi)/2;
+    const zz=casingPart?(isInner?D+tI:-tE):zm;
+    const same=frameRows.filter(x=>x.piece===r.piece),pos=same.indexOf(r),count=same.length;
+    if(r.piece==='head'){const y=casingPart?H+mid:H;return{n,pt:S(-W/2+W*(pos+1)/(count+1),y,zz),side:'top'};}
+    const left=r.piece==='length',x=casingPart?(left?-(W/2+mid):(W/2+mid)):(left?-W/2:W/2);
+    return{n,pt:S(x,H*(.85-.7*(pos+.5)/count),zz),side:left?'left':'right'};
+  }).filter(Boolean);
+  callouts(svg,items,300,box);
+  return svg;
+}
+function sectionNumbersFigure(rows,piece){
+  const svg=el('svg',{role:'img'}),g=geometry();
+  render(svg,g,false,{width:560,height:330,decorate:(target,X,Y,k)=>{
+    rows.forEach(({r,n})=>{
+      const part=g.parts.find(q=>q.key===r.partKey);if(!part)return;
+      const list=strips(part,piece),strip=list[Math.min(r.strip||0,list.length-1)];if(!strip?.segs?.length)return;
+      const seg=strip.segs[Math.floor((strip.segs.length-1)/2)],e=part.edges[seg.i],pt=overlapEdgePoint(e,((seg.start+seg.end)/2)/e.len);
+      const sx=X(pt[0]),sy=Y(pt[1]),out=isCasingPart(part)?-1:1,lx=sx+(isCasingPart(part)?(part.key==='inner'?26:-26):0),ly=sy+out*30+(n%2)*8;
+      target.append(el('line',{x1:sx,y1:sy,x2:lx,y2:ly,stroke:'#56636d','stroke-width':.9}));
+      target.append(el('circle',{cx:lx,cy:ly,r:10,fill:'#fff',stroke:'#087b70','stroke-width':1.6}));
+      target.append(el('text',{x:lx,y:ly+4,'text-anchor':'middle','font-size':12,'font-weight':700,fill:'#087b70'},String(n)));
+    });
+  }});
+  return svg;
+}
+function leafPerspectiveFigure(doorRows){
+  const svg=el('svg',{viewBox:'0 0 600 640'}),W=door.width,H=door.height,T=door.thickness,hand=state.handleSide||'right';
+  const order=face=>{const i=doorRows.findIndex(r=>r.face===face);return i<0?null:i+1;};
+  // Vista dal lato esterno: maniglia dal lato scelto; dal lato interno è specchiata.
+  const view=(ox,label,face,mirror)=>{
+    const P3=(x,y,z)=>[x+z*.62,-y-z*.45],k=Math.min(230/(W+T*.62),470/(H+T*.45));
+    const S=(x,y,z)=>{const q=P3(x,y,z);return[ox+q[0]*k,560+q[1]*k];};
+    const poly=(p,fill,extra={})=>svg.append(el('polygon',{points:p.map(q=>S(...q).join(',')).join(' '),fill,stroke:'#27333b','stroke-width':1.1,...extra}));
+    poly([[W,0,0],[W,0,T],[W,H,T],[W,H,0]],'#cfd6db');poly([[0,H,0],[0,H,T],[W,H,T],[W,H,0]],'#dfe4e8');poly([[0,0,0],[0,H,0],[W,H,0],[W,0,0]],'#eef1f3');
+    const handleRight=(hand==='right')!==mirror,hx=handleRight?W-60:60,a=S(hx,H*.48,0),b=S(hx+(handleRight?-110:110),H*.48,0);
+    svg.append(el('circle',{cx:a[0],cy:a[1],r:4.5,fill:'#27333b'}));svg.append(el('line',{x1:a[0],y1:a[1],x2:b[0],y2:b[1],stroke:'#27333b','stroke-width':4,'stroke-linecap':'round'}));
+    const hingeX=handleRight?0:W;if(!mirror)[.12,.5,.88].forEach(f=>{const p1=S(hingeX,H*f-55,0),p2=S(hingeX,H*f+55,0);svg.append(el('line',{x1:p1[0],y1:p1[1],x2:p2[0],y2:p2[1],stroke:'#56636d','stroke-width':6}));});
+    const c=S(W/2,H*.68,0),n=order(face);
+    if(n){svg.append(el('circle',{cx:c[0],cy:c[1],r:24,fill:'#fff',stroke:'#087b70','stroke-width':3}));svg.append(el('text',{x:c[0],y:c[1]+9,'text-anchor':'middle','font-size':26,'font-weight':700,fill:'#087b70'},String(n)));}
+    const t=S(W/2,0,0);svg.append(el('text',{x:t[0],y:t[1]+26,'text-anchor':'middle','font-size':15,'font-weight':700,fill:'#27333b'},label));
+    svg.append(el('text',{x:t[0],y:t[1]+44,'text-anchor':'middle','font-size':12,fill:'#56636d'},n?'si monta '+(n===1?'per primo':'per '+n+'°'):'non si riveste'));
+  };
+  view(40,'LATO INTERNO','back',true);
+  view(330,'LATO ESTERNO (si tira)','front',false);
+  const edges=doorRows.map((r,i)=>({r,n:i+1})).filter(x=>x.r.face==='edge');
+  if(edges.length)svg.append(el('text',{x:300,y:24,'text-anchor':'middle','font-size':12,fill:'#56636d'},'Strisce sul bordo: '+edges.map(x=>x.n).join(', ')+' (vedi i dettagli)'));
+  return svg;
+}
+function pieceRollWidth(width,groups,masters){
+  const g=groups.find(group=>group.ws.includes(width));if(!g)return null;
+  let add=0;masters.forEach(m=>m.cuts.forEach(c=>{if(c.g===g&&!c.spare)add=Math.max(add,c.add||0);}));
+  return g.width+add;
+}
+async function buildInstructions(type){
+  const jsPDF=await loadJsPdf();
+  const saved=snapshotConfig(),savedEditing=state.editingType,savedActive=state.activeLeaf;
+  try{
+    loadConfig(type.config);
+    const rows=currentRows()||[],frame=rows.filter(r=>!r.door),leaf=rows.filter(r=>r.door);
+    const groups=planWidths(jobDemand()),{masters}=planMasters(groups);
+    const doc=new jsPDF({unit:'mm',format:'a4'}),M=14,PW=210;
+    const title=(t,sub)=>{doc.setFont('helvetica','bold');doc.setFontSize(15);doc.text(pdfText(t),M,16);doc.setFont('helvetica','normal');doc.setFontSize(9.5);doc.setTextColor(86,99,109);doc.text(doc.splitTextToSize(pdfText(sub),PW-2*M),M,22);doc.setTextColor(39,51,59);};
+    const image=async(svg,w,h,x,y,mmW)=>{const png=await svgToPng(svg,w,h);doc.addImage(png,'JPEG',x,y,mmW,mmW*h/w);return mmW*h/w;};
+    const table=(y,head,body,widths)=>{
+      doc.setFontSize(9);const line=()=>{doc.setDrawColor(217,224,229);doc.line(M,y+1.6,PW-M,y+1.6);};
+      const row=(cells,bold)=>{doc.setFont('helvetica',bold?'bold':'normal');let x=M;cells.forEach((c,i)=>{doc.text(doc.splitTextToSize(pdfText(c),widths[i]-2),x,y);x+=widths[i];});};
+      row(head,true);line();y+=6;
+      body.forEach(cells=>{if(y>280){doc.addPage();y=18;row(head,true);line();y+=6;}row(cells,false);line();y+=6;});return y;};
+    const sizeLine=r=>fmt(r.width)+' x '+fmt(r.height)+' mm';
+    const rollLine=r=>{const w=pieceRollWidth(roundCut(r.width),groups,masters);return w?'rotolo '+fmt(w)+' mm':'-';};
+    const head=`${model().name} · luce ${fmt(luce.W)} x ${fmt(luce.H)} mm · maniglia a ${state.handleSide==='left'?'sinistra':'destra'} · ${type.qty} ${type.qty===1?'porta':'porte'}`;
+    // 1. maestà a tre quarti e ordine dei pezzi
+    title('Istruzioni di montaggio · '+type.name+' · maestà',head+'. Ordine di posa: dall\'alto verso il basso, dall\'interno verso l\'esterno, salvo le eccezioni indicate. Il numero nel cerchio è l\'ordine di montaggio.');
+    let y=30;y+=await image(framePerspectiveFigure(frame),600,640,M+20,y,PW-2*M-40)+4;
+    if(y>200){doc.addPage();y=18;}
+    table(y,['N.','Pezzo','In bobina','Pezzo da kit'],frame.map((r,i)=>[String(i+1),r.name,rollLine(r),sizeLine(r)]),[10,96,36,40]);
+    // 2. sezioni: traverso e montanti con tutte le pellicole
+    doc.addPage();title('Sezioni · come si sormontano le pellicole',head+'. Linea verde: pellicola. Grigio: sormonto. Giallo: guarnizione (la pellicola si ferma).');
+    const numbered=key=>frame.map((r,i)=>({r,n:i+1})).filter(x=>x.r.piece===key);
+    y=30;
+    if(state.hasHead!==false){doc.setFont('helvetica','bold');doc.setFontSize(11);doc.text('Traverso',M,y);y+=2;y+=await image(sectionNumbersFigure(numbered('head'),'head'),560,330,M,y,PW-2*M)+6;}
+    doc.setFont('helvetica','bold');doc.setFontSize(11);doc.text('Montanti (sinistro; il destro è uguale, specchiato)',M,y);y+=2;
+    await image(sectionNumbersFigure(numbered('length'),'length'),560,330,M,y,PW-2*M);
+    // 3. anta
+    for(let index=0;index<(state.leafCount===2?2:1);index++){
+      setActiveLeaf(index,false);{
+        doc.addPage();
+        const leafRows=leaf.filter(r=>state.leafCount!==2||(r.leafIndex??0)===index||!('leafIndex' in r));
+        title('Anta'+(state.leafCount===2?' · '+leafName(index):'')+' · '+type.name,`Anta ${fmt(door.width)} x ${fmt(door.height)} x ${fmt(door.thickness)} mm. Monta per primo il lato con il numero 1, poi il 2.`);
+        let yy=30;yy+=await image(leafPerspectiveFigure(leafRows),600,640,M+40,yy,PW-2*M-80)+3;
+        yy=table(yy,['N.','Pezzo','In bobina','Pezzo da kit'],leafRows.map((r,i)=>[String(i+1),r.name,rollLine(r),sizeLine(r)]),[10,96,36,40])+2;
+        if(yy>215){doc.addPage();yy=18;}
+        const dw=(PW-2*M-8)/3;doc.setFont('helvetica','bold');doc.setFontSize(10);
+        ['Battuta (lato maniglia)','Sopra','Sotto'].forEach((t,i)=>doc.text(t,M+i*(dw+4),yy+4));
+        for(let i=0;i<3;i++)await image(doorEdgeFigure(i===2),320,235,M+i*(dw+4),yy+6,dw);
+      }
+    }
+    return doc.output('blob');
+  }finally{loadConfig(saved);state.editingType=savedEditing;if(savedActive)setActiveLeaf(savedActive,false);}
+}
+async function offerFile(blob,filename){
+  try{const d=window.claude?.use?await window.claude.use('downloads'):null;if(d){await d.save({filename,data:blob});return 'saved';}}
+  catch(error){if(error?.code==='declined')return 'declined';}
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;document.body.append(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},4000);return 'saved';
+}
+async function makeInstructions(type,button){
+  if(!type.config)return;
+  const label=button?.textContent;if(button){button.disabled=true;button.textContent='Preparo il PDF…';}
+  try{
+    const blob=await buildInstructions(type);
+    await offerFile(blob,'Istruzioni montaggio '+type.name+'.pdf');
+  }catch(error){alert('Non riesco a creare il PDF: serve la connessione per caricare il generatore. Riprova.');}
+  finally{if(button){button.disabled=false;button.textContent=label;}renderJob();}
+}
+
 // ---------- Lavoro: più porte, distinta di taglio, piano bobine ----------
 const job = {types: [], seq: 0};
 const plan = {masterW: 1220, rollLen: 50, same: 20, ideal: 50, max: 70, few: 10, decisions: {}, spareDrafts: {}};
@@ -6226,7 +6430,8 @@ function renderJob() {
       const tools = document.createElement('div'); tools.className = 'mt-job-tools';
       const open = btn('Apri', 'Apri ' + t.name, () => { loadConfig(t.config); state.editingType = t.id; state.quick = null; reviewMessage = t.name + ': modifica e poi aggiorna.'; appEl.classList.remove('mt-advanced'); setTab('frame'); });
       const dup = btn('Duplica', 'Duplica ' + t.name, () => { loadConfig(t.config); appEl.classList.remove('mt-advanced'); setTab('frame'); duplicateDoor(); });
-      tools.append(open, dup); info.append(tools);
+      const pdf = btn('Istruzioni PDF', 'Istruzioni di montaggio di ' + t.name, ev => makeInstructions(t, ev.currentTarget));
+      tools.append(open, dup, pdf); info.append(tools);
     }
     typesBox.append(row);
   });

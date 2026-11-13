@@ -63,6 +63,17 @@ La guida non si blocca mai e non mostra avvisi su misure non ancora prese:
 ogni scelta resta toccabile. Il controllo che anta e stipite combacino si fa
 alla fine, nella scheda Anta, come avviso: non annulla i tagli della pellicola.
 
+**Istruzioni di montaggio (PDF).** Nel Lavoro ogni porta ha «Istruzioni PDF»:
+un file per tipo di porta. Pagina 1: maestà in prospettiva a tre quarti, in
+proporzione con le misure e con la giunzione scelta, con i pezzi numerati
+nell'ordine di posa; elenco con numero, nome, rotolo da cui si taglia (lavoro
+in bobina) e misura del pezzo (kit). Pagina 2: sezioni di traverso e montanti
+con tutte le pellicole, i sormonti e i numeri. Pagina 3 (una per anta): lato
+interno e lato esterno con maniglia e cerniere stilizzate e il numero di posa
+di ciascuna faccia, elenco e dettagli di battuta, sopra e sotto. Il generatore
+(jsPDF) si carica da cdnjs al primo uso; nella chat il file si salva con la
+conferma del download.
+
 **Porte del lavoro: duplica, modifica veloce, modifica avanzata.** Ogni porta
 salvata nel lavoro conserva la configurazione completa. Nella schermata Maestà:
 Modifica veloce, Modifica avanzata, Duplica, Rifai la guida e Salva nel lavoro
