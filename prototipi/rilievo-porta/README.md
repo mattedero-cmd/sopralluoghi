@@ -59,10 +59,9 @@ luce minima.
 **Procedura standard:** non si chiede più «da quale pezzo misuri». Anta e
 stipite si misurano sempre entrambi, ciascuno per conto suo (con la doppia
 battuta si chiedono P1 e P2); se non combaciano compare un avviso.
-La guida non si blocca mai: se con le misure del momento anta e stipite non
-combaciano, il passo mostra l'avviso e «Avanti» resta attivo.
-Anche le scelte che non combaciano restano toccabili (scritta «non combacia
-con le misure»).
+La guida non si blocca mai e non mostra avvisi su misure non ancora prese:
+ogni scelta resta toccabile. Il controllo che anta e stipite combacino si fa
+alla fine, nella scheda Anta, come avviso: non annulla i tagli della pellicola.
 
 **Scelte con anteprima:** quando ci sono più scelte, ognuna è una scheda con il
 proprio disegno da toccare direttamente (maniglia, traverso, numero di ante,
