@@ -1122,13 +1122,23 @@ function leafPressesEdge(leaf,edge) {
   const normal=edge.b[1]>edge.a[1]?1:-1,low=Math.min(edge.a[1],edge.b[1]),high=Math.max(edge.a[1],edge.b[1]);
   return leaf.surfaces.some(s=>Math.abs(s.x-edge.a[0])<1e-6&&s.normal===normal&&Math.min(high,s.to)-Math.max(low,s.from)>1e-6);
 }
+const SEAL_GAP=10;
+function leafFacesEdge(leaf,edge,gap) {
+  if(!leaf?.surfaces||edge.kind!=='line'||Math.abs(edge.a[0]-edge.b[0])>1e-6)return false;
+  const normal=edge.b[1]>edge.a[1]?1:-1,low=Math.min(edge.a[1],edge.b[1]),high=Math.max(edge.a[1],edge.b[1]);
+  return leaf.surfaces.some(s=>{const d=(edge.a[0]-s.x)*normal;return s.normal===normal&&d>1e-6&&d<=gap&&Math.min(high,s.to)-Math.max(low,s.from)>1e-6;});
+}
 function pressedFrameStops() {
   if(!doorSeatReady)return null;
   const keys=new Set();let placed=false;
   eachLeaf(()=>{const g=geometry();if(!g.leaf)return;
     // Anta posizionata (anche solo sul coprifilo): conta quali battute dello stipite tocca davvero.
     if(g.leaf.contact||g.leaf.bearingContact)placed=true;
-    frameStopSurfaces(g).forEach(stop=>{if(leafPressesEdge(g.leaf,stop.edge)){placed=true;keys.add(edgeStateKey(stop.part,stop.index));}});});
+    frameStopSurfaces(g).forEach(stop=>{if(leafPressesEdge(g.leaf,stop.edge)){placed=true;keys.add(edgeStateKey(stop.part,stop.index));}});
+    // Una battuta dello stipite che sta DI FRONTE a uno scalino dell'anta, a pochi
+    // millimetri: è lo spazio che chiude la guarnizione (anta a due scalini
+    // appoggiata sul coprifilo, con il secondo scalino davanti alla battuta).
+    if(!keys.size)frameStopSurfaces(g).forEach(stop=>{if(leafFacesEdge(g.leaf,stop.edge,SEAL_GAP)){placed=true;keys.add(edgeStateKey(stop.part,stop.index));}});});
   return placed?keys:null;
 }
 function frameGasketAllowed(part,index,pressed=pressedFrameStops()) {
@@ -1364,13 +1374,28 @@ function removeGasket(part, i) {
   (draft().gasketChoices||(draft().gasketChoices={}))[key]=false;
   return delete draft().gaskets[key];
 }
+// La testa dello stipite (x = 0 o x = profondità) di solito sta sotto il
+// coprifilo; il tratto che sporge oltre il coprifilo verso la luce è invece una
+// battuta vera: con l'anta a due scalini appoggiata sul coprifilo, il secondo
+// scalino chiude proprio lì (e lì può stare la guarnizione dello stipite).
+function exposedJambEnd(g, part, edge) {
+  const x = edge.a[0];
+  // solo con l'anta in battuta sul coprifilo: negli altri casi la testa resta sotto i coprifili
+  if (doorStopTarget() !== 'casing') return false;
+  if (!(Math.abs(x) < 1e-6 || Math.abs(x - g.depth) < 1e-6)) return false;
+  const casing = g.parts.find(q => q.key === (Math.abs(x) < 1e-6 ? 'outer' : 'inner'));
+  if (!casing) return false;
+  const ys = [...casing.edges.flatMap(e => [e.a[1], e.b[1]]), ...casing.hidden.map(q => q[1])];
+  const low = Math.min(edge.a[1], edge.b[1]);
+  return low >= Math.max(...ys) - 1e-6;
+}
 function rebateEdges(g = geometry()) {
   const found = [];
   g.parts.forEach(part => {
     if (!['jamb', 'integrated', 'extension'].includes(part.key)) return;
     part.edges.forEach((edge, index) => {
       if (edge.kind === 'line' && Math.abs(edge.a[0] - edge.b[0]) < 1e-6 &&
-          Math.abs(edge.a[1] - edge.b[1]) > 1e-6 && edge.a[0] > 1e-6 && edge.a[0] < g.depth - 1e-6) {
+          Math.abs(edge.a[1] - edge.b[1]) > 1e-6 && (edge.a[0] > 1e-6 && edge.a[0] < g.depth - 1e-6 || exposedJambEnd(g, part, edge))) {
         found.push({part, index, edge});
       }
     });
@@ -3239,6 +3264,10 @@ function setDoorStopTarget(target,force=false) {
   const change=doorTargetChange(target);if(!doorTargetOptions().some(option=>option.id===target&&(force||!option.disabled)))return;
   if(target!==doorStopTarget()){
     door.seatChoices||={};door.seatChoices[doorStopTarget()]=Object.fromEntries(['bearing','stopSurfaceKey','closure','reference','projection'].map(key=>[key,door[key]]));
+    // cambiando dove appoggia l'anta, la battuta dello stipite si rimette sotto
+    // lo scalino dell'anta anche se era già misurata (porta duplicata): la
+    // misura della guida che segue la conferma o la corregge
+    if(force){const measured=draft().measured;if(measured)['P','P1','P2','E'].forEach(key=>delete measured[key]);draft().seatAuto=true;}
   }
   Object.assign(door,change);refreshDoorSeat();clearFrameSealConflicts();sync();drawDoor();updateBadge();
 }
@@ -3602,7 +3631,8 @@ function frameRows(part) {
         });
         extra = ' + striscia ' + absorbed.map(n => n.owner.name.toLocaleLowerCase('it-IT')).join(', ');
       }
-      const zs = (strip.segs || []).flatMap(sg => { const e = part.edges[sg.i]; return [overlapEdgePoint(e, sg.start / e.len)[0], overlapEdgePoint(e, sg.end / e.len)[0]]; });
+      // un pezzo unico può comprendere tratti di parti diverse (raggiati): ogni tratto con la sua parte
+      const zs = (strip.segs || []).flatMap(sg => { const e = (sg.part || part).edges[sg.i]; if (!e || !(e.len > 0)) return []; return [overlapEdgePoint(e, sg.start / e.len)[0], overlapEdgePoint(e, sg.end / e.len)[0]]; });
       const zMid = zs.length ? (Math.min(...zs) + Math.max(...zs)) / 2 : g.depth / 2;
       const delta = asymDelta(part), asymKey = asymMontanteKey();
       let asymName = '';
@@ -4904,7 +4934,7 @@ function gasketWizardSteps() {
         (draft().measured||(draft().measured={}))[quote?quote.key:'sI']=true;
         syncFitGeometry();clearFrameSealConflicts();sync();
       }});
-    steps.push({...common, id: 'guarnizione-presenza-' + id, title:'C’è la guarnizione sullo stipite?'+(rebateEdges().length>1?' · '+entry.label:''),choice: 'gasketPresence',
+    steps.push({...common, id: 'guarnizione-presenza-' + id, title:'C’è la guarnizione sullo stipite?'+(model().jamb==='double'?' · '+entry.label:''),choice: 'gasketPresence',
       q: '',
       present: () => !!current()?.gasket,
       choose: present => {

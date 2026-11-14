@@ -10,6 +10,20 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.93.3 — Guarnizione dello stipite con l'anta appoggiata sul coprifilo
+
+- Rifacendo la guida da una porta duplicata e scegliendo «Sul coprifilo» per
+  un'anta a due scalini, la battuta dello stipite restava alla misura di
+  prima, lontana dal secondo scalino: niente contatto, niente domanda sulla
+  guarnizione dello stipite. Adesso cambiare dove appoggia l'anta rimette la
+  battuta sotto lo scalino (la misura seguente la conferma o la corregge).
+- Una battuta dello stipite che sta di fronte a uno scalino dell'anta, entro
+  10 mm, conta come appoggio per la guarnizione: è lo spazio che la guarnizione
+  chiude. Con l'anta sul coprifilo conta anche la testa dello stipite rimasta
+  scoperta sotto il coprifilo.
+- Corretto un errore che bloccava la distinta con coprifili raggiati arretrati
+  e stipite a doppia battuta.
+
 ## 1.93.2 — Il piano di riferimento sposta davvero l'anta
 
 - Scegliendo nella guida come chiude l'anta e rispetto a quale piano, la
