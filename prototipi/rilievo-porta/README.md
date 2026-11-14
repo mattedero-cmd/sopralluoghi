@@ -252,6 +252,12 @@ Messaggi (stessa origine): dall'app `apri` (`modo` nuova / scheda / copia / lavo
   coprifilo a filo si ferma al suo spigolo, senza sormonto. Nel disegno il
   giunto è un trattino scuro. Con lo spazio più largo resta il pezzo unico
   descritto sopra.
+- **Battuta stretta senza guarnizione sullo stipite** (a filo): il coprifilo
+  copre la sua testa e lo spazio della battuta fino allo spigolo dello scalino;
+  lo stipite parte dallo scalino e passa sotto quello spazio fino alla base del
+  coprifilo. Il sormonto è tutto lo spazio della battuta (grigio nel disegno),
+  sotto lo stipite e sopra il coprifilo. L'altro coprifilo si ferma al suo
+  spigolo.
 - Con **coprifilo sporgente** si riveste prima lo stipite e poi il coprifilo.
   I tagli restano separati: il lembo dello stipite sormonta soltanto il breve
   tratto a vista del coprifilo subito adiacente allo stipite, senza proseguire

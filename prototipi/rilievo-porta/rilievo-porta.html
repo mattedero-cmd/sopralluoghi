@@ -1550,7 +1550,21 @@ function roundFilmPlan(g = geometry(), pieceKey = null) {
     return Infinity;
   };
   const narrow = relations.filter(r => r.mode === 'continuous' && reachToGasket(r) < NARROW_STRIP);
+  // SENZA GUARNIZIONE sullo stipite, con lo spazio della battuta stretto: il
+  // coprifilo copre la sua testa e lo spazio fino allo spigolo dello scalino;
+  // lo stipite parte dallo scalino e passa SOTTO quello spazio fino alla base del
+  // coprifilo (il sormonto sta tutto lì). L'altro coprifilo si ferma al suo spigolo.
+  const rebateKeys = new Set(rebateEdges(g).map(r => r.part.key + ':' + r.index));
+  let corner = null;
+  if (!narrow.length) relations.forEach(r => {
+    if (corner || r.mode !== 'continuous') return;
+    const part = r.targetPart, i = r.targetEdge, forward = r.targetWhich === 'start', next = forward ? i + 1 : i - 1;
+    if (!part.edges[next] || !rebateKeys.has(part.key + ':' + next)) return;
+    if (gasketSpan(part, i) || gasketSpan(part, next) || separated(part, Math.min(i, next))) return;
+    if (part.edges[i].len < NARROW_STRIP) { corner = {relation: r, part, i, next, forward}; narrow.push(r); }
+  });
   if (narrow.length) relations.forEach(r => { r.detached = r.mode === 'continuous' && !narrow.includes(r); });
+  const cornerSplit = (part, i) => !!corner && part === corner.part && i === Math.min(corner.i, corner.next);
   // Si separa la testa dal piano solo se il coprifilo raggiunge davvero tutta
   // la testa: una guarnizione o un'esclusione interrompe prima quel percorso.
   const assignedHeads = new Set();
@@ -1572,7 +1586,7 @@ function roundFilmPlan(g = geometry(), pieceKey = null) {
     const current = endpoint(part, i, 'end'), next = endpoint(part, i + 1, 'start');
     const headBoundary = assignedHeads.has(part.key + ':' + i) && relations.some(r => r.targetPart.key === part.key && r.targetEdge === i && r.targetWhich === 'start') ||
       assignedHeads.has(part.key + ':' + (i + 1)) && relations.some(r => r.targetPart.key === part.key && r.targetEdge === i + 1 && r.targetWhich === 'end');
-    if (current && next && !separated(part, i) && !headBoundary) connect(current, 'end', next, 'start');
+    if (current && next && !separated(part, i) && !cornerSplit(part, i) && !headBoundary) connect(current, 'end', next, 'start');
     // Una battuta tutta occupata dalla guarnizione non produce un gruppo
     // vuoto, ma conserva l'eventuale risvolto sul frammento che le è vicino.
     const afterGap = i > 0 ? gasketSpan(part, i - 1) : null;
@@ -1585,6 +1599,16 @@ function roundFilmPlan(g = geometry(), pieceKey = null) {
       current.gEnd = beforeGap.depth; current.gasketEnd = true;
     }
   }));
+  // lo spazio della battuta due volte: sopra col coprifilo, sotto con lo stipite
+  if (corner) {
+    const strip = endpoint(corner.part, corner.i, corner.forward ? 'start' : 'end');
+    const riser = endpoint(corner.part, corner.next, corner.forward ? 'start' : 'end');
+    if (strip && riser && strip.len >= corner.part.edges[corner.i].len - 1e-6) {
+      const under = {...strip, id: nodes.length, under: true, gasketStart: false, gasketEnd: false, gStart: 0, gEnd: 0};
+      nodes.push(under); links.set(under.id, []);
+      if (corner.forward) connect(under, 'end', riser, 'start'); else connect(riser, 'end', under, 'start');
+    }
+  }
   const jamb = g.parts.find(part => part.key === 'jamb'), extension = g.parts.find(part => part.key === 'extension');
   if (jamb && extension && !separated(jamb, jamb.edges.length - 1)) {
     connect(endpoint(jamb, jamb.edges.length - 1, 'end'), 'end', endpoint(extension, 0, 'start'), 'start');
@@ -1651,7 +1675,7 @@ function roundFilmPlan(g = geometry(), pieceKey = null) {
       : relation.pathSegments.reduce((sum, segment) => sum + segment.end - segment.start, 0);
     delete relation.sourceNode; delete relation.targetNode;
   });
-  return {relations, strips};
+  return {relations, strips, corner};
 }
 function allocatedRoundStrips(part, pieceKey = null) {
   return roundFilmPlan(geometry(), pieceKey).strips.filter(strip => strip.ownerPart.key === part.key);
@@ -1835,6 +1859,12 @@ function render(svg,g,mini=false,size=null){const box=size||svg.getBoundingClien
  if(!clean&&!size?.print)drawFrameQuotes(svg,g,p,X,Y,w,h,compact);
  if((g.wall.right-g.wall.left)*k>75)svg.append(el('text',{x:X(g.depth/2),y:Y((g.wall.top+g.wall.bottom)/2),'text-anchor':'middle','font-size':11,stroke:'var(--mt-wall)','stroke-width':4,'paint-order':'stroke'},'PARETE'));
  if(!clean&&!compact){const part=g.parts[draft().part],e=part.edges[Math.min(draft().edge,part.edges.length-1)];let mx=(X(e.a[0])+X(e.b[0]))/2,my=(Y(e.a[1])+Y(e.b[1]))/2;const vert=Math.abs(e.b[0]-e.a[0])<Math.abs(e.b[1]-e.a[1]);mx+=vert?18:0;my+=vert?0:18;const label=`${draft().part+1}.${draft().edge+1}`,width=label.length*6;mx=Math.max(width,Math.min(w-width,mx));my=Math.min(h-12,my);svg.append(el('text',{x:mx,y:my,'text-anchor':'middle','font-size':11,stroke:'var(--mt-board)','stroke-width':4,'paint-order':'stroke'},label));}
+ // sormonto sullo spazio della battuta (senza guarnizione): sotto lo stipite, sopra il coprifilo
+ if(hasProfileFilmRules()&&!mini){const corner=roundFilmPlan(g).corner;if(corner){const e=corner.part.edges[corner.i],end=corner.forward?e.b:e.a;
+   const band=el('path',{d:`M ${X(e.a[0])} ${Y(e.a[1])} `+edgeCommand(e,X,Y,k),fill:'none',stroke:'var(--mt-overlap)','stroke-width':7,'stroke-linecap':'butt','pointer-events':'none','data-corner-overlap':corner.part.key+':'+corner.i,opacity:.85});
+   band.append(el('title',{},'Sormonto sullo spazio della battuta: sotto lo stipite, sopra il coprifilo fino allo spigolo dello scalino.'));svg.append(band);
+   const d=[X(e.b[0])-X(e.a[0]),Y(e.b[1])-Y(e.a[1])],n=Math.hypot(d[0],d[1])||1,u=[-d[1]/n*6,d[0]/n*6];
+   svg.append(el('line',{x1:X(end[0])-u[0],y1:Y(end[1])-u[1],x2:X(end[0])+u[0],y2:Y(end[1])+u[1],stroke:'var(--mt-ink)','stroke-width':2,'stroke-linecap':'round','pointer-events':'none','data-film-joint':'corner'}));}}
  if(hasProfileFilmRules()&&!mini)roundFilmPlan(g).relations.filter(r=>r.detached).forEach(r=>{
    const e=r.sourcePart.edges.at(-1),pt=e.b,d=[X(e.b[0])-X(e.a[0]),Y(e.b[1])-Y(e.a[1])],n=Math.hypot(d[0],d[1])||1,u=[-d[1]/n*6,d[0]/n*6];
    const tick=el('line',{x1:X(pt[0])-u[0],y1:Y(pt[1])-u[1],x2:X(pt[0])+u[0],y2:Y(pt[1])+u[1],stroke:'var(--mt-ink)','stroke-width':2,'stroke-linecap':'round','pointer-events':'none','data-film-joint':r.sourcePart.key});
@@ -1857,6 +1887,9 @@ function roundedFilmLabel(relation) {
   return relation.mode === 'step'
     ? `${side}: prima il coprifilo con la prima faccia dello stipite, poi il rivestimento dello stipite.`
     : `${side}: coprifilo e stipite in un unico pezzo${relation.gasketEnd ? ' fino alla guarnizione' : ' continuo fino al bordo o all’interruzione successiva'}.`;
+}
+function roundedCornerLabel() {
+  return 'Senza guarnizione e con lo spazio della battuta stretto: il coprifilo copre la sua testa e lo spazio fino allo spigolo dello scalino; lo stipite parte dallo scalino e passa sotto quello spazio fino alla base del coprifilo. Prima lo stipite, poi il coprifilo.';
 }
 function roundedDetachedLabel(relation) {
   const side = relation.sourcePart.key === 'outer' ? 'Sinistra' : 'Destra';
@@ -2150,6 +2183,10 @@ function refreshOverFields(part) {
       row.textContent = roundedFilmLabel(relation);
       details.append(row);
     });
+    const cornerPlan = typeof roundFilmPlan === 'function' ? roundFilmPlan().corner : null;
+    if (cornerPlan && (cornerPlan.part.key === part.key || cornerPlan.relation.sourcePart.key === part.key)) {
+      const row = document.createElement('span'); row.style.display = 'block'; row.textContent = roundedCornerLabel(); details.append(row);
+    }
     (typeof roundFilmPlan === 'function' ? roundFilmPlan().relations.filter(r => r.detached && (r.sourcePart.key === part.key || r.targetPart.key === part.key)) : []).forEach(relation => {
       const row = document.createElement('span');
       row.style.display = 'block';
@@ -3211,7 +3248,14 @@ function selectedDoorStop(g) {
   const stops=rebateEdges(g);
   return door.stopSurfaceKey==='auto'?(stops.length>1&&!steppedDoor()?stops[0]:stops.at(-1)):stops.find(t=>edgeStateKey(t.part,t.index)===door.stopSurfaceKey);
 }
-function doorReferenceOptions(target=doorStopTarget()) {return DOOR_REFERENCES.filter(t=>model().casing==='none'?t.id==='wall':target==='casing'?t.id==='casing':t.id==='jamb');}
+// Il piano rispetto a cui si guarda l'anta chiusa: con la battuta sul coprifilo è
+// il coprifilo; con la battuta sullo stipite si sceglie l'estremità dello stipite
+// o il coprifilo (senza coprifili: lo stipite o la parete). Sono tutti piani
+// reali della porta: cambia solo da dove si misura il filo o il rientro.
+function doorReferenceOptions(target=doorStopTarget()) {
+  const ids=target==='casing'?['casing']:model().casing==='none'?['jamb','wall']:['jamb','casing'];
+  return ids.map(id=>DOOR_REFERENCES.find(t=>t.id===id));
+}
 function automaticDoorReference(target=doorStopTarget()) {const options=doorReferenceOptions(target);return target==='casing'?'casing':options.length===1?options[0].id:null;}
 function doorReferencePlanes(p,m,depth) {return door.reference!=='casing'||m.casing==='none'?{front:0,back:depth}:{front:-p.tE,back:depth+p.tI};}
 function doorClosureName() {
@@ -3369,7 +3413,8 @@ function positionDoorStop(p,m,measured=p===draft().p?draft().measured:{}) {
     }}
   else if(m.jamb!=='plain')p.P=stop;
 }
-function refreshOneDoorSeat() {const automatic=automaticDoorReference();if(automatic)door.reference=automatic;if(!doorClosureOptions().some(t=>t.id===door.closure))door.closure=doorClosureOptions()[0].id;if(doorStopTarget()==='casing'||door.fitBasis&&fitPairs().length)syncFitGeometry();else if(draft().seatAuto&&!draft().measured?.[doorStopKey()])positionDoorStop(draft().p,model());}
+function refreshOneDoorSeat() {const automatic=automaticDoorReference();if(automatic)door.reference=automatic;
+  else if(!doorReferenceOptions().some(t=>t.id===door.reference))door.reference=doorReferenceOptions()[0].id;if(!doorClosureOptions().some(t=>t.id===door.closure))door.closure=doorClosureOptions()[0].id;if(doorStopTarget()==='casing'||door.fitBasis&&fitPairs().length)syncFitGeometry();else if(draft().seatAuto&&!draft().measured?.[doorStopKey()])positionDoorStop(draft().p,model());}
 function refreshDoorSeat() {refreshOneDoorSeat();if(state.leafCount===2)withLeaf(1-state.activeLeaf,()=>{const automatic=automaticDoorReference();if(automatic)door.reference=automatic;if(door.fitBasis==='frame')syncFitGeometry();},true);}
 function setDoorClosure(id,force=false) {
   if(!doorClosureOptions().some(t=>t.id===id)||!force&&!fitCandidate({closure:id}))return;

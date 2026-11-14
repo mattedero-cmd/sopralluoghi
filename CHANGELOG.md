@@ -10,6 +10,19 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.93.0 — Piano di riferimento e sormonto senza guarnizione
+
+- **Torna la domanda «Rispetto a quale piano?»** dopo «Come chiude l'anta?»:
+  con l'anta in battuta sullo stipite si sceglie l'estremità dello stipite o il
+  coprifilo (senza coprifili: stipite o parete). Con la battuta sul coprifilo il
+  piano resta il coprifilo.
+- **Coprifili raggiati e smussati a filo, senza guarnizione sullo stipite e con
+  lo spazio della battuta stretto** (sotto 30 mm): prima tutto il telaio usciva
+  in un pezzo unico. Adesso il coprifilo copre la sua testa e lo spazio della
+  battuta fino allo spigolo dello scalino; lo stipite parte dallo scalino e
+  passa sotto quello spazio fino alla base del coprifilo, che è il sormonto
+  (grigio nel disegno); l'altro coprifilo si ferma al suo spigolo.
+
 ## 1.92.0 — Sigle corte sui pezzi delle porte
 
 - Ogni pezzo della porta ha una **sigla da scrivere sul pezzo tagliato**:
