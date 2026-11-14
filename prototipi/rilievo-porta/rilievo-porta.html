@@ -3420,12 +3420,21 @@ function setDoorClosure(id,force=false) {
   if(!doorClosureOptions().some(t=>t.id===id)||!force&&!fitCandidate({closure:id}))return;
   door.closure=id;
   if(id!=='flush'&&!(door.projection>0))door.projection=5;
+  if(force)reseatFromClosure();
   refreshDoorSeat();sync();drawDoor();updateBadge();
 }
 function setDoorReference(id,force=false) {
   if(automaticDoorReference()&&id!==automaticDoorReference())return;
   if(!doorReferenceOptions().some(t=>t.id===id)||!force&&!fitCandidate({reference:id}))return;
-  door.reference=id;refreshDoorSeat();sync();drawDoor();updateBadge();
+  door.reference=id;if(force)reseatFromClosure();refreshDoorSeat();sync();drawDoor();updateBadge();
+}
+// Scegliere come chiude l'anta e rispetto a quale piano DECIDE dove sta l'anta:
+// la posizione della battuta si ricalcola da lì (anche se era già misurata, per
+// esempio in una porta duplicata). La misura successiva della guida la conferma
+// o la corregge.
+function reseatFromClosure(){
+  if(doorStopTarget()==='casing')return;
+  const key=doorStopKey();if(draft().measured)delete draft().measured[key];draft().seatAuto=true;
 }
 function closureThumb(mode) {
   const svg=el('svg',{viewBox:'0 0 140 82','aria-hidden':'true'}),x=mode==='overlap'?29:mode==='recessed'?57:43;

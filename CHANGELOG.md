@@ -10,6 +10,14 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.93.2 — Il piano di riferimento sposta davvero l'anta
+
+- Scegliendo nella guida come chiude l'anta e rispetto a quale piano, la
+  posizione della battuta si ricalcola da quelle scelte, anche quando era già
+  misurata (porta duplicata, «Rifai la guida»). Prima, in una copia, l'anta
+  restava dov'era e il disegno non cambiava. Il passo successivo «Posizione
+  della battuta» mostra il valore nuovo e si può ancora correggere.
+
 ## 1.93.1 — Guarnizione dello stipite sempre sceglibile
 
 - Nella guida, con la guarnizione già messa sull'anta sullo stesso appoggio,
