@@ -10,6 +10,17 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.95.0 — Pellicola tutta insieme, figure più grandi
+
+- Le domande sulla pellicola sono in un blocco solo, **Pellicola**, alla fine
+  della guida: angoli della maestà, facce dell'anta, sormonto sul bordo, bordo
+  verso il pavimento, sormonti e abbondanze di maestà e anta. Prima erano
+  sparse fra le scelte della maestà, quelle dell'anta e la finitura.
+- Nelle misure la figura prende tutto lo spazio libero sopra il tastierino e la
+  lente col dettaglio da misurare è circa il doppio di prima; la sezione intera
+  accanto è più piccola, serve solo a dire dove. Il tastierino resta sempre
+  intero, anche sui telefoni piccoli.
+
 ## 1.94.0 — Guida in ordine: prima le domande, poi le misure
 
 - La creazione guidata va in sei blocchi, sempre nello stesso ordine:

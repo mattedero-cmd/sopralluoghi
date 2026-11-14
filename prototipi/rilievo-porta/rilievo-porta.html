@@ -483,7 +483,7 @@
 #maesta-tecnica .mt-wiz-fig{display:block;width:100%;flex:1 1 auto;min-height:60px;max-height:230px;background:var(--mt-paper);border:1px solid var(--mt-line);border-radius:14px}
 #maesta-tecnica .mt-wiz-survey-options{display:flex;flex-wrap:wrap;gap:8px}
 #maesta-tecnica .mt-wiz-survey-options button{flex:1 1 90px;min-height:52px;padding:9px 8px;font-size:15px;line-height:1.2;text-align:center}
-#maesta-tecnica .mt-wiz-body>.mt-survey-figure{flex:0 1 auto;height:clamp(170px,29vh,250px);max-height:250px;min-height:90px}
+#maesta-tecnica .mt-wiz-body>.mt-survey-figure{flex:1 1 0;height:auto;max-height:none;min-height:110px}
 #maesta-tecnica .mt-wiz-body>.mt-wiz-survey-options{flex:0 0 auto}
 #maesta-tecnica .mt-wiz-q:empty{display:none}
 #maesta-tecnica .mt-wiz-value{text-align:center;font-size:32px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}
@@ -4723,7 +4723,6 @@ function wizSteps() {
   const steps = ['apertura','battuta', 'coprifilo'];
   ['E','I'].forEach(side=>{if(offsetAllowed(wiz.cfg.casing,side))steps.push('posizione'+side);});
   steps.push('traverso');
-  if(wiz.hasHead!==false)steps.push('angoli');
   if(asymAllowed(wiz.cfg))steps.push('asimmetria');
   steps.push('ante');
   measureSteps().forEach(m => steps.push('m:' + m.id));
@@ -4779,7 +4778,7 @@ function renderWizard() {
   const step = steps[wiz.step];
   // sezione di ogni passo: le scelte del modello sono della maestà, «quante ante» apre l'anta
   const sectionByMeasure = new Map(measureSteps().map(m => ['m:' + m.id, WIZ_SECTIONS[m.section]]));
-  const sections = steps.map(k => k.startsWith('m:') ? sectionByMeasure.get(k) || 'Finitura' : k === 'ante' ? WIZ_SECTIONS.sceltaAnta : 'Maestà · scelte');
+  const sections = steps.map(k => k.startsWith('m:') ? sectionByMeasure.get(k) || WIZ_SECTIONS.pellicola : k === 'ante' ? WIZ_SECTIONS.sceltaAnta : 'Maestà · scelte');
   const here = sections[wiz.step], inSection = sections.filter(x => x === here).length, pos = sections.slice(0, wiz.step + 1).filter(x => x === here).length;
   $('[data-out=wiz-step]').textContent = `${here} · ${pos} di ${inSection}`;
   $('.mt-wiz-dots').replaceChildren(...steps.map((_, i) => { const d = document.createElement('i'); if (i <= wiz.step) d.className = 'on'; if (i < steps.length - 1 && sections[i] !== sections[i + 1]) d.classList.add('gap'); return d; }));
@@ -5067,6 +5066,7 @@ function singleMeasureSteps(includeFrame=true) {
         confirm:()=>{(draft().measured||(draft().measured={}))[key]=true;draft().seatAuto=false;},min:door.fitBasis==='both'&&pair?draft().p[key]:ceilMeasureLimit(minimum),max:door.fitBasis==='both'&&pair?draft().p[key]:floorMeasureLimit(maximum)});
     });
   }
+  if(includeFrame&&state.hasHead!==false)steps.push({id:'pellicolaAngoli',title:'Angoli della maestà',q:'Come si tagliano e si sovrappongono gli angoli tra traverso e montanti.',choice:'joint'});
   steps.push({id: 'facce', title: 'Anta: facce', q: 'Quali facce dell’anta rivesti?', choice: 'faces'});
   if(door.type==='double'&&doorFaces.every(([key])=>isDoorFaceCovered(key))&&!leafProfileRanges().gaps.length)steps.push({id:'anta-sormonto-scalino',title:'Sormonto sul bordo dell’anta',choice:'leafSeam',q:'Scegli lo scalino su cui sovrapporre i due fogli. La stessa scelta vale sopra e sui due lati; non viene dedotta dal numero di battute dello stipite.'});
   steps.push({id:'anta-bordo-inferiore',title:'Anta: bordo verso il pavimento',choice:'doorBottom',
@@ -5135,8 +5135,10 @@ function singleMeasureSteps(includeFrame=true) {
 //   dove l'anta tocca davvero, quindi dopo le misure) → Finitura (sormonti,
 //   abbondanze). Ogni scelta fa comparire solo passi PIÙ AVANTI: la guida non
 //   torna indietro da sola.
-const WIZ_SECTIONS={sceltaAnta:'Anta · scelte',misureMaesta:'Maestà · misure',misureAnta:'Anta · misure',guarnizioni:'Guarnizioni',finitura:'Finitura'};
-const LEAF_CHOICE_ORDER=['antaTipo','antaDestinazione','antaModoChiusura','antaRiferimento','antaAppoggio','antaBattutaTelaio','facce','anta-sormonto-scalino','anta-bordo-inferiore'];
+const WIZ_SECTIONS={sceltaAnta:'Anta · scelte',misureMaesta:'Maestà · misure',misureAnta:'Anta · misure',guarnizioni:'Guarnizioni',pellicola:'Pellicola'};
+const LEAF_CHOICE_ORDER=['antaTipo','antaDestinazione','antaModoChiusura','antaRiferimento','antaAppoggio','antaBattutaTelaio'];
+// tutte le domande sulla pellicola insieme, maestà e anta
+const FILM_ORDER=['pellicolaAngoli','facce','anta-sormonto-scalino','anta-bordo-inferiore','sorm','abbMaesta','abbAnta'];
 const LEAF_MEASURE_ORDER=['antaL','antaH','antaS','antaLb','antaSb','antaLb2','antaSb2','antaR','antaBaseQuote','antaChiusura'];
 function wizSectionOf(step){
   const id=step.id.replace(/^leaf2-/,'');
@@ -5144,7 +5146,7 @@ function wizSectionOf(step){
   if(step.gasketOwner)return 'guarnizioni';
   if(LEAF_CHOICE_ORDER.includes(id))return 'sceltaAnta';
   if(LEAF_MEASURE_ORDER.includes(id))return 'misureAnta';
-  return 'finitura';
+  return 'pellicola';
 }
 function measureSteps(){
   const list=rawMeasureSteps(),buckets=Object.keys(WIZ_SECTIONS);
@@ -5153,6 +5155,7 @@ function measureSteps(){
     if(section==='sceltaAnta')return LEAF_CHOICE_ORDER.indexOf(id)*2+leafIndex;
     if(section==='misureAnta')return LEAF_MEASURE_ORDER.indexOf(id)*2+leafIndex;
     if(section==='misureMaesta')return id.startsWith('telaioArresto')?2:id.startsWith('battuta-misura-')?1:0;
+    if(section==='pellicola'){const at=FILM_ORDER.indexOf(id.startsWith('sorm-')?'sorm':id);return (at<0?FILM_ORDER.length:at)*2+leafIndex;}
     return 0;
   };
   return list.map((step,i)=>({step,i,section:wizSectionOf(step)}))
@@ -5482,6 +5485,7 @@ function techDimension(svg,a,b,axis,value,free,key){
 }
 function surveyMapping(b,box){const k=Math.min(box.w/Math.max(1,b.maxX-b.minX),box.h/Math.max(1,b.maxY-b.minY));
   return{k,X:x=>box.x+(box.w-(b.maxX-b.minX)*k)/2+(x-b.minX)*k,Y:y=>box.y+(box.h-(b.maxY-b.minY)*k)/2+(y-b.minY)*k};}
+const DETAIL_FULL_BOX={x:4,y:58,w:108,h:118},DETAIL_LENS_CENTER=[216,124],DETAIL_LENS_R=96;
 function detailLens(svg,full,zone,paint,attrs={},compact=false){
   if(compact){
     const box={x:8,y:8,w:304,h:214},Z=surveyMapping(zone,box),id='mt-lens-clip-'+(++surveyFigureSerial),defs=el('defs'),cp=el('clipPath',{id});
@@ -5489,10 +5493,11 @@ function detailLens(svg,full,zone,paint,attrs={},compact=false){
     const g=el('g',{'clip-path':'url(#'+id+')','data-detail-lens':'compact',...attrs});paint(g,Z.X,Z.Y,Z.k,{x:0,y:0,w:320,h:230},true);svg.append(g);
     return{F:Z,Z,lc:[160,115],lr:110,compact:true};
   }
-  const fbox={x:8,y:40,w:164,h:160},F=surveyMapping(full,fbox),whole=el('g',{'data-section-context':'whole'});
+  const fbox=DETAIL_FULL_BOX,F=surveyMapping(full,fbox),whole=el('g',{'data-section-context':'whole'});
   paint(whole,F.X,F.Y,F.k,fbox,false);svg.append(whole);
   const cx=F.X((zone.minX+zone.maxX)/2),cy=F.Y((zone.minY+zone.maxY)/2),mr=Math.max(9,Math.hypot((zone.maxX-zone.minX)*F.k,(zone.maxY-zone.minY)*F.k)/2*.75);
-  const lc=[246,120],lr=68,Z=surveyMapping(zone,{x:lc[0]-lr*.82,y:lc[1]-lr*.82,w:lr*1.64,h:lr*1.64}),ang=Math.atan2(lc[1]-cy,lc[0]-cx);
+  // lente grande: è lì che si legge cosa misurare (la sezione intera dice solo dove)
+  const lc=DETAIL_LENS_CENTER,lr=DETAIL_LENS_R,Z=surveyMapping(zone,{x:lc[0]-lr*.82,y:lc[1]-lr*.82,w:lr*1.64,h:lr*1.64}),ang=Math.atan2(lc[1]-cy,lc[0]-cx);
   svg.append(el('line',{x1:cx+mr*Math.cos(ang),y1:cy+mr*Math.sin(ang),x2:lc[0]-lr*Math.cos(ang),y2:lc[1]-lr*Math.sin(ang),stroke:'var(--mt-secondary)','stroke-width':1.2,'data-detail-link':'true'}));
   svg.append(el('circle',{cx,cy,r:mr,fill:'none',stroke:'var(--mt-secondary)','stroke-width':1.3,'data-detail-marker':'true'}));
   const id='mt-lens-clip-'+(++surveyFigureSerial),defs=el('defs'),cp=el('clipPath',{id});cp.append(el('circle',{cx:lc[0],cy:lc[1],r:lr}));defs.append(cp);svg.append(defs);
@@ -5569,7 +5574,7 @@ function sectionSurveyFigure(kind='closure',options={}) {
     const {Z,lc,lr}=detailLens(svg,full,{minX,maxX,minY,maxY},(target,X,Y,k,box,lens)=>paint(target,X,Y,k,box,lens),
       {'data-section-context':hideLeaf?'frame-only':'frame-and-leaf'},!!options.compact);
     if(options.compact)return svg;
-    const F0=surveyMapping(full,{x:8,y:40,w:164,h:160});
+    const F0=surveyMapping(full,DETAIL_FULL_BOX);
     // Sotto la vista intera, dove non coprono pezzi né quote.
     svg.append(el('text',{x:F0.X(full.minX),y:216,'text-anchor':'start','font-size':10,'font-weight':700,fill:'var(--mt-green)'},'ESTERNO'));
     svg.append(el('text',{x:F0.X(full.maxX),y:216,'text-anchor':'end','font-size':10,'font-weight':700,fill:'var(--mt-secondary)'},'INTERNO'));
@@ -5584,7 +5589,7 @@ function sectionSurveyFigure(kind='closure',options={}) {
       const mode=DOOR_CLOSURES.find(option=>option.id===door.closure)?.name||'',reference=DOOR_REFERENCES.find(option=>option.id===door.reference)?.name||'';
       svg.append(el('text',{x:88,y:222,'text-anchor':'middle','font-size':12,fill:'var(--mt-green)','data-closure-comparison':door.closure},mode+' · '+reference));
     }
-    if(kind==='closureTarget')svg.append(el('text',{x:lc[0],y:36,'text-anchor':'middle','font-size':13,fill:'var(--mt-ink)'},doorStopTarget()==='casing'?'Sul coprifilo':'Sullo stipite'));
+    if(kind==='closureTarget')svg.append(el('text',{x:lc[0],y:20,'text-anchor':'middle','font-size':13,fill:'var(--mt-ink)'},doorStopTarget()==='casing'?'Sul coprifilo':'Sullo stipite'));
     if(kind==='closureTarget'&&doorStopTarget()==='casing')svg.append(el('text',{x:88,y:222,'text-anchor':'middle','font-size':12,fill:'var(--mt-secondary)','data-derived-projection':'true'},'Sporgenza '+fmt(door.projection)+' mm · calcolata'));
     return svg;
   }
@@ -5746,6 +5751,14 @@ function renderMeasure(m, last) {
       body.append(description);
     });
     return;
+  }
+  if(m.choice==='joint'){
+    const grid=choiceGrid(body,JOINTS.length);
+    JOINTS.forEach(j=>{
+      const svg=el('svg',{viewBox:'0 0 100 80','aria-hidden':'true'});
+      Object.values(framePolys(j.id,30,22,40,76,12)).forEach(pts=>svg.append(el('polygon',{points:pts.map(q=>q.join(',')).join(' '),fill:'var(--mt-wood)',stroke:'currentColor','stroke-width':1.2})));
+      grid.append(wizCard(j.name,j.note,state.joint===j.id,svg,()=>{if(state.joint!==j.id)draft().joints={};state.joint=j.id;wiz.joint=j.id;update();renderWizard();setTimeout(()=>wizGo(1),180);}));
+    });return;
   }
   if(m.choice==='doorBottom'){
     const grid=choiceGrid(body,3);
