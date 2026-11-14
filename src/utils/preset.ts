@@ -63,26 +63,49 @@ export function materialeDelPreset(
   return id ? materialiDelPreset(preset).find((m) => m.id === id) : undefined;
 }
 
+/** il preset predefinito, senza la lista dei materiali */
+function predefinito(preset: PresetProgetto | undefined): PresetProgetto | undefined {
+  if (!preset) return undefined;
+  const { materiali: _m, ...resto } = preset;
+  return resto;
+}
+
 /**
- * IL SUPPORTO DI UN MATERIALE: il suo, sopra quello del lavoro.
+ * IL PRESET DI UN MATERIALE: il suo, se ce l'ha; altrimenti il predefinito
+ * del lavoro.
  *
- * Del materiale contano bobina o lastre; lama, margine e venatura restano
- * quelli del preset. Senza materiale (o con uno che non dice niente) è il
- * supporto del lavoro com'è.
+ * È questo che leggono la forma che nasce (abbondanza), la divisione in teli
+ * (fascia, sormonto, verso) e il piano di taglio (supporto). Senza materiale,
+ * o con un materiale che non c'è più, è il predefinito. Un materiale salvato
+ * con la sola bobina (1.96.0) ha il predefinito con quella bobina sopra.
  */
+export function presetDelMateriale(
+  preset: PresetProgetto | undefined,
+  materialeId: ID | undefined
+): PresetProgetto | undefined {
+  const base = predefinito(preset);
+  const m = materialeDelPreset(preset, materialeId);
+  if (m?.preset) return { ...m.preset };
+  if (m?.supporto) {
+    return {
+      ...(base ?? {}),
+      supporto: {
+        ...(base?.supporto ?? PRESET_INIZIALE.supporto),
+        modo: m.supporto.modo,
+        lastra: { ...m.supporto.lastra },
+        bobina: { ...m.supporto.bobina }
+      }
+    };
+  }
+  return base;
+}
+
+/** il supporto di un materiale: quello del suo preset */
 export function supportoDelMateriale(
   preset: PresetProgetto | undefined,
   materialeId: ID | undefined
 ): PresetProgetto['supporto'] {
-  const base = preset?.supporto;
-  const proprio = materialeDelPreset(preset, materialeId)?.supporto;
-  if (!proprio) return base;
-  return {
-    ...(base ?? PRESET_INIZIALE.supporto),
-    modo: proprio.modo,
-    lastra: { ...proprio.lastra },
-    bobina: { ...proprio.bobina }
-  };
+  return presetDelMateriale(preset, materialeId)?.supporto;
 }
 
 /**
@@ -254,12 +277,35 @@ export function conPresetApplicato(
   /** il materiale scelto in questo momento (l'ultimo usato); assente = il primo */
   materiale?: ID | null
 ): Annotazione {
-  const fatta = conAbbondanzaDelPreset(a, preset, false) ?? a;
-  // anche il materiale: solo se non ne porta già uno suo (una copia ha quello
-  // dell'originale) e se il lavoro ne distingue
-  if (!portaMateriale(fatta) || materialeDelPreset(preset, fatta.materialeId)) return fatta;
-  const id = materialeDiNascita(preset, materiale);
-  return id ? { ...fatta, materialeId: id } : fatta;
+  // prima il materiale — solo se non ne porta già uno suo (una copia ha
+  // quello dell'originale) e se il lavoro ne distingue — poi l'abbondanza,
+  // che è quella del preset DI QUEL materiale
+  let conMat = a;
+  if (portaMateriale(a) && !materialeDelPreset(preset, a.materialeId)) {
+    const id = materialeDiNascita(preset, materiale);
+    if (id) conMat = { ...a, materialeId: id };
+  }
+  return conAbbondanzaDelPreset(conMat, presetDelMateriale(preset, conMat.materialeId), false) ?? conMat;
+}
+
+/**
+ * IL MATERIALE DI UNA FORMA, CAMBIATO.
+ *
+ * Con il materiale cambia il preset, e l'abbondanza lo segue — ma solo se
+ * era ancora quella del preset di prima: un'abbondanza scritta a mano sulla
+ * forma resta sua, come sempre. La divisione in teli non si tocca: le
+ * giunzioni spostate col dito non le rifà nessuno.
+ */
+export function conMaterialeCambiato(
+  a: Annotazione,
+  preset: PresetProgetto | undefined,
+  materialeId: ID
+): Annotazione {
+  const conMat = { ...a, materialeId } as Annotazione;
+  // `null` = la forma è già esattamente come la vorrebbe il preset di prima
+  const toccataAMano = conAbbondanzaDelPreset(a, presetDelMateriale(preset, a.materialeId), true) !== null;
+  if (toccataAMano) return conMat;
+  return conAbbondanzaDelPreset(conMat, presetDelMateriale(preset, materialeId), true) ?? conMat;
 }
 
 /**
@@ -278,9 +324,8 @@ export function fasciaDelPreset(
 ): { massimo?: number; fonteMassimo?: string } {
   const sup = supportoDelMateriale(preset, materialeId);
   if (!sup) return {};
-  const nomeMat = materialeDelPreset(preset, materialeId)?.supporto
-    ? materialeDelPreset(preset, materialeId)?.nome
-    : undefined;
+  const m = materialeDelPreset(preset, materialeId);
+  const nomeMat = m && (m.preset || m.supporto) ? m.nome : undefined;
   const pieno =
     sup.modo === 'bobina'
       ? sup.bobina.larghezza
@@ -298,11 +343,13 @@ export function fasciaDelPreset(
 /** da dove parte una divisione NUOVA: una già fatta comanda sempre lei */
 export function predefinitiTeli(
   preset: PresetProgetto | undefined,
-  unita: Unita
+  unita: Unita,
+  /** il materiale della forma: i teli sono quelli del SUO preset */
+  materialeId?: ID
 ):
   | { sormonto: number; verso: VersoSormonto; asse: AssePannelli; modo: 'fascia' | 'uguali' }
   | undefined {
-  const t = preset?.teli;
+  const t = presetDelMateriale(preset, materialeId)?.teli;
   if (!t) return undefined;
   return {
     sormonto: pulito(daMillimetri(t.sormontoMm, unita)),
@@ -346,7 +393,10 @@ export function riassuntoPreset(preset: PresetProgetto | undefined): string | nu
     );
   }
   const mat = materialiDelPreset(preset);
-  if (mat.length) voci.push(mat.map((m) => m.nome).join(', '));
+  if (mat.length) {
+    // quelli col preset suo si segnano: il riassunto sopra è il predefinito
+    voci.push(mat.map((m) => (m.preset || m.supporto ? `${m.nome} (preset suo)` : m.nome)).join(', '));
+  }
   if (preset.teli) {
     voci.push(
       `teli ${preset.teli.asse === 'verticale' ? 'verticali' : 'orizzontali'}, sormonto ${formattaNumero(preset.teli.sormontoMm)} mm`
@@ -379,7 +429,7 @@ export function teliDelPreset(
   foto: Pick<Foto, 'scala' | 'piano' | 'piani'> | null,
   preset: PresetProgetto | undefined
 ): Pannellizzazione | null {
-  const t = preset?.teli;
+  const t = presetDelMateriale(preset, a.materialeId)?.teli;
   if (!t || !ePannellizzabile(a)) return null;
   const forma = formaDaDividere(a, foto);
   if (!forma) return null;

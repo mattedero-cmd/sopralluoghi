@@ -108,14 +108,27 @@ export interface PresetProgetto {
   materiali?: MaterialePreset[];
 }
 
-/** Un materiale del preset: un nome e, se diverso da quello del lavoro, il suo supporto. */
+/**
+ * Un materiale del preset: un nome e, se non è quello predefinito, il SUO
+ * preset.
+ *
+ * Ogni pellicola si lavora a modo suo: il solare con due centimetri attorno
+ * su bobina da 1520, l'acidato a filo del fermavetro su bobina da 1370, il
+ * coverstyle con cinque centimetri da rifilare e i teli orizzontali. Il
+ * preset del lavoro è il PREDEFINITO: un materiale nasce uguale a lui, e
+ * quando gli si dà un preset suo quello vale per le sue forme e le sue porte.
+ */
 export interface MaterialePreset {
   id: ID;
   nome: string;
   /**
-   * Il supporto di QUESTO materiale. Assente = quello del preset: la bobina
-   * del solare e quella dell'acidato spesso hanno fasce diverse, ma lama,
-   * margine e venatura di solito no.
+   * IL PRESET DI QUESTO MATERIALE: abbondanza, supporto, teli. Assente =
+   * quello predefinito del lavoro. Non porta a sua volta materiali.
+   */
+  preset?: Omit<PresetProgetto, 'materiali'>;
+  /**
+   * LEGACY (1.96.0): il solo supporto del materiale, prima che ne avesse un
+   * preset intero. Si legge ancora, sopra il predefinito.
    */
   supporto?: Pick<NonNullable<PresetProgetto['supporto']>, 'modo' | 'lastra' | 'bobina'>;
 }

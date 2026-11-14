@@ -18,13 +18,13 @@
  * hai diviso spostando i giunti col dito non te la ridivide nessuno.
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Modale } from './comuni';
 import { Icona } from './Icona';
 import { FASCE_BOBINA } from '../utils/documentoNesting';
 import { analizzaMisura, formattaNumero } from '../utils/format';
 import type { AssePannelli, VersoSormonto } from '../geometry/pannelli';
-import type { ModoSupporto, PresetProgetto, Venatura } from '../db/types';
+import type { ID, MaterialePreset, ModoSupporto, PresetProgetto, Venatura } from '../db/types';
 import { PRESET_INIZIALE } from '../utils/preset';
 import type { AbbondanzaPreset } from '../utils/preset';
 import { MaterialiLavoro } from './MaterialiLavoro';
@@ -70,32 +70,23 @@ function Numero({
   );
 }
 
-export function PresetLavoro({
-  preset,
-  quanteForme,
-  onSalva,
-  onApplicaTutto,
-  onChiudi,
-  creazione,
-  richiediMateriali
+/** il preset senza la lista dei materiali: quello che si scrive in una scheda */
+type PresetScheda = Omit<PresetProgetto, 'materiali'>;
+
+/**
+ * I CAMPI DI UN PRESET — abbondanza, supporto, teli — per una scheda: il
+ * predefinito del lavoro o quello di un materiale. Ogni modifica risale
+ * subito, già costruita: chi li ospita tiene un preset per scheda e salva
+ * tutto insieme.
+ */
+function CampiPreset({
+  valore,
+  onCambia
 }: {
-  preset: PresetProgetto | undefined;
-  /** quante forme ci sono già nel lavoro, per il comando «applica a tutte» */
-  quanteForme: number;
-  onSalva: (p: PresetProgetto) => void;
-  /** salva e porta TUTTO il preset — abbondanze e teli — su quello che c'è già */
-  onApplicaTutto?: (p: PresetProgetto) => void;
-  onChiudi: () => void;
-  /**
-   * L'ULTIMO PASSO DI UN PROGETTO COMPLESSO: il progetto nasce quando il
-   * preset è detto. Al posto di «salva» c'è «crea il progetto», e «annulla»
-   * torna indietro ai dati del progetto invece di buttare tutto.
-   */
-  creazione?: boolean;
-  /** un lavoro complesso: senza almeno un materiale il preset non si salva */
-  richiediMateriali?: boolean;
+  valore: PresetScheda | undefined;
+  onCambia: (p: PresetScheda) => void;
 }) {
-  const p0 = preset ?? PRESET_INIZIALE;
+  const p0 = valore ?? PRESET_INIZIALE;
   const inCm = (mm: number | undefined) => (mm ? String(mm / 10).replace('.', ',') : '');
   const [abb, setAbb] = useState(inCm(p0.abbPerimetroMm));
   // i due campi vecchi (base e altezza) si leggono ancora: la base era
@@ -118,8 +109,6 @@ export function PresetLavoro({
   );
   const [sup, setSup] = useState(p0.supporto ?? PRESET_INIZIALE.supporto);
   const [teli, setTeli] = useState(p0.teli ?? PRESET_INIZIALE.teli);
-  const [materiali, setMateriali] = useState(p0.materiali ?? []);
-  const mancaMateriale = !!richiediMateriali && materiali.length === 0;
 
   const mm = (t: string) => Math.max(0, (analizzaMisura(t) ?? 0) * 10);
   const abbMm = mm(abb);
@@ -151,59 +140,29 @@ export function PresetLavoro({
     }
     setPerLati(true);
   };
-  const costruito = (): PresetProgetto => ({
+  const costruito = (): PresetScheda => ({
     ...abbOra(),
     supporto: sup,
-    teli,
-    ...(materiali.length ? { materiali } : {})
+    teli
   });
-
-  const salva = () => {
-    if (mancaMateriale) return;
-    onSalva(costruito());
-    // in creazione chi riceve il preset crea il progetto e chiude lui: qui
-    // «chiudi» vorrebbe dire tornare ai dati
-    if (!creazione) onChiudi();
-  };
-
-  const applicaTutto = () => {
-    if (mancaMateriale || !onApplicaTutto) return;
-    const p = costruito();
-    onSalva(p);
-    onApplicaTutto(p);
-    onChiudi();
-  };
+  // ogni modifica risale; la prima volta no, che il valore è quello ricevuto
+  const primo = useRef(true);
+  const risali = useRef(onCambia);
+  risali.current = onCambia;
+  const impronta = JSON.stringify(costruito());
+  useEffect(() => {
+    if (primo.current) {
+      primo.current = false;
+      return;
+    }
+    risali.current(JSON.parse(impronta) as PresetScheda);
+  }, [impronta]);
 
   const numero = (v: number) => (v ? String(v).replace('.', ',') : '');
   const scriviSup = (m: Partial<typeof sup>) => setSup((s) => ({ ...s, ...m }));
 
   return (
-    <Modale titolo={creazione ? 'Nuovo progetto · preset' : 'Preset del lavoro'} onChiudi={onChiudi}>
-      <div className="preset-lavoro">
-      {creazione ? (
-        <p className="passi-progetto">Passo 3 di 3 · il progetto nasce con questo preset</p>
-      ) : null}
-      <p className="aiuto" style={{ marginTop: 0 }}>
-        {creazione
-          ? 'Da qui partono le cose nuove di questo sopralluogo: il materiale di una forma o di una porta, l’abbondanza, la divisione in teli, il piano di taglio. Si cambia quando vuoi, dalla scheda del progetto.'
-          : 'Da qui partono le cose nuove di questo sopralluogo: il materiale e l’abbondanza di una forma appena disegnata, la divisione in teli, il piano di taglio. Quello che è già disegnato resta com’è — finché non tocchi «salva e applica a tutto», qui sotto.'}
-      </p>
-
-      <div className="campo">
-        <label>Materiali del lavoro{richiediMateriali ? ' *' : ''}</label>
-        <span style={{ color: 'var(--testo-2)', fontSize: 13 }}>
-          Le pellicole che si posano in questo sopralluogo. Una forma o una porta, quando nasce,
-          prende uno di questi; il piano di taglio esce diviso per materiale, ognuno col suo
-          supporto. Tocca un materiale scelto, qui sotto, per dargli una bobina sua.
-        </span>
-        <MaterialiLavoro materiali={materiali} onCambia={setMateriali} supportoLavoro={sup} />
-        {mancaMateriale && (
-          <span style={{ color: 'var(--avviso)', fontSize: 13, marginTop: 6 }}>
-            Scegli almeno un materiale: in un progetto complesso ogni forma e ogni porta ne ha uno.
-          </span>
-        )}
-      </div>
-
+    <>
       <div className="campo">
         <label>Abbondanza attorno alle forme</label>
         {/*
@@ -416,6 +375,196 @@ export function PresetLavoro({
           non si divide.
         </span>
       </div>
+
+    </>
+  );
+}
+
+/** il preset di partenza di un materiale salvato con la sola bobina (1.96.0) */
+function presetProprio(m: MaterialePreset, generale: PresetScheda): PresetScheda | undefined {
+  if (m.preset) return m.preset;
+  if (!m.supporto) return undefined;
+  return {
+    ...generale,
+    supporto: { ...(generale.supporto ?? PRESET_INIZIALE.supporto), ...m.supporto }
+  };
+}
+
+export function PresetLavoro({
+  preset,
+  quanteForme,
+  onSalva,
+  onApplicaTutto,
+  onChiudi,
+  creazione,
+  richiediMateriali
+}: {
+  preset: PresetProgetto | undefined;
+  /** quante forme ci sono già nel lavoro, per il comando «applica a tutte» */
+  quanteForme: number;
+  onSalva: (p: PresetProgetto) => void;
+  /** salva e porta TUTTO il preset — abbondanze e teli — su quello che c'è già */
+  onApplicaTutto?: (p: PresetProgetto) => void;
+  onChiudi: () => void;
+  /**
+   * L'ULTIMO PASSO DI UN PROGETTO COMPLESSO: il progetto nasce quando il
+   * preset è detto. Al posto di «salva» c'è «crea il progetto», e «annulla»
+   * torna indietro ai dati del progetto invece di buttare tutto.
+   */
+  creazione?: boolean;
+  /** un lavoro complesso: senza almeno un materiale il preset non si salva */
+  richiediMateriali?: boolean;
+}) {
+  const [generale, setGenerale] = useState<PresetScheda>(() => {
+    const { materiali: _m, ...resto } = preset ?? PRESET_INIZIALE;
+    return resto;
+  });
+  // i materiali col loro preset; quelli della 1.96.0 (solo la bobina)
+  // passano a un preset intero, il predefinito con quella bobina
+  const [materiali, setMateriali] = useState<MaterialePreset[]>(() =>
+    (preset?.materiali ?? []).map(({ supporto: _s, ...m }) => {
+      const proprio = presetProprio({ ...m, supporto: _s }, generale);
+      return proprio ? { ...m, preset: proprio } : m;
+    })
+  );
+  /**
+   * LA SCHEDA APERTA: il predefinito, o un materiale.
+   *
+   * Ogni pellicola si lavora a modo suo — il solare con due centimetri
+   * attorno, il coverstyle con cinque e i teli orizzontali — e un preset solo
+   * per tutte non basta. Il predefinito è quello da cui un materiale parte.
+   */
+  const [scheda, setScheda] = useState<ID | 'predefinito'>('predefinito');
+  const mancaMateriale = !!richiediMateriali && materiali.length === 0;
+  const aperto = scheda === 'predefinito' ? undefined : materiali.find((m) => m.id === scheda);
+  // un materiale tolto mentre era aperto: si torna al predefinito
+  useEffect(() => {
+    if (scheda !== 'predefinito' && !aperto) setScheda('predefinito');
+  }, [scheda, aperto]);
+
+  const scriviMateriale = (id: ID, preset: PresetScheda | undefined) =>
+    setMateriali((ms) =>
+      ms.map((m) => {
+        if (m.id !== id) return m;
+        const { preset: _via, ...resto } = m;
+        return preset ? { ...resto, preset } : resto;
+      })
+    );
+
+  const costruito = (): PresetProgetto => ({
+    ...generale,
+    ...(materiali.length ? { materiali } : {})
+  });
+
+  const salva = () => {
+    if (mancaMateriale) return;
+    onSalva(costruito());
+    // in creazione chi riceve il preset crea il progetto e chiude lui: qui
+    // «chiudi» vorrebbe dire tornare ai dati
+    if (!creazione) onChiudi();
+  };
+
+  const applicaTutto = () => {
+    if (mancaMateriale || !onApplicaTutto) return;
+    const p = costruito();
+    onSalva(p);
+    onApplicaTutto(p);
+    onChiudi();
+  };
+
+  return (
+    <Modale titolo={creazione ? 'Nuovo progetto · preset' : 'Preset del lavoro'} onChiudi={onChiudi}>
+      <div className="preset-lavoro">
+      {creazione ? (
+        <p className="passi-progetto">Passo 3 di 3 · il progetto nasce con questo preset</p>
+      ) : null}
+      <p className="aiuto" style={{ marginTop: 0 }}>
+        {creazione
+          ? 'Da qui partono le cose nuove di questo sopralluogo: il materiale di una forma o di una porta, l’abbondanza, la divisione in teli, il piano di taglio. Si cambia quando vuoi, dalla scheda del progetto.'
+          : 'Da qui partono le cose nuove di questo sopralluogo: il materiale e l’abbondanza di una forma appena disegnata, la divisione in teli, il piano di taglio. Quello che è già disegnato resta com’è — finché non tocchi «salva e applica a tutto», qui sotto.'}
+      </p>
+
+      <div className="campo">
+        <label>Materiali del lavoro{richiediMateriali ? ' *' : ''}</label>
+        <span style={{ color: 'var(--testo-2)', fontSize: 13 }}>
+          Le pellicole che si posano in questo sopralluogo. Una forma o una porta, quando nasce,
+          prende uno di questi; il piano di taglio esce diviso per materiale. Ogni materiale parte
+          dal preset predefinito e può averne uno suo.
+        </span>
+        <MaterialiLavoro materiali={materiali} onCambia={setMateriali} />
+        {mancaMateriale && (
+          <span style={{ color: 'var(--avviso)', fontSize: 13, marginTop: 6 }}>
+            Scegli almeno un materiale: in un progetto complesso ogni forma e ogni porta ne ha uno.
+          </span>
+        )}
+      </div>
+
+      {/*
+        UNA SCHEDA PER PRESET: il predefinito e uno per materiale. Le schede
+        stanno sopra i campi, che sono gli stessi per tutti: cambia solo di
+        chi sono i numeri.
+      */}
+      {materiali.length > 0 && (
+        <div className="schede-preset" role="tablist" aria-label="Di chi è il preset">
+          <button
+            role="tab"
+            aria-selected={scheda === 'predefinito'}
+            className={scheda === 'predefinito' ? 'attivo' : ''}
+            onClick={() => setScheda('predefinito')}
+          >
+            Predefinito
+          </button>
+          {materiali.map((m) => (
+            <button
+              key={m.id}
+              role="tab"
+              aria-selected={scheda === m.id}
+              className={scheda === m.id ? 'attivo' : ''}
+              onClick={() => setScheda(m.id)}
+            >
+              {m.nome}
+              {m.preset ? <span className="segno-suo" aria-label="(preset suo)"> ●</span> : null}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {aperto ? (
+        <>
+          <div className="campo">
+            <label>Preset del {aperto.nome}</label>
+            <span className="segmenti piena" role="group" aria-label={`Preset del ${aperto.nome}`}>
+              <button
+                className={aperto.preset ? '' : 'attivo'}
+                onClick={() => scriviMateriale(aperto.id, undefined)}
+              >
+                Come il predefinito
+              </button>
+              <button
+                className={aperto.preset ? 'attivo' : ''}
+                // si parte dal predefinito com'è adesso, e si cambia quello che cambia
+                onClick={() => !aperto.preset && scriviMateriale(aperto.id, { ...generale })}
+              >
+                Preset suo
+              </button>
+            </span>
+            <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 6 }}>
+              {aperto.preset
+                ? `Le forme e le porte in ${aperto.nome} usano questi valori; il predefinito non li cambia più.`
+                : `Le forme e le porte in ${aperto.nome} usano il predefinito. «Preset suo» lo copia qui, e da lì lo cambi.`}
+            </span>
+          </div>
+          {aperto.preset && (
+            <CampiPreset
+              key={aperto.id}
+              valore={aperto.preset}
+              onCambia={(p) => scriviMateriale(aperto.id, p)}
+            />
+          )}
+        </>
+      ) : (
+        <CampiPreset key="predefinito" valore={generale} onCambia={setGenerale} />
+      )}
 
       {/*
         SALVA, OPPURE SALVA E APPLICA A TUTTO.

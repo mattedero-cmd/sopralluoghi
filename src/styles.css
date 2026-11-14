@@ -4889,40 +4889,40 @@ a {
   min-width: 0;
 }
 
-.materiali-elenco {
-  list-style: none;
-  margin: 12px 0 0;
-  padding: 0;
-  border-top: 1px solid color-mix(in srgb, var(--bordo) 60%, transparent);
-}
-
-.materiali-elenco li {
-  border-bottom: 1px solid color-mix(in srgb, var(--bordo) 60%, transparent);
-}
-
-.materiale-riga {
+/* le schede del preset: il predefinito e un preset per materiale. Vanno a
+   capo invece di scorrere: con cinque materiali una riga sola non basta, e
+   una scheda nascosta oltre il bordo è una scheda che non si trova */
+.schede-preset {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  width: 100%;
-  min-height: var(--tocco);
-  padding: 8px 2px;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 14px;
+  padding: 4px;
+  background: var(--sfondo-2);
+  border: 1px solid var(--bordo);
+  border-radius: var(--raggio);
+}
+
+.schede-preset button {
+  flex: 1 1 auto;
+  min-height: 40px;
+  padding: 0 12px;
   background: none;
   border: 0;
-  text-align: left;
+  border-radius: calc(var(--raggio) - 4px);
+  color: var(--testo-2);
+  font-weight: 600;
   cursor: pointer;
 }
 
-.materiale-riga span {
-  color: var(--testo-2);
-  font-size: 13px;
-  text-align: right;
-  min-width: 0;
+.schede-preset button.attivo {
+  background: var(--accento);
+  color: #fff;
 }
 
-.materiale-supporto {
-  padding: 4px 0 12px;
+.schede-preset .segno-suo {
+  font-size: 10px;
+  vertical-align: middle;
 }
 
 /* il guida-passi del nuovo progetto: due scelte grandi, una sotto l'altra */

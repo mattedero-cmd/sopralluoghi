@@ -10,6 +10,31 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.97.0 — Ogni materiale col suo preset
+
+- **Il preset non è più uno solo.** Quello del lavoro diventa il
+  **predefinito**, e ogni materiale può averne **uno suo**: abbondanza,
+  supporto (bobina o lastre, lama, margine, venatura) e teli. Il solare con
+  due centimetri attorno su bobina da 1520, il coverstyle con cinque e i teli
+  orizzontali su bobina da 1600: ognuno come si lavora davvero.
+
+- **Nel preset ci sono le schede**: «Predefinito» e una per materiale. Un
+  materiale nasce «come il predefinito»; toccando «Preset suo» lo copia così
+  com'è e da lì lo si cambia. Le schede col preset proprio hanno un pallino, e
+  nella scheda del progetto il materiale è segnato «(preset suo)».
+
+- **Tutto segue il preset del materiale**: l'abbondanza di una forma che
+  nasce, la divisione in teli (fascia, sormonto, verso), il supporto della sua
+  essenza nel piano di taglio e dei kit delle porte, e «Salva e applica a
+  tutto», che ora rifà ogni forma col preset del suo materiale.
+
+- **Cambiando materiale a una forma l'abbondanza cambia con lui**, se era
+  ancora quella del preset di prima. Un'abbondanza scritta a mano resta
+  quella, e la divisione in teli non si tocca.
+
+- Un materiale salvato con la 1.96.0 con la sola bobina sua si apre come
+  preset suo: il predefinito con quella bobina.
+
 ## 1.96.0 — Progetto veloce o complesso, e i materiali del lavoro
 
 - **Il nuovo progetto si crea a passi.** Prima la scelta: **progetto

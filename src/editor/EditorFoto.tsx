@@ -54,6 +54,7 @@ import { naviga } from '../router';
 import { ConfermaDialog, ImmagineBlob, Modale, StatoApp, type RichiestaConferma } from '../components/comuni';
 import { mostraToast } from '../state/toast';
 import {
+  conMaterialeCambiato,
   conPresetApplicato,
   fasciaDelPreset,
   materialeDelPreset,
@@ -5063,12 +5064,14 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               valore={materialeDelPreset(progetto?.preset, selezionata.materialeId)?.id}
               onScegli={(id) => {
                 scegliMateriale(id);
-                // una famiglia di copie è una misura sola: il materiale va a tutte
+                // una famiglia di copie è una misura sola: il materiale va a
+                // tutte; e con lui l'abbondanza del suo preset, se quella di
+                // prima non era stata cambiata a mano
                 const famiglia = selezionata.gruppoQuota;
                 commit(
                   annotazioni.map((a) =>
                     a.id === selezionata.id || (famiglia && a.gruppoQuota === famiglia)
-                      ? ({ ...a, materialeId: id } as Annotazione)
+                      ? conMaterialeCambiato(a, progetto?.preset, id)
                       : a
                   )
                 );
@@ -6283,7 +6286,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 ...fasciaDelPreset(progetto?.preset, forma.unita, ann.materialeId),
                 prospettiva: { punti: forma.contorno, immagine }
               }}
-              predefiniti={predefinitiTeli(progetto?.preset, forma.unita)}
+              predefiniti={predefinitiTeli(progetto?.preset, forma.unita, ann.materialeId)}
               iniziale={
                 // le giunzioni fuori misura non devono comparire come maniglie:
                 // si risana con lo stesso metro del disegno e della distinta

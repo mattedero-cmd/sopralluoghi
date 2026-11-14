@@ -18,7 +18,7 @@ import {
   type Sezione
 } from './types';
 import { nuovoId } from '../utils/id';
-import { conAbbondanzaDelPreset, teliDelPreset } from '../utils/preset';
+import { conAbbondanzaDelPreset, presetDelMateriale, teliDelPreset } from '../utils/preset';
 import type { Pannellizzazione } from '../geometry/pannelli';
 import { blobMiniatura, blobOrigine } from '../utils/image';
 import { inizioSalvataggio, fineSalvataggio } from '../state/saveStatus';
@@ -961,10 +961,12 @@ export async function applicaPresetATutto(
           // forma che sta altrove, e la misura è di quella
           if (a.tipo === 'quotaPoligono' && a.soloEtichetta) continue;
           forme++;
-          const conAbb = conAbbondanzaDelPreset(a, preset, true);
+          // ogni forma col preset del SUO materiale
+          const suo = presetDelMateriale(preset, a.materialeId);
+          const conAbb = conAbbondanzaDelPreset(a, suo, true);
           let nuova = conAbb ?? a;
           if (conAbb) abbondanze++;
-          if (preset.teli) {
+          if (suo?.teli) {
             // i teli si contano DOPO le abbondanze: sono le abbondanze a
             // decidere quanto materiale serve, e quindi quanti teli
             const pann = teliDelPreset(nuova, f, preset) ?? undefined;

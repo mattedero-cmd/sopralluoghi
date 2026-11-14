@@ -3,9 +3,13 @@ import type { Porta, PresetProgetto, QuotaPoligono } from '../../db/types';
 import {
   MATERIALI_PREDEFINITI,
   PRESET_INIZIALE,
+  conMaterialeCambiato,
   conPresetApplicato,
   fasciaDelPreset,
   materialeDiNascita,
+  predefinitiTeli,
+  presetDelMateriale,
+  teliDelPreset,
   riassuntoPreset,
   supportoDelMateriale
 } from '../preset';
@@ -93,7 +97,68 @@ describe('i materiali nel preset', () => {
   });
 
   it('il riassunto dice i materiali', () => {
-    expect(riassuntoPreset(preset)).toContain('Solare, Acidato');
+    expect(riassuntoPreset(preset)).toContain('Solare (preset suo), Acidato');
+  });
+});
+
+describe('ogni materiale col suo preset', () => {
+  // il coverstyle si lavora con cinque centimetri attorno, su bobina da
+  // 1600, a teli orizzontali; il solare resta col predefinito
+  const conSuo: PresetProgetto = {
+    ...PRESET_INIZIALE,
+    abbPerimetroMm: 20,
+    materiali: [
+      { id: 'sol', nome: 'Solare' },
+      {
+        id: 'cov',
+        nome: 'Coverstyle',
+        preset: {
+          abbPerimetroMm: 50,
+          supporto: { ...PRESET_INIZIALE.supporto, bobina: { larghezza: 1600, metri: 50 } },
+          teli: { ...PRESET_INIZIALE.teli, asse: 'orizzontale', sormontoMm: 20 }
+        }
+      }
+    ]
+  };
+
+  it('il preset di un materiale è il suo; senza, il predefinito', () => {
+    expect(presetDelMateriale(conSuo, 'cov')?.abbPerimetroMm).toBe(50);
+    expect(presetDelMateriale(conSuo, 'sol')?.abbPerimetroMm).toBe(20);
+    expect(presetDelMateriale(conSuo, undefined)?.abbPerimetroMm).toBe(20);
+    // il predefinito non porta con sé la lista dei materiali
+    expect(presetDelMateriale(conSuo, 'sol')?.materiali).toBeUndefined();
+  });
+
+  it('una forma nasce con l\'abbondanza del preset del suo materiale', () => {
+    expect(conPresetApplicato(forma(), conSuo, 'cov')).toMatchObject({ materialeId: 'cov', abbPerimetro: 5 });
+    expect(conPresetApplicato(forma(), conSuo, 'sol')).toMatchObject({ materialeId: 'sol', abbPerimetro: 2 });
+  });
+
+  it('teli e fascia sono quelli del materiale', () => {
+    expect(predefinitiTeli(conSuo, 'mm', 'cov')).toMatchObject({ asse: 'orizzontale', sormonto: 20 });
+    expect(predefinitiTeli(conSuo, 'mm', 'sol')).toMatchObject({ asse: 'verticale', sormonto: 10 });
+    expect(fasciaDelPreset(conSuo, 'mm', 'cov').massimo).toBe(1600 - 2 * PRESET_INIZIALE.supporto.margine);
+    expect(teliDelPreset(forma({ materialeId: 'cov' }), null, conSuo)).toBeNull();
+  });
+
+  it('cambiando materiale l\'abbondanza segue il nuovo preset, se non era scritta a mano', () => {
+    const nata = conPresetApplicato(forma(), conSuo, 'sol');
+    expect(conMaterialeCambiato(nata, conSuo, 'cov')).toMatchObject({ materialeId: 'cov', abbPerimetro: 5 });
+    // tre centimetri scritti a mano restano tre
+    const aMano = { ...nata, abbPerimetro: 3 } as QuotaPoligono;
+    expect(conMaterialeCambiato(aMano, conSuo, 'cov')).toMatchObject({ materialeId: 'cov', abbPerimetro: 3 });
+  });
+
+  it('il piano di taglio dà al materiale il supporto del suo preset', () => {
+    const ess = essenzeDaPezzi([pezzo('A1', 'cov'), pezzo('A2', 'sol')], conSuo);
+    expect(ess.map((m) => [m.nome, m.bobina.larghezza])).toEqual([
+      ['Solare', 1370],
+      ['Coverstyle', 1600]
+    ]);
+  });
+
+  it('il riassunto segna chi ha un preset suo', () => {
+    expect(riassuntoPreset(conSuo)).toContain('Solare, Coverstyle (preset suo)');
   });
 });
 
