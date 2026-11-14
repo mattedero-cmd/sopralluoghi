@@ -3534,7 +3534,7 @@ function renderDoorClosure() {
   const summary=document.createElement('summary');summary.textContent='Piano e superficie di appoggio';details.append(summary);
   closureReferenceControls(details);closureBearingControls(details);
   const guide=document.createElement('button');guide.type='button';guide.className='mt-chip cursor-interaction';guide.textContent='Rivedi la chiusura in sezione';
-  guide.onclick=()=>{openWizard();wiz.step=wizSteps().indexOf(doorStopTarget()==='casing'?'m:antaDestinazione':'m:antaModoChiusura');renderWizard();};details.append(guide,closureSources());box.append(details);
+  guide.onclick=()=>{openWizard();wiz.step=Math.max(0,wizSteps().indexOf(doorStopTarget()==='casing'?'m:antaDestinazione':'m:antaModoChiusura'));wiz.stepId=null;renderWizard();};details.append(guide,closureSources());box.append(details);
 }
 function doorBottomMode() {
   const mode=door.bottom||'overlap';
@@ -4723,9 +4723,9 @@ function wizSteps() {
   const steps = ['apertura','battuta', 'coprifilo'];
   ['E','I'].forEach(side=>{if(offsetAllowed(wiz.cfg.casing,side))steps.push('posizione'+side);});
   steps.push('traverso');
-  steps.push('ante');
   if(wiz.hasHead!==false)steps.push('angoli');
   if(asymAllowed(wiz.cfg))steps.push('asimmetria');
+  steps.push('ante');
   measureSteps().forEach(m => steps.push('m:' + m.id));
   return steps;
 }
@@ -4758,22 +4758,31 @@ function openWizard() {
   wiz.hasHead=state.hasHead!==false;
   wiz.leafCount=state.leafCount===2?2:1;
   wiz.asym=state.asym?.side||'same';
-  wiz.step = 0;
+  wiz.step = 0; wiz.stepId = null;
   $('.mt-wizard').hidden = false;
   renderWizard();
 }
 function closeWizard() { $('.mt-wizard').hidden = true; }
 function wizGo(delta) {
-  let steps=wizSteps(),next=Math.max(0,Math.min(steps.length-1,wiz.step+delta));
+  let steps=wizSteps();
+  if(wiz.stepId&&steps.includes(wiz.stepId))wiz.step=steps.indexOf(wiz.stepId);
+  let next=Math.max(0,Math.min(steps.length-1,wiz.step+delta));
   if(delta>0&&!steps[wiz.step].startsWith('m:')&&steps[next].startsWith('m:')){applyWizard();steps=wizSteps();next=steps.findIndex(step=>step.startsWith('m:'));}
-  wiz.step=next;
+  wiz.step=next;wiz.stepId=steps[next];
   wiz.bufFor = null;
   renderWizard();
 }
 function renderWizard() {
-  const steps = wizSteps(), step = steps[wiz.step], ri = steps.findIndex(step=>step.startsWith('m:'))-1;
-  $('[data-out=wiz-step]').textContent = wiz.step <= ri ? `Modello · passo ${wiz.step + 1} di ${ri + 1}` : `Misure · ${wiz.step - ri} di ${steps.length - ri - 1}`;
-  $('.mt-wiz-dots').replaceChildren(...steps.map((_, i) => { const d = document.createElement('i'); if (i <= wiz.step) d.className = 'on'; if (i === ri) d.classList.add('gap'); return d; }));
+  let steps = wizSteps();
+  if (wiz.stepId && steps.includes(wiz.stepId)) wiz.step = steps.indexOf(wiz.stepId);
+  wiz.step = Math.max(0, Math.min(steps.length - 1, wiz.step)); wiz.stepId = steps[wiz.step];
+  const step = steps[wiz.step];
+  // sezione di ogni passo: le scelte del modello sono della maestà, «quante ante» apre l'anta
+  const sectionByMeasure = new Map(measureSteps().map(m => ['m:' + m.id, WIZ_SECTIONS[m.section]]));
+  const sections = steps.map(k => k.startsWith('m:') ? sectionByMeasure.get(k) || 'Finitura' : k === 'ante' ? WIZ_SECTIONS.sceltaAnta : 'Maestà · scelte');
+  const here = sections[wiz.step], inSection = sections.filter(x => x === here).length, pos = sections.slice(0, wiz.step + 1).filter(x => x === here).length;
+  $('[data-out=wiz-step]').textContent = `${here} · ${pos} di ${inSection}`;
+  $('.mt-wiz-dots').replaceChildren(...steps.map((_, i) => { const d = document.createElement('i'); if (i <= wiz.step) d.className = 'on'; if (i < steps.length - 1 && sections[i] !== sections[i + 1]) d.classList.add('gap'); return d; }));
   $('[data-wiz=back]').disabled = wiz.step === 0;
   if (step.startsWith('m:')) {const m=measureSteps().find(m => m.id === step.slice(2));if(m.leafIndex!==undefined&&m.leafIndex!==state.activeLeaf)setActiveLeaf(m.leafIndex,false);renderMeasure(m, wiz.step === steps.length - 1);orientWizardFigures(); return; }
   const titles = {apertura:'Da che parte è la maniglia?',battuta: 'Battuta', coprifilo: 'Forma del coprifilo', posizioneE:'Coprifilo esterno: posizione',posizioneI:'Coprifilo interno: posizione',traverso:'C’è il traverso superiore?',ante:'Quante ante ha la porta?', angoli: 'Angoli',asimmetria:'Coprifili uguali sui due lati?'};
@@ -5118,7 +5127,39 @@ function singleMeasureSteps(includeFrame=true) {
   }
   return steps;
 }
-function measureSteps() {
+// ORDINE DELLA GUIDA. Prima le DOMANDE che decidono la porta, poi le MISURE:
+//   Maestà · scelte (passi del modello) → Anta · scelte (quante ante, bordo,
+//   dove appoggia, come chiude e rispetto a cosa, facce, bordi) → Maestà ·
+//   misure (luce, coprifili, stipite, battuta e sua posizione) → Anta · misure
+//   (larghezza, altezza, spessore, scalini, rientro) → Guarnizioni (dipendono da
+//   dove l'anta tocca davvero, quindi dopo le misure) → Finitura (sormonti,
+//   abbondanze). Ogni scelta fa comparire solo passi PIÙ AVANTI: la guida non
+//   torna indietro da sola.
+const WIZ_SECTIONS={sceltaAnta:'Anta · scelte',misureMaesta:'Maestà · misure',misureAnta:'Anta · misure',guarnizioni:'Guarnizioni',finitura:'Finitura'};
+const LEAF_CHOICE_ORDER=['antaTipo','antaDestinazione','antaModoChiusura','antaRiferimento','antaAppoggio','antaBattutaTelaio','facce','anta-sormonto-scalino','anta-bordo-inferiore'];
+const LEAF_MEASURE_ORDER=['antaL','antaH','antaS','antaLb','antaSb','antaLb2','antaSb2','antaR','antaBaseQuote','antaChiusura'];
+function wizSectionOf(step){
+  const id=step.id.replace(/^leaf2-/,'');
+  if(id.startsWith('battuta-misura-')||id==='luceW'||id==='luceH'||id.startsWith('telaio'))return 'misureMaesta';
+  if(step.gasketOwner)return 'guarnizioni';
+  if(LEAF_CHOICE_ORDER.includes(id))return 'sceltaAnta';
+  if(LEAF_MEASURE_ORDER.includes(id))return 'misureAnta';
+  return 'finitura';
+}
+function measureSteps(){
+  const list=rawMeasureSteps(),buckets=Object.keys(WIZ_SECTIONS);
+  const rank=step=>{
+    const id=step.id.replace(/^leaf2-/,''),section=wizSectionOf(step),leafIndex=step.leafIndex||0;
+    if(section==='sceltaAnta')return LEAF_CHOICE_ORDER.indexOf(id)*2+leafIndex;
+    if(section==='misureAnta')return LEAF_MEASURE_ORDER.indexOf(id)*2+leafIndex;
+    if(section==='misureMaesta')return id.startsWith('telaioArresto')?2:id.startsWith('battuta-misura-')?1:0;
+    return 0;
+  };
+  return list.map((step,i)=>({step,i,section:wizSectionOf(step)}))
+    .sort((a,b)=>buckets.indexOf(a.section)-buckets.indexOf(b.section)||rank(a.step)-rank(b.step)||a.i-b.i)
+    .map(({step,section})=>({...step,section}));
+}
+function rawMeasureSteps() {
   if(state.leafCount!==2)return singleMeasureSteps();
   const first=withLeaf(0,()=>singleMeasureSteps()),second=withLeaf(1,()=>singleMeasureSteps(false));
   const sharedPositions=new Set(first.filter(step=>step.framePosition).map(step=>step.framePosition));

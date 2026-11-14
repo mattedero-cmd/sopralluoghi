@@ -138,6 +138,26 @@ tratteggio incrociato** e il **coprifilo è pieno**; i tre elementi hanno il
 proprio nome. La forma selezionata ha un dettaglio grande e le altre forme
 rimangono pulsanti compatti. Il posizionamento mostra un solo lato alla volta.
 
+## Ordine della guida
+
+Prima le domande che decidono la porta, poi le misure; dentro ognuna prima la
+maestà, poi l'anta. Ogni risposta può solo aggiungere passi più avanti, e la
+guida segue il passo per nome: se una scelta cambia la lista, resta dov'era.
+
+1. **Maestà · scelte** — maniglia, battuta, forma e posizione dei coprifili,
+   traverso, angoli, coprifili uguali.
+2. **Anta · scelte** — quante ante, bordo, dove appoggia (anta con scalini),
+   come chiude e rispetto a quale piano, quale parte appoggia, su quale battuta,
+   facce, sormonto sul bordo, bordo verso il pavimento.
+3. **Maestà · misure** — luce, coprifili (larghezza, spessore, raggi,
+   arretramento/sporgenza), stipite, larghezza della battuta, posizione della
+   battuta.
+4. **Anta · misure** — larghezza, altezza, spessore, scalini, raggio, rientro o
+   sporgenza.
+5. **Guarnizioni** — stipite e anta: dopo le misure perché dipendono da dove
+   l'anta tocca davvero; poi quanto coprono.
+6. **Finitura** — sormonti da indicare a mano, abbondanze.
+
 ## Dentro l'app dei sopralluoghi
 
 Il file resta un'app a sé (si prova da solo e si pubblica come pagina), ma

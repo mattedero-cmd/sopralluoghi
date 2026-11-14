@@ -10,6 +10,20 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.94.0 — Guida in ordine: prima le domande, poi le misure
+
+- La creazione guidata va in sei blocchi, sempre nello stesso ordine:
+  **Maestà · scelte**, **Anta · scelte**, **Maestà · misure**, **Anta · misure**,
+  **Guarnizioni**, **Finitura**. In alto si legge il blocco e il passo
+  («Anta · misure · 3 di 8»), e i puntini hanno uno stacco fra un blocco e
+  l'altro.
+- Prima si risponde a tutto quello che decide la porta (anche come chiude
+  l'anta e rispetto a quale piano), poi si prendono le misure, prima tutta la
+  maestà e poi tutta l'anta. Le guarnizioni vengono dopo le misure perché
+  dipendono da dove l'anta tocca davvero.
+- Una risposta che fa comparire nuovi passi non fa più saltare la guida: resta
+  sul passo in cui eri.
+
 ## 1.93.3 — Guarnizione dello stipite con l'anta appoggiata sul coprifilo
 
 - Rifacendo la guida da una porta duplicata e scegliendo «Sul coprifilo» per
