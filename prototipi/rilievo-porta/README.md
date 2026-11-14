@@ -145,18 +145,21 @@ maestà, poi l'anta. Ogni risposta può solo aggiungere passi più avanti, e la
 guida segue il passo per nome: se una scelta cambia la lista, resta dov'era.
 
 1. **Maestà · scelte** — maniglia, battuta, forma e posizione dei coprifili,
-   traverso, coprifili uguali.
+   traverso, angoli (montanti passanti / traverso passante / 45°), coprifili
+   uguali.
 2. **Anta · scelte** — quante ante, bordo, dove appoggia (anta con scalini),
-   come chiude e rispetto a quale piano, quale parte appoggia, su quale battuta.
+   come chiude e rispetto a quale piano, quale parte appoggia, su quale battuta,
+   **c'è la guarnizione sullo stipite? sull'anta?** (solo Sì/No).
 3. **Maestà · misure** — luce, coprifili (larghezza, spessore, raggi,
    arretramento/sporgenza), stipite, larghezza della battuta, posizione della
    battuta.
 4. **Anta · misure** — larghezza, altezza, spessore, scalini, raggio, rientro o
    sporgenza.
-5. **Guarnizioni** — stipite e anta: dopo le misure perché dipendono da dove
-   l'anta tocca davvero; poi quanto coprono.
+5. **Guarnizioni** — solo i dettagli: con il Sì la guarnizione va sulla
+   battuta che l'anta tocca davvero (con le misure vere); qui si chiede quanto
+   copre, e su quale battuta se lo stipite ne ha due. Con il No non c'è.
 6. **Pellicola** — tutto quello che riguarda la pellicola, maestà e anta
-   insieme: angoli della maestà, facce dell'anta, sormonto sul bordo, bordo
+   insieme: facce dell'anta, sormonto sul bordo, bordo
    verso il pavimento, sormonti da indicare a mano, abbondanze.
 
 Nelle misure la figura prende tutto lo spazio libero sopra il tastierino, e la

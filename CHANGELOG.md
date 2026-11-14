@@ -10,6 +10,15 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.95.1 — Guarnizioni fra le scelte, angoli con la maestà
+
+- «C'è la guarnizione sullo stipite?» e «C'è una guarnizione sull'anta?» sono
+  fra le scelte dell'anta, come Sì/No. Dove va la guarnizione dello stipite lo
+  decide la geometria misurata: dopo le misure si chiede solo quanto copre (e
+  su quale battuta, se lo stipite ne ha due). Con il No non si chiede altro.
+- «Angoli» (montanti passanti, traverso passante, 45°) torna fra le scelte
+  della maestà, dopo il traverso.
+
 ## 1.95.0 — Pellicola tutta insieme, figure più grandi
 
 - Le domande sulla pellicola sono in un blocco solo, **Pellicola**, alla fine

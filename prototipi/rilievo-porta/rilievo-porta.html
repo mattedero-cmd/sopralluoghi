@@ -4723,6 +4723,7 @@ function wizSteps() {
   const steps = ['apertura','battuta', 'coprifilo'];
   ['E','I'].forEach(side=>{if(offsetAllowed(wiz.cfg.casing,side))steps.push('posizione'+side);});
   steps.push('traverso');
+  if(wiz.hasHead!==false)steps.push('angoli');
   if(asymAllowed(wiz.cfg))steps.push('asimmetria');
   steps.push('ante');
   measureSteps().forEach(m => steps.push('m:' + m.id));
@@ -4906,6 +4907,14 @@ function gasketReference(ref,g=geometry()) {
   const part=g.parts.find(item=>item.key===ref.key);
   return{part,index:ref.index,edge:part.edges[ref.index],gasket:gasketAt(part,ref.index)};
 }
+// Risposta alla domanda «C'è la guarnizione sullo stipite?» fra le scelte.
+function setFrameSealWanted(wanted){
+  draft().frameSealWanted=wanted;
+  const presence=gasketWizardSteps().filter(step=>step.choice==='gasketPresence');
+  if(!wanted)presence.forEach(step=>step.choose(false));
+  else if(!presence.some(step=>step.present()))presence.at(-1)?.choose(true);
+  clearFrameSealConflicts();sync();
+}
 function gasketWizardSteps() {
   const steps = [];
   clearFrameSealConflicts();
@@ -4922,7 +4931,7 @@ function gasketWizardSteps() {
     const decisions=draft().gasketChoices||(draft().gasketChoices={});
     // Proposta iniziale: la guarnizione più comune, una sola, sulla battuta
     // dove appoggia l'anta. Le altre battute partono senza: si aggiungono a mano.
-    if(!Object.hasOwn(decisions,gasketKey)&&gasketKey===typicalKey&&!anyFrameGasket()&&!leafHasSeal()){
+    if(draft().frameSealWanted!==false&&!Object.hasOwn(decisions,gasketKey)&&gasketKey===typicalKey&&!anyFrameGasket()&&!leafHasSeal()){
       if(setGasket(entry.part,index,{full:true,depth:0}))decisions[gasketKey]=true;
     }
     const ref={key,index,surfaceKey:gasketKey},editingDraft=draft(),current=()=>draft()===editingDraft?gasketReference(ref):null;
@@ -5046,7 +5055,14 @@ function singleMeasureSteps(includeFrame=true) {
       get:()=>door.lip2,set:value=>setInput('[data-door="lip2"]',value)},
     {id:'antaSb2',title:'Anta: secondo scalino nello spessore',q:'',fig:'antaSb2',min:ceilMeasureLimit(doorRebateAt()+.01),max:floorMeasureLimit(door.thickness-.01),
       get:()=>doorRebateAt2(),set:value=>setInput('[data-door="rebateAt2"]',value)});
-  const rubber=[...(includeFrame?gasketWizardSteps().map(step=>({...step,gasketOwner:'frame',gasketPhase:step.choice==='gasketPresence'?'presence':'detail'})):[]),...leafGasketWizardSteps().map(step=>({...step,gasketOwner:'leaf',gasketPhase:step.choice==='leafGasketPresence'?'presence':'detail'}))];
+  // Sì/No della guarnizione dello stipite fra le SCELTE: dove va lo decide poi
+  // la geometria misurata (la battuta che l'anta tocca davvero).
+  const framePresence=includeFrame?gasketWizardSteps().filter(step=>step.choice==='gasketPresence'):[];
+  if(framePresence.length)steps.push({id:'guarnizioneStipite',title:'C’è la guarnizione sullo stipite?',choice:'frameSealIntent',q:'',base:framePresence.at(-1)});
+  const rubber=[...(includeFrame?gasketWizardSteps().filter(step=>
+      // con il No non si chiede altro; con una sola battuta il Sì basta
+      !(draft().frameSealWanted===false&&step.choice!=='measure'&&!step.id.startsWith('battuta-misura-'))&&
+      !(step.choice==='gasketPresence'&&framePresence.length===1)).map(step=>({...step,gasketOwner:'frame',gasketPhase:step.choice==='gasketPresence'?'presence':'detail'})):[]),...leafGasketWizardSteps().map(step=>({...step,gasketOwner:'leaf',gasketPhase:step.choice==='leafGasketPresence'?'presence':'detail'}))];
   steps.push(...rubber.filter(step=>step.gasketPhase==='presence'),...rubber.filter(step=>step.gasketPhase==='detail'));
   if(doorStopTarget()!=='casing')steps.push({id:'antaModoChiusura',title:'Come chiude l’anta?',choice:'doorClosure',q:'Guarda la porta chiusa: confronta la faccia dell’anta con il piano tratteggiato.'});
   if(!automaticDoorReference())steps.push({id:'antaRiferimento',title:'Rispetto a quale piano?',choice:'doorReference',q:''});
@@ -5066,7 +5082,6 @@ function singleMeasureSteps(includeFrame=true) {
         confirm:()=>{(draft().measured||(draft().measured={}))[key]=true;draft().seatAuto=false;},min:door.fitBasis==='both'&&pair?draft().p[key]:ceilMeasureLimit(minimum),max:door.fitBasis==='both'&&pair?draft().p[key]:floorMeasureLimit(maximum)});
     });
   }
-  if(includeFrame&&state.hasHead!==false)steps.push({id:'pellicolaAngoli',title:'Angoli della maestà',q:'Come si tagliano e si sovrappongono gli angoli tra traverso e montanti.',choice:'joint'});
   steps.push({id: 'facce', title: 'Anta: facce', q: 'Quali facce dell’anta rivesti?', choice: 'faces'});
   if(door.type==='double'&&doorFaces.every(([key])=>isDoorFaceCovered(key))&&!leafProfileRanges().gaps.length)steps.push({id:'anta-sormonto-scalino',title:'Sormonto sul bordo dell’anta',choice:'leafSeam',q:'Scegli lo scalino su cui sovrapporre i due fogli. La stessa scelta vale sopra e sui due lati; non viene dedotta dal numero di battute dello stipite.'});
   steps.push({id:'anta-bordo-inferiore',title:'Anta: bordo verso il pavimento',choice:'doorBottom',
@@ -5136,15 +5151,15 @@ function singleMeasureSteps(includeFrame=true) {
 //   abbondanze). Ogni scelta fa comparire solo passi PIÙ AVANTI: la guida non
 //   torna indietro da sola.
 const WIZ_SECTIONS={sceltaAnta:'Anta · scelte',misureMaesta:'Maestà · misure',misureAnta:'Anta · misure',guarnizioni:'Guarnizioni',pellicola:'Pellicola'};
-const LEAF_CHOICE_ORDER=['antaTipo','antaDestinazione','antaModoChiusura','antaRiferimento','antaAppoggio','antaBattutaTelaio'];
+const LEAF_CHOICE_ORDER=['antaTipo','antaDestinazione','antaModoChiusura','antaRiferimento','antaAppoggio','antaBattutaTelaio','guarnizioneStipite','anta-guarnizione'];
 // tutte le domande sulla pellicola insieme, maestà e anta
 const FILM_ORDER=['pellicolaAngoli','facce','anta-sormonto-scalino','anta-bordo-inferiore','sorm','abbMaesta','abbAnta'];
 const LEAF_MEASURE_ORDER=['antaL','antaH','antaS','antaLb','antaSb','antaLb2','antaSb2','antaR','antaBaseQuote','antaChiusura'];
 function wizSectionOf(step){
   const id=step.id.replace(/^leaf2-/,'');
   if(id.startsWith('battuta-misura-')||id==='luceW'||id==='luceH'||id.startsWith('telaio'))return 'misureMaesta';
-  if(step.gasketOwner)return 'guarnizioni';
   if(LEAF_CHOICE_ORDER.includes(id))return 'sceltaAnta';
+  if(step.gasketOwner)return 'guarnizioni';
   if(LEAF_MEASURE_ORDER.includes(id))return 'misureAnta';
   return 'pellicola';
 }
@@ -5730,6 +5745,11 @@ function renderMeasure(m, last) {
   if(m.choice==='leafSeam'){
     const selected=leafSeam()?.edge.stateKey,options=doorProfileEdges().filter(edge=>edge.kind==='line'&&Math.abs(edge.b[1]-edge.a[1])>1e-6).map(edge=>({id:edge.stateKey,name:edge.name}));
     surveyOptions(body,options,selected,id=>{leafProfileOptions(true).seamKey=id;refreshLeafControls();},id=>{const o=leafProfileOptions(true),old=o.seamKey;o.seamKey=id;try{const f=doorEdgeFigure();f.setAttribute('class','mt-survey-figure');return f;}finally{o.seamKey=old;}});next.disabled=!selected;return;
+  }
+  if(m.choice==='frameSealIntent'){
+    const base=m.base,selected=draft().frameSealWanted===false?'no':'yes';
+    surveyOptions(body,[{id:'yes',name:'Sì'},{id:'no',name:'No'}],selected,id=>{setFrameSealWanted(id==='yes');renderWizard();setTimeout(()=>wizGo(1),180);},
+      base?id=>gasketMeasureFigure(base,null,id==='yes'?'full':'none',true):null);return;
   }
   if(m.choice==='gasketPresence'||m.choice==='gasketExtent'){
     const presence=m.choice==='gasketPresence',selected=(presence?m.present():m.full())?'yes':'no';
