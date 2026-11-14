@@ -10,6 +10,13 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.93.1 — Guarnizione dello stipite sempre sceglibile
+
+- Nella guida, con la guarnizione già messa sull'anta sullo stesso appoggio,
+  il «Sì» della domanda «C'è la guarnizione sullo stipite?» era grigio e non
+  si poteva scegliere. Adesso si tocca: la guarnizione passa dall'anta allo
+  stipite (su un appoggio ce n'è una sola). E viceversa, come prima.
+
 ## 1.93.0 — Piano di riferimento e sormonto senza guarnizione
 
 - **Torna la domanda «Rispetto a quale piano?»** dopo «Come chiude l'anta?»:

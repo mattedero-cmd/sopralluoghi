@@ -4901,7 +4901,14 @@ function gasketWizardSteps() {
       choose: present => {
         const target=current();if(!target)return;
         const {part, gasket,index:currentIndex} = target;
-        if(present&&blocked)return;
+        // Sì con la guarnizione già sull'anta, sullo stesso contatto: si sposta
+        // sullo stipite (sullo stesso appoggio ce n'è una sola)
+        if(present&&leafSealOnFrameSurface(part,currentIndex)){
+          const options=leafProfileOptions(true),seals=geometry().leaf?.leafSeals||[];
+          seals.filter(seal=>leafSealSurfaceIntersection(seal,part,currentIndex)).forEach(seal=>{if(options.gaskets)delete options.gaskets[seal.key];});
+          if(!Object.keys(options.gaskets||{}).length){options.choice=false;options.activeKey=null;}
+          sync();
+        }
         decisions[gasketKey]=present;
         if (!present) removeGasket(part, currentIndex);
         else if (!gasket) setGasket(part, currentIndex, {full: true, depth: 0});
@@ -5641,7 +5648,7 @@ function renderMeasure(m, last) {
   }
   if(m.choice==='gasketPresence'||m.choice==='gasketExtent'){
     const presence=m.choice==='gasketPresence',selected=(presence?m.present():m.full())?'yes':'no';
-    surveyOptions(body,presence?[{id:'yes',name:'Sì',disabled:!!m.blocked,note:m.blocked?'c’è già sull’anta':''},{id:'no',name:'No'}]:[{id:'yes',name:'Tutta la battuta'},{id:'no',name:'Misuro larghezza e posizione'}],selected,id=>m.choose(id==='yes'),
+    surveyOptions(body,presence?[{id:'yes',name:'Sì',note:m.blocked?'la sposto dall’anta allo stipite':''},{id:'no',name:'No'}]:[{id:'yes',name:'Tutta la battuta'},{id:'no',name:'Misuro larghezza e posizione'}],selected,id=>m.choose(id==='yes'),
       id=>gasketMeasureFigure(m,null,presence?(id==='yes'?'full':'none'):id==='yes'?'full':'partial',true));return;
   }
   if (m.choice === 'roundedFilmInfo' || m.choice === 'autoOverlapInfo') {
