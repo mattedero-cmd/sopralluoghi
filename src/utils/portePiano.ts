@@ -17,13 +17,14 @@
  * etichette o la scelta: non si modificano a mano.
  */
 
-import type { Porta, Venatura } from '../db/types';
+import type { Porta, PresetProgetto, Venatura } from '../db/types';
 import type { PezzoNesting } from '../geometry/nesting';
 import type { DocumentoNesting, MaterialeNesting } from './documentoNesting';
 import { materialeNuovo } from './documentoNesting';
 import { nuovoId } from './id';
 import { prossimaTinta } from './tinte';
 import { siglaPezzo } from './sigle';
+import { materialeDelPreset, supportoDelMateriale } from './preset';
 
 export type ModoPorta = 'kit' | 'strisce';
 
@@ -57,8 +58,14 @@ export interface RiepilogoStrisce {
 export interface PorteNesting {
   /** kit o strisce, per tipo di porta (id della porta); assente = strisce */
   modi: Record<string, ModoPorta>;
-  /** essenza dove stanno i pezzi dei kit */
+  /** essenza dove stanno i pezzi dei kit (delle porte senza materiale) */
   materialeKit?: string;
+  /**
+   * LE ESSENZE DEI KIT, UNA PER MATERIALE: id del materiale del preset →
+   * id dell'essenza. Un kit di acidato e uno di sicurezza non stanno sulla
+   * stessa bobina.
+   */
+  kitPerMateriale?: Record<string, string>;
   /** scelte del piano delle strisce (formato del rilievo porta) */
   piano?: Record<string, unknown>;
   /** ultimo riepilogo del piano delle strisce */
@@ -119,50 +126,94 @@ export function pezziKit(
   return pezzi;
 }
 
+/** gli id di tutte le essenze dei kit del documento */
+export function essenzeKit(porte: PorteNesting | undefined): string[] {
+  if (!porte) return [];
+  return [
+    ...(porte.materialeKit ? [porte.materialeKit] : []),
+    ...Object.values(porte.kitPerMateriale ?? {})
+  ];
+}
+
 /**
- * Rifà l'essenza dei kit secondo porte, etichette e scelte. Se non cambia
+ * Rifà le essenze dei kit secondo porte, etichette e scelte. Se non cambia
  * niente restituisce lo stesso documento (per identità).
+ *
+ * Un'essenza per materiale: le porte in kit di un materiale del preset vanno
+ * in «Porte (kit) · Solare», col supporto di quel materiale; quelle senza
+ * materiale nell'essenza di sempre, «Porte (kit)».
  */
 export function sincronizzaKit(
   doc: DocumentoNesting,
   porte: Porta[],
-  conto: Map<string, number>
+  conto: Map<string, number>,
+  preset?: PresetProgetto
 ): DocumentoNesting {
   const sez = doc.porte;
   if (!sez) return doc;
-  const esistente = sez.materialeKit
-    ? doc.materiali.find((m) => m.id === sez.materialeKit)
-    : undefined;
-  const nuovi = pezziKit(porte, conto, sez, esistente?.venatura ?? 'nessuna');
+  // il materiale di una porta, se c'è ancora nel preset ('' = nessuno)
+  const chiaveDi = (p: Porta) => (materialeDelPreset(preset, p.materialeId) ? p.materialeId! : '');
+  const essenzaDi = (k: string) => (k ? sez.kitPerMateriale?.[k] : sez.materialeKit);
+  const chiavi = new Set<string>(['', ...Object.keys(sez.kitPerMateriale ?? {})]);
+  for (const p of porte) if (modoPorta(sez, p.id) === 'kit') chiavi.add(chiaveDi(p));
 
-  if (nuovi.length === 0) {
-    if (!esistente && !sez.materialeKit) return doc;
-    const materiali = doc.materiali.filter((m) => m.id !== sez.materialeKit);
-    if (materiali.length === 0) materiali.push(materialeNuovo(nuovoId(), 'Materiale 1'));
-    const { materialeKit: _via, ...resto } = sez;
-    return {
-      ...doc,
-      materiali,
-      attivo: materiali.some((m) => m.id === doc.attivo) ? doc.attivo : materiali[0].id,
-      porte: resto
+  let materiali = doc.materiali;
+  let cambiato = false;
+  let materialeKit = sez.materialeKit;
+  const kitPerMateriale: Record<string, string> = { ...(sez.kitPerMateriale ?? {}) };
+
+  for (const k of chiavi) {
+    const idEsistente = essenzaDi(k);
+    const esistente = idEsistente ? materiali.find((m) => m.id === idEsistente) : undefined;
+    const nuovi = pezziKit(
+      porte.filter((p) => chiaveDi(p) === k),
+      conto,
+      sez,
+      esistente?.venatura ?? supportoDelMateriale(preset, k || undefined)?.venatura ?? 'nessuna'
+    );
+    if (nuovi.length === 0) {
+      if (!idEsistente) continue;
+      materiali = materiali.filter((m) => m.id !== idEsistente);
+      if (k) delete kitPerMateriale[k];
+      else materialeKit = undefined;
+      cambiato = true;
+      continue;
+    }
+    const tinte = new Map((esistente?.pezzi ?? []).map((p) => [p.id, p.tinta]));
+    const pezzi: PezzoNesting[] = nuovi.map((p, i) => ({ ...p, tinta: tinte.get(p.id) ?? prossimaTinta(i) }));
+    const versiLiberi = Object.keys(esistente?.orientamenti ?? {}).length === 0;
+    if (esistente && versiLiberi && JSON.stringify(esistente.pezzi) === JSON.stringify(pezzi)) continue;
+
+    const nomeMat = k ? materialeDelPreset(preset, k)?.nome : undefined;
+    const supporto = k ? supportoDelMateriale(preset, k) : undefined;
+    const base: MaterialeNesting = esistente ?? {
+      ...materialeNuovo(nuovoId(), nomeMat ? `${NOME_MATERIALE_KIT} · ${nomeMat}` : NOME_MATERIALE_KIT, supporto),
+      // i kit si tagliano da bobina, se il materiale non dice altro
+      modo: supporto?.modo ?? 'bobina'
     };
+    // il verso dei pezzi lo decide la venatura: niente versi girati a mano
+    const aggiornato: MaterialeNesting = { ...base, pezzi, orientamenti: {} };
+    materiali = esistente
+      ? materiali.map((m) => (m.id === esistente.id ? aggiornato : m))
+      : [...materiali, aggiornato];
+    if (k) kitPerMateriale[k] = aggiornato.id;
+    else materialeKit = aggiornato.id;
+    cambiato = true;
   }
+  if (!cambiato) return doc;
 
-  const tinte = new Map((esistente?.pezzi ?? []).map((p) => [p.id, p.tinta]));
-  const pezzi: PezzoNesting[] = nuovi.map((p, i) => ({ ...p, tinta: tinte.get(p.id) ?? prossimaTinta(i) }));
-  const versiLiberi = Object.keys(esistente?.orientamenti ?? {}).length === 0;
-  if (esistente && versiLiberi && JSON.stringify(esistente.pezzi) === JSON.stringify(pezzi)) return doc;
-
-  const base: MaterialeNesting = esistente ?? {
-    ...materialeNuovo(nuovoId(), NOME_MATERIALE_KIT),
-    modo: 'bobina'
+  if (materiali.length === 0) materiali = [materialeNuovo(nuovoId(), 'Materiale 1')];
+  const { materialeKit: _a, kitPerMateriale: _b, ...resto } = sez;
+  return {
+    ...doc,
+    materiali,
+    attivo: materiali.some((m) => m.id === doc.attivo) ? doc.attivo : materiali[0].id,
+    porte: {
+      ...resto,
+      ...(materialeKit ? { materialeKit } : {}),
+      ...(Object.keys(kitPerMateriale).length ? { kitPerMateriale } : {})
+    }
   };
-  // il verso dei pezzi lo decide la venatura: niente versi girati a mano
-  const aggiornato: MaterialeNesting = { ...base, pezzi, orientamenti: {} };
-  const materiali = esistente
-    ? doc.materiali.map((m) => (m.id === esistente.id ? aggiornato : m))
-    : [...doc.materiali, aggiornato];
-  return { ...doc, materiali, porte: { ...sez, materialeKit: aggiornato.id } };
 }
 
 /** Normalizza la sezione porte di un documento salvato. */
@@ -178,6 +229,15 @@ export function normalizzaPorte(g: unknown): PorteNesting | undefined {
   return {
     modi,
     ...(typeof s.materialeKit === 'string' ? { materialeKit: s.materialeKit } : {}),
+    ...(s.kitPerMateriale && typeof s.kitPerMateriale === 'object'
+      ? {
+          kitPerMateriale: Object.fromEntries(
+            Object.entries(s.kitPerMateriale as Record<string, unknown>).filter(
+              (e): e is [string, string] => typeof e[1] === 'string'
+            )
+          )
+        }
+      : {}),
     ...(s.piano && typeof s.piano === 'object' ? { piano: s.piano as Record<string, unknown> } : {}),
     ...(s.riepilogo && typeof s.riepilogo === 'object'
       ? { riepilogo: s.riepilogo as RiepilogoStrisce }

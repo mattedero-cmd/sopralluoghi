@@ -27,6 +27,7 @@ import type { AssePannelli, VersoSormonto } from '../geometry/pannelli';
 import type { ModoSupporto, PresetProgetto, Venatura } from '../db/types';
 import { PRESET_INIZIALE } from '../utils/preset';
 import type { AbbondanzaPreset } from '../utils/preset';
+import { MaterialiLavoro } from './MaterialiLavoro';
 
 /**
  * UNA RIGA NUMERICA, sempre la stessa: cosa è, il campo, l'unità.
@@ -74,15 +75,25 @@ export function PresetLavoro({
   quanteForme,
   onSalva,
   onApplicaTutto,
-  onChiudi
+  onChiudi,
+  creazione,
+  richiediMateriali
 }: {
   preset: PresetProgetto | undefined;
   /** quante forme ci sono già nel lavoro, per il comando «applica a tutte» */
   quanteForme: number;
   onSalva: (p: PresetProgetto) => void;
   /** salva e porta TUTTO il preset — abbondanze e teli — su quello che c'è già */
-  onApplicaTutto: (p: PresetProgetto) => void;
+  onApplicaTutto?: (p: PresetProgetto) => void;
   onChiudi: () => void;
+  /**
+   * L'ULTIMO PASSO DI UN PROGETTO COMPLESSO: il progetto nasce quando il
+   * preset è detto. Al posto di «salva» c'è «crea il progetto», e «annulla»
+   * torna indietro ai dati del progetto invece di buttare tutto.
+   */
+  creazione?: boolean;
+  /** un lavoro complesso: senza almeno un materiale il preset non si salva */
+  richiediMateriali?: boolean;
 }) {
   const p0 = preset ?? PRESET_INIZIALE;
   const inCm = (mm: number | undefined) => (mm ? String(mm / 10).replace('.', ',') : '');
@@ -107,6 +118,8 @@ export function PresetLavoro({
   );
   const [sup, setSup] = useState(p0.supporto ?? PRESET_INIZIALE.supporto);
   const [teli, setTeli] = useState(p0.teli ?? PRESET_INIZIALE.teli);
+  const [materiali, setMateriali] = useState(p0.materiali ?? []);
+  const mancaMateriale = !!richiediMateriali && materiali.length === 0;
 
   const mm = (t: string) => Math.max(0, (analizzaMisura(t) ?? 0) * 10);
   const abbMm = mm(abb);
@@ -141,15 +154,20 @@ export function PresetLavoro({
   const costruito = (): PresetProgetto => ({
     ...abbOra(),
     supporto: sup,
-    teli
+    teli,
+    ...(materiali.length ? { materiali } : {})
   });
 
   const salva = () => {
+    if (mancaMateriale) return;
     onSalva(costruito());
-    onChiudi();
+    // in creazione chi riceve il preset crea il progetto e chiude lui: qui
+    // «chiudi» vorrebbe dire tornare ai dati
+    if (!creazione) onChiudi();
   };
 
   const applicaTutto = () => {
+    if (mancaMateriale || !onApplicaTutto) return;
     const p = costruito();
     onSalva(p);
     onApplicaTutto(p);
@@ -160,13 +178,31 @@ export function PresetLavoro({
   const scriviSup = (m: Partial<typeof sup>) => setSup((s) => ({ ...s, ...m }));
 
   return (
-    <Modale titolo="Preset del lavoro" onChiudi={onChiudi}>
+    <Modale titolo={creazione ? 'Nuovo progetto · preset' : 'Preset del lavoro'} onChiudi={onChiudi}>
       <div className="preset-lavoro">
+      {creazione ? (
+        <p className="passi-progetto">Passo 3 di 3 · il progetto nasce con questo preset</p>
+      ) : null}
       <p className="aiuto" style={{ marginTop: 0 }}>
-        Da qui partono le cose nuove di questo sopralluogo: l’abbondanza di una forma appena
-        disegnata, la divisione in teli, il piano di taglio. Quello che è già disegnato resta
-        com’è — finché non tocchi «salva e applica a tutto», qui sotto.
+        {creazione
+          ? 'Da qui partono le cose nuove di questo sopralluogo: il materiale di una forma o di una porta, l’abbondanza, la divisione in teli, il piano di taglio. Si cambia quando vuoi, dalla scheda del progetto.'
+          : 'Da qui partono le cose nuove di questo sopralluogo: il materiale e l’abbondanza di una forma appena disegnata, la divisione in teli, il piano di taglio. Quello che è già disegnato resta com’è — finché non tocchi «salva e applica a tutto», qui sotto.'}
       </p>
+
+      <div className="campo">
+        <label>Materiali del lavoro{richiediMateriali ? ' *' : ''}</label>
+        <span style={{ color: 'var(--testo-2)', fontSize: 13 }}>
+          Le pellicole che si posano in questo sopralluogo. Una forma o una porta, quando nasce,
+          prende uno di questi; il piano di taglio esce diviso per materiale, ognuno col suo
+          supporto. Tocca un materiale scelto, qui sotto, per dargli una bobina sua.
+        </span>
+        <MaterialiLavoro materiali={materiali} onCambia={setMateriali} supportoLavoro={sup} />
+        {mancaMateriale && (
+          <span style={{ color: 'var(--avviso)', fontSize: 13, marginTop: 6 }}>
+            Scegli almeno un materiale: in un progetto complesso ogni forma e ogni porta ne ha uno.
+          </span>
+        )}
+      </div>
 
       <div className="campo">
         <label>Abbondanza attorno alle forme</label>
@@ -388,7 +424,7 @@ export function PresetLavoro({
         serve. Il secondo tasto fa quello — e lo dice prima, perché rifà anche
         le divisioni in teli.
       */}
-      {quanteForme > 0 && (
+      {!creazione && quanteForme > 0 && (
         <span className="nota-applica">
           «Applica a tutto» riscrive abbondanze e teli sulle{' '}
           {quanteForme === 1 ? 'forma già disegnata' : `${quanteForme} forme già disegnate`} di
@@ -398,14 +434,26 @@ export function PresetLavoro({
       )}
       <div className="riga-pulsanti">
         <button className="btn" onClick={onChiudi}>
-          Annulla
+          {creazione ? 'Indietro' : 'Annulla'}
         </button>
-        <button className="btn" onClick={salva}>
-          Salva
-        </button>
-        <button className="btn primario" disabled={quanteForme === 0} onClick={applicaTutto}>
-          <Icona nome="matita" dimensione={18} /> Salva e applica a tutto
-        </button>
+        {creazione ? (
+          <button className="btn primario" disabled={mancaMateriale} onClick={salva}>
+            Crea il progetto
+          </button>
+        ) : (
+          <>
+            <button className="btn" disabled={mancaMateriale} onClick={salva}>
+              Salva
+            </button>
+            <button
+              className="btn primario"
+              disabled={quanteForme === 0 || mancaMateriale || !onApplicaTutto}
+              onClick={applicaTutto}
+            >
+              <Icona nome="matita" dimensione={18} /> Salva e applica a tutto
+            </button>
+          </>
+        )}
       </div>
       </div>
     </Modale>

@@ -4861,3 +4861,136 @@ a {
   opacity: 0.8;
   font-weight: 400;
 }
+
+/* --- I MATERIALI DEL LAVORO ------------------------------------------- */
+/* pastiglie che vanno a capo: i cinque di partenza e quelli aggiunti */
+.materiali-scelta,
+.scelta-materiale {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.materiali-scelta .btn,
+.scelta-materiale .btn {
+  min-width: 0;
+  padding: 0 14px;
+}
+
+.materiali-nuovo {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.materiali-nuovo input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.materiali-elenco {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  border-top: 1px solid color-mix(in srgb, var(--bordo) 60%, transparent);
+}
+
+.materiali-elenco li {
+  border-bottom: 1px solid color-mix(in srgb, var(--bordo) 60%, transparent);
+}
+
+.materiale-riga {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--tocco);
+  padding: 8px 2px;
+  background: none;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.materiale-riga span {
+  color: var(--testo-2);
+  font-size: 13px;
+  text-align: right;
+  min-width: 0;
+}
+
+.materiale-supporto {
+  padding: 4px 0 12px;
+}
+
+/* il guida-passi del nuovo progetto: due scelte grandi, una sotto l'altra */
+.scelta-tipo-progetto {
+  display: grid;
+  gap: 10px;
+}
+
+.scelta-tipo-progetto button {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 14px 16px;
+  text-align: left;
+  background: var(--sfondo-3);
+  border: 1px solid var(--bordo);
+  border-radius: var(--raggio);
+  cursor: pointer;
+}
+
+.scelta-tipo-progetto button strong {
+  font-size: 17px;
+}
+
+.scelta-tipo-progetto button span {
+  color: var(--testo-2);
+  font-size: 14px;
+}
+
+.passi-progetto {
+  margin: -6px 0 12px;
+  color: var(--testo-2);
+  font-size: 13px;
+}
+
+/* il materiale della forma selezionata, sopra i tasti flottanti: appena la
+   forma nasce è selezionata, e il materiale si cambia con un tocco */
+.barra-materiale {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: calc(env(safe-area-inset-bottom) + 146px);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  max-width: calc(100% - 20px);
+  padding: 6px 8px 6px 12px;
+  background: rgba(16, 20, 26, 0.94);
+  border: 1px solid var(--bordo);
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  overflow-x: auto;
+}
+
+.barra-materiale > span {
+  flex: 0 0 auto;
+  color: var(--testo-2);
+  font-size: 13px;
+}
+
+.barra-materiale .scelta-materiale {
+  flex-wrap: nowrap;
+  margin-top: 0;
+}
+
+.barra-materiale .scelta-materiale .btn {
+  min-height: 38px;
+  border-radius: 999px;
+}

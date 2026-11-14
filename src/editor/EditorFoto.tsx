@@ -37,7 +37,7 @@ import {
   segmentiPoligono,
   segmentoELato
 } from '../db/types';
-import { aggiornaFoto, aggiungiFoto, contaPorte, creaPiantaDaFoto, eliminaFoto, eliminaPorta, impostaSfondoPianta, incorporaCensureFoto, leggiImpostazioni, portePerProgetto, salvaAnnotazione, salvaAnnotazioniFoto } from '../db/repository';
+import { aggiornaFoto, aggiungiFoto, cambiaMaterialePorta, contaPorte, creaPiantaDaFoto, eliminaFoto, eliminaPorta, impostaSfondoPianta, incorporaCensureFoto, leggiImpostazioni, portePerProgetto, salvaAnnotazione, salvaAnnotazioniFoto } from '../db/repository';
 import { RilievoPorta, type ModoRilievo } from '../components/RilievoPorta';
 import type { Porta } from '../db/types';
 import {
@@ -53,7 +53,16 @@ import { caricaDettaglio } from '../utils/immaginiCallout';
 import { naviga } from '../router';
 import { ConfermaDialog, ImmagineBlob, Modale, StatoApp, type RichiestaConferma } from '../components/comuni';
 import { mostraToast } from '../state/toast';
-import { conPresetApplicato, fasciaDelPreset, predefinitiTeli } from '../utils/preset';
+import {
+  conPresetApplicato,
+  fasciaDelPreset,
+  materialeDelPreset,
+  materialeDiNascita,
+  materialiDelPreset,
+  portaMateriale,
+  predefinitiTeli
+} from '../utils/preset';
+import { SceltaMateriale } from '../components/MaterialiLavoro';
 import { StageEditor, type ModalitaVincolo, type Strumento } from './StageEditor';
 import { FabbricaAnnotazioni } from './fabbrica';
 import { MenuCircolareEtichette } from './MenuCircolareEtichette';
@@ -644,7 +653,38 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   /** menu «Rilievo porta»: nuova porta o una già rilevata */
   const [menuPorta, setMenuPorta] = useState(false);
   /** rilievo porta aperto a tutto schermo */
-  const [rilievoAperto, setRilievoAperto] = useState<{ modo: ModoRilievo; portaId?: string } | null>(null);
+  const [rilievoAperto, setRilievoAperto] = useState<{
+    modo: ModoRilievo;
+    portaId?: string;
+    /** il materiale della porta nuova, scelto nel menu prima di rilevarla */
+    materialeId?: string;
+  } | null>(null);
+  /**
+   * IL MATERIALE DEL MOMENTO: quello che una forma o una porta prende
+   * nascendo. È l'ultimo scelto — le finestre di una stanza sono quasi
+   * sempre della stessa pellicola — e si ricorda per progetto, così
+   * riaprendo la foto dopo si riparte da lì.
+   */
+  const chiaveMateriale = foto ? `sopralluoghi:materiale:${foto.progettoId}` : null;
+  const [materialeScelto, setMaterialeScelto] = useState<string | null>(null);
+  useEffect(() => {
+    if (!chiaveMateriale) return;
+    try {
+      setMaterialeScelto(localStorage.getItem(chiaveMateriale));
+    } catch {
+      /* senza memoria si riparte dal primo materiale */
+    }
+  }, [chiaveMateriale]);
+  const scegliMateriale = (id: string) => {
+    setMaterialeScelto(id);
+    try {
+      if (chiaveMateriale) localStorage.setItem(chiaveMateriale, id);
+    } catch {
+      /* la scelta vale per questa sessione */
+    }
+  };
+  const materialiLavoro = materialiDelPreset(progetto?.preset);
+  const materialeCorrente = materialeDiNascita(progetto?.preset, materialeScelto);
   /** rilevamento volti in corso (bottone in attesa) */
   const [voltiInCorso, setVoltiInCorso] = useState(false);
   /** oggetto dello schizzo selezionato come entità A SÉ STANTE */
@@ -1289,7 +1329,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     if (!annotazioni) return;
     // IL PRESET DEL LAVORO ENTRA QUI, dove le forme nascono: l'abbondanza si
     // scrive alla nascita e poi la forma è libera
-    const a = conPresetApplicato(nuova, progetto?.preset);
+    const a = conPresetApplicato(nuova, progetto?.preset, materialeCorrente);
     commit([...annotazioni, a]);
     setSelezioneId(a.id);
     setStrumento('seleziona');
@@ -2665,7 +2705,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         creatoIl: proposta.creatoIl ?? Date.now(),
         stile: { ...proposta.stile, colore: COLORE_QUOTA }
       },
-      progetto?.preset
+      progetto?.preset,
+      materialeCorrente
     ) as QuotaPoligono;
     commit([...annotazioni, definitiva]);
     chiudiProposta();
@@ -2868,7 +2909,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       ...annotazioni,
       conPresetApplicato(
         { ...s, snapAngolo: snapSchizzo > 0 ? snapSchizzo : undefined },
-        progetto?.preset
+        progetto?.preset,
+        materialeCorrente
       )
     ]);
     setSelezioneId(s.id);
@@ -4360,11 +4402,22 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       {/* RILIEVO PORTA: nuova porta, o una già rilevata nel progetto */}
       {menuPorta && (
         <Modale titolo="Rilievo porta" onChiudi={() => setMenuPorta(false)}>
+          {materialiLavoro.length > 0 && (
+            <div className="campo">
+              <label>Materiale della porta nuova</label>
+              <SceltaMateriale
+                materiali={materialiLavoro}
+                valore={materialeCorrente}
+                onScegli={scegliMateriale}
+                etichetta="Materiale della porta nuova"
+              />
+            </div>
+          )}
           <button
             className="btn primario largo"
             onClick={() => {
               setMenuPorta(false);
-              setRilievoAperto({ modo: 'nuova' });
+              setRilievoAperto({ modo: 'nuova', materialeId: materialeCorrente });
             }}
           >
             <Icona nome="porta" dimensione={18} /> Rileva una porta nuova
@@ -4380,8 +4433,21 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 {(porteProgetto ?? []).map((p) => (
                   <div key={p.id} className="voce-porta">
                     <div className="voce-porta-testo">
-                      <strong>{p.nome}</strong>
+                      <strong>
+                        {p.nome}
+                        {materialeDelPreset(progetto?.preset, p.materialeId)
+                          ? ` · ${materialeDelPreset(progetto?.preset, p.materialeId)?.nome}`
+                          : ''}
+                      </strong>
                       <span>{p.descrizione}</span>
+                      {materialiLavoro.length > 1 && (
+                        <SceltaMateriale
+                          materiali={materialiLavoro}
+                          valore={materialeDelPreset(progetto?.preset, p.materialeId)?.id}
+                          onScegli={(id) => void cambiaMaterialePorta(p.id, id)}
+                          etichetta={`Materiale di ${p.nome}`}
+                        />
+                      )}
                     </div>
                     <div className="riga-pulsanti">
                       <button
@@ -4424,6 +4490,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           progettoId={foto.progettoId}
           modo={rilievoAperto.modo}
           portaId={rilievoAperto.portaId}
+          materialeId={rilievoAperto.materialeId}
           fotoId={foto.id}
           onSalvata={(porta, nuova) => {
             if (!nuova) return;
@@ -4975,6 +5042,40 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             </div>
           );
         })()}
+
+      {/* IL MATERIALE DELLA FORMA SELEZIONATA. Una forma appena nata è
+          selezionata: qui si vede che materiale ha preso e lo si cambia con
+          un tocco, senza aprire niente. La scelta diventa quella del momento,
+          e la forma dopo nasce già così. */}
+      {!proposta &&
+        !duplicaMaster &&
+        strumento === 'seleziona' &&
+        !oggettoSel &&
+        selezionata &&
+        portaMateriale(selezionata) &&
+        materialiLavoro.length > 0 &&
+        quotaInModifica === null &&
+        testoInModifica === null && (
+          <div className="barra-materiale" role="group" aria-label="Materiale della forma">
+            <span>Materiale</span>
+            <SceltaMateriale
+              materiali={materialiLavoro}
+              valore={materialeDelPreset(progetto?.preset, selezionata.materialeId)?.id}
+              onScegli={(id) => {
+                scegliMateriale(id);
+                // una famiglia di copie è una misura sola: il materiale va a tutte
+                const famiglia = selezionata.gruppoQuota;
+                commit(
+                  annotazioni.map((a) =>
+                    a.id === selezionata.id || (famiglia && a.gruppoQuota === famiglia)
+                      ? ({ ...a, materialeId: id } as Annotazione)
+                      : a
+                  )
+                );
+              }}
+            />
+          </div>
+        )}
 
       {/* oggetto selezionato (con ambiente dedicato): subito due pulsanti
           discreti — Modifica ed Elimina — senza dover azzeccare il secondo tap */}
@@ -6179,7 +6280,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                  * divisione che quasi mai è quella vera. Col supporto nel
                  * preset lo sa anche qui.
                  */
-                ...fasciaDelPreset(progetto?.preset, forma.unita),
+                ...fasciaDelPreset(progetto?.preset, forma.unita, ann.materialeId),
                 prospettiva: { punti: forma.contorno, immagine }
               }}
               predefiniti={predefinitiTeli(progetto?.preset, forma.unita)}

@@ -145,7 +145,7 @@ export async function contenutoCartella(id: ID): Promise<{ progetti: number; fot
 
 export async function creaProgetto(
   dati: Pick<Progetto, 'nome' | 'cliente' | 'luogo'> &
-    Partial<Pick<Progetto, 'note' | 'stato' | 'clienteId'>>,
+    Partial<Pick<Progetto, 'note' | 'stato' | 'clienteId' | 'tipo' | 'preset'>>,
   cartellaId: ID | null
 ): Promise<Progetto> {
   const p: Progetto = {
@@ -157,6 +157,8 @@ export async function creaProgetto(
     luogo: dati.luogo.trim(),
     stato: dati.stato ?? 'bozza',
     note: dati.note ?? '',
+    ...(dati.tipo ? { tipo: dati.tipo } : {}),
+    ...(dati.preset ? { preset: dati.preset } : {}),
     creatoIl: ora(),
     modificatoIl: ora()
   };
@@ -1519,6 +1521,16 @@ export function prossimaLetteraPorta(usate: string[]): string {
 }
 
 /** Salva una porta nuova (lettera e nome assegnati qui) o ne aggiorna una. */
+/** il materiale di una porta già rilevata, cambiato (assente = nessuno) */
+export async function cambiaMaterialePorta(id: ID, materialeId: ID | undefined): Promise<void> {
+  await scrivi('cambiare il materiale della porta', async () => {
+    const p = await db.porte.get(id);
+    if (!p) return;
+    const { materialeId: _via, ...resto } = p;
+    await db.porte.put({ ...resto, ...(materialeId ? { materialeId } : {}), modificatoIl: ora() });
+  });
+}
+
 export async function salvaPorta(dati: {
   id?: ID | null;
   progettoId: ID;
@@ -1529,6 +1541,8 @@ export async function salvaPorta(dati: {
   /** famiglia della porta da cui è copiata (assente: porta nuova) */
   famiglia?: ID;
   firma?: string;
+  /** il materiale della porta nuova (fra quelli del preset) */
+  materialeId?: ID;
 }): Promise<Porta> {
   return scrivi('salvare la porta', () =>
     db.transaction('rw', [db.porte], async () => {
@@ -1554,6 +1568,7 @@ export async function salvaPorta(dati: {
         id,
         famiglia: dati.famiglia ?? id,
         ...(dati.firma ? { firma: dati.firma } : {}),
+        ...(dati.materialeId ? { materialeId: dati.materialeId } : {}),
         progettoId: dati.progettoId,
         nome: `Porta ${lettera}`,
         lettera,

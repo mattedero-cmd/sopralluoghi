@@ -1,7 +1,8 @@
 import { useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import type { Cartella, DisegnoSvg, LavoroNesting, Progetto } from '../db/types';
+import type { Cartella, DisegnoSvg, LavoroNesting, PresetProgetto, Progetto, TipoProgetto } from '../db/types';
+import { PresetLavoro } from '../components/PresetLavoro';
 import {
   aggiornaCartella,
   contenutoCartella,
@@ -858,12 +859,88 @@ function FormCartella({
   );
 }
 
+/**
+ * IL NUOVO PROGETTO, A PASSI.
+ *
+ * Due strade. Il progetto VELOCE è quello di sempre: nome, cliente, luogo e
+ * si comincia. Il progetto COMPLESSO chiede prima il preset — i materiali che
+ * si posano, l'abbondanza, il supporto, i teli — e nasce solo quando il
+ * preset è detto: su un albergo da cinquanta stanze è lì che si risparmia il
+ * lavoro, e dirlo dopo vorrebbe dire ripassare ogni forma già disegnata.
+ */
 function FormProgetto({ cartellaId, onChiudi }: { cartellaId: string | null; onChiudi: () => void }) {
+  const [passo, setPasso] = useState<'tipo' | 'dati' | 'preset'>('tipo');
+  const [tipo, setTipo] = useState<TipoProgetto>('veloce');
   const [nome, setNome] = useState('');
   const [cliente, setCliente] = useState('');
   const [luogo, setLuogo] = useState('');
+  const [preset, setPreset] = useState<PresetProgetto | undefined>(undefined);
+  const crea = async (p?: PresetProgetto) => {
+    const nuovo = await creaProgetto(
+      { nome, cliente, luogo, tipo, ...(p ? { preset: p } : {}) },
+      cartellaId
+    );
+    onChiudi();
+    naviga({ nome: 'progetto', id: nuovo.id });
+  };
+
+  if (passo === 'tipo') {
+    return (
+      <Modale titolo="Nuovo progetto" onChiudi={onChiudi}>
+        <p className="passi-progetto">Che lavoro è?</p>
+        <div className="scelta-tipo-progetto">
+          <button
+            onClick={() => {
+              setTipo('veloce');
+              setPasso('dati');
+            }}
+          >
+            <strong>Progetto veloce</strong>
+            <span>Nome, cliente e luogo, e si comincia. Il preset si può dire anche dopo.</span>
+          </button>
+          <button
+            onClick={() => {
+              setTipo('complesso');
+              setPasso('dati');
+            }}
+          >
+            <strong>Progetto complesso</strong>
+            <span>
+              Prima del sopralluogo si crea il preset: i materiali che si posano (solare, acidato,
+              sicurezza…), l’abbondanza, il supporto, i teli. Forme e porte si scelgono il
+              materiale quando nascono.
+            </span>
+          </button>
+        </div>
+        <div className="riga-pulsanti">
+          <button className="btn" onClick={onChiudi}>
+            Annulla
+          </button>
+        </div>
+      </Modale>
+    );
+  }
+
+  if (passo === 'preset') {
+    return (
+      <PresetLavoro
+        preset={preset}
+        quanteForme={0}
+        creazione
+        richiediMateriali
+        onSalva={(p) => {
+          setPreset(p);
+          void crea(p);
+        }}
+        onChiudi={() => setPasso('dati')}
+      />
+    );
+  }
+
+  const complesso = tipo === 'complesso';
   return (
-    <Modale titolo="Nuovo progetto" onChiudi={onChiudi}>
+    <Modale titolo={complesso ? 'Nuovo progetto complesso' : 'Nuovo progetto veloce'} onChiudi={onChiudi}>
+      {complesso && <p className="passi-progetto">Passo 2 di 3 · i dati del progetto</p>}
       <div className="campo">
         <label>Nome del progetto *</label>
         <input autoFocus value={nome} onChange={(e) => setNome(e.target.value)} />
@@ -877,20 +954,18 @@ function FormProgetto({ cartellaId, onChiudi }: { cartellaId: string | null; onC
         <input value={luogo} onChange={(e) => setLuogo(e.target.value)} />
       </div>
       <div className="riga-pulsanti">
-        <button className="btn" onClick={onChiudi}>
-          Annulla
+        <button className="btn" onClick={() => setPasso('tipo')}>
+          Indietro
         </button>
-        <button
-          className="btn primario"
-          disabled={!nome.trim()}
-          onClick={async () => {
-            const p = await creaProgetto({ nome, cliente, luogo }, cartellaId);
-            onChiudi();
-            naviga({ nome: 'progetto', id: p.id });
-          }}
-        >
-          Crea
-        </button>
+        {complesso ? (
+          <button className="btn primario" disabled={!nome.trim()} onClick={() => setPasso('preset')}>
+            Avanti: il preset
+          </button>
+        ) : (
+          <button className="btn primario" disabled={!nome.trim()} onClick={() => void crea()}>
+            Crea
+          </button>
+        )}
       </div>
     </Modale>
   );

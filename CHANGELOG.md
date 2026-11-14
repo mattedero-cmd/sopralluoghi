@@ -10,6 +10,42 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.96.0 — Progetto veloce o complesso, e i materiali del lavoro
+
+- **Il nuovo progetto si crea a passi.** Prima la scelta: **progetto
+  veloce** — nome, cliente, luogo, e si comincia, come prima — oppure
+  **progetto complesso**, che nasce solo dopo aver detto il **preset**. Su un
+  lavoro grande è lì che si risparmia: dirlo dopo vorrebbe dire ripassare
+  ogni forma già disegnata.
+
+- **Nel preset ci sono i materiali del lavoro.** Si sceglie fra quelli di
+  partenza — **Solare, Acidato, Sicurezza, Murales, Coverstyle** — e se ne
+  aggiungono altri col loro nome. Ogni materiale può avere **la sua bobina o
+  le sue lastre**; se no usa il supporto del lavoro. In un progetto complesso
+  almeno un materiale è obbligatorio.
+
+- **Una forma nasce col suo materiale.** Appena disegnata è selezionata, e
+  sopra i comandi compare la fila dei materiali: quello acceso è il
+  materiale preso, un tocco lo cambia. Si riparte sempre dall'ultimo scelto —
+  le finestre di una stanza sono quasi sempre della stessa pellicola. Una
+  copia richiamata tiene il materiale dell'originale, e cambiandolo sulla
+  forma cambia a tutta la famiglia sulla foto.
+
+- **Anche la porta.** Nel menu «Rilievo porta» si sceglie il materiale prima
+  di rilevarne una nuova; una porta «Simile» tiene quello della porta da cui
+  parte, e quelle già rilevate si cambiano dallo stesso elenco.
+
+- **Il piano di taglio esce diviso per materiale.** Un'essenza per
+  materiale, col nome del materiale e il suo supporto: un pezzo di acidato
+  non si taglia dalla bobina del solare. Le forme rimaste senza materiale
+  vanno in «Senza materiale», invece di finire a caso in una delle altre. Le
+  porte in kit fanno lo stesso: «Porte (kit) · Solare», «Porte (kit) ·
+  Acidato».
+
+- **I teli seguono la bobina del materiale.** Dividendo in teli dalla foto,
+  la fascia è quella della bobina del materiale della forma, non più quella
+  generica del lavoro.
+
 ## 1.95.1 — Guarnizioni fra le scelte, angoli con la maestà
 
 - «C'è la guarnizione sullo stipite?» e «C'è una guarnizione sull'anta?» sono

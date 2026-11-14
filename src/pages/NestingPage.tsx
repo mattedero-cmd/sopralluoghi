@@ -69,9 +69,11 @@ import type { LavoroNesting } from '../db/types';
 import { contaPorte, portePerProgetto } from '../db/repository';
 import type { Porta } from '../db/types';
 import { RilievoPorta } from '../components/RilievoPorta';
+import { materialeDelPreset } from '../utils/preset';
 import {
   firmaStrisce,
   modoPorta,
+  essenzeKit,
   sincronizzaKit,
   type ModoPorta
 } from '../utils/portePiano';
@@ -301,7 +303,7 @@ export function NestingPage({
   useEffect(() => {
     if (caricamento || !porteProgetto || !contoPorte) return;
     setDoc((d) => {
-      const k = sincronizzaKit(d, porteProgetto, contoPorte);
+      const k = sincronizzaKit(d, porteProgetto, contoPorte, progetto?.preset);
       // nessuna porta più a strisce: il vecchio piano delle bobine non vale
       const strisce = porteProgetto.some(
         (p) => modoPorta(k.porte, p.id) === 'strisce' && (contoPorte.get(p.id) ?? 0) > 0
@@ -315,7 +317,11 @@ export function NestingPage({
     porteProgetto,
     contoPorte,
     doc.porte?.modi,
-    doc.materiali.find((m) => m.id === doc.porte?.materialeKit)?.venatura
+    // i materiali del preset: una porta di un materiale va nel kit di quello
+    progetto?.preset?.materiali,
+    essenzeKit(doc.porte)
+      .map((id) => doc.materiali.find((m) => m.id === id)?.venatura ?? '')
+      .join('|')
   ]);
   const impostaModoPorta = (id: string, modo: ModoPorta) =>
     setDoc((d) => ({ ...d, porte: { ...(d.porte ?? { modi: {} }), modi: { ...(d.porte?.modi ?? {}), [id]: modo } } }));
@@ -1175,6 +1181,12 @@ export function NestingPage({
                       <div className="nest-porta-testo">
                         <strong>
                           {p.nome} <span className="nest-porta-qty">× {q}</span>
+                          {materialeDelPreset(progetto?.preset, p.materialeId) && (
+                            <span className="nest-porta-qty">
+                              {' '}
+                              · {materialeDelPreset(progetto?.preset, p.materialeId)?.nome}
+                            </span>
+                          )}
                         </strong>
                         <small>{p.descrizione}</small>
                       </div>
@@ -1210,14 +1222,18 @@ export function NestingPage({
                     </span>
                   </button>
                 )}
-                {doc.porte.materialeKit && doc.materiali.some((m) => m.id === doc.porte?.materialeKit) && (
-                  <button
-                    className="btn largo"
-                    onClick={() => setDoc((d) => ({ ...d, attivo: d.porte?.materialeKit ?? d.attivo }))}
-                  >
-                    Porte in kit: essenza «{doc.materiali.find((m) => m.id === doc.porte?.materialeKit)?.nome}»
-                  </button>
-                )}
+                {essenzeKit(doc.porte)
+                  .map((id) => doc.materiali.find((m) => m.id === id))
+                  .filter((m): m is NonNullable<typeof m> => !!m)
+                  .map((m) => (
+                    <button
+                      key={m.id}
+                      className="btn largo"
+                      onClick={() => setDoc((d) => ({ ...d, attivo: m.id }))}
+                    >
+                      Porte in kit: essenza «{m.nome}»
+                    </button>
+                  ))}
                 <small className="aiuto">
                   Il numero di porte viene dalle etichette sulle foto (×N compreso). Kit: ogni pezzo
                   alla sua misura, in un’essenza a parte che si aggiorna da sola. Strisce: rotoli

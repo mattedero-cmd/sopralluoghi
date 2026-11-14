@@ -622,13 +622,11 @@ export function ProgettoPage({ id }: { id: string }) {
       const [
         { pezziDaProgetto },
         { raggruppaPezzi, diagnosiPezzi },
-        { materialeNuovo },
-        { prossimaTinta }
+        { essenzeDaPezzi }
       ] = await Promise.all([
         import('../pdf/report'),
         import('../geometry/pezziDaSopralluogo'),
-        import('../utils/documentoNesting'),
-        import('../utils/tinte')
+        import('../utils/documentoNesting')
       ]);
 
       // stesso motore della distinta di taglio del PDF: forme riconosciute,
@@ -666,26 +664,10 @@ export function ProgettoPage({ id }: { id: string }) {
             : 'Piano di taglio vuoto: nel sopralluogo non ci sono forme quotate. Incolla la lista dei pezzi, oppure quotane una sulle foto.'
           : `Piano di taglio vuoto: ${conto.formeChiuse} forme trovate, ma senza misure utilizzabili. Incolla la lista dei pezzi, o scrivi le misure sui lati.`;
 
-      const materiale = {
-        // il supporto del preset: il piano nasce già con la macchina giusta
-        ...materialeNuovo(nuovoId(), 'Materiale 1', progetto.preset?.supporto),
-        pezzi: pezzi.map((p, i) => ({
-          id: nuovoId(),
-          nome: p.nome,
-          // con la sagoma il pezzo porta le SUE misure (base, altezze…);
-          // senza, l'ingombro: il nesting incastra le forme vere
-          // il quadrilatero storto porta i vertici, non tre misure: per lui
-          // larghezza e altezza restano l'ingombro, che serve alla riga
-          larghezza: p.sagoma?.vertici ? p.larghezza : (p.sagoma?.d1 ?? p.larghezza),
-          altezza: p.sagoma?.vertici ? p.altezza : (p.sagoma?.d2 ?? p.altezza),
-          misura3: p.sagoma?.d3,
-          vertici: p.sagoma?.vertici,
-          forma: p.sagoma?.forma,
-          quantita: p.quantita,
-          ruotabile: true,
-          tinta: prossimaTinta(i)
-        }))
-      };
+      // il supporto del preset: il piano nasce già con la macchina giusta.
+      // Con i materiali del preset, un'essenza per materiale, ognuna con la
+      // sua bobina: i pezzi vanno in quella della loro forma
+      const materiali = essenzeDaPezzi(pezzi, progetto.preset);
       const id = nuovoId();
       const nome = `Taglio — ${progetto.nome}`;
       await salvaNesting(
@@ -694,8 +676,8 @@ export function ProgettoPage({ id }: { id: string }) {
         {
           versione: 2,
           nome,
-          attivo: materiale.id,
-          materiali: [materiale],
+          attivo: materiali[0].id,
+          materiali,
           // le porte rilevate entrano subito: a strisce, finché non si sceglie il kit
           ...((await db.porte.where('progettoId').equals(progetto.id).count()) > 0
             ? { porte: { modi: {} } }
@@ -711,6 +693,8 @@ export function ProgettoPage({ id }: { id: string }) {
           'successo',
           `${pezzi.length} pezzi portati nel piano di taglio${
             conAbb > 0 ? `, di cui ${conAbb} con le abbondanze` : ''
+          }${
+            materiali.length > 1 ? `, divisi in ${materiali.length} materiali` : ''
           }.`
         );
       }
