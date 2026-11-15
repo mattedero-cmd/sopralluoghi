@@ -2296,24 +2296,33 @@ function luceLevelAt(part,x,yL=lightReference()) {
     best=Math.max(best,p[1]+(q[1]-p[1])*(x-p[0])/(q[0]-p[0]));}
   return Number.isFinite(best)?yL-best:null;
 }
-// Facce laterali (parallele alla parete): a 45° si incontrano allo stesso
-// livello; nei giunti di testa il pezzo che si ferma è tagliato al filo verso
-// la luce del pezzo che passa, alla stessa profondità.
+// Filo verso la luce del pezzo, alla profondità del tratto: è lì che il pezzo
+// che passa interrompe quello che si ferma. Si legge dentro il materiale
+// dietro al tratto (su una faccia diritta la parte piena, non il vuoto della
+// battuta); su un raccordo o una faccia arrotondata vale il filo del pezzo,
+// non il bordo della curva.
+function trattoFilo(part, i, yL=lightReference()) {
+  const e=part.edges[i],{lo,hi}=trattoLevels(part,i),pts=[];
+  for(let k=1;k<=5;k++){
+    if(e.kind==='arc'){const a=(e.a0+(e.a1-e.a0)*k/6)*Math.PI/180;pts.push([e.center[0]+e.radius*Math.cos(a),e.center[1]+e.radius*Math.sin(a)]);}
+    else pts.push([e.a[0]+(e.b[0]-e.a[0])*k/6,e.a[1]+(e.b[1]-e.a[1])*k/6]);
+  }
+  let f=-Infinity;
+  pts.forEach(([x,y])=>{const level=yL-y;
+    [x-.01,x,x+.01].forEach(xx=>{const v=luceLevelAt(part,xx,yL);if(v!==null&&v<=level+1e-6)f=Math.max(f,v);});});
+  return Number.isFinite(f)?Math.min(hi,f):lo;
+}
+// Nei giunti di testa il pezzo che passa arriva fino al suo bordo esterno, il
+// pezzo che si ferma è tagliato al filo verso la luce di quello che passa:
 //  montanti passanti → montante H + livello, traverso L + 2 × filo luce
 //  traverso passante → montante H + filo luce, traverso L + 2 × livello
+//  a 45°             → montante H + livello, traverso L + 2 × livello
 function trattoLength(part, i) {
   if(state.hasHead===false)return {m:luce.H,t:0};
-  const {lo, hi, side} = trattoLevels(part, i), j = jointOf(part);
-  if (side) {
-    if (j === 'miter') return {m: luce.H + hi, t: luce.W + 2 * hi};
-    const e=part.edges[i],x1=Math.min(e.a[0],e.b[0]),x2=Math.max(e.a[0],e.b[0]),yL=lightReference();
-    let f=-Infinity;for(let k=1;k<=5;k++){const v=luceLevelAt(part,x1+(x2-x1)*k/6,yL);if(v!==null)f=Math.max(f,v);}
-    f=Number.isFinite(f)?Math.min(hi,f):hi;
-    return j === 'posts' ? {m: luce.H + hi, t: luce.W + 2 * f} : {m: luce.H + f, t: luce.W + 2 * hi};
-  }
-  if (j === 'posts') return {m: luce.H + hi, t: luce.W + 2 * lo};
-  if (j === 'head') return {m: luce.H + lo, t: luce.W + 2 * hi};
-  return {m: luce.H + hi, t: luce.W + 2 * hi};
+  const {hi} = trattoLevels(part, i), j = jointOf(part);
+  if (j === 'miter') return {m: luce.H + hi, t: luce.W + 2 * hi};
+  const f = trattoFilo(part, i);
+  return j === 'posts' ? {m: luce.H + hi, t: luce.W + 2 * f} : {m: luce.H + f, t: luce.W + 2 * hi};
 }
 // Lunghezza di taglio di una striscia: quella del suo tratto più lungo.
 function stripLength(part, indices, key, segments = null) {
@@ -6083,10 +6092,16 @@ function reviewFrontFigure(){
   const yL=Y(-H*.22),xH=X(W/2+oR)+16;
   dimLine(svg,[X(-W/2),yL],[X(W/2),yL],'L '+mmText(W));
   dimLine(svg,[xH,Y(-H)],[xH,Y(0)],'H '+mmText(H),[[[X(W/2)+2,Y(-H)],[xH+4,Y(-H)]]]);
-  const top=Y(-(H+oT))-12;
-  dimLine(svg,[X(-W/2-oL),top],[X(W/2+oR),top],mmText(W+oL+oR),[[[X(-W/2-oL),Y(-(H+oT))-2],[X(-W/2-oL),top-4]],[[X(W/2+oR),Y(-(H+oT))-2],[X(W/2+oR),top-4]]]);
+  // Quote del pezzo più esterno secondo la giunzione: con i montanti passanti
+  // il traverso sta fra i montanti, con il traverso passante i montanti si
+  // fermano sotto il traverso.
+  const top=Y(-(H+oT))-12,outerBand=bands.reduce((a,b)=>b.hi>a.hi?b:a,bands[0]);
+  const jo=head?jointOf(outerBand.part):'none',tl=jo==='posts'?outerBand.lo:null,mh=jo==='head'?H+outerBand.lo:H+oT;
+  const txl=tl===null?-W/2-oL:-W/2-tl,txr=tl===null?W/2+oR:W/2+tl;
+  if(head)dimLine(svg,[X(txl),top],[X(txr),top],mmText(txr-txl),[[[X(txl),Y(-(H+oT))-2],[X(txl),top-4]],[[X(txr),Y(-(H+oT))-2],[X(txr),top-4]]]);
+  svg.setAttribute('data-traverso',String(Math.round(txr-txl)));svg.setAttribute('data-montante',String(Math.round(mh)));
   const left=X(-W/2-oL)-14;
-  dimLine(svg,[left,Y(-(H+oT))],[left,Y(0)],mmText(H+oT),[[[X(-W/2-oL)-2,Y(-(H+oT))],[left-4,Y(-(H+oT))]]]);
+  dimLine(svg,[left,Y(-mh)],[left,Y(0)],mmText(mh),[[[X(-W/2-oL)-2,Y(-mh)],[left-4,Y(-mh)]]]);
   const casing=g.parts.find(part=>part.key==='outer');
   if(casing){const p=draft().p;svg.append(el('text',{x:170,y:244,'text-anchor':'middle','font-size':11,fill:'var(--mt-secondary)'},'Coprifilo esterno '+mmText(p.A)+(asymKey&&asymDelta(casing)?' · lato '+(state.asym.side==='handle'?'maniglia':'cerniere')+' '+mmText(state.asym.E):'')+' × '+mmText(p.tE)+' · angoli '+(JOINTS.find(j=>j.id===state.joint)?.name||'').toLocaleLowerCase('it-IT')));}
   return svg;

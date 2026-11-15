@@ -335,10 +335,19 @@ Messaggi (stessa origine): dall'app `apri` (`modo` nuova / scheda / copia / lavo
   - 45° → montanti H + A, traverso L + 2A
   Lo stipite non cambia con la giunzione: le sue facce in vista guardano tutte
   la luce e il lato verso il muro non si riveste.
-- Facce frontali (faccia del coprifilo, gradino della battuta, teste a vista):
-  - montanti passanti → montante H + liv. max, traverso L + 2 × liv. min
-  - traverso passante → montante H + liv. min, traverso L + 2 × liv. max
+- Facce frontali (faccia del coprifilo, gradino della battuta, teste a vista,
+  raccordi):
+  - montanti passanti → montante H + liv. max, traverso L + 2 × filo luce
+  - traverso passante → montante H + filo luce, traverso L + 2 × liv. max
   - 45° → montante H + liv. max, traverso L + 2 × liv. max
+  Il filo luce è il bordo verso la luce del pezzo che passa, alla profondità
+  della faccia: su una faccia diritta coincide col suo livello minimo, su un
+  coprifilo arrotondato no (il raccordo esterno non allunga il pezzo che si
+  ferma).
+- Nel disegno «Maestà vista di fronte» le quote in alto e a sinistra sono le
+  lunghezze del traverso e del montante del pezzo più esterno con la giunzione
+  scelta (montanti passanti: traverso fra i montanti; traverso passante:
+  montanti sotto il traverso).
 - Una striscia di più tratti si taglia sulla lunghezza del tratto più lungo.
 - **Striscia fra coprifilo e guarnizione** (copre lo stipite e il lato del
   coprifilo): se la sua superficie (dal coprifilo alla guarnizione, senza

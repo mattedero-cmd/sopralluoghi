@@ -10,6 +10,16 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.100.2 — Lunghezze di montanti e traverso con le giunzioni di testa
+
+- Coprifili arrotondati: con i montanti passanti il traverso si taglia fra i
+  montanti e con il traverso passante i montanti si fermano sotto il traverso,
+  anche sui raccordi (prima il raccordo esterno allungava il pezzo che si
+  ferma, fino a oltre 12 cm).
+- Disegno «Maestà vista di fronte»: le quote sono le lunghezze del traverso e
+  del montante secondo la giunzione (es. 824 / 2182 con i montanti passanti,
+  964 / 2112 con il traverso passante), non più l'ingombro totale.
+
 ## 1.100.1 — Il centro delle due ante lo decide il bordo
 
 - Tolta la domanda «Al centro: come si chiudono le ante?» e le misure della
