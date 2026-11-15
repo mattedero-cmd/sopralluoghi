@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { nomeMaterialiPorta } from '../utils/porteMateriali';
+import { MaterialiPorta } from '../components/MaterialiPorta';
+import { materialiDelPreset } from '../utils/preset';
 import { naviga } from '../router';
 import { Modale, StatoApp } from '../components/comuni';
 import { Icona } from '../components/Icona';
@@ -1190,6 +1192,11 @@ export function NestingPage({
                           )}
                         </strong>
                         <small>{p.descrizione}</small>
+                        <MaterialiPorta
+                          porta={p}
+                          materiali={materialiDelPreset(progetto?.preset)}
+                          preset={progetto?.preset}
+                        />
                       </div>
                       <div className="segmenti" role="group" aria-label={`Come si taglia ${p.nome}`}>
                         <button

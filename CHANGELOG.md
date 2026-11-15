@@ -10,6 +10,18 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.103.0 — I colori si dichiarano nella guida, i materiali nel piano di taglio
+
+- Nella guida del rilievo il passo «Colori» ha tre scelte: tutto uguale,
+  anta diversa (maestà di un colore, anta di un altro), esterno e interno.
+  La guida prepara solo tagli e istruzioni, senza materiali.
+- Nel piano di taglio, sezione Porte, ogni porta mostra i suoi posti
+  secondo la guida: un materiale per tutta la porta, maestà e anta, oppure
+  maestà e anta per lato esterno e interno. Lì si assegnano i materiali.
+- Nell'elenco porte sulle foto resta solo il materiale di tutta la porta.
+- Il foglio sopra sul bordo dell'anta resta nella guida, subito dopo
+  «Colori», quando esterno e interno sono diversi.
+
 ## 1.102.0 — Piano delle bobine per materiale
 
 - Porte a strisce: le bobine si fanno materiale per materiale. Nel piano

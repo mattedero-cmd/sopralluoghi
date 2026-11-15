@@ -4845,6 +4845,13 @@ a {
 .nest-porta .segmenti {
   flex-shrink: 0;
 }
+/* con i materiali della porta sotto il nome il testo prende la riga intera */
+.nest-porta {
+  flex-wrap: wrap;
+}
+.nest-porta-testo {
+  flex: 1 1 220px;
+}
 .nest-porte-piano {
   display: flex;
   align-items: center;
@@ -4879,14 +4886,6 @@ a {
 }
 
 /* colori diversi di una porta: un materiale per maestà, anta e lati */
-.colori-porta {
-  margin-top: 6px;
-}
-.colori-porta summary {
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-}
 .posto-materiale {
   margin-top: 8px;
 }

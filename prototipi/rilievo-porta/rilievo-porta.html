@@ -664,7 +664,7 @@ function modelDefaults(m) {
 function createDraft(m) {
   return {p: modelDefaults(m), seatAuto:true, measured:{}, cover: {}, split: {}, cuts: {}, over: {}, gaskets: {}, gasketChoices: {}, joints: {}, skip: {}, order: null, part: 0, edge: 0};
 }
-const state = {cfg: {jamb: 'standard', casing: 'square'}, hasHead:true,leafCount:1,activeLeaf:0,handleSide:'right',handleChosen:false, joint: 'miter', asym:{side:null,E:null,I:null}, colorSides:false, draft: createDraft()};
+const state = {cfg: {jamb: 'standard', casing: 'square'}, hasHead:true,leafCount:1,activeLeaf:0,handleSide:'right',handleChosen:false, joint: 'miter', asym:{side:null,E:null,I:null}, colorSides:false, colorLeaf:false, draft: createDraft()};
 const drafts = new Map();
 const model = () => makeModel(state.cfg);
 const draft = () => state.draft;
@@ -4174,10 +4174,12 @@ function drawDoorEdge(svg,width,bottom=doorView==='bottom',standalone=false) {
   svg.append(el('text',{x:cx,y:216,'text-anchor':'middle','font-size':12,'font-weight':600},label));
 }
 // Due colori sulla sezione dello stipite: esterno verde, interno grigio.
-function colorSidesFigure(split){
+// mode: 'same' | 'leaf' (anta di un altro colore) | 'sides' (esterno e interno)
+function colorSidesFigure(mode){
+  const split=mode==='sides'||mode===true;
   const svg=el('svg',{class:'mt-wiz-fig',viewBox:'0 0 320 200','aria-hidden':'true'});
   svg.append(el('path',{d:'M 30 40 H 160 V 80 H 290 V 170 H 30 Z',fill:'var(--mt-wood)',stroke:'var(--mt-ink)','stroke-width':1}));
-  svg.append(el('rect',{x:172,y:14,width:40,height:56,fill:'none',stroke:'var(--mt-secondary)','stroke-dasharray':'4 3'}));
+  svg.append(el('rect',{x:172,y:14,width:40,height:56,fill:'none',stroke:mode==='leaf'?'var(--mt-film2)':'var(--mt-secondary)','stroke-width':mode==='leaf'?4:1,...(mode==='leaf'?{}:{'stroke-dasharray':'4 3'})}));
   const line=(d,color)=>svg.append(el('path',{d,fill:'none',stroke:color,'stroke-width':5,'stroke-linejoin':'round'}));
   if(split){line('M 30 34 H 166 V 76','var(--mt-green)');line('M 166 74 H 290','var(--mt-film2)');}
   else line('M 30 34 H 166 V 74 H 290','var(--mt-green)');
@@ -5224,7 +5226,7 @@ function singleMeasureSteps(includeFrame=true) {
   }
   steps.push({id: 'facce', title: 'Anta: facce', q: 'Quali facce dell’anta rivesti?', choice: 'faces'});
   if(door.type==='double'&&doorFaces.every(([key])=>isDoorFaceCovered(key))&&!leafProfileRanges().gaps.length)steps.push({id:'anta-sormonto-scalino',title:'Sormonto sul bordo dell’anta',choice:'leafSeam',q:'Scegli lo scalino su cui sovrapporre i due fogli. La stessa scelta vale sopra e sui due lati; non viene dedotta dal numero di battute dello stipite.'});
-  steps.push({id:'colori',title:'Colori dei due lati',choice:'colorSides',q:'Lato esterno e lato interno hanno lo stesso colore? I materiali li scegli poi nel progetto.'+(state.colorSides?' '+colorSidesNote():'')});
+  steps.push({id:'colori',title:'Colori',choice:'colorSides',q:'Quali parti hanno un colore diverso? Qui si preparano tagli e istruzioni; i materiali si assegnano nel piano di taglio.'+(state.colorSides?' '+colorSidesNote():'')});
   if(state.colorSides&&doorFaces.every(([key])=>isDoorFaceCovered(key))&&!leafProfileRanges().gaps.length)steps.push({id:'anta-sopra',title:'Anta: foglio sopra sul bordo',choice:'lapTop',q:'Sul bordo dell’anta i due fogli si sovrappongono e si vede quello sopra. Quale colore vuoi sul bordo?'});
   steps.push({id:'anta-bordo-inferiore',title:'Anta: bordo verso il pavimento',choice:'doorBottom',
     q:doorFaces.filter(([key])=>isDoorFaceCovered(key)).length===1?'Sopra il foglio copre sempre tutto il bordo. Sotto, fin dove arriva?':'Sopra il rivestimento è sempre completo. Come vuoi chiudere il bordo inferiore?'});
@@ -5939,9 +5941,10 @@ function renderMeasure(m, last) {
     });return;
   }
   if(m.choice==='colorSides'){
-    const grid=choiceGrid(body,2);
-    [[false,'Stesso colore','Un materiale per i due lati'],[true,'Colori diversi','Lo stipite si divide sulla battuta']].forEach(([value,name,note])=>
-      grid.append(wizCard(name,note,!!state.colorSides===value,colorSidesFigure(value),()=>{state.colorSides=value;sync();drawDoor();updateBadge();renderWizard();setTimeout(()=>wizGo(1),180);})));
+    const grid=choiceGrid(body,3);
+    const now=state.colorSides?'sides':state.colorLeaf?'leaf':'same';
+    [['same','Tutto uguale','Un colore per maestà e anta'],['leaf','Anta diversa','La maestà di un colore, l’anta di un altro'],['sides','Esterno e interno','Ogni lato il suo colore: lo stipite si divide']].forEach(([value,name,note])=>
+      grid.append(wizCard(name,note,now===value,colorSidesFigure(value),()=>{state.colorSides=value==='sides';state.colorLeaf=value==='leaf';sync();drawDoor();updateBadge();renderWizard();setTimeout(()=>wizGo(1),180);})));
     return;
   }
   if(m.choice==='lapTop'){
@@ -6251,12 +6254,12 @@ function reviewLeafSection(){
 function snapshotConfig(){
   const leaves=Array.from({length:state.leafCount===2?2:1},(_,i)=>copyLeaf(i===state.activeLeaf?door:(leafRecords[i]||door)));
   return copyLeaf({cfg:state.cfg,hasHead:state.hasHead,leafCount:state.leafCount,handleSide:state.handleSide,handleChosen:state.handleChosen,
-    joint:state.joint,asym:state.asym,fit:state.fit||null,draft:state.draft,leaves,luce:{W:luce.W,H:luce.H},meeting:state.meeting||null,colorSides:!!state.colorSides});
+    joint:state.joint,asym:state.asym,fit:state.fit||null,draft:state.draft,leaves,luce:{W:luce.W,H:luce.H},meeting:state.meeting||null,colorSides:!!state.colorSides,colorLeaf:!!state.colorLeaf});
 }
 function loadConfig(c){
   const conf=copyLeaf(c);
   Object.assign(state,{cfg:conf.cfg,hasHead:conf.hasHead,leafCount:conf.leafCount,handleSide:conf.handleSide,handleChosen:conf.handleChosen,
-    joint:conf.joint,asym:conf.asym||{side:null,E:null,I:null},fit:conf.fit||null,draft:conf.draft,activeLeaf:0,meeting:conf.meeting||null,colorSides:!!conf.colorSides});
+    joint:conf.joint,asym:conf.asym||{side:null,E:null,I:null},fit:conf.fit||null,draft:conf.draft,activeLeaf:0,meeting:conf.meeting||null,colorSides:!!conf.colorSides,colorLeaf:!!conf.colorLeaf});
   leafRecords[0]=copyLeaf(conf.leaves[0]);leafRecords[1]=conf.leaves[1]?copyLeaf(conf.leaves[1]):null;
   replaceDoor(copyLeaf(conf.leaves[0]));
   luce.W=conf.luce.W;luce.H=conf.luce.H;
@@ -6370,7 +6373,7 @@ const JSPDF_URL='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.mi
 const HOST=new URLSearchParams(location.search).has('ospite')&&window.parent!==window;
 const host={saved:null,lavoro:false,timer:0};
 function hostPost(msg){window.parent.postMessage({sorgente:'rilievo-porta',...msg},location.origin);}
-function hostDesc(){return `${model().name} · ${doorClosureName()} · luce ${fmt(luce.W)} × ${fmt(luce.H)} · `+eachLeaf(i=>leafName(i).toLocaleLowerCase('it-IT')+' '+fmt(door.width)+' × '+fmt(door.height)).join(' / ')+(state.hasHead===false?' · senza traverso':'')+(state.colorSides?' · colori diversi fra i lati':'');}
+function hostDesc(){return `${model().name} · ${doorClosureName()} · luce ${fmt(luce.W)} × ${fmt(luce.H)} · `+eachLeaf(i=>leafName(i).toLocaleLowerCase('it-IT')+' '+fmt(door.width)+' × '+fmt(door.height)).join(' / ')+(state.hasHead===false?' · senza traverso':'')+(state.colorSides?' · colori diversi fra i lati':state.colorLeaf?' · anta di un altro colore':'');}
 // Due porte con la stessa firma si montano allo stesso modo: la firma è la
 // configurazione senza le misure che cambia la modifica veloce (luce, larghezza
 // e altezza dell'anta) e senza i dati derivati.
@@ -6403,7 +6406,7 @@ function hostSave(){
   const rows=currentRows();
   if(!rows){reviewMessage='Ci sono misure da sistemare: la porta non è stata salvata.';renderReview();return;}
   const config=snapshotConfig();
-  hostPost({tipo:'salva',id:state.editingType||null,config,firma:hostSignature(config),descrizione:hostDesc(),latiDiversi:!!state.colorSides,
+  hostPost({tipo:'salva',id:state.editingType||null,config,firma:hostSignature(config),descrizione:hostDesc(),latiDiversi:!!state.colorSides,coloriAnta:!state.colorSides&&!!state.colorLeaf,
     righe:(()=>{const sig=rowSiglas(rows);return rows.map((r,i)=>({nome:r.name,sigla:sig[i],larghezza:roundCut(r.width),lunghezza:roundCut(r.height),anta:!!r.door}));})()});
 }
 async function hostInstructions(button){

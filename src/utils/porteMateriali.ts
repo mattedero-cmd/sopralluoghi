@@ -39,8 +39,13 @@ export function materialeRiga(p: Porta, r: RigaPorta, preset: PresetProgetto | u
   return materialePosto(p, postoRiga(p, r), preset);
 }
 
-/** i posti che la porta mostra: maestà e anta, o tutti e quattro */
-export function postiPorta(p: Pick<Porta, 'latiDiversi'>): Array<[PostoMateriale, string]> {
+/**
+ * i posti che la porta mostra, secondo i colori dichiarati nella guida del
+ * rilievo: nessuno (un materiale per tutta la porta), maestà e anta, o tutti
+ * e quattro con i lati diversi
+ */
+export function postiPorta(p: Pick<Porta, 'latiDiversi' | 'coloriAnta'>): Array<[PostoMateriale, string]> {
+  if (!p.latiDiversi && !p.coloriAnta) return [];
   return p.latiDiversi
     ? [
         ['maestaE', 'Maestà esterna'],

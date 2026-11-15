@@ -118,7 +118,8 @@ export function RilievoPorta({
           fotoRilievoId: fotoId ?? null,
           materialeId: callback.current.materialeId ?? origine?.materialeId,
           materiali: origine?.materiali,
-          latiDiversi: m.latiDiversi === true
+          latiDiversi: m.latiDiversi === true,
+          coloriAnta: m.coloriAnta === true
         });
         const nuova = !id;
         corrente.current = porta.id;

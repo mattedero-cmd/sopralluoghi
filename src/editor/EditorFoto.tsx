@@ -37,7 +37,7 @@ import {
   segmentiPoligono,
   segmentoELato
 } from '../db/types';
-import { aggiornaFoto, aggiungiFoto, contaPorte, creaPiantaDaFoto, eliminaFoto, eliminaPorta, impostaSfondoPianta, incorporaCensureFoto, leggiImpostazioni, portePerProgetto, salvaAnnotazione, salvaAnnotazioniFoto } from '../db/repository';
+import { aggiornaFoto, aggiungiFoto, cambiaMaterialePorta, contaPorte, creaPiantaDaFoto, eliminaFoto, eliminaPorta, impostaSfondoPianta, incorporaCensureFoto, leggiImpostazioni, portePerProgetto, salvaAnnotazione, salvaAnnotazioniFoto } from '../db/repository';
 import { RilievoPorta, type ModoRilievo } from '../components/RilievoPorta';
 import type { MaterialePreset, Porta } from '../db/types';
 import {
@@ -66,8 +66,7 @@ import {
   predefinitiTeli
 } from '../utils/preset';
 import { SceltaMateriale } from '../components/MaterialiLavoro';
-import { MaterialiPorta } from '../components/MaterialiPorta';
-import { nomeMaterialiPorta } from '../utils/porteMateriali';
+import { nomeMaterialiPorta, postiPorta } from '../utils/porteMateriali';
 import { StageEditor, type ModalitaVincolo, type Strumento } from './StageEditor';
 import { FabbricaAnnotazioni } from './fabbrica';
 import { MenuCircolareEtichette } from './MenuCircolareEtichette';
@@ -4483,8 +4482,14 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                           : ''}
                       </strong>
                       <span>{p.descrizione}</span>
-                      {materialiLavoro.length > 1 && (
-                        <MaterialiPorta porta={p} materiali={materialiLavoro} preset={progetto?.preset} />
+                      {/* i colori diversi (maestà, anta, lati) si assegnano nel piano di taglio */}
+                      {materialiLavoro.length > 1 && !postiPorta(p).length && (
+                        <SceltaMateriale
+                          materiali={materialiLavoro}
+                          valore={materialeDelPreset(progetto?.preset, p.materialeId)?.id}
+                          onScegli={(id) => void cambiaMaterialePorta(p.id, id)}
+                          etichetta={`Materiale di ${p.nome}`}
+                        />
                       )}
                     </div>
                     <div className="riga-pulsanti">

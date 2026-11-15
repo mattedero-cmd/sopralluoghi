@@ -1541,6 +1541,8 @@ export interface Porta {
    * lato e può avere il materiale di quel lato.
    */
   latiDiversi?: boolean;
+  /** il rilievo dichiara l'anta di un altro colore rispetto alla maestà */
+  coloriAnta?: boolean;
   creatoIl: number;
   modificatoIl: number;
 }

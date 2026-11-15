@@ -1559,6 +1559,8 @@ export async function salvaPorta(dati: {
   materiali?: Porta['materiali'];
   /** il rilievo divide lo stipite sulla battuta */
   latiDiversi?: boolean;
+  /** il rilievo dichiara l'anta di un altro colore */
+  coloriAnta?: boolean;
 }): Promise<Porta> {
   return scrivi('salvare la porta', () =>
     db.transaction('rw', [db.porte], async () => {
@@ -1571,6 +1573,7 @@ export async function salvaPorta(dati: {
           righe: dati.righe,
           ...(dati.firma ? { firma: dati.firma } : {}),
           latiDiversi: !!dati.latiDiversi,
+          coloriAnta: !!dati.coloriAnta,
           modificatoIl: ora()
         };
         await db.porte.put(agg);
@@ -1588,6 +1591,7 @@ export async function salvaPorta(dati: {
         ...(dati.materialeId ? { materialeId: dati.materialeId } : {}),
         ...(dati.materiali && Object.keys(dati.materiali).length ? { materiali: dati.materiali } : {}),
         latiDiversi: !!dati.latiDiversi,
+        coloriAnta: !!dati.coloriAnta,
         progettoId: dati.progettoId,
         nome: `Porta ${lettera}`,
         lettera,

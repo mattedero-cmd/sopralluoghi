@@ -207,9 +207,11 @@ kit non passano di qui: diventano pezzi dell'essenza «Porte (kit)»
 
 ### Colori diversi
 
-Nella guida, dopo le facce dell'anta, «Colori dei due lati»: stesso colore o
-colori diversi (`state.colorSides`, salvato nella configurazione e mandato
-all'app con `salva` come `latiDiversi`). Con i colori diversi:
+Nella guida, dopo le facce dell'anta, «Colori»: tutto uguale, anta diversa
+(`state.colorLeaf`, all'app `coloriAnta`) o esterno e interno
+(`state.colorSides`, all'app `latiDiversi`). La guida dichiara solo quali
+parti cambiano colore e prepara tagli e istruzioni; i materiali si assegnano
+nel piano di taglio. Con esterno e interno diversi:
 
 - la pellicola dello stipite si divide nell'**angolo interno della battuta**
   (fra la battuta e il fondo dove sta l'anta): il pezzo del lato battuta
@@ -226,9 +228,10 @@ all'app con `salva` come `latiDiversi`). Con i colori diversi:
   vede (`door.lapTop`, di base l'esterno): cambia l'ordine di posa e il
   disegno, non le misure. Nei disegni il foglio interno è nel secondo colore.
 
-I materiali li sceglie l'app (`src/components/MaterialiPorta.tsx`,
-`src/utils/porteMateriali.ts`): uno per tutta la porta e, in «Colori
-diversi», maestà e anta, e con i lati diversi anche esterno e interno. Ogni
+I materiali li assegna il piano di taglio, nella sezione Porte
+(`src/components/MaterialiPorta.tsx`, `src/utils/porteMateriali.ts`):
+uno per tutta la porta, oppure maestà e anta, oppure i quattro posti con i
+lati diversi, secondo quello che ha dichiarato la guida. Ogni
 pezzo prende il materiale del suo posto (anta o maestà, lato dalla sigla);
 i kit vanno nell'essenza del materiale di ciascun pezzo e la distinta del PDF
 scrive il materiale sotto il pezzo.
