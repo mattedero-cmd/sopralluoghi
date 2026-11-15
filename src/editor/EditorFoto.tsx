@@ -39,7 +39,7 @@ import {
 } from '../db/types';
 import { aggiornaFoto, aggiungiFoto, cambiaMaterialePorta, contaPorte, creaPiantaDaFoto, eliminaFoto, eliminaPorta, impostaSfondoPianta, incorporaCensureFoto, leggiImpostazioni, portePerProgetto, salvaAnnotazione, salvaAnnotazioniFoto } from '../db/repository';
 import { RilievoPorta, type ModoRilievo } from '../components/RilievoPorta';
-import type { Porta } from '../db/types';
+import type { MaterialePreset, Porta } from '../db/types';
 import {
   blobOrigine,
   canvasInBlob,
@@ -686,6 +686,28 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   };
   const materialiLavoro = materialiDelPreset(progetto?.preset);
   const materialeCorrente = materialeDiNascita(progetto?.preset, materialeScelto);
+  /**
+   * IL MATERIALE DI UNA FORMA, CAMBIATO — dalla barra sopra la foto o dal
+   * pannello «Modifica». Una famiglia di copie è una misura sola: il
+   * materiale va a tutte; e con lui l'abbondanza del suo preset, se quella
+   * di prima non era stata cambiata a mano. Torna la forma com'è diventata.
+   */
+  const cambiaMaterialeForma = (forma: Annotazione, id: string): Annotazione => {
+    scegliMateriale(id);
+    const nuova = conMaterialeCambiato(forma, progetto?.preset, id);
+    if (!annotazioni) return nuova;
+    const famiglia = forma.gruppoQuota;
+    commit(
+      annotazioni.map((a) =>
+        a.id === forma.id
+          ? nuova
+          : famiglia && a.gruppoQuota === famiglia
+            ? conMaterialeCambiato(a, progetto?.preset, id)
+            : a
+      )
+    );
+    return nuova;
+  };
   /** rilevamento volti in corso (bottone in attesa) */
   const [voltiInCorso, setVoltiInCorso] = useState(false);
   /** oggetto dello schizzo selezionato come entità A SÉ STANTE */
@@ -5062,20 +5084,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             <SceltaMateriale
               materiali={materialiLavoro}
               valore={materialeDelPreset(progetto?.preset, selezionata.materialeId)?.id}
-              onScegli={(id) => {
-                scegliMateriale(id);
-                // una famiglia di copie è una misura sola: il materiale va a
-                // tutte; e con lui l'abbondanza del suo preset, se quella di
-                // prima non era stata cambiata a mano
-                const famiglia = selezionata.gruppoQuota;
-                commit(
-                  annotazioni.map((a) =>
-                    a.id === selezionata.id || (famiglia && a.gruppoQuota === famiglia)
-                      ? conMaterialeCambiato(a, progetto?.preset, id)
-                      : a
-                  )
-                );
-              }}
+              onScegli={(id) => void cambiaMaterialeForma(selezionata, id)}
             />
           </div>
         )}
@@ -6021,6 +6030,9 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               poli={poli}
               foto={foto}
               immagine={immagine}
+              materiali={poli.soloEtichetta ? [] : materialiLavoro}
+              materialeId={materialeDelPreset(progetto?.preset, poli.materialeId)?.id}
+              onMateriale={(id) => cambiaMaterialeForma(poli, id) as QuotaPoligono}
               codice={codiceForma(poli)}
               numero={numeriForme.get(poli.id)?.numero}
               onNumero={(n) => {
@@ -7987,11 +7999,19 @@ function EditorPoligono({
   onOggetti,
   onRicostruisci,
   onElimina,
-  onChiudi
+  onChiudi,
+  materiali = [],
+  materialeId,
+  onMateriale
 }: {
   poli: QuotaPoligono;
   foto: Foto;
   immagine: ImmagineDisegnabile;
+  /** i materiali del lavoro: vuoto = il lavoro non li distingue */
+  materiali?: MaterialePreset[];
+  materialeId?: string;
+  /** cambia il materiale (e l'abbondanza del suo preset); torna la forma nuova */
+  onMateriale?: (id: string) => QuotaPoligono;
   /** codice automatico corrente (es. "P1.A1") */
   codice: string;
   /** numero della forma nella sequenza condivisa (per il riordino manuale) */
@@ -8387,6 +8407,31 @@ function EditorPoligono({
           Su una parete a sette lati «due centimetri tutt'attorno» sono sette
           lati da aprire uno per uno, e il lato dimenticato non si vede.
         */}
+        {/*
+          IL MATERIALE, accanto all'abbondanza che decide: cambiandolo la
+          forma prende il preset del nuovo materiale — l'abbondanza qui sotto
+          cambia sotto gli occhi, se non era stata scritta a mano.
+        */}
+        {materiali.length > 0 && onMateriale && (
+          <div className="campo">
+            <label>Materiale</label>
+            <SceltaMateriale
+              materiali={materiali}
+              valore={materialeId}
+              etichetta="Materiale della forma"
+              onScegli={(id) => {
+                const nuova = onMateriale(id);
+                setPeriTesto(
+                  nuova.abbPerimetro === undefined ? '' : String(nuova.abbPerimetro).replace('.', ',')
+                );
+              }}
+            />
+            <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
+              Abbondanza e teli vengono dal preset del materiale. Un’abbondanza scritta a mano resta
+              quella anche cambiando materiale.
+            </span>
+          </div>
+        )}
         <div className="campo">
           <label>Abbondanza perimetrale (in fuori, su ogni lato)</label>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

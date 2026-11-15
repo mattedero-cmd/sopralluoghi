@@ -10,6 +10,15 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.98.1 — Il materiale anche in «Modifica»
+
+- **Nel pannello «Modifica» di una forma c'è il materiale**, subito sopra
+  l'abbondanza che il suo preset decide. Prima il materiale si cambiava solo
+  dalla barra sopra la foto, che col pannello aperto sparisce: chi apriva la
+  forma per guardarne l'abbondanza non vedeva di che materiale fosse, né
+  poteva cambiarlo lì. Adesso cambiandolo l'abbondanza si aggiorna sotto gli
+  occhi — se non era stata scritta a mano: quella resta.
+
 ## 1.98.0 — Nel progetto complesso, un preset per ogni materiale
 
 - **La creazione di un progetto complesso chiede un preset per ogni
