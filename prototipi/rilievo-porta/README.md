@@ -426,6 +426,9 @@ Messaggi (stessa origine): dall'app `apri` (`modo` nuova / scheda / copia / lavo
 - **Sotto**, verso il pavimento: sormonto completo (iniziale e consigliato),
   due lembi a metà senza sovrapposizione, oppure bordo scoperto. Il bordo inferiore
   della battentata è diritto; questa scelta modifica solo il risvolto inferiore.
+  Con una sola faccia rivestita non c'è un secondo foglio da sormontare: la
+  domanda diventa fin dove arriva il foglio, con «A filo porta» (si ferma allo
+  spigolo), «Metà spessore» o «Spessore completo».
 - Fronte e retro vengono tagliati sempre con la stessa larghezza, pari alla
   maggiore necessaria fra le facce attive, così usano la stessa misura di bobina.
   Le lunghezze restano quelle necessarie ai rispettivi pezzi.

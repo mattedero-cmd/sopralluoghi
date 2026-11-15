@@ -10,6 +10,14 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.100.3 — Bordo inferiore dell'anta con una sola faccia rivestita
+
+- Se rivesti una sola faccia dell'anta, la domanda sul bordo verso il
+  pavimento non parla più di sormonto: il foglio può fermarsi «A filo porta»,
+  arrivare a «Metà spessore» o coprire lo «Spessore completo». La metà
+  spessore prima non era disponibile con una faccia sola; ora allunga il
+  pezzo di metà spessore e il disegno della sezione la mostra.
+
 ## 1.100.2 — Lunghezze di montanti e traverso con le giunzioni di testa
 
 - Coprifili arrotondati: con i montanti passanti il traverso si taglia fra i

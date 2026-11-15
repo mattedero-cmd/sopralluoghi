@@ -3080,6 +3080,14 @@ const DOOR_BOTTOMS = [
   {id:'butt',name:'Due lembi a metà',note:'Si incontrano al centro, senza sovrapporsi'},
   {id:'bare',name:'Non rivestire sotto',note:'Il bordo verso il pavimento rimane scoperto'}
 ];
+// Con una sola faccia rivestita non c'è un secondo foglio da sormontare:
+// la domanda è solo fin dove arriva il foglio sul bordo inferiore.
+const DOOR_BOTTOMS_SINGLE = [
+  {id:'overlap',name:'Spessore completo',note:'Il foglio copre tutto il bordo inferiore'},
+  {id:'butt',name:'Metà spessore',note:'Il foglio si ferma a metà del bordo'},
+  {id:'bare',name:'A filo porta',note:'Il foglio si ferma allo spigolo, il bordo resta scoperto'}
+];
+function doorBottomOptions(){return doorFaces.filter(([key])=>isDoorFaceCovered(key)).length===1?DOOR_BOTTOMS_SINGLE:DOOR_BOTTOMS;}
 function casingSeatNeed(p,m,side='E') {return m.casing==='telescopic'?p['L'+side]+p['Jx'+side]+.1:m.casing==='overlap'?p['O'+side]+.1:.1;}
 // Bordo dell'anta, profilo del telaio e complanarità sono indipendenti.
 // I valori iniziali sono esempi modificabili, non misure normalizzate.
@@ -3593,8 +3601,7 @@ function renderDoorClosure() {
   guide.onclick=()=>{openWizard();wiz.step=Math.max(0,wizSteps().indexOf(doorStopTarget()==='casing'?'m:antaDestinazione':'m:antaModoChiusura'));wiz.stepId=null;renderWizard();};details.append(guide,closureSources());box.append(details);
 }
 function doorBottomMode() {
-  const mode=door.bottom||'overlap';
-  return mode==='butt'&&doorFaces.filter(([key])=>isDoorFaceCovered(key)).length===1?'overlap':mode;
+  return door.bottom||'overlap';
 }
 const frameLengths = [
   {key: 'length', name: 'Montante SX'},
@@ -4071,6 +4078,10 @@ function drawDoorEdge(svg,width,bottom=doorView==='bottom',standalone=false) {
   }else if(mode==='bare'){
     if(isDoorFaceCovered('front'))film([[0,depth],boundary[0]],'front','face');
     if(isDoorFaceCovered('back'))film([[S,depth],boundary.at(-1)],'back','face');
+  }else if(mode==='butt'&&!both){
+    const n=lapLength(boundary),front=isDoorFaceCovered('front'),half=front?lapSlice(boundary,0,n/2):lapSlice(boundary,n/2,n).slice().reverse();
+    film([front?[0,depth]:[S,depth],...half],front?'front':'back','half');
+    const end=project(half.at(-1));group.append(el('line',{x1:end[0],y1:end[1]-5,x2:end[0],y2:end[1]+5,stroke:'var(--mt-secondary)','stroke-width':1,'data-door-butt':'half'}));
   }else if(mode==='butt'&&both){
     const n=lapLength(boundary),first=lapSlice(boundary,0,n/2),last=lapSlice(boundary,n/2,n);
     film([[0,depth],...first],'front','butt');film([[S,depth],...last.slice().reverse()],'back','butt');
@@ -4112,17 +4123,16 @@ function renderDoorFilmControls() {
   const views=$('.mt-door-edge-controls');views.replaceChildren();
   [['top','Sopra e lati'],['bottom','Sotto · pavimento']].forEach(([key,name])=>{const b=document.createElement('button');b.type='button';b.textContent=name;b.setAttribute('aria-pressed',String(doorView===key));b.onclick=()=>{closePad();doorView=key;drawDoor();};views.append(b);});
   const choices=$('.mt-door-bottom-controls');choices.replaceChildren();
-  DOOR_BOTTOMS.forEach(option=>{const b=document.createElement('button');b.type='button';b.setAttribute('data-door-bottom',option.id);b.setAttribute('aria-pressed',String(doorBottomMode()===option.id));
-    b.disabled=option.id==='butt'&&!doorFilmPlan().both;
+  doorBottomOptions().forEach(option=>{const b=document.createElement('button');b.type='button';b.setAttribute('data-door-bottom',option.id);b.setAttribute('aria-pressed',String(doorBottomMode()===option.id));
     const name=document.createElement('strong');name.textContent=option.name;const note=document.createElement('span');note.textContent=option.note;b.append(name,note);
     b.onclick=()=>{closePad();door.bottom=option.id;doorView='bottom';drawDoor();updateBadge();};choices.append(b);});
   const plan=doorFilmPlan();
   $('.mt-door-film-note').textContent=!doorFaces.some(([key])=>isDoorFaceCovered(key))?'Anta esclusa: seleziona almeno una faccia da rivestire.':plan.both?
     (plan.gasketGaps?.length?'Sopra e sui lati la pellicola si ferma ai bordi delle guarnizioni sull’anta. I tratti rimasti fra le fasce generano pezzi separati.':steppedDoor()?`Sopra e sui lati: prima il foglio del lato battuta, poi quello della faccia opposta sopra lo scalino scelto di ${fmt(plan.overlap)} mm, fino allo spigolo basso.`:
       `Sopra: prima il foglio interno, poi quello esterno. Entrambi coprono tutto il bordo di ${fmt(plan.full)} mm.`)+
-    ' Sotto: '+DOOR_BOTTOMS.find(o=>o.id===plan.mode).name.toLocaleLowerCase('it-IT')+'.':
+    ' Sotto: '+doorBottomOptions().find(o=>o.id===plan.mode).name.toLocaleLowerCase('it-IT')+'.':
     plan.gasketGaps?.length?'Il foglio si ferma alla guarnizione. Gli altri tratti del bordo generano strisce separate, senza passare sulla gomma.':
-    'Con una sola faccia rivestita, quel foglio copre tutto il bordo superiore. Sotto puoi coprire tutto il bordo o lasciarlo scoperto.';
+    'Con una sola faccia rivestita, quel foglio copre tutto il bordo superiore. Sotto: '+doorBottomOptions().find(o=>o.id===plan.mode).name.toLocaleLowerCase('it-IT')+'.';
   const profileError=doorProfileError();if(profileError)$('.mt-door-film-note').textContent=profileError;
   const seat=geometry().leaf;
   if(seat){const distance=seat.frontProjection,plane=door.reference==='wall'?'della parete':door.reference==='jamb'?'dello stipite':'del coprifilo';$('.mt-door-film-note').textContent=
@@ -5146,7 +5156,7 @@ function singleMeasureSteps(includeFrame=true) {
   steps.push({id: 'facce', title: 'Anta: facce', q: 'Quali facce dell’anta rivesti?', choice: 'faces'});
   if(door.type==='double'&&doorFaces.every(([key])=>isDoorFaceCovered(key))&&!leafProfileRanges().gaps.length)steps.push({id:'anta-sormonto-scalino',title:'Sormonto sul bordo dell’anta',choice:'leafSeam',q:'Scegli lo scalino su cui sovrapporre i due fogli. La stessa scelta vale sopra e sui due lati; non viene dedotta dal numero di battute dello stipite.'});
   steps.push({id:'anta-bordo-inferiore',title:'Anta: bordo verso il pavimento',choice:'doorBottom',
-    q:'Sopra il rivestimento è sempre completo. Come vuoi chiudere il bordo inferiore?'});
+    q:doorFaces.filter(([key])=>isDoorFaceCovered(key)).length===1?'Sopra il foglio copre sempre tutto il bordo. Sotto, fin dove arriva?':'Sopra il rivestimento è sempre completo. Come vuoi chiudere il bordo inferiore?'});
   if(includeFrame)steps.push(
     {id: 'abbMaesta', title: 'Abbondanza maestà', q: 'Quanto lasci in più a ogni estremità delle stecche, per lavorare con agio e sovrapporre le pellicole negli angoli?', fig: 'abbMaesta',
       get: () => { const pt = geometry().parts[0]; return partCut(pt).ends; },
@@ -5859,10 +5869,10 @@ function renderMeasure(m, last) {
   }
   if(m.choice==='doorBottom'){
     const grid=choiceGrid(body,3);
-    ['bare','butt','overlap'].map(id=>DOOR_BOTTOMS.find(option=>option.id===id)).forEach(option=>{
+    ['bare','butt','overlap'].map(id=>doorBottomOptions().find(option=>option.id===id)).forEach(option=>{
       const saved=door.bottom;door.bottom=option.id;const figure=doorEdgeFigure(true);door.bottom=saved;
       const card=wizCard(option.name,option.note,doorBottomMode()===option.id,figure,()=>{door.bottom=option.id;drawDoor();updateBadge();renderWizard();setTimeout(()=>wizGo(1),180);});
-      card.disabled=option.id==='butt'&&!doorFilmPlan().both;grid.append(card);
+      grid.append(card);
     });return;
   }
   if(['doorTarget','doorClosure','doorReference','doorBearing','doorStop'].includes(m.choice)){
