@@ -10,6 +10,22 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.98.2 — Scrivendo la misura, le abbondanze del preset restavano a metà strada
+
+- **Il preset «lato per lato» si perdeva appena si scriveva una misura.**
+  Le sue abbondanze — sinistra, destra, sopra, sotto — si scrivono ai capi
+  delle quote di base e altezza, e la forma nasceva con quelle giuste. Ma il
+  pannello che si apre toccando una quota (per scriverci «110») si costruiva
+  senza le abbondanze che la quota aveva già: i campi «sinistra» e «destra»
+  comparivano vuoti, e «Salva quota» le cancellava. Con «uguale attorno» non
+  succedeva, perché quel numero sta sulla forma e non sulle quote. Adesso il
+  pannello le mostra e le tiene; con loro anche lo spostamento del numero
+  lungo la linea, che si perdeva allo stesso modo.
+
+- **In «Modifica» si vedono le abbondanze sulle quote**: sotto il campo
+  dell'abbondanza perimetrale (che col preset lato per lato resta vuoto) una
+  riga dice «Sulle quote: b +3 / +3 · h +0 / +10 cm».
+
 ## 1.98.1 — Il materiale anche in «Modifica»
 
 - **Nel pannello «Modifica» di una forma c'è il materiale**, subito sopra

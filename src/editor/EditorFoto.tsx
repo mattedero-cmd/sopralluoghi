@@ -6356,6 +6356,13 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             unita: poli.unita,
             posizioneTesto: seg.posizioneTesto ?? 'sopra',
             nota: seg.nota,
+            // LE ABBONDANZE CHE IL LATO HA GIÀ. Senza, il pannello si apriva
+            // coi campi vuoti e al salvataggio le cancellava: scrivendo la
+            // misura di una forma nata col preset «lato per lato», sinistra,
+            // destra, sopra e sotto sparivano
+            abbInizio: seg.abbInizio,
+            abbFine: seg.abbFine,
+            scorrTesto: seg.scorrTesto,
             stato: poli.stato,
             zIndex: poli.zIndex,
             stile: poli.stile
@@ -8053,6 +8060,14 @@ function EditorPoligono({
   const [periTesto, setPeriTesto] = useState(
     poli.abbPerimetro === undefined ? '' : String(poli.abbPerimetro).replace('.', ',')
   );
+  /** le abbondanze ai capi delle quote («b +3 / +3»), dette in chiaro */
+  const abbSulleQuote = segs.flatMap((sg, i) => {
+    const ini = sg.abbInizio ?? 0;
+    const fin = sg.abbFine ?? 0;
+    if (!(ini > 0) && !(fin > 0)) return [];
+    const f = (v: number) => `+${formattaNumero(v)}`;
+    return [`${simboli[i] ?? `lato ${i + 1}`} ${f(ini)} / ${f(fin)}`];
+  });
   const latiConLaLoro = segs.filter(
     (sg) => segmentoELato(sg, n) && sg.abbLato !== undefined
   ).length;
@@ -8448,6 +8463,16 @@ function EditorPoligono({
             />
             <span style={{ color: 'var(--testo-2)', fontSize: 13 }}>{poli.unita}</span>
           </div>
+          {/*
+            LE ABBONDANZE SULLE QUOTE, dette qui. Il preset «lato per lato» le
+            scrive ai capi di base e altezza, non in questo campo: senza questa
+            riga il campo vuoto faceva credere che l'abbondanza non ci fosse.
+          */}
+          {abbSulleQuote.length > 0 && (
+            <span style={{ color: 'var(--ok)', fontSize: 13, fontWeight: 600, marginTop: 4 }}>
+              Sulle quote: {abbSulleQuote.join(' · ')} {poli.unita} — si cambiano toccando la quota.
+            </span>
+          )}
           <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
             Ogni lato si sposta in fuori di tanto, perpendicolare a sé stesso, e dove due
             abbondanze si incontrano si fondono nello spigolo.{' '}
