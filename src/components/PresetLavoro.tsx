@@ -70,6 +70,50 @@ function Numero({
   );
 }
 
+/**
+ * UNA RIGA NUMERICA LEGATA A UN NUMERO, con il suo testo.
+ *
+ * Il campo non può mostrare il numero salvato così com'è: lo zero diventava
+ * un campo vuoto — e sotto ricompariva il suggerimento grigio, «10» sul
+ * margine, che sembra un valore vero — e scrivere «0,5» non si poteva,
+ * perché lo «0» spariva appena battuto. Qui il testo è quello che si scrive,
+ * e il numero ne segue; se il numero cambia da fuori (una fascia scelta col
+ * tasto) il testo si rimette in pari.
+ */
+function NumeroValore({
+  etichetta,
+  valore,
+  onCambia,
+  unita = 'mm',
+  suggerito
+}: {
+  etichetta: string;
+  valore: number;
+  onCambia: (v: number) => void;
+  unita?: string;
+  suggerito?: string;
+}) {
+  const scritto = (v: number) => String(v).replace('.', ',');
+  const [testo, setTesto] = useState(() => scritto(valore));
+  // il numero cambiato da fuori: il testo lo segue, se non dice già quello
+  useEffect(() => {
+    if ((analizzaMisura(testo) ?? 0) !== valore) setTesto(scritto(valore));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [valore]);
+  return (
+    <Numero
+      etichetta={etichetta}
+      valore={testo}
+      onCambia={(t) => {
+        setTesto(t);
+        onCambia(Math.max(0, analizzaMisura(t) ?? 0));
+      }}
+      unita={unita}
+      suggerito={suggerito}
+    />
+  );
+}
+
 /** il preset senza la lista dei materiali: quello che si scrive in una scheda */
 type PresetScheda = Omit<PresetProgetto, 'materiali'>;
 
@@ -158,7 +202,6 @@ function CampiPreset({
     risali.current(JSON.parse(impronta) as PresetScheda);
   }, [impronta]);
 
-  const numero = (v: number) => (v ? String(v).replace('.', ',') : '');
   const scriviSup = (m: Partial<typeof sup>) => setSup((s) => ({ ...s, ...m }));
 
   return (
@@ -234,10 +277,10 @@ function CampiPreset({
         </span>
         {sup.modo === 'bobina' ? (
           <>
-            <Numero
+            <NumeroValore
               etichetta="Fascia della bobina"
-              valore={numero(sup.bobina.larghezza)}
-              onCambia={(t) => scriviSup({ bobina: { ...sup.bobina, larghezza: analizzaMisura(t) ?? 0 } })}
+              valore={sup.bobina.larghezza}
+              onCambia={(v) => scriviSup({ bobina: { ...sup.bobina, larghezza: v } })}
               suggerito="1370"
             />
             <div className="fasce">
@@ -254,31 +297,31 @@ function CampiPreset({
           </>
         ) : (
           <>
-            <Numero
+            <NumeroValore
               etichetta="Larghezza della lastra"
-              valore={numero(sup.lastra.larghezza)}
-              onCambia={(t) => scriviSup({ lastra: { ...sup.lastra, larghezza: analizzaMisura(t) ?? 0 } })}
+              valore={sup.lastra.larghezza}
+              onCambia={(v) => scriviSup({ lastra: { ...sup.lastra, larghezza: v } })}
               suggerito="2500"
             />
-            <Numero
+            <NumeroValore
               etichetta="Altezza della lastra"
-              valore={numero(sup.lastra.altezza)}
-              onCambia={(t) => scriviSup({ lastra: { ...sup.lastra, altezza: analizzaMisura(t) ?? 0 } })}
+              valore={sup.lastra.altezza}
+              onCambia={(v) => scriviSup({ lastra: { ...sup.lastra, altezza: v } })}
               suggerito="1250"
             />
           </>
         )}
-        <Numero
+        <NumeroValore
           etichetta="Lama (taglio consumato)"
-          valore={numero(sup.lama)}
-          onCambia={(t) => scriviSup({ lama: analizzaMisura(t) ?? 0 })}
+          valore={sup.lama}
+          onCambia={(v) => scriviSup({ lama: v })}
           suggerito="0"
         />
-        <Numero
+        <NumeroValore
           etichetta="Margine su tutti i lati"
-          valore={numero(sup.margine)}
-          onCambia={(t) => scriviSup({ margine: analizzaMisura(t) ?? 0 })}
-          suggerito="10"
+          valore={sup.margine}
+          onCambia={(v) => scriviSup({ margine: v })}
+          suggerito="0"
         />
         <div className="riga-scelta">
           <span className="che">Venatura</span>
@@ -343,11 +386,11 @@ function CampiPreset({
             ))}
           </span>
         </div>
-        <Numero
+        <NumeroValore
           etichetta="Sormonto fra due teli"
-          valore={numero(teli.sormontoMm)}
-          onCambia={(t) => setTeli((x) => ({ ...x, sormontoMm: analizzaMisura(t) ?? 0 }))}
-          suggerito="10"
+          valore={teli.sormontoMm}
+          onCambia={(v) => setTeli((x) => ({ ...x, sormontoMm: v }))}
+          suggerito="0"
         />
         <div className="riga-scelta">
           <span className="che">Lembo</span>

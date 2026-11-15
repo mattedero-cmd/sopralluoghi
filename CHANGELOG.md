@@ -10,6 +10,16 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.99.3 — Lo zero nel preset si scrive
+
+- **Margine, lama, sormonto e misure del supporto accettano lo zero.** Il
+  campo mostrava il numero salvato, e lo zero diventava un campo vuoto: si
+  batteva «0», il campo si svuotava, e ricompariva il suggerimento grigio —
+  «10» sul margine — che sembrava un valore vero. Per lo stesso motivo non si
+  poteva scrivere «0,5». Adesso il campo tiene quello che si scrive, e lo
+  zero resta zero. I suggerimenti di margine e sormonto dicono «0», che è
+  quanto vale un campo lasciato vuoto.
+
 ## 1.99.2 — In Impostazioni il numero di versione
 
 - **Impostazioni → «Versione dell'app» dice il numero**, oltre alla data di
