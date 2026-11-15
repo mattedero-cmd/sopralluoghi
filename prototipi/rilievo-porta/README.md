@@ -177,14 +177,11 @@ che si chiude per prima.
   chiudono, piano di riferimento, altezza, spessore, scalini, guarnizioni,
   facce, bordo verso il pavimento, abbondanza): si risponde una volta. Solo la
   larghezza è di ogni anta. Ante diverse si sistemano nella modifica avanzata.
-- **Al centro: come si chiudono le ante?** — *A battuta*: i bordi centrali
-  hanno uno scalino e l'attiva sormonta la semifissa sul lato a tirare; si
-  misurano il sormonto e la profondità dello scalino nello spessore. *Accostate*:
-  bordi diritti, senza battuta.
-- **C'è la guarnizione al centro?** — sulla faccia dello scalino della
-  semifissa, contro cui chiude l'attiva.
-- Con l'anta a bordo diritto e la battuta centrale, la pellicola di ogni faccia
-  è più larga del sormonto, per rivestire lo scalino del bordo centrale.
+- **Il centro lo decide il bordo dell'anta**: battentata o a due scalini → le
+  ante si chiudono a battuta, l'attiva sormonta la semifissa con lo stesso
+  scalino misurato per le ante; squadrata o arrotondata → accostate.
+- **C'è la guarnizione al centro?** — solo a battuta: sulla faccia dello
+  scalino della semifissa, contro cui chiude l'attiva.
 
 ## Dentro l'app dei sopralluoghi
 

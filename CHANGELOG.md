@@ -10,6 +10,13 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.100.1 — Il centro delle due ante lo decide il bordo
+
+- Tolta la domanda «Al centro: come si chiudono le ante?» e le misure della
+  battuta centrale: le decide già il bordo dell'anta. Battentata o a due
+  scalini → a battuta, con lo stesso scalino; squadrata o arrotondata →
+  accostate. La domanda sulla guarnizione al centro resta solo a battuta.
+
 ## 1.100.0 — Porte a due ante: le ante chiudono fra loro
 
 - Con due ante la guida chiede le cose **una volta sola** e valgono per le due

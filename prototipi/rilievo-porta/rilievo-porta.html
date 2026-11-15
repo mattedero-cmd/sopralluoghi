@@ -2970,9 +2970,11 @@ function replaceDoor(values) {Object.keys(door).forEach(key=>delete door[key]);O
 // catenacci, si chiude per prima). «A battuta»: i bordi centrali hanno uno
 // scalino e l'attiva sormonta la semifissa; «accostate»: bordi diritti.
 // La guarnizione centrale, se c'è, sta sulla battuta della semifissa.
-function meetingState(){return state.meeting||(state.meeting={mode:'rebate',lip:null,at:null,seal:false});}
-function meetLip(){const m=meetingState();return Number.isFinite(m.lip)?m.lip:steppedDoor()?doorLip():12;}
-function meetAt(){const m=meetingState();return Number.isFinite(m.at)?m.at:steppedDoor()?doorRebateAt():Math.round(door.thickness/2);}
+// Il centro lo decide il bordo dell'anta: battentata o a due scalini → a
+// battuta, con lo stesso scalino; squadrata o arrotondata → accostate.
+function meetingState(){const m=state.meeting||(state.meeting={seal:false});m.mode=steppedDoor()?'rebate':'butt';return m;}
+function meetLip(){return doorLip();}
+function meetAt(){return doorRebateAt();}
 function activeLeafIndex(){return state.handleSide==='left'?0:1;}
 // Con due ante tutto quello che si sceglie e si misura vale per le due ante,
 // tranne la larghezza: si copia dall'anta sinistra alla destra.
@@ -3776,7 +3778,7 @@ function doorRows() {
   const faces=doorFaces.filter(([key])=>isDoorFaceCovered(key));
   // Due ante a battuta con il bordo diritto: sul bordo centrale c'è lo scalino
   // della battuta, e la pellicola che lo riveste è più lunga del sormonto.
-  const meetingExtra=state.leafCount===2&&meetingState().mode==='rebate'&&!steppedDoor()?meetLip():0;
+  const meetingExtra=0;
   const commonWidth=Math.max(0,...faces.map(([key])=>roundCut(cuts[key][0]+m+meetingExtra)));
   const faceRows=doorFaces.slice().reverse().filter(([key]) => isDoorFaceCovered(key)).map(([key], index) => ({
     id: 'door:' + key, door: true, face:key, strip: index,
@@ -5242,14 +5244,8 @@ function rawMeasureSteps() {
   const frameRubber=first.filter(step=>step.gasketOwner==='frame').map(step=>({...step,leafIndex:0}));
   const rubber=[...frameRubber,...first.filter(step=>step.gasketOwner==='leaf').map(shared)];
   const m=meetingState();
-  const center=[{id:'anteCentro',title:'Al centro: come si chiudono le ante?',choice:'meeting',leafIndex:0,
-      q:'L’anta attiva è quella con la maniglia e si apre per prima; l’altra è la semifissa, bloccata con i catenacci.'},
-    ...(m.mode==='rebate'?[
-      {id:'anteCentroLb',title:'Battuta centrale · sormonto',q:'Di quanto l’attiva copre la semifissa.',fig:'meetLip',leafIndex:0,
-        get:()=>meetLip(),set:v=>{meetingState().lip=v;update();},min:1,max:60},
-      {id:'anteCentroSb',title:'Battuta centrale · nello spessore',q:'A che profondità, dalla faccia a tirare, c’è lo scalino.',fig:'meetAt',leafIndex:0,
-        get:()=>meetAt(),set:v=>{meetingState().at=v;update();},min:1,max:Math.max(1,door.thickness-1)}]:[]),
-    {id:'guarnizioneCentrale',title:'C’è la guarnizione al centro?',choice:'meetingSeal',leafIndex:0,q:'Sulla battuta della semifissa, contro cui chiude l’attiva.'}];
+  const center=m.mode==='rebate'?[{id:'guarnizioneCentrale',title:'C’è la guarnizione al centro?',choice:'meetingSeal',leafIndex:0,
+    q:'Sulla battuta della semifissa, contro cui chiude l’attiva (quella con la maniglia).'}]:[];
   return [...first.filter(leading).map(step=>({...step,leafIndex:0})),
     ...first.filter(geometryStep).map(step=>own(step)?owned(step,0):shared(step)),...second.filter(own).map(step=>owned(step,1)),
     ...center,
