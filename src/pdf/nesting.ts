@@ -14,6 +14,7 @@ import { misureForma } from '../geometry/sagome';
 import { frasiRitagli, ritagliUtili, segmentaBobina } from '../geometry/segmenti';
 import { OPZIONI_PDF_PREDEFINITE, type OpzioniPdfNesting } from './opzioni';
 import { contenutoBobinePorte, legendaSigle } from './porte';
+import { essenzeKit } from '../utils/portePiano';
 import {
   etichettaSupporto,
   opzioniRicerca,
@@ -686,7 +687,7 @@ export function contenutoNesting(
     distinte.push({ text: dati.join('\n'), style: 'dati' });
     distinte.push(distinta(m, esito));
     // i pezzi dei kit delle porte si chiamano con le sigle: qui la loro legenda
-    if (m.id === doc.porte?.materialeKit) distinte.push(legendaSigle());
+    if (essenzeKit(doc.porte).includes(m.id)) distinte.push(legendaSigle());
 
     for (const foglio of fogli) pagine.push(...paginaFoglio(m, foglio));
   }

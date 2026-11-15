@@ -15,6 +15,8 @@ import { BLOCCO_MANEGGEVOLE } from '../geometry/segmenti';
 import { nuovoId } from './id';
 import { prossimaTinta } from './tinte';
 import { normalizzaPorte, type PorteNesting } from './portePiano';
+import type { PezzoDaMisura } from '../geometry/pezziDaSopralluogo';
+import { materialiDelPreset, supportoDelMateriale } from './preset';
 
 /**
  * Supporto e venatura stanno nel modello dati (`db/types`), perché il preset
@@ -475,4 +477,68 @@ function normalizzaStampa(
   const massimo = numero(s.massimoSegmento, 0, 1);
   if (!(massimo > 0)) return undefined;
   return { segmenta: s.segmenta !== false, massimoSegmento: massimo };
+}
+
+/** il nome dell'essenza dei pezzi a cui non è stato dato un materiale */
+export const NOME_SENZA_MATERIALE = 'Senza materiale';
+
+/** un pezzo del sopralluogo, come lo vuole il piano di taglio */
+function pezzoDaMisura(p: PezzoDaMisura, id: string, i: number): PezzoNesting {
+  return {
+    id,
+    nome: p.nome,
+    // con la sagoma il pezzo porta le SUE misure (base, altezze…); senza,
+    // l'ingombro. Il quadrilatero storto porta invece i vertici: per lui
+    // larghezza e altezza restano l'ingombro, che serve alla riga
+    larghezza: p.sagoma?.vertici ? p.larghezza : (p.sagoma?.d1 ?? p.larghezza),
+    altezza: p.sagoma?.vertici ? p.altezza : (p.sagoma?.d2 ?? p.altezza),
+    misura3: p.sagoma?.d3,
+    vertici: p.sagoma?.vertici,
+    forma: p.sagoma?.forma,
+    quantita: p.quantita,
+    ruotabile: true,
+    tinta: prossimaTinta(i)
+  };
+}
+
+/**
+ * LE ESSENZE DEL PIANO DI TAGLIO, dai pezzi del sopralluogo.
+ *
+ * Senza materiali nel preset è com'era: un'essenza sola, «Materiale 1», col
+ * supporto del lavoro. Con i materiali, un'essenza per ognuno che ha dei
+ * pezzi — col nome del materiale e il SUO supporto — perché un pezzo di
+ * acidato non si taglia dalla bobina del solare. I pezzi rimasti senza
+ * materiale (forme disegnate prima che il preset ne avesse) vanno in
+ * un'essenza a parte, che dice cosa manca invece di metterli a caso.
+ *
+ * Senza pezzi, un piano di un lavoro coi materiali nasce con un'essenza
+ * vuota per materiale: è lì che si incolla la lista presa a mano.
+ */
+export function essenzeDaPezzi(
+  pezzi: PezzoDaMisura[],
+  preset: PresetProgetto | undefined,
+  ids: { materiale: (i: number) => string; pezzo: (i: number) => string } = {
+    materiale: () => nuovoId(),
+    pezzo: () => nuovoId()
+  }
+): MaterialeNesting[] {
+  const materiali = materialiDelPreset(preset);
+  let nm = 0;
+  let np = 0;
+  const essenza = (nome: string, supporto: PresetProgetto['supporto'], suoi: PezzoDaMisura[]) => ({
+    ...materialeNuovo(ids.materiale(nm++), nome, supporto),
+    pezzi: suoi.map((p) => pezzoDaMisura(p, ids.pezzo(np), np++))
+  });
+  if (materiali.length === 0) return [essenza('Materiale 1', preset?.supporto, pezzi)];
+  const noti = new Set(materiali.map((m) => m.id));
+  const esito: MaterialeNesting[] = [];
+  for (const m of materiali) {
+    const suoi = pezzi.filter((p) => p.materialeId === m.id);
+    if (suoi.length || pezzi.length === 0) {
+      esito.push(essenza(m.nome, supportoDelMateriale(preset, m.id), suoi));
+    }
+  }
+  const orfani = pezzi.filter((p) => !p.materialeId || !noti.has(p.materialeId));
+  if (orfani.length) esito.push(essenza(NOME_SENZA_MATERIALE, preset?.supporto, orfani));
+  return esito;
 }

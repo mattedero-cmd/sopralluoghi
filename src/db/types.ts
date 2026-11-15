@@ -93,7 +93,52 @@ export interface PresetProgetto {
     /** 'fascia' = teli larghi quanto la bobina; 'uguali' = tutti uguali */
     modo: 'fascia' | 'uguali';
   };
+  /**
+   * I MATERIALI DEL LAVORO: le pellicole che in questo sopralluogo si posano
+   * (solare, acidato, sicurezza…).
+   *
+   * Si dicono una volta nel preset, e da lì si richiamano: una forma che
+   * nasce, una porta che si rileva, prendono uno di questi. Il piano di
+   * taglio esce già diviso — un'essenza per materiale, ognuna col suo
+   * supporto — perché un pezzo di acidato non si taglia dalla bobina del
+   * solare.
+   *
+   * Assente o vuoto = il lavoro non distingue i materiali (com'era prima).
+   */
+  materiali?: MaterialePreset[];
 }
+
+/**
+ * Un materiale del preset: un nome e, se non è quello predefinito, il SUO
+ * preset.
+ *
+ * Ogni pellicola si lavora a modo suo: il solare con due centimetri attorno
+ * su bobina da 1520, l'acidato a filo del fermavetro su bobina da 1370, il
+ * coverstyle con cinque centimetri da rifilare e i teli orizzontali. Il
+ * preset del lavoro è il PREDEFINITO: un materiale nasce uguale a lui, e
+ * quando gli si dà un preset suo quello vale per le sue forme e le sue porte.
+ */
+export interface MaterialePreset {
+  id: ID;
+  nome: string;
+  /**
+   * IL PRESET DI QUESTO MATERIALE: abbondanza, supporto, teli. Assente =
+   * quello predefinito del lavoro. Non porta a sua volta materiali.
+   */
+  preset?: Omit<PresetProgetto, 'materiali'>;
+  /**
+   * LEGACY (1.96.0): il solo supporto del materiale, prima che ne avesse un
+   * preset intero. Si legge ancora, sopra il predefinito.
+   */
+  supporto?: Pick<NonNullable<PresetProgetto['supporto']>, 'modo' | 'lastra' | 'bobina'>;
+}
+
+/**
+ * Come è nato il progetto: `veloce` (nome, cliente, luogo e via) o
+ * `complesso` (con il preset compilato prima di cominciare, materiali
+ * compresi). Assente = veloce, come tutti i progetti di prima.
+ */
+export type TipoProgetto = 'veloce' | 'complesso';
 
 export interface Cartella {
   id: ID;
@@ -141,8 +186,10 @@ export interface Progetto {
   stato: StatoProgetto;
   /** Note generali del progetto, riportate nel PDF */
   note: string;
-  /** i valori di partenza di questo lavoro (abbondanza, supporto, teli) */
+  /** i valori di partenza di questo lavoro (abbondanza, supporto, teli, materiali) */
   preset?: PresetProgetto;
+  /** veloce o complesso (preset obbligatorio alla creazione); assente = veloce */
+  tipo?: TipoProgetto;
   creatoIl: number;
   modificatoIl: number;
 }
@@ -473,6 +520,12 @@ interface AnnotazioneBase {
    * e nel report/distinta contano come un solo elemento con quantità.
    */
   gruppoQuota?: string;
+  /**
+   * Il MATERIALE della forma, fra quelli del preset del lavoro
+   * (`PresetProgetto.materiali`). Vale per le forme che diventano pezzi:
+   * il piano di taglio le mette nell'essenza di quel materiale.
+   */
+  materialeId?: ID;
   stile: Stile;
 }
 
@@ -581,6 +634,14 @@ export interface QuotaRettangolo extends AnnotazioneBase {
    * vorrebbe dire niente.
    */
   pannelli?: Pannellizzazione;
+  /**
+   * DI CHI È LA DIVISIONE IN TELI: `preset` = l'ha fatta il preset del
+   * materiale, e si rifà da sola quando cambiano misure, abbondanze o
+   * materiale; `mano` = l'ha decisa chi rileva nell'ambiente dei teli (anche
+   * togliendola), e nessun preset la tocca più. Assente con `pannelli` =
+   * divisione di prima che esistesse (si tratta come fatta a mano).
+   */
+  teliDa?: 'preset' | 'mano';
 }
 
 /** Angoli del quadrilatero, con conversione dei record legacy (rect) */
@@ -789,6 +850,14 @@ export interface QuotaPoligono extends AnnotazioneBase {
    * che deve stare nella fascia del rotolo.
    */
   pannelli?: Pannellizzazione;
+  /**
+   * DI CHI È LA DIVISIONE IN TELI: `preset` = l'ha fatta il preset del
+   * materiale, e si rifà da sola quando cambiano misure, abbondanze o
+   * materiale; `mano` = l'ha decisa chi rileva nell'ambiente dei teli (anche
+   * togliendola), e nessun preset la tocca più. Assente con `pannelli` =
+   * divisione di prima che esistesse (si tratta come fatta a mano).
+   */
+  teliDa?: 'preset' | 'mano';
 }
 
 /** gli spigoli dichiarati a squadro, come maschera per vertice */
@@ -1456,6 +1525,8 @@ export interface Porta {
    * costruzione cambia la firma e la porta va in un gruppo suo.
    */
   firma?: string;
+  /** il materiale della pellicola, fra quelli del preset del lavoro */
+  materialeId?: ID;
   creatoIl: number;
   modificatoIl: number;
 }

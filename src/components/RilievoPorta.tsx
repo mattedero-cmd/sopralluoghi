@@ -41,9 +41,12 @@ export function RilievoPorta({
   fotoId,
   onSalvata,
   onChiudi,
-  lavoro
+  lavoro,
+  materialeId
 }: {
   progettoId: ID;
+  /** il materiale della porta nuova; una copia, senza, tiene quello della porta di partenza */
+  materialeId?: ID;
   modo: ModoRilievo;
   portaId?: ID;
   /** foto da cui si rileva (diventa la foto del rilievo della porta nuova) */
@@ -59,8 +62,8 @@ export function RilievoPorta({
   const [titolo, setTitolo] = useState('Rilievo porta');
   // la porta di questa apertura: dopo il primo salvataggio, aggiornarla
   const corrente = useRef<ID | null>(modo === 'scheda' ? portaId ?? null : null);
-  const callback = useRef({ onSalvata, onChiudi, lavoro });
-  callback.current = { onSalvata, onChiudi, lavoro };
+  const callback = useRef({ onSalvata, onChiudi, lavoro, materialeId });
+  callback.current = { onSalvata, onChiudi, lavoro, materialeId };
 
   useEffect(() => {
     const manda = (msg: Record<string, unknown>) =>
@@ -112,7 +115,8 @@ export function RilievoPorta({
           descrizione: String(m.descrizione ?? ''),
           config: m.config,
           righe: (m.righe as Porta['righe']) ?? [],
-          fotoRilievoId: fotoId ?? null
+          fotoRilievoId: fotoId ?? null,
+          materialeId: callback.current.materialeId ?? origine?.materialeId
         });
         const nuova = !id;
         corrente.current = porta.id;

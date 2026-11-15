@@ -91,7 +91,13 @@ export default defineConfig({
   define: {
     // data di build visibile nelle Impostazioni: permette di verificare
     // quale versione sta effettivamente girando sul dispositivo
-    __BUILD__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' '))
+    __BUILD__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ')),
+    // e il numero di versione, lo stesso del registro delle novità: la data
+    // dice QUANDO, il numero dice QUALE — e si confronta con quello che si
+    // sa essere uscito
+    __VERSIONE__: JSON.stringify(
+      (JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version?: string }).version ?? ''
+    )
   },
   build: {
     chunkSizeWarningLimit: 3000,

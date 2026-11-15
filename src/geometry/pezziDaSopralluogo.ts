@@ -50,6 +50,8 @@ export interface PezzoDaMisura {
    * non bastano a dire di più (e allora non si inventa niente).
    */
   sagoma?: SagomaTaglio;
+  /** il materiale della forma (preset del lavoro): l'essenza in cui va tagliato */
+  materialeId?: string;
 }
 
 /** la forma con le sue misure, come la vuole il piano di taglio (mm) */
@@ -622,7 +624,8 @@ export function raggruppaPezzi(pezzi: PezzoDaMisura[]): PezzoDaMisura[] {
     // due pezzi con lo stesso ingombro ma forma diversa NON sono lo stesso
     // pezzo: un trapezio e il suo rettangolo si tagliano in modi diversi
     const sagoma = p.sagoma ? `|${p.sagoma.forma}:${p.sagoma.d1}×${p.sagoma.d2}×${p.sagoma.d3 ?? ''}` : '';
-    const chiave = `${p.nome}|${p.larghezza}×${p.altezza}${sagoma}${
+    // e due pezzi uguali di due materiali diversi sono due pezzi
+    const chiave = `${p.materialeId ?? ''}|${p.nome}|${p.larghezza}×${p.altezza}${sagoma}${
       p.sagoma?.vertici ? '|' + p.sagoma.vertici.map((q) => q.join(',')).join(' ') : ''
     }`;
     const gia = mappa.get(chiave);

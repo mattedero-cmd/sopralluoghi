@@ -37,9 +37,9 @@ import {
   segmentiPoligono,
   segmentoELato
 } from '../db/types';
-import { aggiornaFoto, aggiungiFoto, contaPorte, creaPiantaDaFoto, eliminaFoto, eliminaPorta, impostaSfondoPianta, incorporaCensureFoto, leggiImpostazioni, portePerProgetto, salvaAnnotazione, salvaAnnotazioniFoto } from '../db/repository';
+import { aggiornaFoto, aggiungiFoto, cambiaMaterialePorta, contaPorte, creaPiantaDaFoto, eliminaFoto, eliminaPorta, impostaSfondoPianta, incorporaCensureFoto, leggiImpostazioni, portePerProgetto, salvaAnnotazione, salvaAnnotazioniFoto } from '../db/repository';
 import { RilievoPorta, type ModoRilievo } from '../components/RilievoPorta';
-import type { Porta } from '../db/types';
+import type { MaterialePreset, Porta } from '../db/types';
 import {
   blobOrigine,
   canvasInBlob,
@@ -53,7 +53,19 @@ import { caricaDettaglio } from '../utils/immaginiCallout';
 import { naviga } from '../router';
 import { ConfermaDialog, ImmagineBlob, Modale, StatoApp, type RichiestaConferma } from '../components/comuni';
 import { mostraToast } from '../state/toast';
-import { conPresetApplicato, fasciaDelPreset, predefinitiTeli } from '../utils/preset';
+import {
+  conMaterialeCambiato,
+  conPresetApplicato,
+  conTeliDelPreset,
+  fasciaDelPreset,
+  materialeDelPreset,
+  materialeDiNascita,
+  materialiDelPreset,
+  presetDelMateriale,
+  portaMateriale,
+  predefinitiTeli
+} from '../utils/preset';
+import { SceltaMateriale } from '../components/MaterialiLavoro';
 import { StageEditor, type ModalitaVincolo, type Strumento } from './StageEditor';
 import { FabbricaAnnotazioni } from './fabbrica';
 import { MenuCircolareEtichette } from './MenuCircolareEtichette';
@@ -68,7 +80,7 @@ import {
   pannelliDellaForma
 } from '../geometry/formaQuadrilatera';
 import { chiusuraAngoliRetti } from '../geometry/poligonoQuotato';
-import { normalizzaPannellizzazione } from '../geometry/pannelli';
+import { normalizzaPannellizzazione, type AssePannelli } from '../geometry/pannelli';
 import { pianiAgganciati, pianoProiettato } from '../geometry/pianoModifica';
 import { calcolaCatene, sommaCatenaInUnita } from '../geometry/catene';
 import {
@@ -644,7 +656,60 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   /** menu «Rilievo porta»: nuova porta o una già rilevata */
   const [menuPorta, setMenuPorta] = useState(false);
   /** rilievo porta aperto a tutto schermo */
-  const [rilievoAperto, setRilievoAperto] = useState<{ modo: ModoRilievo; portaId?: string } | null>(null);
+  const [rilievoAperto, setRilievoAperto] = useState<{
+    modo: ModoRilievo;
+    portaId?: string;
+    /** il materiale della porta nuova, scelto nel menu prima di rilevarla */
+    materialeId?: string;
+  } | null>(null);
+  /**
+   * IL MATERIALE DEL MOMENTO: quello che una forma o una porta prende
+   * nascendo. È l'ultimo scelto — le finestre di una stanza sono quasi
+   * sempre della stessa pellicola — e si ricorda per progetto, così
+   * riaprendo la foto dopo si riparte da lì.
+   */
+  const chiaveMateriale = foto ? `sopralluoghi:materiale:${foto.progettoId}` : null;
+  const [materialeScelto, setMaterialeScelto] = useState<string | null>(null);
+  useEffect(() => {
+    if (!chiaveMateriale) return;
+    try {
+      setMaterialeScelto(localStorage.getItem(chiaveMateriale));
+    } catch {
+      /* senza memoria si riparte dal primo materiale */
+    }
+  }, [chiaveMateriale]);
+  const scegliMateriale = (id: string) => {
+    setMaterialeScelto(id);
+    try {
+      if (chiaveMateriale) localStorage.setItem(chiaveMateriale, id);
+    } catch {
+      /* la scelta vale per questa sessione */
+    }
+  };
+  const materialiLavoro = materialiDelPreset(progetto?.preset);
+  const materialeCorrente = materialeDiNascita(progetto?.preset, materialeScelto);
+  /**
+   * IL MATERIALE DI UNA FORMA, CAMBIATO — dalla barra sopra la foto o dal
+   * pannello «Modifica». Una famiglia di copie è una misura sola: il
+   * materiale va a tutte; e con lui l'abbondanza del suo preset, se quella
+   * di prima non era stata cambiata a mano. Torna la forma com'è diventata.
+   */
+  const cambiaMaterialeForma = (forma: Annotazione, id: string): Annotazione => {
+    scegliMateriale(id);
+    const nuova = conMaterialeCambiato(forma, progetto?.preset, id);
+    if (!annotazioni) return nuova;
+    const famiglia = forma.gruppoQuota;
+    commit(
+      annotazioni.map((a) =>
+        a.id === forma.id
+          ? nuova
+          : famiglia && a.gruppoQuota === famiglia
+            ? conMaterialeCambiato(a, progetto?.preset, id)
+            : a
+      )
+    );
+    return nuova;
+  };
   /** rilevamento volti in corso (bottone in attesa) */
   const [voltiInCorso, setVoltiInCorso] = useState(false);
   /** oggetto dello schizzo selezionato come entità A SÉ STANTE */
@@ -977,8 +1042,24 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   }, []);
 
 
+  /**
+   * I TELI DEL PRESET SEGUONO LA FORMA. Ogni forma toccata da questa modifica
+   * (misura scritta, abbondanza, materiale, vertici) ripassa dai teli del
+   * preset del suo materiale: se la divisione è del preset si rifà, se è
+   * stata decisa a mano resta com'è. Le forme non toccate non si guardano —
+   * per identità — così il conto si fa solo dove serve.
+   */
+  const annotazioniOra = useRef<Annotazione[] | null>(null);
+  annotazioniOra.current = annotazioni;
+  const contestoTeli = useRef({ foto, preset: progetto?.preset });
+  contestoTeli.current = { foto, preset: progetto?.preset };
   const commit = useCallback(
-    (nuove: Annotazione[]) => {
+    (nuoveGrezze: Annotazione[]) => {
+      const { foto: f, preset } = contestoTeli.current;
+      const prima = new Set(annotazioniOra.current ?? []);
+      const nuove = preset
+        ? nuoveGrezze.map((a) => (prima.has(a) ? a : conTeliDelPreset(a, f ?? null, preset)))
+        : nuoveGrezze;
       setAnnotazioni((correnti) => {
         if (correnti) {
           passato.current.push(correnti);
@@ -1289,7 +1370,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
     if (!annotazioni) return;
     // IL PRESET DEL LAVORO ENTRA QUI, dove le forme nascono: l'abbondanza si
     // scrive alla nascita e poi la forma è libera
-    const a = conPresetApplicato(nuova, progetto?.preset);
+    const a = conPresetApplicato(nuova, progetto?.preset, materialeCorrente);
     commit([...annotazioni, a]);
     setSelezioneId(a.id);
     setStrumento('seleziona');
@@ -2665,7 +2746,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
         creatoIl: proposta.creatoIl ?? Date.now(),
         stile: { ...proposta.stile, colore: COLORE_QUOTA }
       },
-      progetto?.preset
+      progetto?.preset,
+      materialeCorrente
     ) as QuotaPoligono;
     commit([...annotazioni, definitiva]);
     chiudiProposta();
@@ -2868,7 +2950,8 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       ...annotazioni,
       conPresetApplicato(
         { ...s, snapAngolo: snapSchizzo > 0 ? snapSchizzo : undefined },
-        progetto?.preset
+        progetto?.preset,
+        materialeCorrente
       )
     ]);
     setSelezioneId(s.id);
@@ -4360,11 +4443,22 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
       {/* RILIEVO PORTA: nuova porta, o una già rilevata nel progetto */}
       {menuPorta && (
         <Modale titolo="Rilievo porta" onChiudi={() => setMenuPorta(false)}>
+          {materialiLavoro.length > 0 && (
+            <div className="campo">
+              <label>Materiale della porta nuova</label>
+              <SceltaMateriale
+                materiali={materialiLavoro}
+                valore={materialeCorrente}
+                onScegli={scegliMateriale}
+                etichetta="Materiale della porta nuova"
+              />
+            </div>
+          )}
           <button
             className="btn primario largo"
             onClick={() => {
               setMenuPorta(false);
-              setRilievoAperto({ modo: 'nuova' });
+              setRilievoAperto({ modo: 'nuova', materialeId: materialeCorrente });
             }}
           >
             <Icona nome="porta" dimensione={18} /> Rileva una porta nuova
@@ -4380,8 +4474,21 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 {(porteProgetto ?? []).map((p) => (
                   <div key={p.id} className="voce-porta">
                     <div className="voce-porta-testo">
-                      <strong>{p.nome}</strong>
+                      <strong>
+                        {p.nome}
+                        {materialeDelPreset(progetto?.preset, p.materialeId)
+                          ? ` · ${materialeDelPreset(progetto?.preset, p.materialeId)?.nome}`
+                          : ''}
+                      </strong>
                       <span>{p.descrizione}</span>
+                      {materialiLavoro.length > 1 && (
+                        <SceltaMateriale
+                          materiali={materialiLavoro}
+                          valore={materialeDelPreset(progetto?.preset, p.materialeId)?.id}
+                          onScegli={(id) => void cambiaMaterialePorta(p.id, id)}
+                          etichetta={`Materiale di ${p.nome}`}
+                        />
+                      )}
                     </div>
                     <div className="riga-pulsanti">
                       <button
@@ -4424,6 +4531,7 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
           progettoId={foto.progettoId}
           modo={rilievoAperto.modo}
           portaId={rilievoAperto.portaId}
+          materialeId={rilievoAperto.materialeId}
           fotoId={foto.id}
           onSalvata={(porta, nuova) => {
             if (!nuova) return;
@@ -4975,6 +5083,29 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             </div>
           );
         })()}
+
+      {/* IL MATERIALE DELLA FORMA SELEZIONATA. Una forma appena nata è
+          selezionata: qui si vede che materiale ha preso e lo si cambia con
+          un tocco, senza aprire niente. La scelta diventa quella del momento,
+          e la forma dopo nasce già così. */}
+      {!proposta &&
+        !duplicaMaster &&
+        strumento === 'seleziona' &&
+        !oggettoSel &&
+        selezionata &&
+        portaMateriale(selezionata) &&
+        materialiLavoro.length > 0 &&
+        quotaInModifica === null &&
+        testoInModifica === null && (
+          <div className="barra-materiale" role="group" aria-label="Materiale della forma">
+            <span>Materiale</span>
+            <SceltaMateriale
+              materiali={materialiLavoro}
+              valore={materialeDelPreset(progetto?.preset, selezionata.materialeId)?.id}
+              onScegli={(id) => void cambiaMaterialeForma(selezionata, id)}
+            />
+          </div>
+        )}
 
       {/* oggetto selezionato (con ambiente dedicato): subito due pulsanti
           discreti — Modifica ed Elimina — senza dover azzeccare il secondo tap */}
@@ -5917,6 +6048,28 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               poli={poli}
               foto={foto}
               immagine={immagine}
+              materiali={poli.soloEtichetta ? [] : materialiLavoro}
+              materialeId={materialeDelPreset(progetto?.preset, poli.materialeId)?.id}
+              onMateriale={(id) => cambiaMaterialeForma(poli, id) as QuotaPoligono}
+              teliPreset={(() => {
+                const t = presetDelMateriale(progetto?.preset, poli.materialeId)?.teli;
+                if (!t) return undefined;
+                return {
+                  nome: materialeDelPreset(progetto?.preset, poli.materialeId)?.nome,
+                  asse: t.asse,
+                  fascia: fasciaDelPreset(progetto?.preset, poli.unita, poli.materialeId).massimo
+                };
+              })()}
+              onTeliAlPreset={() =>
+                // senza divisione e senza «a mano», il commit la rifà col preset
+                commit(
+                  annotazioni.map((a) => {
+                    if (a.id !== poli.id) return a;
+                    const { pannelli: _p, teliDa: _d, ...resto } = poli;
+                    return resto as Annotazione;
+                  })
+                )
+              }
               codice={codiceForma(poli)}
               numero={numeriForme.get(poli.id)?.numero}
               onNumero={(n) => {
@@ -6179,10 +6332,10 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                  * divisione che quasi mai è quella vera. Col supporto nel
                  * preset lo sa anche qui.
                  */
-                ...fasciaDelPreset(progetto?.preset, forma.unita),
+                ...fasciaDelPreset(progetto?.preset, forma.unita, ann.materialeId),
                 prospettiva: { punti: forma.contorno, immagine }
               }}
-              predefiniti={predefinitiTeli(progetto?.preset, forma.unita)}
+              predefiniti={predefinitiTeli(progetto?.preset, forma.unita, ann.materialeId)}
               iniziale={
                 // le giunzioni fuori misura non devono comparire come maniglie:
                 // si risana con lo stesso metro del disegno e della distinta
@@ -6197,12 +6350,13 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 commit(
                   annotazioni.map((a) => {
                     if (a.id !== ann.id) return a;
+                    // deciso qui, a mano: da adesso il preset non la rifà più
                     if (!pannelli) {
                       // via del tutto: la forma torna un pezzo unico
                       const { pannelli: _tolto, ...resto } = a as QuotaPoligono;
-                      return resto as Annotazione;
+                      return { ...resto, teliDa: 'mano' } as Annotazione;
                     }
-                    return { ...a, pannelli } as Annotazione;
+                    return { ...a, pannelli, teliDa: 'mano' } as Annotazione;
                   })
                 );
                 indietro();
@@ -6240,6 +6394,13 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
             unita: poli.unita,
             posizioneTesto: seg.posizioneTesto ?? 'sopra',
             nota: seg.nota,
+            // LE ABBONDANZE CHE IL LATO HA GIÀ. Senza, il pannello si apriva
+            // coi campi vuoti e al salvataggio le cancellava: scrivendo la
+            // misura di una forma nata col preset «lato per lato», sinistra,
+            // destra, sopra e sotto sparivano
+            abbInizio: seg.abbInizio,
+            abbFine: seg.abbFine,
+            scorrTesto: seg.scorrTesto,
             stato: poli.stato,
             zIndex: poli.zIndex,
             stile: poli.stile
@@ -7883,11 +8044,25 @@ function EditorPoligono({
   onOggetti,
   onRicostruisci,
   onElimina,
-  onChiudi
+  onChiudi,
+  materiali = [],
+  materialeId,
+  onMateriale,
+  teliPreset,
+  onTeliAlPreset
 }: {
   poli: QuotaPoligono;
   foto: Foto;
   immagine: ImmagineDisegnabile;
+  /** i materiali del lavoro: vuoto = il lavoro non li distingue */
+  materiali?: MaterialePreset[];
+  materialeId?: string;
+  /** cambia il materiale (e l'abbondanza del suo preset); torna la forma nuova */
+  onMateriale?: (id: string) => QuotaPoligono;
+  /** come il preset del materiale divide in teli; assente = il preset non ne dice */
+  teliPreset?: { nome?: string; asse: AssePannelli; fascia?: number };
+  /** toglie la divisione fatta a mano: da lì la rifà il preset */
+  onTeliAlPreset?: () => void;
   /** codice automatico corrente (es. "P1.A1") */
   codice: string;
   /** numero della forma nella sequenza condivisa (per il riordino manuale) */
@@ -7929,6 +8104,14 @@ function EditorPoligono({
   const [periTesto, setPeriTesto] = useState(
     poli.abbPerimetro === undefined ? '' : String(poli.abbPerimetro).replace('.', ',')
   );
+  /** le abbondanze ai capi delle quote («b +3 / +3»), dette in chiaro */
+  const abbSulleQuote = segs.flatMap((sg, i) => {
+    const ini = sg.abbInizio ?? 0;
+    const fin = sg.abbFine ?? 0;
+    if (!(ini > 0) && !(fin > 0)) return [];
+    const f = (v: number) => `+${formattaNumero(v)}`;
+    return [`${simboli[i] ?? `lato ${i + 1}`} ${f(ini)} / ${f(fin)}`];
+  });
   const latiConLaLoro = segs.filter(
     (sg) => segmentoELato(sg, n) && sg.abbLato !== undefined
   ).length;
@@ -8283,6 +8466,31 @@ function EditorPoligono({
           Su una parete a sette lati «due centimetri tutt'attorno» sono sette
           lati da aprire uno per uno, e il lato dimenticato non si vede.
         */}
+        {/*
+          IL MATERIALE, accanto all'abbondanza che decide: cambiandolo la
+          forma prende il preset del nuovo materiale — l'abbondanza qui sotto
+          cambia sotto gli occhi, se non era stata scritta a mano.
+        */}
+        {materiali.length > 0 && onMateriale && (
+          <div className="campo">
+            <label>Materiale</label>
+            <SceltaMateriale
+              materiali={materiali}
+              valore={materialeId}
+              etichetta="Materiale della forma"
+              onScegli={(id) => {
+                const nuova = onMateriale(id);
+                setPeriTesto(
+                  nuova.abbPerimetro === undefined ? '' : String(nuova.abbPerimetro).replace('.', ',')
+                );
+              }}
+            />
+            <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
+              Abbondanza e teli vengono dal preset del materiale. Un’abbondanza scritta a mano resta
+              quella anche cambiando materiale.
+            </span>
+          </div>
+        )}
         <div className="campo">
           <label>Abbondanza perimetrale (in fuori, su ogni lato)</label>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -8299,6 +8507,16 @@ function EditorPoligono({
             />
             <span style={{ color: 'var(--testo-2)', fontSize: 13 }}>{poli.unita}</span>
           </div>
+          {/*
+            LE ABBONDANZE SULLE QUOTE, dette qui. Il preset «lato per lato» le
+            scrive ai capi di base e altezza, non in questo campo: senza questa
+            riga il campo vuoto faceva credere che l'abbondanza non ci fosse.
+          */}
+          {abbSulleQuote.length > 0 && (
+            <span style={{ color: 'var(--ok)', fontSize: 13, fontWeight: 600, marginTop: 4 }}>
+              Sulle quote: {abbSulleQuote.join(' · ')} {poli.unita} — si cambiano toccando la quota.
+            </span>
+          )}
           <span style={{ color: 'var(--testo-2)', fontSize: 13, marginTop: 4 }}>
             Ogni lato si sposta in fuori di tanto, perpendicolare a sé stesso, e dove due
             abbondanze si incontrano si fondono nello spigolo.{' '}
@@ -8369,6 +8587,32 @@ function EditorPoligono({
                   ? 'Prima quota base e altezza: i teli si dividono a centimetri, e i centimetri stanno nelle quote.'
                   : 'Prima quota i lati: da almeno una quota si ricava la forma, e i teli seguono la sagoma vera — anche sotto una falda.'}
             </span>
+            {/*
+              DI CHI È LA DIVISIONE, detto in chiaro: senza questa riga non si
+              capiva perché una forma non si divideva — se a mano, se entra in
+              un telo, se mancano le misure.
+            */}
+            {teliPreset && (
+              <span className="stato-teli">
+                {poli.teliDa === 'mano' || (poli.pannelli && poli.teliDa !== 'preset') ? (
+                  <>
+                    Divisione fatta a mano: il preset{teliPreset.nome ? ` del ${teliPreset.nome}` : ''} non
+                    la cambia.{' '}
+                    {onTeliAlPreset && (
+                      <button className="btn" onClick={onTeliAlPreset}>
+                        Rifalla col preset
+                      </button>
+                    )}
+                  </>
+                ) : !misurata ? (
+                  'I teli del preset si fanno da soli appena ci sono le misure.'
+                ) : teli ? (
+                  `Divisione del preset${teliPreset.nome ? ` del ${teliPreset.nome}` : ''}: teli ${teliPreset.asse === 'verticale' ? 'verticali' : 'orizzontali'}${teliPreset.fascia ? `, fascia ${formattaNumero(teliPreset.fascia)} ${poli.unita}` : ''}. Si rifà da sola se cambiano misure o materiale.`
+                ) : (
+                  `Entra in un telo solo: teli ${teliPreset.asse === 'verticale' ? 'verticali' : 'orizzontali'}${teliPreset.fascia ? `, fascia ${formattaNumero(teliPreset.fascia)} ${poli.unita}` : ''}${teliPreset.nome ? ` (preset del ${teliPreset.nome})` : ''}, non serve dividerla.`
+                )}
+              </span>
+            )}
           </div>
         )}
         <div className="campo">

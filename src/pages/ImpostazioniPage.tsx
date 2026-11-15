@@ -299,6 +299,11 @@ export function ImpostazioniPage() {
 
         <h2>Versione dell’app</h2>
         <p style={{ color: 'var(--testo-2)' }}>
+          {__VERSIONE__ ? (
+            <>
+              Versione <strong>{__VERSIONE__}</strong> ·{' '}
+            </>
+          ) : null}
           Build <strong>{__BUILD__}</strong> (UTC). È la data della versione che sta girando su
           questo dispositivo: se non corrisponde all’ultima pubblicata, l’app installata sta
           ancora servendo la copia che ha in cache.

@@ -10,7 +10,7 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
-## 1.96.0 — Porte a due ante: le ante chiudono fra loro
+## 1.100.0 — Porte a due ante: le ante chiudono fra loro
 
 - Con due ante la guida chiede le cose **una volta sola** e valgono per le due
   ante; resta separata solo la larghezza di ogni anta.
@@ -21,6 +21,161 @@ in cui la copia in cache è stata generata.
 - Disegno dall'alto del centro della porta, con anta attiva e semifissa.
 - Pellicola delle facce più larga del sormonto quando l'anta ha il bordo diritto
   e la battuta centrale (riveste lo scalino del bordo centrale).
+## 1.99.3 — Lo zero nel preset si scrive
+
+- **Margine, lama, sormonto e misure del supporto accettano lo zero.** Il
+  campo mostrava il numero salvato, e lo zero diventava un campo vuoto: si
+  batteva «0», il campo si svuotava, e ricompariva il suggerimento grigio —
+  «10» sul margine — che sembrava un valore vero. Per lo stesso motivo non si
+  poteva scrivere «0,5». Adesso il campo tiene quello che si scrive, e lo
+  zero resta zero. I suggerimenti di margine e sormonto dicono «0», che è
+  quanto vale un campo lasciato vuoto.
+
+## 1.99.2 — In Impostazioni il numero di versione
+
+- **Impostazioni → «Versione dell'app» dice il numero**, oltre alla data di
+  build: «Versione 1.99.2 · Build …». La data diceva quando, non quale: per
+  sapere se sul telefono era già arrivata una correzione bisognava fare il
+  conto a mente. Adesso il numero si confronta con quello di queste note.
+
+## 1.99.1 — Di chi è la divisione in teli, detto in chiaro
+
+- **In «Modifica», sotto la pannellizzazione, una riga dice cosa sta
+  succedendo ai teli**: «Divisione del preset del Coverstyle: teli
+  orizzontali, fascia 150 cm», oppure «Entra in un telo solo: non serve
+  dividerla», oppure «I teli si fanno appena ci sono le misure». Prima una
+  forma che non si divideva non diceva perché.
+
+- **Una divisione fatta a mano — o fatta prima della 1.99 — si riporta al
+  preset con un tocco**: «Rifalla col preset». Le forme divise prima che i
+  teli si facessero da soli contano come fatte a mano, e senza questo tasto
+  restavano ferme per sempre.
+
+## 1.99.0 — I teli del preset si fanno da soli
+
+- **Appena una forma ha le misure, si divide in teli da sola**, come dice il
+  preset del suo materiale: fascia della bobina meno i margini, sormonto,
+  verso del lembo, teli verticali od orizzontali. Prima il preset dei teli
+  valeva solo aprendo «Dividi in teli» forma per forma, o con «applica a
+  tutto»: una porta da 110 × 220 in coverstyle a teli orizzontali su bobina
+  da 1520 restava intera finché non la si apriva.
+
+- **La divisione segue la forma**: si rifà quando cambiano le misure, le
+  abbondanze o il materiale. Una forma che entra in un telo solo non si
+  divide — la stessa porta in solare, a teli verticali, sta in un telo da
+  150 cm e resta intera; tornando al coverstyle si ridivide.
+
+- **Una divisione decisa a mano resta tua.** Confermata (o tolta)
+  nell'ambiente dei teli, nessun preset la tocca più; lo stesso per le
+  divisioni fatte prima di questa versione. «Salva e applica a tutto» la
+  riporta al preset.
+
+## 1.98.2 — Scrivendo la misura, le abbondanze del preset restavano a metà strada
+
+- **Il preset «lato per lato» si perdeva appena si scriveva una misura.**
+  Le sue abbondanze — sinistra, destra, sopra, sotto — si scrivono ai capi
+  delle quote di base e altezza, e la forma nasceva con quelle giuste. Ma il
+  pannello che si apre toccando una quota (per scriverci «110») si costruiva
+  senza le abbondanze che la quota aveva già: i campi «sinistra» e «destra»
+  comparivano vuoti, e «Salva quota» le cancellava. Con «uguale attorno» non
+  succedeva, perché quel numero sta sulla forma e non sulle quote. Adesso il
+  pannello le mostra e le tiene; con loro anche lo spostamento del numero
+  lungo la linea, che si perdeva allo stesso modo.
+
+- **In «Modifica» si vedono le abbondanze sulle quote**: sotto il campo
+  dell'abbondanza perimetrale (che col preset lato per lato resta vuoto) una
+  riga dice «Sulle quote: b +3 / +3 · h +0 / +10 cm».
+
+## 1.98.1 — Il materiale anche in «Modifica»
+
+- **Nel pannello «Modifica» di una forma c'è il materiale**, subito sopra
+  l'abbondanza che il suo preset decide. Prima il materiale si cambiava solo
+  dalla barra sopra la foto, che col pannello aperto sparisce: chi apriva la
+  forma per guardarne l'abbondanza non vedeva di che materiale fosse, né
+  poteva cambiarlo lì. Adesso cambiandolo l'abbondanza si aggiorna sotto gli
+  occhi — se non era stata scritta a mano: quella resta.
+
+## 1.98.0 — Nel progetto complesso, un preset per ogni materiale
+
+- **La creazione di un progetto complesso chiede un preset per ogni
+  materiale.** Dopo i dati del progetto si scelgono i materiali; poi, uno per
+  uno, la guida apre il preset di ciascuno — «Passo 4 di 5 · materiale 1 di
+  2» — con abbondanza, supporto e teli. Ognuno parte dai valori di default;
+  dal secondo in poi c'è «Uguale al Solare» per partire da quello prima e
+  cambiare solo quello che cambia. Il progetto nasce all'ultimo passo.
+
+- **«Indietro» non perde niente**: si torna di materiale in materiale fino ai
+  dati del progetto, e andando di nuovo avanti si ritrova tutto com'era.
+
+- **Nel preset di un progetto complesso ci sono solo i materiali**: una
+  scheda per ciascuno, senza «predefinito» da cui dipendere. Un materiale
+  aggiunto dopo parte dai valori di default e ha il suo preset come gli
+  altri. Nei progetti veloci resta com'era: predefinito, e un preset suo per
+  il materiale che lo vuole.
+
+- La riga del preset nella scheda del progetto lo dice: «2 materiali, ognuno
+  col suo preset: Solare, Coverstyle».
+
+## 1.97.0 — Ogni materiale col suo preset
+
+- **Il preset non è più uno solo.** Quello del lavoro diventa il
+  **predefinito**, e ogni materiale può averne **uno suo**: abbondanza,
+  supporto (bobina o lastre, lama, margine, venatura) e teli. Il solare con
+  due centimetri attorno su bobina da 1520, il coverstyle con cinque e i teli
+  orizzontali su bobina da 1600: ognuno come si lavora davvero.
+
+- **Nel preset ci sono le schede**: «Predefinito» e una per materiale. Un
+  materiale nasce «come il predefinito»; toccando «Preset suo» lo copia così
+  com'è e da lì lo si cambia. Le schede col preset proprio hanno un pallino, e
+  nella scheda del progetto il materiale è segnato «(preset suo)».
+
+- **Tutto segue il preset del materiale**: l'abbondanza di una forma che
+  nasce, la divisione in teli (fascia, sormonto, verso), il supporto della sua
+  essenza nel piano di taglio e dei kit delle porte, e «Salva e applica a
+  tutto», che ora rifà ogni forma col preset del suo materiale.
+
+- **Cambiando materiale a una forma l'abbondanza cambia con lui**, se era
+  ancora quella del preset di prima. Un'abbondanza scritta a mano resta
+  quella, e la divisione in teli non si tocca.
+
+- Un materiale salvato con la 1.96.0 con la sola bobina sua si apre come
+  preset suo: il predefinito con quella bobina.
+
+## 1.96.0 — Progetto veloce o complesso, e i materiali del lavoro
+
+- **Il nuovo progetto si crea a passi.** Prima la scelta: **progetto
+  veloce** — nome, cliente, luogo, e si comincia, come prima — oppure
+  **progetto complesso**, che nasce solo dopo aver detto il **preset**. Su un
+  lavoro grande è lì che si risparmia: dirlo dopo vorrebbe dire ripassare
+  ogni forma già disegnata.
+
+- **Nel preset ci sono i materiali del lavoro.** Si sceglie fra quelli di
+  partenza — **Solare, Acidato, Sicurezza, Murales, Coverstyle** — e se ne
+  aggiungono altri col loro nome. Ogni materiale può avere **la sua bobina o
+  le sue lastre**; se no usa il supporto del lavoro. In un progetto complesso
+  almeno un materiale è obbligatorio.
+
+- **Una forma nasce col suo materiale.** Appena disegnata è selezionata, e
+  sopra i comandi compare la fila dei materiali: quello acceso è il
+  materiale preso, un tocco lo cambia. Si riparte sempre dall'ultimo scelto —
+  le finestre di una stanza sono quasi sempre della stessa pellicola. Una
+  copia richiamata tiene il materiale dell'originale, e cambiandolo sulla
+  forma cambia a tutta la famiglia sulla foto.
+
+- **Anche la porta.** Nel menu «Rilievo porta» si sceglie il materiale prima
+  di rilevarne una nuova; una porta «Simile» tiene quello della porta da cui
+  parte, e quelle già rilevate si cambiano dallo stesso elenco.
+
+- **Il piano di taglio esce diviso per materiale.** Un'essenza per
+  materiale, col nome del materiale e il suo supporto: un pezzo di acidato
+  non si taglia dalla bobina del solare. Le forme rimaste senza materiale
+  vanno in «Senza materiale», invece di finire a caso in una delle altre. Le
+  porte in kit fanno lo stesso: «Porte (kit) · Solare», «Porte (kit) ·
+  Acidato».
+
+- **I teli seguono la bobina del materiale.** Dividendo in teli dalla foto,
+  la fascia è quella della bobina del materiale della forma, non più quella
+  generica del lavoro.
 
 ## 1.95.1 — Guarnizioni fra le scelte, angoli con la maestà
 

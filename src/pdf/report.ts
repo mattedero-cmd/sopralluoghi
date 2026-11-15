@@ -10,8 +10,7 @@ import {
 import { nestingDiProgetto } from '../db/repository';
 import { contenutoNesting } from './nesting';
 import { contenutoPorte } from './porte';
-import { materialeNuovo, migraDocumento, type DocumentoNesting } from '../utils/documentoNesting';
-import { prossimaTinta } from '../utils/tinte';
+import { essenzeDaPezzi, migraDocumento, type DocumentoNesting } from '../utils/documentoNesting';
 import { pdfMake } from './engine';
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
 import { db } from '../db/db';
@@ -807,6 +806,8 @@ interface RigaMisura {
    * nella distinta vanno loro e non la forma intera: è quello che si taglia.
    */
   pannelli?: PannelloTaglio[];
+  /** il materiale della forma (preset del lavoro): il piano di taglio la mette lì */
+  materialeId?: string;
   /** i teli scritti per esteso: «4 teli · A1.a 137 · A1.b 137 … (sormonto 2)» */
   teli?: string;
   stato: StatoMisura;
@@ -973,12 +974,19 @@ function righeMisureFoto(
   const codiceForma = (a: Annotazione): string =>
     codiceCompletoForma(percorso, codiceLocaleForma(a, numeri));
   const righe: RigaMisura[] = [];
+  /** il materiale della forma che sta scrivendo righe (di una copia: quello dell'originale) */
+  let materiale: string | undefined;
+  const metti = (r: RigaMisura) => righe.push(materiale ? { ...r, materialeId: materiale } : r);
   for (const a of [...annotazioni].sort((x, y) => x.zIndex - y.zIndex)) {
+    materiale =
+      a.tipo === 'quotaPoligono'
+        ? (ctx.originaleFamiglia.get(famigliaDi(a))?.forma.materialeId ?? a.materialeId)
+        : a.materialeId;
     // Le misure lineari semplici (quota) restano disegnate sulla foto ma non
     // vengono mai trascritte nel PDF come voci separate (scelta di progetto).
     if (a.tipo === 'quota') continue;
     if (a.tipo === 'quotaAngolo') {
-      righe.push({
+      metti({
         forma: a.nota ? `Angolo (${a.nota})` : 'Angolo',
         reale: a.valore === null ? '—' : `${formattaNumero(a.valore)}°`,
         stato: a.stato
@@ -1008,7 +1016,7 @@ function righeMisureFoto(
         riga.areaAffidabile = true;
         riga.areaM2 = m2;
       }
-      righe.push(riga);
+      metti(riga);
     } else if (a.tipo === 'quotaRett') {
       const m = misureElemento(a);
       const n = (v: number | null) => (v === null ? '?' : formattaNumero(v));
@@ -1042,7 +1050,7 @@ function righeMisureFoto(
         rigaR.areaAffidabile = areaR.affidabile;
         rigaR.areaM2 = areaR.m2;
       }
-      righe.push(rigaR);
+      metti(rigaR);
     } else if (a.tipo === 'quotaPoligono') {
       const infoFam = numeri.get(a.id);
       // la MISURA è sempre quella dell'ORIGINALE della famiglia (fonte unica)
@@ -1065,7 +1073,7 @@ function righeMisureFoto(
         };
         riga.teli = testoTeli(riga.pannelli, riga.codice, sormontoDi(formaMis), formaMis.unita);
         if (eCopiaEtichetta(a) && infoFam) riga.derivaDa = codiceCompletoForma(percorso, base);
-        righe.push(riga);
+        metti(riga);
       } else {
         /**
          * AGGREGATO: la famiglia compare una sola volta per cartella — ma le
@@ -1114,18 +1122,18 @@ function righeMisureFoto(
           }
         }
         riga.teli = testoTeli(riga.pannelli, riga.codice, sormontoDi(formaMis), formaMis.unita);
-        righe.push(riga);
+        metti(riga);
       }
     } else if (a.tipo === 'quotaTecnica') {
       // entrano nel riepilogo solo le quote tecniche strutturate
       // (partePerimetro=true); le altre restano disegnate sulla foto
       const r = rigaMisuraTecnica(a);
-      if (r) righe.push({ forma: r.forma, reale: r.reale, stato: r.stato });
+      if (r) metti({ forma: r.forma, reale: r.reale, stato: r.stato });
     } else if (a.tipo === 'forma') {
       // le forme con la spunta "nel PDF" entrano nel riepilogo (con le
       // dimensioni reali se la foto è calibrata)
       const r = rigaMisuraForma(a, foto);
-      if (r) righe.push({ forma: r.forma, reale: r.reale, stato: r.stato });
+      if (r) metti({ forma: r.forma, reale: r.reale, stato: r.stato });
     }
   }
   return righe;
@@ -1787,6 +1795,7 @@ export async function pezziDaProgetto(progettoId: string): Promise<PezzoDaMisura
             altezza: t.altezza,
             quantita,
             conAbbondanze: !!r.abbondanze,
+            ...(r.materialeId ? { materialeId: r.materialeId } : {}),
             // il telo di una falda è un trapezio: senza la sua sagoma il
             // nesting lo impaginerebbe — e lo taglierebbe — come il
             // rettangolo che lo contiene
@@ -1801,7 +1810,8 @@ export async function pezziDaProgetto(progettoId: string): Promise<PezzoDaMisura
         altezza: r.taglioMm.altezza,
         quantita,
         conAbbondanze: !!r.abbondanze,
-        sagoma: r.taglioMm.sagoma
+        sagoma: r.taglioMm.sagoma,
+        ...(r.materialeId ? { materialeId: r.materialeId } : {})
       });
     }
   }
@@ -1825,24 +1835,11 @@ export async function documentoTaglioProgetto(
   }
   const pezzi = raggruppaPezzi(await pezziDaProgetto(progetto.id));
   if (pezzi.length === 0) return null;
-  const materiale = {
-    ...materialeNuovo('m1', 'Materiale 1'),
-    pezzi: pezzi.map((p, i) => ({
-      id: `p${i + 1}`,
-      nome: p.nome,
-      // con la sagoma le misure sono le SUE (d1/d2/d3); senza, l'ingombro.
-      // Il quadrilatero storto porta invece i vertici: per lui larghezza e
-      // altezza restano l'ingombro, che è quello che si legge nella riga
-      larghezza: p.sagoma?.vertici ? p.larghezza : (p.sagoma?.d1 ?? p.larghezza),
-      altezza: p.sagoma?.vertici ? p.altezza : (p.sagoma?.d2 ?? p.altezza),
-      misura3: p.sagoma?.d3,
-      vertici: p.sagoma?.vertici,
-      forma: p.sagoma?.forma,
-      quantita: p.quantita,
-      ruotabile: true,
-      tinta: prossimaTinta(i)
-    }))
-  };
+  // un'essenza per materiale del preset, ognuna col suo supporto
+  const materiali = essenzeDaPezzi(pezzi, progetto.preset, {
+    materiale: (i) => `m${i + 1}`,
+    pezzo: (i) => `p${i + 1}`
+  });
   const nome = `Taglio — ${progetto.nome}`;
-  return { versione: 2, nome, attivo: materiale.id, materiali: [materiale] };
+  return { versione: 2, nome, attivo: materiali[0].id, materiali };
 }

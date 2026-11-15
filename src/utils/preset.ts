@@ -13,6 +13,8 @@
 
 import type {
   Annotazione,
+  ID,
+  MaterialePreset,
   PresetProgetto,
   QuotaPoligono,
   QuotaRettangolo,
@@ -40,6 +42,93 @@ export const PRESET_INIZIALE: PresetProgetto &
   },
   teli: { sormontoMm: 10, verso: 'centro', asse: 'verticale', modo: 'fascia' }
 };
+
+/**
+ * I MATERIALI DI PARTENZA, fra cui si sceglie nel preset di un lavoro
+ * complesso. Sono le pellicole che si posano davvero; altri si aggiungono a
+ * mano, col loro nome.
+ */
+export const MATERIALI_PREDEFINITI = ['Solare', 'Acidato', 'Sicurezza', 'Murales', 'Coverstyle'];
+
+/** i materiali del lavoro, sempre un array (vuoto = il lavoro non li distingue) */
+export function materialiDelPreset(preset: PresetProgetto | undefined): MaterialePreset[] {
+  return (preset?.materiali ?? []).filter((m) => m.nome.trim());
+}
+
+/** il materiale con quell'id, se c'è ancora nel preset */
+export function materialeDelPreset(
+  preset: PresetProgetto | undefined,
+  id: ID | undefined
+): MaterialePreset | undefined {
+  return id ? materialiDelPreset(preset).find((m) => m.id === id) : undefined;
+}
+
+/** il preset predefinito, senza la lista dei materiali */
+function predefinito(preset: PresetProgetto | undefined): PresetProgetto | undefined {
+  if (!preset) return undefined;
+  const { materiali: _m, ...resto } = preset;
+  return resto;
+}
+
+/**
+ * IL PRESET DI UN MATERIALE: il suo, se ce l'ha; altrimenti il predefinito
+ * del lavoro.
+ *
+ * È questo che leggono la forma che nasce (abbondanza), la divisione in teli
+ * (fascia, sormonto, verso) e il piano di taglio (supporto). Senza materiale,
+ * o con un materiale che non c'è più, è il predefinito. Un materiale salvato
+ * con la sola bobina (1.96.0) ha il predefinito con quella bobina sopra.
+ */
+export function presetDelMateriale(
+  preset: PresetProgetto | undefined,
+  materialeId: ID | undefined
+): PresetProgetto | undefined {
+  const base = predefinito(preset);
+  const m = materialeDelPreset(preset, materialeId);
+  if (m?.preset) return { ...m.preset };
+  if (m?.supporto) {
+    return {
+      ...(base ?? {}),
+      supporto: {
+        ...(base?.supporto ?? PRESET_INIZIALE.supporto),
+        modo: m.supporto.modo,
+        lastra: { ...m.supporto.lastra },
+        bobina: { ...m.supporto.bobina }
+      }
+    };
+  }
+  return base;
+}
+
+/** il supporto di un materiale: quello del suo preset */
+export function supportoDelMateriale(
+  preset: PresetProgetto | undefined,
+  materialeId: ID | undefined
+): PresetProgetto['supporto'] {
+  return presetDelMateriale(preset, materialeId)?.supporto;
+}
+
+/**
+ * IL MATERIALE CHE UNA COSA NUOVA PRENDE NASCENDO.
+ *
+ * Quello scelto per ultimo, se è ancora nel preset: si lavora a stanze, e le
+ * finestre di fila sono quasi sempre della stessa pellicola. Altrimenti il
+ * primo. Senza materiali nel preset, nessuno.
+ */
+export function materialeDiNascita(
+  preset: PresetProgetto | undefined,
+  ultimo?: ID | null
+): ID | undefined {
+  const tutti = materialiDelPreset(preset);
+  if (tutti.length === 0) return undefined;
+  return tutti.find((m) => m.id === ultimo)?.id ?? tutti[0].id;
+}
+
+/** le forme che diventano pezzi: sono loro a portare un materiale */
+export function portaMateriale(a: Annotazione): boolean {
+  if (a.tipo === 'quotaPoligono') return !a.soloEtichetta;
+  return a.tipo === 'quotaRett' || a.tipo === 'quotaRaggio';
+}
 
 /** i millesimi di millimetro sono il residuo di una divisione, non una misura */
 const pulito = (v: number) => Math.round(v * 1e4) / 1e4;
@@ -182,8 +271,41 @@ export function conAbbondanzaDelPreset(
  * Solo se non ne ha già una: una forma richiamata o duplicata porta la sua,
  * e il preset non è lì per cancellare quello che qualcuno ha deciso.
  */
-export function conPresetApplicato(a: Annotazione, preset: PresetProgetto | undefined): Annotazione {
-  return conAbbondanzaDelPreset(a, preset, false) ?? a;
+export function conPresetApplicato(
+  a: Annotazione,
+  preset: PresetProgetto | undefined,
+  /** il materiale scelto in questo momento (l'ultimo usato); assente = il primo */
+  materiale?: ID | null
+): Annotazione {
+  // prima il materiale — solo se non ne porta già uno suo (una copia ha
+  // quello dell'originale) e se il lavoro ne distingue — poi l'abbondanza,
+  // che è quella del preset DI QUEL materiale
+  let conMat = a;
+  if (portaMateriale(a) && !materialeDelPreset(preset, a.materialeId)) {
+    const id = materialeDiNascita(preset, materiale);
+    if (id) conMat = { ...a, materialeId: id };
+  }
+  return conAbbondanzaDelPreset(conMat, presetDelMateriale(preset, conMat.materialeId), false) ?? conMat;
+}
+
+/**
+ * IL MATERIALE DI UNA FORMA, CAMBIATO.
+ *
+ * Con il materiale cambia il preset, e l'abbondanza lo segue — ma solo se
+ * era ancora quella del preset di prima: un'abbondanza scritta a mano sulla
+ * forma resta sua, come sempre. La divisione in teli non si tocca: le
+ * giunzioni spostate col dito non le rifà nessuno.
+ */
+export function conMaterialeCambiato(
+  a: Annotazione,
+  preset: PresetProgetto | undefined,
+  materialeId: ID
+): Annotazione {
+  const conMat = { ...a, materialeId } as Annotazione;
+  // `null` = la forma è già esattamente come la vorrebbe il preset di prima
+  const toccataAMano = conAbbondanzaDelPreset(a, presetDelMateriale(preset, a.materialeId), true) !== null;
+  if (toccataAMano) return conMat;
+  return conAbbondanzaDelPreset(conMat, presetDelMateriale(preset, materialeId), true) ?? conMat;
 }
 
 /**
@@ -196,10 +318,14 @@ export function conPresetApplicato(a: Annotazione, preset: PresetProgetto | unde
  */
 export function fasciaDelPreset(
   preset: PresetProgetto | undefined,
-  unita: Unita
+  unita: Unita,
+  /** il materiale della forma: la fascia è quella della SUA bobina */
+  materialeId?: ID
 ): { massimo?: number; fonteMassimo?: string } {
-  const sup = preset?.supporto;
+  const sup = supportoDelMateriale(preset, materialeId);
   if (!sup) return {};
+  const m = materialeDelPreset(preset, materialeId);
+  const nomeMat = m && (m.preset || m.supporto) ? m.nome : undefined;
   const pieno =
     sup.modo === 'bobina'
       ? sup.bobina.larghezza
@@ -210,18 +336,20 @@ export function fasciaDelPreset(
     massimo: pulito(daMillimetri(utile, unita)),
     fonteMassimo:
       (sup.modo === 'bobina' ? 'Bobina ' : 'Lastra ') +
-      `${formattaNumero(pieno)} mm del preset, meno i margini`
+      `${formattaNumero(pieno)} mm ${nomeMat ? `del ${nomeMat}` : 'del preset'}, meno i margini`
   };
 }
 
 /** da dove parte una divisione NUOVA: una già fatta comanda sempre lei */
 export function predefinitiTeli(
   preset: PresetProgetto | undefined,
-  unita: Unita
+  unita: Unita,
+  /** il materiale della forma: i teli sono quelli del SUO preset */
+  materialeId?: ID
 ):
   | { sormonto: number; verso: VersoSormonto; asse: AssePannelli; modo: 'fascia' | 'uguali' }
   | undefined {
-  const t = preset?.teli;
+  const t = presetDelMateriale(preset, materialeId)?.teli;
   if (!t) return undefined;
   return {
     sormonto: pulito(daMillimetri(t.sormontoMm, unita)),
@@ -234,6 +362,14 @@ export function predefinitiTeli(
 /** una riga sola che dice cosa c'è nel preset, per il tasto che lo apre */
 export function riassuntoPreset(preset: PresetProgetto | undefined): string | null {
   if (!preset) return null;
+  // ogni materiale col suo preset: il predefinito non lo usa nessuno, e
+  // dirne la bobina sarebbe dire una cosa che non vale
+  const tutti = materialiDelPreset(preset);
+  if (tutti.length && tutti.every((m) => m.preset)) {
+    return tutti.length === 1
+      ? `${tutti[0].nome}, col suo preset`
+      : `${tutti.length} materiali, ognuno col suo preset: ${tutti.map((m) => m.nome).join(', ')}`;
+  }
   const voci: string[] = [];
   const lati = abbAiLati(preset);
   if (lati) {
@@ -263,6 +399,11 @@ export function riassuntoPreset(preset: PresetProgetto | undefined): string | nu
         ? `bobina ${formattaNumero(preset.supporto.bobina.larghezza)}`
         : `lastre ${formattaNumero(preset.supporto.lastra.larghezza)}×${formattaNumero(preset.supporto.lastra.altezza)}`
     );
+  }
+  const mat = materialiDelPreset(preset);
+  if (mat.length) {
+    // quelli col preset suo si segnano: il riassunto sopra è il predefinito
+    voci.push(mat.map((m) => (m.preset || m.supporto ? `${m.nome} (preset suo)` : m.nome)).join(', '));
   }
   if (preset.teli) {
     voci.push(
@@ -296,11 +437,11 @@ export function teliDelPreset(
   foto: Pick<Foto, 'scala' | 'piano' | 'piani'> | null,
   preset: PresetProgetto | undefined
 ): Pannellizzazione | null {
-  const t = preset?.teli;
+  const t = presetDelMateriale(preset, a.materialeId)?.teli;
   if (!t || !ePannellizzabile(a)) return null;
   const forma = formaDaDividere(a, foto);
   if (!forma) return null;
-  const { massimo } = fasciaDelPreset(preset, forma.unita);
+  const { massimo } = fasciaDelPreset(preset, forma.unita, a.materialeId);
   if (!massimo) return null;
   const sormonto = pulito(daMillimetri(t.sormontoMm, forma.unita));
   const totale = t.asse === 'verticale' ? forma.netta.larghezza : forma.netta.altezza;
@@ -313,4 +454,51 @@ export function teliDelPreset(
     abbondanze: abbondanzeSullAsse(forma, t.asse)
   });
   return giunti.length ? { asse: t.asse, sormonto, verso: t.verso, giunti } : null;
+}
+
+/** due divisioni in teli uguali, a meno dei residui delle divisioni */
+export function stessiTeli(a: Pannellizzazione | undefined, b: Pannellizzazione | undefined): boolean {
+  if (!a || !b) return !a && !b;
+  const giro = (p: Pannellizzazione) =>
+    JSON.stringify([
+      p.asse,
+      p.verso,
+      Math.round(p.sormonto * 1e4),
+      p.giunti.map((g: number) => Math.round(g * 1e4))
+    ]);
+  return giro(a) === giro(b);
+}
+
+/**
+ * I TELI DEL PRESET, TENUTI AL PASSO CON LA FORMA.
+ *
+ * Il preset del materiale dice come si divide: fascia della bobina,
+ * sormonto, verso, asse. Appena la forma ha le misure la divisione si fa da
+ * sola, e si rifà quando cambiano misure, abbondanze o materiale — aprire
+ * ogni finestra per premere «dividi» era proprio il lavoro che il preset
+ * doveva togliere.
+ *
+ * Non si tocca una divisione decisa a mano nell'ambiente dei teli (anche
+ * quella tolta), né una fatta prima che esistesse questa regola: una parete
+ * coi giunti spostati col dito non la ridivide nessuno.
+ *
+ * Torna la stessa forma (per identità) quando non c'è niente da cambiare.
+ */
+export function conTeliDelPreset(
+  a: Annotazione,
+  foto: Pick<Foto, 'scala' | 'piano' | 'piani'> | null,
+  preset: PresetProgetto | undefined
+): Annotazione {
+  if (a.tipo !== 'quotaPoligono' && a.tipo !== 'quotaRett') return a;
+  if (a.tipo === 'quotaPoligono' && a.soloEtichetta) return a;
+  if (a.teliDa === 'mano') return a;
+  if (a.pannelli && a.teliDa !== 'preset') return a;
+  if (!presetDelMateriale(preset, a.materialeId)?.teli) return a;
+  const pann = teliDelPreset(a, foto, preset) ?? undefined;
+  if (stessiTeli(a.pannelli, pann)) return a;
+  if (!pann) {
+    const { pannelli: _via, teliDa: _da, ...resto } = a;
+    return resto as Annotazione;
+  }
+  return { ...a, pannelli: pann, teliDa: 'preset' } as Annotazione;
 }

@@ -18,8 +18,7 @@ import {
   type Sezione
 } from './types';
 import { nuovoId } from '../utils/id';
-import { conAbbondanzaDelPreset, teliDelPreset } from '../utils/preset';
-import type { Pannellizzazione } from '../geometry/pannelli';
+import { conAbbondanzaDelPreset, presetDelMateriale, stessiTeli, teliDelPreset } from '../utils/preset';
 import { blobMiniatura, blobOrigine } from '../utils/image';
 import { inizioSalvataggio, fineSalvataggio } from '../state/saveStatus';
 import { mostraToast } from '../state/toast';
@@ -145,7 +144,7 @@ export async function contenutoCartella(id: ID): Promise<{ progetti: number; fot
 
 export async function creaProgetto(
   dati: Pick<Progetto, 'nome' | 'cliente' | 'luogo'> &
-    Partial<Pick<Progetto, 'note' | 'stato' | 'clienteId'>>,
+    Partial<Pick<Progetto, 'note' | 'stato' | 'clienteId' | 'tipo' | 'preset'>>,
   cartellaId: ID | null
 ): Promise<Progetto> {
   const p: Progetto = {
@@ -157,6 +156,8 @@ export async function creaProgetto(
     luogo: dati.luogo.trim(),
     stato: dati.stato ?? 'bozza',
     note: dati.note ?? '',
+    ...(dati.tipo ? { tipo: dati.tipo } : {}),
+    ...(dati.preset ? { preset: dati.preset } : {}),
     creatoIl: ora(),
     modificatoIl: ora()
   };
@@ -901,22 +902,6 @@ export async function salvaAnnotazioniFoto(fotoId: ID, annotazioni: Annotazione[
   );
 }
 
-/** vero se due divisioni in teli dicono la stessa cosa */
-function stessiTeli(
-  a: Pannellizzazione | undefined,
-  b: Pannellizzazione | undefined
-): boolean {
-  if (!a || !b) return !a && !b;
-  const giro = (p: Pannellizzazione) =>
-    JSON.stringify([
-      p.asse,
-      p.verso,
-      Math.round(p.sormonto * 1e4),
-      p.giunti.map((g: number) => Math.round(g * 1e4))
-    ]);
-  return giro(a) === giro(b);
-}
-
 /**
  * IL PRESET PORTATO SU TUTTO QUELLO CHE C'È GIÀ.
  *
@@ -959,16 +944,25 @@ export async function applicaPresetATutto(
           // forma che sta altrove, e la misura è di quella
           if (a.tipo === 'quotaPoligono' && a.soloEtichetta) continue;
           forme++;
-          const conAbb = conAbbondanzaDelPreset(a, preset, true);
+          // ogni forma col preset del SUO materiale
+          const suo = presetDelMateriale(preset, a.materialeId);
+          const conAbb = conAbbondanzaDelPreset(a, suo, true);
           let nuova = conAbb ?? a;
           if (conAbb) abbondanze++;
-          if (preset.teli) {
+          if (suo?.teli) {
             // i teli si contano DOPO le abbondanze: sono le abbondanze a
             // decidere quanto materiale serve, e quindi quanti teli
             const pann = teliDelPreset(nuova, f, preset) ?? undefined;
             if (!stessiTeli(nuova.pannelli, pann)) {
               nuova = { ...nuova, pannelli: pann };
               teli++;
+            }
+            // da qui la divisione è del preset: si rifà da sola quando
+            // cambiano le misure; senza teli, non è di nessuno
+            if (pann) nuova = { ...nuova, teliDa: 'preset' };
+            else if (nuova.teliDa !== undefined) {
+              const { teliDa: _via, ...resto } = nuova;
+              nuova = resto;
             }
           }
           if (nuova !== a) {
@@ -1519,6 +1513,16 @@ export function prossimaLetteraPorta(usate: string[]): string {
 }
 
 /** Salva una porta nuova (lettera e nome assegnati qui) o ne aggiorna una. */
+/** il materiale di una porta già rilevata, cambiato (assente = nessuno) */
+export async function cambiaMaterialePorta(id: ID, materialeId: ID | undefined): Promise<void> {
+  await scrivi('cambiare il materiale della porta', async () => {
+    const p = await db.porte.get(id);
+    if (!p) return;
+    const { materialeId: _via, ...resto } = p;
+    await db.porte.put({ ...resto, ...(materialeId ? { materialeId } : {}), modificatoIl: ora() });
+  });
+}
+
 export async function salvaPorta(dati: {
   id?: ID | null;
   progettoId: ID;
@@ -1529,6 +1533,8 @@ export async function salvaPorta(dati: {
   /** famiglia della porta da cui è copiata (assente: porta nuova) */
   famiglia?: ID;
   firma?: string;
+  /** il materiale della porta nuova (fra quelli del preset) */
+  materialeId?: ID;
 }): Promise<Porta> {
   return scrivi('salvare la porta', () =>
     db.transaction('rw', [db.porte], async () => {
@@ -1554,6 +1560,7 @@ export async function salvaPorta(dati: {
         id,
         famiglia: dati.famiglia ?? id,
         ...(dati.firma ? { firma: dati.firma } : {}),
+        ...(dati.materialeId ? { materialeId: dati.materialeId } : {}),
         progettoId: dati.progettoId,
         nome: `Porta ${lettera}`,
         lettera,

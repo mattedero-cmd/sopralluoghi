@@ -239,6 +239,65 @@ describe('pezziDaProgetto', () => {
     expect(await pezziDaProgetto('p1')).toEqual([]);
   });
 
+  it('il pezzo porta il materiale della forma; una copia quello dell\'originale', async () => {
+    await db.annotazioni.bulkPut([
+      {
+        ...comune('f1'),
+        id: 'orig',
+        tipo: 'quotaPoligono',
+        etichetta: 'B',
+        gruppoQuota: 'fam-B',
+        materialeId: 'aci',
+        punti: [
+          { x: 0, y: 0 },
+          { x: 400, y: 0 },
+          { x: 400, y: 200 },
+          { x: 0, y: 200 }
+        ],
+        segmenti: [
+          { da: 0, a: 1, valore: 200 },
+          { da: 1, a: 2, valore: 100 }
+        ]
+      },
+      {
+        ...comune('f2'),
+        id: 'copia',
+        tipo: 'quotaPoligono',
+        etichetta: 'B',
+        gruppoQuota: 'fam-B',
+        soloEtichetta: true,
+        punti: [
+          { x: 10, y: 10 },
+          { x: 410, y: 10 },
+          { x: 410, y: 210 },
+          { x: 10, y: 210 }
+        ],
+        segmenti: []
+      },
+      {
+        ...comune('f2'),
+        id: 'r',
+        tipo: 'quotaRett',
+        etichetta: 'D',
+        materialeId: 'sol',
+        punti: [
+          { x: 0, y: 0 },
+          { x: 120, y: 0 },
+          { x: 120, y: 60 },
+          { x: 0, y: 60 }
+        ],
+        valoreBase: 120,
+        valoreAltezza: 60
+      }
+    ] as unknown as Annotazione[]);
+
+    const pezzi = await pezziDaProgetto('p1');
+    expect(pezzi.map((p) => [p.materialeId, p.quantita]).sort()).toEqual([
+      ['aci', 2],
+      ['sol', 1]
+    ]);
+  });
+
   it('un progetto che non esiste non fa danni', async () => {
     expect(await pezziDaProgetto('inesistente')).toEqual([]);
   });
