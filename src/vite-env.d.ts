@@ -2,3 +2,4 @@
 
 /** Data di build iniettata da vite.config.ts */
 declare const __BUILD__: string;
+declare const __VERSIONE__: string;

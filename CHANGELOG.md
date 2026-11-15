@@ -10,6 +10,13 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.99.2 — In Impostazioni il numero di versione
+
+- **Impostazioni → «Versione dell'app» dice il numero**, oltre alla data di
+  build: «Versione 1.99.2 · Build …». La data diceva quando, non quale: per
+  sapere se sul telefono era già arrivata una correzione bisognava fare il
+  conto a mente. Adesso il numero si confronta con quello di queste note.
+
 ## 1.99.1 — Di chi è la divisione in teli, detto in chiaro
 
 - **In «Modifica», sotto la pannellizzazione, una riga dice cosa sta
