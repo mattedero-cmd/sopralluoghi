@@ -205,6 +205,34 @@ manda `piano` (parametri e scorte) con un `riepilogo` per i PDF. Le porte in
 kit non passano di qui: diventano pezzi dell'essenza «Porte (kit)»
 (`src/utils/portePiano.ts`).
 
+### Colori diversi
+
+Nella guida, dopo le facce dell'anta, «Colori dei due lati»: stesso colore o
+colori diversi (`state.colorSides`, salvato nella configurazione e mandato
+all'app con `salva` come `latiDiversi`). Con i colori diversi:
+
+- la pellicola dello stipite si divide nell'**angolo interno della battuta**
+  (fra la battuta e il fondo dove sta l'anta): il pezzo del lato battuta
+  risvolta sulla battuta e si ferma lì, quello dell'altro lato arriva nello
+  stesso angolo. A porta chiusa è coperto dall'anta. Con la guarnizione sulla
+  battuta la pellicola è già interrotta e non si aggiunge niente; con la
+  battuta all'inizio dell'imbotte si divide sulla giunzione stipite/imbotte;
+  con l'anta che batte sul coprifilo o senza battuta lo stipite resta intero
+  (`colorSplit()`, `colorSidesNote()`);
+- ogni pezzo ha il lato del colore (`posaSide`): coprifilo esterno E,
+  interno I, gli altri secondo dove stanno rispetto alla battuta. La sigla
+  comincia con quel lato;
+- sul bordo dell'anta si sceglie quale foglio sta sopra, cioè quale colore si
+  vede (`door.lapTop`, di base l'esterno): cambia l'ordine di posa e il
+  disegno, non le misure. Nei disegni il foglio interno è nel secondo colore.
+
+I materiali li sceglie l'app (`src/components/MaterialiPorta.tsx`,
+`src/utils/porteMateriali.ts`): uno per tutta la porta e, in «Colori
+diversi», maestà e anta, e con i lati diversi anche esterno e interno. Ogni
+pezzo prende il materiale del suo posto (anta o maestà, lato dalla sigla);
+i kit vanno nell'essenza del materiale di ciascun pezzo e la distinta del PDF
+scrive il materiale sotto il pezzo.
+
 Messaggi (stessa origine): dall'app `apri` (`modo` nuova / scheda / copia / lavoro),
 `salvata`, `stato`, `pdf`; dalla porta `pronta`, `salva`, `file`, `stato`, `piano`,
 `errore`.

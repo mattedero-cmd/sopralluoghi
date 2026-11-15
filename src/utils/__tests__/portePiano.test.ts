@@ -122,3 +122,47 @@ describe('porte nel piano di taglio', () => {
     expect(g.map((x) => x.numero)).toEqual([1, 2, 3, 4]);
   });
 });
+
+describe('colori diversi di una porta', () => {
+  const preset = {
+    materiali: [
+      { id: 'sol', nome: 'Solare' },
+      { id: 'aci', nome: 'Acidato' },
+      { id: 'leg', nome: 'Legno' }
+    ]
+  } as never;
+  const righeLati = [
+    { nome: 'Montante DX · Stipite · Striscia 1', sigla: 'E-MDX-S', larghezza: 77, lunghezza: 2142, anta: false },
+    { nome: 'Montante DX · Stipite · Striscia 2', sigla: 'I-MDX-S', larghezza: 96, lunghezza: 2136, anta: false },
+    { nome: 'Anta · Faccia esterna', sigla: 'E-A', larghezza: 930, lunghezza: 2230, anta: true },
+    { nome: 'Anta · Faccia interna', sigla: 'I-A', larghezza: 930, lunghezza: 2230, anta: true }
+  ];
+  it('maestà e anta in essenze diverse', () => {
+    const p = { ...porta('a', 'A'), materialeId: 'sol', materiali: { antaE: 'leg', antaI: 'leg' } };
+    const d = sincronizzaKit(documento({ a: 'kit' }), [p], new Map([['a', 1]]), preset);
+    const kit = d.porte!.kitPerMateriale!;
+    expect(Object.keys(kit).sort()).toEqual(['leg', 'sol']);
+    const nomi = (id: string) => d.materiali.find((m) => m.id === kit[id])!.pezzi.map((x) => x.nome);
+    expect(nomi('leg')).toEqual(['PA-I-A']);
+    expect(nomi('sol')).toHaveLength(3);
+  });
+  it('con i lati diversi ogni pezzo prende il materiale del suo lato', () => {
+    const p = {
+      ...porta('a', 'A'),
+      righe: righeLati,
+      latiDiversi: true,
+      materialeId: 'sol',
+      materiali: { maestaI: 'aci', antaI: 'aci' }
+    };
+    const d = sincronizzaKit(documento({ a: 'kit' }), [p], new Map([['a', 2]]), preset);
+    const kit = d.porte!.kitPerMateriale!;
+    const nomi = (id: string) => d.materiali.find((m) => m.id === kit[id])!.pezzi.map((x) => x.nome);
+    expect(nomi('sol')).toEqual(['PA-E-MDX-S', 'PA-E-A']);
+    expect(nomi('aci')).toEqual(['PA-I-MDX-S', 'PA-I-A']);
+  });
+  it('senza lati diversi i posti interni non contano', () => {
+    const p = { ...porta('a', 'A'), righe: righeLati, materialeId: 'sol', materiali: { maestaI: 'aci' } };
+    const d = sincronizzaKit(documento({ a: 'kit' }), [p], new Map([['a', 1]]), preset);
+    expect(Object.keys(d.porte!.kitPerMateriale!)).toEqual(['sol']);
+  });
+});

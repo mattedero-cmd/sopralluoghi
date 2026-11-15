@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { nomeMaterialiPorta } from '../utils/porteMateriali';
 import { naviga } from '../router';
 import { Modale, StatoApp } from '../components/comuni';
 import { Icona } from '../components/Icona';
@@ -69,7 +70,6 @@ import type { LavoroNesting } from '../db/types';
 import { contaPorte, portePerProgetto } from '../db/repository';
 import type { Porta } from '../db/types';
 import { RilievoPorta } from '../components/RilievoPorta';
-import { materialeDelPreset } from '../utils/preset';
 import {
   firmaStrisce,
   modoPorta,
@@ -1181,10 +1181,10 @@ export function NestingPage({
                       <div className="nest-porta-testo">
                         <strong>
                           {p.nome} <span className="nest-porta-qty">× {q}</span>
-                          {materialeDelPreset(progetto?.preset, p.materialeId) && (
+                          {nomeMaterialiPorta(p, progetto?.preset) && (
                             <span className="nest-porta-qty">
                               {' '}
-                              · {materialeDelPreset(progetto?.preset, p.materialeId)?.nome}
+                              · {nomeMaterialiPorta(p, progetto?.preset)}
                             </span>
                           )}
                         </strong>

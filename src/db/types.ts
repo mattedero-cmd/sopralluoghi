@@ -1500,6 +1500,9 @@ export interface RigaPorta {
  * rilievo porta (lo legge e lo scrive solo lui); `righe` sono i pezzi che ne
  * escono, per il piano di taglio e il report.
  */
+/** dove va un materiale della porta: maestà o anta, lato esterno o interno */
+export type PostoMateriale = 'maestaE' | 'maestaI' | 'antaE' | 'antaI';
+
 export interface Porta {
   id: ID;
   progettoId: ID;
@@ -1527,6 +1530,17 @@ export interface Porta {
   firma?: string;
   /** il materiale della pellicola, fra quelli del preset del lavoro */
   materialeId?: ID;
+  /**
+   * COLORI DIVERSI: il materiale di maestà e anta, e dei due lati quando il
+   * rilievo li divide (`latiDiversi`). Un posto vuoto prende `materialeId`.
+   * Senza lati diversi valgono solo `maestaE` (maestà) e `antaE` (anta).
+   */
+  materiali?: Partial<Record<PostoMateriale, ID>>;
+  /**
+   * Il rilievo divide lo stipite sulla battuta: ogni pezzo sta tutto su un
+   * lato e può avere il materiale di quel lato.
+   */
+  latiDiversi?: boolean;
   creatoIl: number;
   modificatoIl: number;
 }

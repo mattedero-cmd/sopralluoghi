@@ -25,6 +25,7 @@ import { nuovoId } from './id';
 import { prossimaTinta } from './tinte';
 import { siglaPezzo } from './sigle';
 import { materialeDelPreset, supportoDelMateriale } from './preset';
+import { materialeRiga } from './porteMateriali';
 
 export type ModoPorta = 'kit' | 'strisce';
 
@@ -102,7 +103,9 @@ export function pezziKit(
   porte: Porta[],
   conto: Map<string, number>,
   modi: PorteNesting,
-  venatura: Venatura = 'nessuna'
+  venatura: Venatura = 'nessuna',
+  /** solo i pezzi di questo materiale (colori diversi: ogni pezzo il suo) */
+  prendi: (p: Porta, r: Porta['righe'][number]) => boolean = () => true
 ): Omit<PezzoNesting, 'tinta'>[] {
   const pezzi: Omit<PezzoNesting, 'tinta'>[] = [];
   for (const p of porte) {
@@ -111,6 +114,7 @@ export function pezziKit(
     if (qty <= 0) continue;
     // un pezzo per sigla: sul pezzo tagliato si scrive la sigla (PA-E-MDX-CF)
     p.righe.forEach((r, i) => {
+      if (!prendi(p, r)) return;
       // orizzontale: fibra lungo la larghezza del supporto → lunghezza in orizzontale
       const sdraiato = venatura === 'orizzontale';
       pezzi.push({
@@ -151,11 +155,12 @@ export function sincronizzaKit(
 ): DocumentoNesting {
   const sez = doc.porte;
   if (!sez) return doc;
-  // il materiale di una porta, se c'è ancora nel preset ('' = nessuno)
-  const chiaveDi = (p: Porta) => (materialeDelPreset(preset, p.materialeId) ? p.materialeId! : '');
+  // il materiale di un pezzo, se c'è ancora nel preset ('' = nessuno): con
+  // i colori diversi i pezzi di una porta vanno in essenze diverse
+  const chiaveDi = (p: Porta, r: Porta['righe'][number]) => materialeRiga(p, r, preset);
   const essenzaDi = (k: string) => (k ? sez.kitPerMateriale?.[k] : sez.materialeKit);
   const chiavi = new Set<string>(['', ...Object.keys(sez.kitPerMateriale ?? {})]);
-  for (const p of porte) if (modoPorta(sez, p.id) === 'kit') chiavi.add(chiaveDi(p));
+  for (const p of porte) if (modoPorta(sez, p.id) === 'kit') for (const r of p.righe) chiavi.add(chiaveDi(p, r));
 
   let materiali = doc.materiali;
   let cambiato = false;
@@ -166,10 +171,11 @@ export function sincronizzaKit(
     const idEsistente = essenzaDi(k);
     const esistente = idEsistente ? materiali.find((m) => m.id === idEsistente) : undefined;
     const nuovi = pezziKit(
-      porte.filter((p) => chiaveDi(p) === k),
+      porte,
       conto,
       sez,
-      esistente?.venatura ?? supportoDelMateriale(preset, k || undefined)?.venatura ?? 'nessuna'
+      esistente?.venatura ?? supportoDelMateriale(preset, k || undefined)?.venatura ?? 'nessuna',
+      (p, r) => chiaveDi(p, r) === k
     );
     if (nuovi.length === 0) {
       if (!idEsistente) continue;

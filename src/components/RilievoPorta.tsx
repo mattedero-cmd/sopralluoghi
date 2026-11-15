@@ -116,7 +116,9 @@ export function RilievoPorta({
           config: m.config,
           righe: (m.righe as Porta['righe']) ?? [],
           fotoRilievoId: fotoId ?? null,
-          materialeId: callback.current.materialeId ?? origine?.materialeId
+          materialeId: callback.current.materialeId ?? origine?.materialeId,
+          materiali: origine?.materiali,
+          latiDiversi: m.latiDiversi === true
         });
         const nuova = !id;
         corrente.current = porta.id;

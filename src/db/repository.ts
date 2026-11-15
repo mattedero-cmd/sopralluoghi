@@ -12,6 +12,7 @@ import {
   type LavoroNesting,
   type PianoProspettiva,
   type Porta,
+  type PostoMateriale,
   type Preventivo,
   type PresetProgetto,
   type Progetto,
@@ -1518,8 +1519,27 @@ export async function cambiaMaterialePorta(id: ID, materialeId: ID | undefined):
   await scrivi('cambiare il materiale della porta', async () => {
     const p = await db.porte.get(id);
     if (!p) return;
-    const { materialeId: _via, ...resto } = p;
+    // il materiale di tutta la porta: i colori diversi si azzerano
+    const { materialeId: _via, materiali: _m, ...resto } = p;
     await db.porte.put({ ...resto, ...(materialeId ? { materialeId } : {}), modificatoIl: ora() });
+  });
+}
+
+/** il materiale di un posto della porta (maestà/anta, esterno/interno) */
+export async function cambiaMaterialePostoPorta(
+  id: ID,
+  posto: PostoMateriale,
+  materialeId: ID
+): Promise<void> {
+  await scrivi('cambiare il materiale della porta', async () => {
+    const p = await db.porte.get(id);
+    if (!p) return;
+    const materiali = { ...(p.materiali ?? {}), [posto]: materialeId };
+    // senza lati diversi la maestà e l'anta valgono per i due lati
+    if (!p.latiDiversi && (posto === 'maestaE' || posto === 'antaE')) {
+      materiali[posto === 'maestaE' ? 'maestaI' : 'antaI'] = materialeId;
+    }
+    await db.porte.put({ ...p, materiali, modificatoIl: ora() });
   });
 }
 
@@ -1535,6 +1555,10 @@ export async function salvaPorta(dati: {
   firma?: string;
   /** il materiale della porta nuova (fra quelli del preset) */
   materialeId?: ID;
+  /** i colori diversi della porta nuova (copia di una porta) */
+  materiali?: Porta['materiali'];
+  /** il rilievo divide lo stipite sulla battuta */
+  latiDiversi?: boolean;
 }): Promise<Porta> {
   return scrivi('salvare la porta', () =>
     db.transaction('rw', [db.porte], async () => {
@@ -1546,6 +1570,7 @@ export async function salvaPorta(dati: {
           config: dati.config,
           righe: dati.righe,
           ...(dati.firma ? { firma: dati.firma } : {}),
+          latiDiversi: !!dati.latiDiversi,
           modificatoIl: ora()
         };
         await db.porte.put(agg);
@@ -1561,6 +1586,8 @@ export async function salvaPorta(dati: {
         famiglia: dati.famiglia ?? id,
         ...(dati.firma ? { firma: dati.firma } : {}),
         ...(dati.materialeId ? { materialeId: dati.materialeId } : {}),
+        ...(dati.materiali && Object.keys(dati.materiali).length ? { materiali: dati.materiali } : {}),
+        latiDiversi: !!dati.latiDiversi,
         progettoId: dati.progettoId,
         nome: `Porta ${lettera}`,
         lettera,

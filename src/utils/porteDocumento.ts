@@ -15,6 +15,9 @@ import * as pdfjs from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import type { ID, Porta } from '../db/types';
 import { contaPorte, nestingDiProgetto, portePerProgetto } from '../db/repository';
+import { db } from '../db/db';
+import { materialeDelPreset } from './preset';
+import { materialeRiga } from './porteMateriali';
 import { migraDocumento } from './documentoNesting';
 import {
   gruppiMontaggio,
@@ -151,6 +154,8 @@ export interface MontaggioPorta {
   modo: ModoPorta;
   /** numero del gruppo di istruzioni di montaggio */
   gruppo: number;
+  /** il materiale di ogni pezzo (nome, '' = nessuno), riga per riga */
+  materiali?: string[];
 }
 
 export interface GruppoDelReport {
@@ -181,6 +186,7 @@ export async function porteDelReport(
   const ctx = await contestoPorte(progettoId);
   const usate = ctx.perRilievo.filter((p) => p.qty > 0);
   if (usate.length === 0) return null;
+  const preset = (await db.progetti.get(progettoId))?.preset;
   const rilievo = new RilievoNascosto();
   try {
     await rilievo.apri();
@@ -200,7 +206,8 @@ export async function porteDelReport(
     for (const g of gruppiMontaggio(ctx.porte.filter((p) => usate.some((u) => u.id === p.id)))) {
       const membri: MontaggioPorta[] = g.porte.map((porta) => {
         const u = usate.find((x) => x.id === porta.id)!;
-        return { porta, quantita: u.qty, modo: u.modo, gruppo: g.numero };
+        const materiali = porta.righe.map((r) => materialeDelPreset(preset, materialeRiga(porta, r, preset) || undefined)?.nome ?? '');
+        return { porta, quantita: u.qty, modo: u.modo, gruppo: g.numero, materiali };
       });
       porte.push(...membri);
       const nome = nomePorte(g.porte);

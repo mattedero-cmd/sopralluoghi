@@ -10,6 +10,22 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.101.0 — Porte con colori diversi
+
+- Nell'elenco delle porte, sotto il materiale, «Colori diversi»: un
+  materiale per la maestà e uno per l'anta.
+- Nella guida del rilievo, dopo le facce dell'anta, «Colori dei due lati».
+  Con «Colori diversi» la pellicola dello stipite si divide nell'angolo
+  interno della battuta, coperto dall'anta chiusa, e ogni pezzo sta tutto su
+  un lato. Nell'app i posti diventano quattro: maestà e anta, esterno e
+  interno.
+- Sul bordo dell'anta si sceglie quale foglio sta sopra (esterno o
+  interno): è il colore che si vede sul bordo. Le misure non cambiano.
+- Porte in kit: ogni pezzo va nell'essenza del suo materiale. Nel PDF la
+  distinta della porta scrive il materiale sotto il pezzo.
+- Le porte a strisce mettono ancora tutti i pezzi nello stesso piano delle
+  bobine: la divisione per materiale arriva con la prossima versione.
+
 ## 1.100.3 — Bordo inferiore dell'anta con una sola faccia rivestita
 
 - Se rivesti una sola faccia dell'anta, la domanda sul bordo verso il

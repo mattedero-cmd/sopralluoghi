@@ -281,6 +281,10 @@ function distintaPorta(m: MontaggioPorta, rotolo: (larghezza: number) => number 
   };
   const numerate = (anta: boolean) =>
     m.porta.righe.filter((r) => r.anta === anta).map((r, i) => ({ r, n: i + 1 }));
+  // con i colori diversi sotto il nome del pezzo va il suo materiale
+  const diversi = new Set((m.materiali ?? []).filter(Boolean)).size > 1;
+  const materiale = (r: (typeof m.porta.righe)[number]) =>
+    diversi ? m.materiali?.[m.porta.righe.indexOf(r)] || '' : '';
   const sezione = (titolo: string, righe: ReturnType<typeof numerate>): TableCell[][] =>
     righe.length === 0
       ? []
@@ -292,7 +296,12 @@ function distintaPorta(m: MontaggioPorta, rotolo: (larghezza: number) => number 
           ...righe.map(({ r, n }) => [
             td(String(n), { alignment: 'center', color: '#56636d' }),
             td(siglaPezzo(m.porta, r), { bold: true }),
-            td(r.nome, { fontSize: 8.5, color: '#56636d' }),
+            materiale(r)
+              ? ({ stack: [
+                  { text: r.nome, fontSize: 8.5, color: '#56636d' },
+                  { text: materiale(r), fontSize: 8.5, bold: true, color: INCHIOSTRO }
+                ] } as TableCell)
+              : td(r.nome, { fontSize: 8.5, color: '#56636d' }),
             td(mm(r.larghezza), { alignment: 'right', bold: true }),
             td(mm(r.lunghezza), { alignment: 'right', bold: true }),
             td(String(m.quantita), { alignment: 'center', bold: true }),
