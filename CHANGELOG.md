@@ -10,6 +10,19 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.99.1 — Di chi è la divisione in teli, detto in chiaro
+
+- **In «Modifica», sotto la pannellizzazione, una riga dice cosa sta
+  succedendo ai teli**: «Divisione del preset del Coverstyle: teli
+  orizzontali, fascia 150 cm», oppure «Entra in un telo solo: non serve
+  dividerla», oppure «I teli si fanno appena ci sono le misure». Prima una
+  forma che non si divideva non diceva perché.
+
+- **Una divisione fatta a mano — o fatta prima della 1.99 — si riporta al
+  preset con un tocco**: «Rifalla col preset». Le forme divise prima che i
+  teli si facessero da soli contano come fatte a mano, e senza questo tasto
+  restavano ferme per sempre.
+
 ## 1.99.0 — I teli del preset si fanno da soli
 
 - **Appena una forma ha le misure, si divide in teli da sola**, come dice il

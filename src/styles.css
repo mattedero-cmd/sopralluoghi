@@ -4994,3 +4994,20 @@ a {
   min-height: 38px;
   border-radius: 999px;
 }
+
+/* lo stato dei teli in «Modifica»: di chi è la divisione, e perché */
+.stato-teli {
+  display: block;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: var(--raggio);
+  background: var(--sfondo-3);
+  color: var(--testo);
+  font-size: 13px;
+}
+
+.stato-teli .btn {
+  min-height: 36px;
+  margin-top: 6px;
+  padding: 0 12px;
+}

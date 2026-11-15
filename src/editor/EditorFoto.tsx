@@ -61,6 +61,7 @@ import {
   materialeDelPreset,
   materialeDiNascita,
   materialiDelPreset,
+  presetDelMateriale,
   portaMateriale,
   predefinitiTeli
 } from '../utils/preset';
@@ -79,7 +80,7 @@ import {
   pannelliDellaForma
 } from '../geometry/formaQuadrilatera';
 import { chiusuraAngoliRetti } from '../geometry/poligonoQuotato';
-import { normalizzaPannellizzazione } from '../geometry/pannelli';
+import { normalizzaPannellizzazione, type AssePannelli } from '../geometry/pannelli';
 import { pianiAgganciati, pianoProiettato } from '../geometry/pianoModifica';
 import { calcolaCatene, sommaCatenaInUnita } from '../geometry/catene';
 import {
@@ -6050,6 +6051,25 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
               materiali={poli.soloEtichetta ? [] : materialiLavoro}
               materialeId={materialeDelPreset(progetto?.preset, poli.materialeId)?.id}
               onMateriale={(id) => cambiaMaterialeForma(poli, id) as QuotaPoligono}
+              teliPreset={(() => {
+                const t = presetDelMateriale(progetto?.preset, poli.materialeId)?.teli;
+                if (!t) return undefined;
+                return {
+                  nome: materialeDelPreset(progetto?.preset, poli.materialeId)?.nome,
+                  asse: t.asse,
+                  fascia: fasciaDelPreset(progetto?.preset, poli.unita, poli.materialeId).massimo
+                };
+              })()}
+              onTeliAlPreset={() =>
+                // senza divisione e senza «a mano», il commit la rifà col preset
+                commit(
+                  annotazioni.map((a) => {
+                    if (a.id !== poli.id) return a;
+                    const { pannelli: _p, teliDa: _d, ...resto } = poli;
+                    return resto as Annotazione;
+                  })
+                )
+              }
               codice={codiceForma(poli)}
               numero={numeriForme.get(poli.id)?.numero}
               onNumero={(n) => {
@@ -8027,7 +8047,9 @@ function EditorPoligono({
   onChiudi,
   materiali = [],
   materialeId,
-  onMateriale
+  onMateriale,
+  teliPreset,
+  onTeliAlPreset
 }: {
   poli: QuotaPoligono;
   foto: Foto;
@@ -8037,6 +8059,10 @@ function EditorPoligono({
   materialeId?: string;
   /** cambia il materiale (e l'abbondanza del suo preset); torna la forma nuova */
   onMateriale?: (id: string) => QuotaPoligono;
+  /** come il preset del materiale divide in teli; assente = il preset non ne dice */
+  teliPreset?: { nome?: string; asse: AssePannelli; fascia?: number };
+  /** toglie la divisione fatta a mano: da lì la rifà il preset */
+  onTeliAlPreset?: () => void;
   /** codice automatico corrente (es. "P1.A1") */
   codice: string;
   /** numero della forma nella sequenza condivisa (per il riordino manuale) */
@@ -8561,6 +8587,32 @@ function EditorPoligono({
                   ? 'Prima quota base e altezza: i teli si dividono a centimetri, e i centimetri stanno nelle quote.'
                   : 'Prima quota i lati: da almeno una quota si ricava la forma, e i teli seguono la sagoma vera — anche sotto una falda.'}
             </span>
+            {/*
+              DI CHI È LA DIVISIONE, detto in chiaro: senza questa riga non si
+              capiva perché una forma non si divideva — se a mano, se entra in
+              un telo, se mancano le misure.
+            */}
+            {teliPreset && (
+              <span className="stato-teli">
+                {poli.teliDa === 'mano' || (poli.pannelli && poli.teliDa !== 'preset') ? (
+                  <>
+                    Divisione fatta a mano: il preset{teliPreset.nome ? ` del ${teliPreset.nome}` : ''} non
+                    la cambia.{' '}
+                    {onTeliAlPreset && (
+                      <button className="btn" onClick={onTeliAlPreset}>
+                        Rifalla col preset
+                      </button>
+                    )}
+                  </>
+                ) : !misurata ? (
+                  'I teli del preset si fanno da soli appena ci sono le misure.'
+                ) : teli ? (
+                  `Divisione del preset${teliPreset.nome ? ` del ${teliPreset.nome}` : ''}: teli ${teliPreset.asse === 'verticale' ? 'verticali' : 'orizzontali'}${teliPreset.fascia ? `, fascia ${formattaNumero(teliPreset.fascia)} ${poli.unita}` : ''}. Si rifà da sola se cambiano misure o materiale.`
+                ) : (
+                  `Entra in un telo solo: teli ${teliPreset.asse === 'verticale' ? 'verticali' : 'orizzontali'}${teliPreset.fascia ? `, fascia ${formattaNumero(teliPreset.fascia)} ${poli.unita}` : ''}${teliPreset.nome ? ` (preset del ${teliPreset.nome})` : ''}, non serve dividerla.`
+                )}
+              </span>
+            )}
           </div>
         )}
         <div className="campo">
