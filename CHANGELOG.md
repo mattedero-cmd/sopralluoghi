@@ -10,6 +10,18 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.102.0 — Piano delle bobine per materiale
+
+- Porte a strisce: le bobine si fanno materiale per materiale. Nel piano
+  delle bobine, se le porte usano più materiali (anche per i colori
+  diversi), in cima compare «Materiale»: ogni materiale ha la sua distinta,
+  i suoi parametri e le sue scorte.
+- Nel piano di taglio, nel PDF del taglio e nel PDF del sopralluogo c'è un
+  piano delle bobine per materiale; nella distinta della porta il rotolo è
+  quello del materiale del pezzo.
+- Prima tutte le porte a strisce finivano nelle stesse bobine, anche se di
+  materiali diversi.
+
 ## 1.101.0 — Porte con colori diversi
 
 - Nell'elenco delle porte, sotto il materiale, «Colori diversi»: un

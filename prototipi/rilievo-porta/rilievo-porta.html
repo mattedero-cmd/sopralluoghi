@@ -165,6 +165,7 @@
   </div>
   <div class="mt-app-total" data-slot="total"><h3>Totale della porta</h3><button type="button" class="mt-add-job cursor-interaction" data-action="add-job">+ Aggiungi questa porta al lavoro</button></div>
   <div class="mt-app-job">
+   <div class="mt-job-mats" role="group" aria-label="Materiale del piano" hidden></div>
    <div class="mt-job-inputs" aria-hidden="true">
     <input type="number" min="300" max="3000" step="0.01" data-plan="masterW" aria-label="Larghezza della bobina (mm)" value="1220">
     <input type="number" min="5" max="500" step="0.01" data-plan="rollLen" aria-label="Lunghezza dei rotoli (m)" value="50">
@@ -306,6 +307,9 @@
 #maesta-tecnica .mt-job-type .mt-qty{min-width:56px;font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
 #maesta-tecnica .mt-plan-params{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
 #maesta-tecnica .mt-plan-params .mt-chip{max-width:none}
+#maesta-tecnica .mt-job-mats{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px}
+#maesta-tecnica .mt-job-mats[hidden]{display:none}
+#maesta-tecnica .mt-job-mats .mt-chip{max-width:none}
 #maesta-tecnica .mt-plan-params .mt-chip span{max-width:none}
 #maesta-tecnica .mt-plan-kpi{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:6px 0 10px}
 #maesta-tecnica .mt-plan-kpi div{background:var(--mt-board);border:1px solid var(--mt-line);border-radius:10px;padding:8px}
@@ -6413,11 +6417,12 @@ async function hostInstructions(button){
 // consegnano le scelte (parametri e scorte) e un riepilogo per il PDF.
 function hostPlanSummary(){
   const dem=jobDemand();if(!dem.length)return null;
+  const only=multiMat()?(job.mat||''):null;
   const gw=planWidths(dem),{masters,patterns}=planMasters(gw);
-  return{larghezza:plan.masterW,metriRotolo:plan.rollLen,bobine:masters.length,
+  return{...(only!==null||job.mat?{materiale:job.mat||''}:{}),larghezza:plan.masterW,metriRotolo:plan.rollLen,bobine:masters.length,
     rotoli:gw.map(g=>{const w=Math.max(g.width,...masters.flatMap(m=>m.cuts.filter(c=>c.g===g&&!c.spare).map(c=>c.w+c.add)));
       const det=new Map();
-      job.types.filter(t=>t.mode!=='kit').forEach(t=>t.rows.forEach(r=>{if(!g.ws.includes(r.width))return;
+      job.types.filter(t=>t.mode!=='kit').forEach(t=>t.rows.forEach(r=>{if(!g.ws.includes(r.width)||only!==null&&(r.mat||'')!==only)return;
         const nome=r.label.replace(/ · Striscia \d+/,''),sigla=r.sigla?'P'+t.name.replace(/^Porta\s+/,'')+'-'+r.sigla:'',k=t.name+'|'+(sigla||nome)+'|'+r.width+'|'+r.length;
         const e=det.get(k)||{sigla,pezzo:nome,porta:t.name,quantita:0,larghezza:r.width,lunghezza:r.length};e.quantita+=t.qty;det.set(k,e);}));
       const scorta=masters.reduce((n,m)=>n+m.cuts.filter(c=>c.g===g&&c.spare).length,0);
@@ -6427,13 +6432,18 @@ function hostPlanSummary(){
 function hostSchedulePlan(){
   clearTimeout(host.timer);
   host.timer=setTimeout(()=>{
-    let riepilogo=null;try{riepilogo=hostPlanSummary();}catch(e){}
-    hostPost({tipo:'piano',piano:{masterW:plan.masterW,rollLen:plan.rollLen,same:plan.same,ideal:plan.ideal,max:plan.max,few:plan.few,decisions:JSON.parse(JSON.stringify(plan.decisions))},riepilogo});
+    // un riepilogo per materiale (uno solo senza colori diversi)
+    let riepilogo=null;
+    try{riepilogo=multiMat()?jobMats().map(m=>withMat(m,hostPlanSummary)).filter(Boolean):hostPlanSummary();}catch(e){}
+    planStore[job.mat||'']=planSnapshot();
+    const perMateriale=JSON.parse(JSON.stringify(planStore));
+    hostPost({tipo:'piano',piano:{...planSnapshot(),perMateriale},riepilogo});
   },250);
 }
 function hostTypes(list){
   job.types=(list||[]).map(p=>({id:p.id,name:p.nome,qty:Math.max(1,p.qty||1),config:p.config,desc:p.descrizione||'',mode:p.modo==='kit'?'kit':'strisce',
-    rows:(p.righe||[]).map(r=>({label:r.nome,sigla:r.sigla||'',width:r.larghezza,length:r.lunghezza}))}));
+    rows:(p.righe||[]).map(r=>({label:r.nome,sigla:r.sigla||'',width:r.larghezza,length:r.lunghezza,mat:r.materiale||''}))}));
+  fixJobMat();
 }
 function hostMessage(ev){
   if(ev.source!==window.parent||ev.origin!==location.origin)return;
@@ -6441,9 +6451,10 @@ function hostMessage(ev){
   if(m.porte)hostTypes(m.porte);
   const t=m.id?job.types.find(x=>x.id===m.id):null;
   if(m.piano){
-    ['masterW','rollLen','same','ideal','max','few'].forEach(k=>{if(Number.isFinite(m.piano[k]))plan[k]=m.piano[k];});
-    plan.decisions=m.piano.decisions&&typeof m.piano.decisions==='object'?m.piano.decisions:{};
-    $$('[data-plan]').forEach(i=>{i.value=String(plan[i.dataset.plan]);});
+    // il piano salvato: uno per materiale, o quello di prima (un piano solo)
+    const per=m.piano.perMateriale&&typeof m.piano.perMateriale==='object'?m.piano.perMateriale:null;
+    planStore=per?JSON.parse(JSON.stringify(per)):{};
+    planLoad(per?(planStore[job.mat||'']||{...m.piano,decisions:{}}):m.piano);
   }
   if(m.tipo==='apri'&&m.modo==='lavoro'){
     host.lavoro=true;appEl.classList.add('mt-host-lavoro');closeWizard();
@@ -6616,7 +6627,9 @@ async function buildInstructions(type){
     const legend=y=>{doc.setFont('helvetica','bold');doc.setFontSize(9);doc.text(pdfText('Legenda sigle'+(letter?' (es. P'+letter+'-E-MDX-CF)':'')),M,y);doc.setFont('helvetica','normal');
       const items=[['P'+(letter||'A'),'porta'],['E / I','lato esterno / interno'],['T','traverso'],['MDX / MSX','montante destro / sinistro'],['A','anta (ASX / ADX con due ante)'],['CF','coprifilo'],['S','stipite (S1, S2: strisce)'],['IM','imbotte']];
       items.forEach(([k,v],i)=>{const x=M+(i%2)*91,yy=y+5+Math.floor(i/2)*4.6;doc.setFont('helvetica','bold');doc.text(pdfText(k),x,yy);doc.setFont('helvetica','normal');doc.text(pdfText(v),x+20,yy);});return y+5+Math.ceil(items.length/2)*4.6;};
-    const groups=planWidths(jobDemand()),{masters}=planMasters(groups);
+    // il rotolo di un pezzo si cerca nel piano del suo materiale
+    const rollPlans=new Map(),rollPlan=mat=>{if(!rollPlans.has(mat))rollPlans.set(mat,withMat(multiMat()?mat:(job.mat||''),()=>{const groups=planWidths(jobDemand());return{groups,...planMasters(groups)};}));return rollPlans.get(mat);};
+    const typeRows=(job.types.find(t=>t.id===type.id)||type).rows||[],matOf=r=>typeRows[rows.indexOf(r)]?.mat||'';
     const doc=new jsPDF({unit:'mm',format:'a4'}),M=14,PW=210;
     const title=(t,sub)=>{doc.setFont('helvetica','bold');doc.setFontSize(15);doc.text(pdfText(t),M,16);doc.setFont('helvetica','normal');doc.setFontSize(9.5);doc.setTextColor(86,99,109);doc.text(doc.splitTextToSize(pdfText(sub),PW-2*M),M,22);doc.setTextColor(39,51,59);};
     const image=async(svg,w,h,x,y,mmW)=>{const png=await svgToPng(svg,w,h);doc.addImage(png,'JPEG',x,y,mmW,mmW*h/w);return mmW*h/w;};
@@ -6626,7 +6639,7 @@ async function buildInstructions(type){
       row(head,true);line();y+=6;
       body.forEach(cells=>{if(y>280){doc.addPage();y=18;row(head,true);line();y+=6;}row(cells,false);line();y+=6;});return y;};
     const sizeLine=r=>fmt(r.width)+' x '+fmt(r.height)+' mm';
-    const rollLine=r=>{if(type.mode==='kit')return 'kit';const w=pieceRollWidth(roundCut(r.width),groups,masters);return w?'rotolo '+fmt(w)+' mm':'-';};
+    const rollLine=r=>{if(type.mode==='kit')return 'kit';const {groups,masters}=rollPlan(matOf(r));const w=pieceRollWidth(roundCut(r.width),groups,masters);return w?'rotolo '+fmt(w)+' mm'+(multiMat()?' · '+matName(matOf(r)):''):'-';};
     const group=!!type.group,lists=type.lists!==false;
     const head=group?`${model().name} · maniglia a ${state.handleSide==='left'?'sinistra':'destra'} · ${type.qty} ${type.qty===1?'porta':'porte'} · disegni e istruzioni comuni, misure nelle distinte di ogni porta`
       :`${model().name} · luce ${fmt(luce.W)} x ${fmt(luce.H)} mm · maniglia a ${state.handleSide==='left'?'sinistra':'destra'} · ${type.qty} ${type.qty===1?'porta':'porte'}`;
@@ -6685,6 +6698,45 @@ async function makeInstructions(type,button){
 // ---------- Lavoro: più porte, distinta di taglio, piano bobine ----------
 const job = {types: [], seq: 0};
 const plan = {masterW: 1220, rollLen: 50, same: 20, ideal: 50, max: 70, few: 10, decisions: {}, spareDrafts: {}};
+// PIANO PER MATERIALE: dentro l'app ogni pezzo porta il nome del suo
+// materiale (colori diversi: maestà, anta, lati). Materiali diversi sono
+// bobine diverse: ogni materiale ha il suo piano (parametri e scorte) e la
+// scheda mostra quello scelto. Con un solo materiale non cambia niente.
+const PLAN_KEYS=['masterW','rollLen','same','ideal','max','few'];
+let planStore={};
+function jobMats(){
+  const seen=[];job.types.filter(t=>t.mode!=='kit'&&t.qty>0).forEach(t=>t.rows.forEach(r=>{const m=r.mat||'';if(!seen.includes(m))seen.push(m);}));
+  return seen;
+}
+function multiMat(){return jobMats().length>1;}
+function planSnapshot(){const o={};PLAN_KEYS.forEach(k=>o[k]=plan[k]);o.decisions=JSON.parse(JSON.stringify(plan.decisions));return o;}
+function planLoad(saved){
+  if(saved){PLAN_KEYS.forEach(k=>{if(Number.isFinite(saved[k]))plan[k]=saved[k];});plan.decisions=saved.decisions&&typeof saved.decisions==='object'?JSON.parse(JSON.stringify(saved.decisions)):{};}
+  else plan.decisions={};
+  plan.spareDrafts={};
+  $$('[data-plan]').forEach(i=>{i.value=String(plan[i.dataset.plan]);});
+}
+function selectJobMat(mat){
+  if(mat===job.mat)return;
+  planStore[job.mat||'']=planSnapshot();
+  job.mat=mat;planLoad(planStore[mat]);
+}
+function fixJobMat(){const mats=jobMats();if(!mats.includes(job.mat||''))job.mat=mats[0]??'';}
+// esegue fn con il piano di un altro materiale, poi torna a quello scelto
+function withMat(mat,fn){
+  if(mat===(job.mat||''))return fn();
+  const back=job.mat||'',saved=planSnapshot(),drafts=plan.spareDrafts;
+  planStore[back]=saved;job.mat=mat;planLoad(planStore[mat]);
+  try{return fn();}finally{planStore[mat]=planSnapshot();job.mat=back;planLoad(saved);plan.spareDrafts=drafts;}
+}
+function matName(mat){return mat||'Senza materiale';}
+function renderJobMats(){
+  const box=$('.mt-job-mats');if(!box)return;fixJobMat();
+  const mats=jobMats();box.hidden=mats.length<2;box.replaceChildren();if(box.hidden)return;
+  const label=document.createElement('span');label.className='mt-small';label.textContent='Materiale';box.append(label);
+  mats.forEach(m=>{const b=document.createElement('button');b.type='button';b.className='mt-chip cursor-interaction';b.textContent=matName(m);
+    b.setAttribute('aria-pressed',String(m===job.mat));b.onclick=()=>{selectJobMat(m);vibrate();renderJob();};box.append(b);});
+}
 // Tagli della porta attuale (null se ci sono misure da sistemare).
 function currentRows() {
   if (!valid()) return null;
@@ -6718,8 +6770,9 @@ function addToJob() {
 }
 // Tagli di tutto il lavoro: pezzi uguali (stessa larghezza e lunghezza) sommati.
 function jobDemand() {
-  const map = new Map();
+  const map = new Map(), only = multiMat() ? (job.mat || '') : null;
   job.types.filter(t => t.mode !== 'kit').forEach(t => t.rows.forEach(r => {
+    if (only !== null && (r.mat || '') !== only) return;
     const key = r.width + 'x' + r.length;
     const e = map.get(key) || {w: r.width, l: r.length, qty: 0, labels: new Set()};
     e.qty += t.qty;
@@ -6940,6 +6993,7 @@ function planMasters(groupsW) {
   return {masters, patterns: [...patterns.values()].sort((a, b) => b.n - a.n)};
 }
 function renderJob() {
+  renderJobMats();
   if (HOST && host.lavoro) hostSchedulePlan();
   spareFields.clear();
   const typesBox = $('.mt-job-types');

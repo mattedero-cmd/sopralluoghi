@@ -233,6 +233,15 @@ pezzo prende il materiale del suo posto (anta o maestà, lato dalla sigla);
 i kit vanno nell'essenza del materiale di ciascun pezzo e la distinta del PDF
 scrive il materiale sotto il pezzo.
 
+Porte a strisce: l'app manda ogni pezzo con il nome del suo materiale
+(`righe[].materiale`). Con più materiali la scheda del lavoro mostra in cima
+«Materiale» e ogni materiale ha la sua distinta e il suo piano delle bobine
+(parametri e scorte, `planStore`, salvati in `piano.perMateriale`); il
+messaggio `piano` porta un riepilogo per materiale (`riepilogo` in elenco,
+con `materiale`). Il PDF del sopralluogo e il piano di taglio mostrano un
+piano delle bobine per materiale; le istruzioni cercano il rotolo di ogni
+pezzo nel piano del suo materiale.
+
 Messaggi (stessa origine): dall'app `apri` (`modo` nuova / scheda / copia / lavoro),
 `salvata`, `stato`, `pdf`; dalla porta `pronta`, `salva`, `file`, `stato`, `piano`,
 `errore`.

@@ -31,7 +31,7 @@ export type ModoRilievo = 'nuova' | 'scheda' | 'copia' | 'lavoro';
 export interface OpzioniLavoro {
   portaIds: ID[];
   piano?: Record<string, unknown>;
-  onPiano: (piano: Record<string, unknown>, riepilogo: RiepilogoStrisce | null) => void;
+  onPiano: (piano: Record<string, unknown>, riepilogo: RiepilogoStrisce | RiepilogoStrisce[] | null) => void;
 }
 
 export function RilievoPorta({
@@ -129,7 +129,7 @@ export function RilievoPorta({
       } else if (m.tipo === 'piano' && m.piano && typeof m.piano === 'object') {
         callback.current.lavoro?.onPiano(
           m.piano as Record<string, unknown>,
-          (m.riepilogo as RiepilogoStrisce | null) ?? null
+          (m.riepilogo as RiepilogoStrisce | RiepilogoStrisce[] | null) ?? null
         );
       } else if (m.tipo === 'file' && m.blob instanceof Blob) {
         setPdf({ blob: m.blob, nome: String(m.nome ?? 'Istruzioni montaggio').replace(/\.pdf$/i, '') });

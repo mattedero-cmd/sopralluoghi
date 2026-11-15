@@ -173,7 +173,11 @@ function svgBobina(larghezzaBobina: number, strisce: RiepilogoStrisce['tagli'][n
 export function contenutoBobinePorte(r: RiepilogoStrisce): Content[] {
   const daDecidere = r.tagli.some((t) => t.daDecidere);
   const out: Content[] = [
-    { text: 'Bobine delle porte a strisce', style: 'h2', tocItem: true } as Content,
+    {
+      text: `Bobine delle porte a strisce${r.materiale !== undefined ? ` · ${r.materiale || 'senza materiale'}` : ''}`,
+      style: 'h2',
+      tocItem: true
+    } as Content,
     riquadriChiave([
       ['Bobine da tagliare', String(r.bobine)],
       ['Larghezza bobina', `${mm(r.larghezza)} mm`],
@@ -273,10 +277,10 @@ export function contenutoBobinePorte(r: RiepilogoStrisce): Content[] {
 }
 
 /** Elenco dei pezzi di UNA porta: sigla, maestà e anta, quantità e misure. */
-function distintaPorta(m: MontaggioPorta, rotolo: (larghezza: number) => number | null): Content[] {
-  const taglio = (w: number) => {
+function distintaPorta(m: MontaggioPorta, rotolo: (larghezza: number, materiale: string) => number | null): Content[] {
+  const taglio = (r0: MontaggioPorta['porta']['righe'][number]) => {
     if (m.modo === 'kit') return 'Kit';
-    const r = rotolo(w);
+    const r = rotolo(r0.larghezza, m.materiali?.[m.porta.righe.indexOf(r0)] ?? '');
     return r ? `Rotolo ${mm(r)}` : '—';
   };
   const numerate = (anta: boolean) =>
@@ -305,7 +309,7 @@ function distintaPorta(m: MontaggioPorta, rotolo: (larghezza: number) => number 
             td(mm(r.larghezza), { alignment: 'right', bold: true }),
             td(mm(r.lunghezza), { alignment: 'right', bold: true }),
             td(String(m.quantita), { alignment: 'center', bold: true }),
-            td(taglio(r.larghezza))
+            td(taglio(r))
           ])
         ];
   // la distinta di una porta resta intera su una pagina, se ci sta
@@ -361,11 +365,14 @@ export function contenutoPorte(
       [60, 70, '*', '*']
     )
   ];
-  if (opzioni.bobine && dati.bobine) out.push(...contenutoBobinePorte(dati.bobine));
+  if (opzioni.bobine) for (const b of dati.bobine) out.push(...contenutoBobinePorte(b));
 
-  // larghezza del rotolo di ogni pezzo a strisce
-  const rotolo = (w: number) =>
-    dati.bobine?.rotoli.find((g) => g.pezzi.some((p) => p.larghezza === w))?.larghezza ?? null;
+  // larghezza del rotolo di ogni pezzo a strisce, nel piano del suo materiale
+  const rotolo = (w: number, materiale: string) => {
+    const piano =
+      dati.bobine.length > 1 ? dati.bobine.find((b) => (b.materiale ?? '') === materiale) : dati.bobine[0];
+    return piano?.rotoli.find((g) => g.pezzi.some((p) => p.larghezza === w))?.larghezza ?? null;
+  };
   const area: [number, number] = opzioni.orizzontale ? [760, 470] : [515, 690];
   for (const g of dati.gruppi) {
     out.push({

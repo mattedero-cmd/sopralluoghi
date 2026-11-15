@@ -31,6 +31,8 @@ export type ModoPorta = 'kit' | 'strisce';
 
 /** Riepilogo del piano delle strisce, come lo consegna il rilievo porta. */
 export interface RiepilogoStrisce {
+  /** il materiale di questo piano (nome; '' = senza materiale), con i colori diversi */
+  materiale?: string;
   /** larghezza della bobina madre (mm) */
   larghezza: number;
   /** metri di un rotolo */
@@ -69,10 +71,19 @@ export interface PorteNesting {
   kitPerMateriale?: Record<string, string>;
   /** scelte del piano delle strisce (formato del rilievo porta) */
   piano?: Record<string, unknown>;
-  /** ultimo riepilogo del piano delle strisce */
-  riepilogo?: RiepilogoStrisce | null;
+  /**
+   * ultimo riepilogo del piano delle strisce: uno per materiale (le porte
+   * salvate prima ne hanno uno solo, non in elenco)
+   */
+  riepilogo?: RiepilogoStrisce | RiepilogoStrisce[] | null;
   /** porte e quantità da cui è nato il riepilogo: se cambiano, va rifatto */
   firma?: string;
+}
+
+/** I piani delle bobine delle porte a strisce, uno per materiale. */
+export function riepiloghiStrisce(r: PorteNesting['riepilogo']): RiepilogoStrisce[] {
+  if (!r) return [];
+  return (Array.isArray(r) ? r : [r]).filter((x) => x && typeof x === 'object' && Array.isArray(x.rotoli));
 }
 
 /** Porte a strisce e quantità: cambia quando il piano delle bobine va rifatto. */
@@ -246,7 +257,7 @@ export function normalizzaPorte(g: unknown): PorteNesting | undefined {
       : {}),
     ...(s.piano && typeof s.piano === 'object' ? { piano: s.piano as Record<string, unknown> } : {}),
     ...(s.riepilogo && typeof s.riepilogo === 'object'
-      ? { riepilogo: s.riepilogo as RiepilogoStrisce }
+      ? { riepilogo: s.riepilogo as RiepilogoStrisce | RiepilogoStrisce[] }
       : {}),
     ...(typeof s.firma === 'string' ? { firma: s.firma } : {})
   };

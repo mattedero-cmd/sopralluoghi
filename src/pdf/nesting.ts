@@ -14,7 +14,7 @@ import { misureForma } from '../geometry/sagome';
 import { frasiRitagli, ritagliUtili, segmentaBobina } from '../geometry/segmenti';
 import { OPZIONI_PDF_PREDEFINITE, type OpzioniPdfNesting } from './opzioni';
 import { contenutoBobinePorte, legendaSigle } from './porte';
-import { essenzeKit } from '../utils/portePiano';
+import { essenzeKit, riepiloghiStrisce } from '../utils/portePiano';
 import {
   etichettaSupporto,
   opzioniRicerca,
@@ -633,7 +633,7 @@ export function contenutoNesting(
   const materiali = doc.materiali.filter((m) =>
     m.pezzi.some((p) => Math.round(p.quantita) > 0)
   );
-  if (materiali.length === 0 && !doc.porte?.riepilogo) return [];
+  if (materiali.length === 0 && riepiloghiStrisce(doc.porte?.riepilogo).length === 0) return [];
 
   for (const m of materiali) {
     const par = parametriDi(m);
@@ -694,7 +694,7 @@ export function contenutoNesting(
 
   // le porte a strisce non passano dal nesting: il loro piano delle bobine
   // (fatto nel piano di taglio) va in coda alle distinte
-  if (doc.porte?.riepilogo) distinte.push(...contenutoBobinePorte(doc.porte.riepilogo));
+  for (const r of riepiloghiStrisce(doc.porte?.riepilogo)) distinte.push(...contenutoBobinePorte(r));
 
   return [...distinte, ...pagine];
 }

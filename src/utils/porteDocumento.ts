@@ -23,6 +23,7 @@ import {
   gruppiMontaggio,
   modoPorta,
   nomePorte,
+  riepiloghiStrisce,
   type ModoPorta,
   type PorteNesting,
   type RiepilogoStrisce
@@ -38,7 +39,8 @@ export interface PortaPerRilievo {
   modo: ModoPorta;
   config: unknown;
   descrizione: string;
-  righe: Porta['righe'];
+  /** i pezzi, ognuno col nome del suo materiale ('' = nessuno) */
+  righe: Array<Porta['righe'][number] & { materiale: string }>;
 }
 
 /** Porte del progetto con quantità e scelte del suo piano di taglio. */
@@ -48,11 +50,16 @@ export async function contestoPorte(progettoId: ID): Promise<{
   sezione: PorteNesting | undefined;
   perRilievo: PortaPerRilievo[];
 }> {
-  const [porte, conto, lavoro] = await Promise.all([
+  const [porte, conto, lavoro, progetto] = await Promise.all([
     portePerProgetto(progettoId),
     contaPorte(progettoId),
-    nestingDiProgetto(progettoId)
+    nestingDiProgetto(progettoId),
+    db.progetti.get(progettoId)
   ]);
+  const preset = progetto?.preset;
+  // il piano delle bobine si fa per materiale: ogni pezzo dice il suo
+  const nomeDi = (p: Porta, r: Porta['righe'][number]) =>
+    materialeDelPreset(preset, materialeRiga(p, r, preset) || undefined)?.nome ?? '';
   const sezione = lavoro ? migraDocumento(lavoro.documento)?.porte : undefined;
   return {
     porte,
@@ -65,7 +72,7 @@ export async function contestoPorte(progettoId: ID): Promise<{
       modo: modoPorta(sezione, p.id),
       config: p.config,
       descrizione: p.descrizione,
-      righe: p.righe
+      righe: p.righe.map((r) => ({ ...r, materiale: nomeDi(p, r) }))
     }))
   };
 }
@@ -170,8 +177,8 @@ export interface GruppoDelReport {
 export interface PorteDelReport {
   porte: MontaggioPorta[];
   gruppi: GruppoDelReport[];
-  /** piano delle bobine delle porte a strisce (null se non ce ne sono) */
-  bobine: RiepilogoStrisce | null;
+  /** piani delle bobine delle porte a strisce, uno per materiale (vuoto se non ce ne sono) */
+  bobine: RiepilogoStrisce[];
 }
 
 /**
@@ -192,13 +199,13 @@ export async function porteDelReport(
     await rilievo.apri();
     const piano = ctx.sezione?.piano ?? null;
     // piano delle bobine: solo le porte a strisce
-    let bobine: RiepilogoStrisce | null = null;
+    let bobine: RiepilogoStrisce[] = [];
     const strisce = usate.filter((p) => p.modo === 'strisce');
     if (strisce.length) {
       avanzamento?.('Porte: piano delle bobine…');
       const risposta = rilievo.aspetta('piano', 20000);
       rilievo.manda({ tipo: 'apri', modo: 'lavoro', porte: strisce, piano });
-      bobine = ((await risposta).riepilogo as RiepilogoStrisce | null) ?? null;
+      bobine = riepiloghiStrisce((await risposta).riepilogo as PorteNesting['riepilogo']);
     }
     // un'istruzione per famiglia costruttiva, fatta sulla prima porta del gruppo
     const gruppi: GruppoDelReport[] = [];

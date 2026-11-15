@@ -73,6 +73,7 @@ import { RilievoPorta } from '../components/RilievoPorta';
 import {
   firmaStrisce,
   modoPorta,
+  riepiloghiStrisce,
   essenzeKit,
   sincronizzaKit,
   type ModoPorta
@@ -1213,11 +1214,16 @@ export function NestingPage({
                     <span>
                       <strong>Bobine delle porte a strisce</strong>
                       <small>
-                        {!doc.porte.riepilogo || doc.porte.firma !== firmaAttuale
+                        {riepiloghiStrisce(doc.porte.riepilogo).length === 0 || doc.porte.firma !== firmaAttuale
                           ? 'Da fare: tocca per tagliare le bobine e decidere le scorte'
-                          : `${doc.porte.riepilogo.bobine} ${doc.porte.riepilogo.bobine === 1 ? 'bobina' : 'bobine'} da ${formattaNumero(doc.porte.riepilogo.larghezza)} mm · rotoli ${doc.porte.riepilogo.rotoli
-                              .map((r) => `${formattaNumero(r.larghezza)} ×${r.rotoli}`)
-                              .join(', ')}${doc.porte.riepilogo.tagli.some((t) => t.daDecidere) ? ' · scorte da decidere' : ''}`}
+                          : riepiloghiStrisce(doc.porte.riepilogo)
+                              .map(
+                                (r) =>
+                                  `${r.materiale ? `${r.materiale}: ` : ''}${r.bobine} ${r.bobine === 1 ? 'bobina' : 'bobine'} da ${formattaNumero(r.larghezza)} mm · rotoli ${r.rotoli
+                                    .map((g) => `${formattaNumero(g.larghezza)} ×${g.rotoli}`)
+                                    .join(', ')}${r.tagli.some((t) => t.daDecidere) ? ' · scorte da decidere' : ''}`
+                              )
+                              .join(' — ')}
                       </small>
                     </span>
                   </button>
