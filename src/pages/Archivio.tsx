@@ -906,9 +906,9 @@ function FormProgetto({ cartellaId, onChiudi }: { cartellaId: string | null; onC
           >
             <strong>Progetto complesso</strong>
             <span>
-              Prima del sopralluogo si crea il preset: i materiali che si posano (solare, acidato,
-              sicurezza…), l’abbondanza, il supporto, i teli. Forme e porte si scelgono il
-              materiale quando nascono.
+              Prima del sopralluogo si scelgono i materiali che si posano (solare, acidato,
+              sicurezza…) e per ognuno si crea il suo preset: abbondanza, supporto, teli. Forme e
+              porte si scelgono il materiale quando nascono.
             </span>
           </button>
         </div>
@@ -928,6 +928,7 @@ function FormProgetto({ cartellaId, onChiudi }: { cartellaId: string | null; onC
         quanteForme={0}
         creazione
         richiediMateriali
+        onBozza={setPreset}
         onSalva={(p) => {
           setPreset(p);
           void crea(p);
@@ -940,7 +941,7 @@ function FormProgetto({ cartellaId, onChiudi }: { cartellaId: string | null; onC
   const complesso = tipo === 'complesso';
   return (
     <Modale titolo={complesso ? 'Nuovo progetto complesso' : 'Nuovo progetto veloce'} onChiudi={onChiudi}>
-      {complesso && <p className="passi-progetto">Passo 2 di 3 · i dati del progetto</p>}
+      {complesso && <p className="passi-progetto">Passo 2 · i dati del progetto</p>}
       <div className="campo">
         <label>Nome del progetto *</label>
         <input autoFocus value={nome} onChange={(e) => setNome(e.target.value)} />

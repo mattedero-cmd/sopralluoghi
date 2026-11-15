@@ -10,6 +10,27 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.98.0 — Nel progetto complesso, un preset per ogni materiale
+
+- **La creazione di un progetto complesso chiede un preset per ogni
+  materiale.** Dopo i dati del progetto si scelgono i materiali; poi, uno per
+  uno, la guida apre il preset di ciascuno — «Passo 4 di 5 · materiale 1 di
+  2» — con abbondanza, supporto e teli. Ognuno parte dai valori di default;
+  dal secondo in poi c'è «Uguale al Solare» per partire da quello prima e
+  cambiare solo quello che cambia. Il progetto nasce all'ultimo passo.
+
+- **«Indietro» non perde niente**: si torna di materiale in materiale fino ai
+  dati del progetto, e andando di nuovo avanti si ritrova tutto com'era.
+
+- **Nel preset di un progetto complesso ci sono solo i materiali**: una
+  scheda per ciascuno, senza «predefinito» da cui dipendere. Un materiale
+  aggiunto dopo parte dai valori di default e ha il suo preset come gli
+  altri. Nei progetti veloci resta com'era: predefinito, e un preset suo per
+  il materiale che lo vuole.
+
+- La riga del preset nella scheda del progetto lo dice: «2 materiali, ognuno
+  col suo preset: Solare, Coverstyle».
+
 ## 1.97.0 — Ogni materiale col suo preset
 
 - **Il preset non è più uno solo.** Quello del lavoro diventa il

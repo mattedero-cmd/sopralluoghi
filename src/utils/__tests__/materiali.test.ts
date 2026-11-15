@@ -159,6 +159,12 @@ describe('ogni materiale col suo preset', () => {
 
   it('il riassunto segna chi ha un preset suo', () => {
     expect(riassuntoPreset(conSuo)).toContain('Solare, Coverstyle (preset suo)');
+    // tutti col loro: si dice quello, non il predefinito che nessuno usa
+    const tutti: PresetProgetto = {
+      ...conSuo,
+      materiali: conSuo.materiali!.map((m) => ({ ...m, preset: m.preset ?? { abbPerimetroMm: 10 } }))
+    };
+    expect(riassuntoPreset(tutti)).toBe('2 materiali, ognuno col suo preset: Solare, Coverstyle');
   });
 });
 

@@ -1350,6 +1350,8 @@ export function ProgettoPage({ id }: { id: string }) {
       {presetAperto && (
         <PresetLavoro
           preset={progetto.preset}
+          // il lavoro complesso: un preset per materiale, niente predefinito
+          perMateriale={progetto.tipo === 'complesso'}
           quanteForme={formeDelLavoro.length}
           onSalva={(p) => void aggiornaProgetto(progetto.id, { preset: p })}
           onApplicaTutto={(p) => void applicaPresetATutte(p)}

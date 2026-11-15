@@ -362,6 +362,14 @@ export function predefinitiTeli(
 /** una riga sola che dice cosa c'è nel preset, per il tasto che lo apre */
 export function riassuntoPreset(preset: PresetProgetto | undefined): string | null {
   if (!preset) return null;
+  // ogni materiale col suo preset: il predefinito non lo usa nessuno, e
+  // dirne la bobina sarebbe dire una cosa che non vale
+  const tutti = materialiDelPreset(preset);
+  if (tutti.length && tutti.every((m) => m.preset)) {
+    return tutti.length === 1
+      ? `${tutti[0].nome}, col suo preset`
+      : `${tutti.length} materiali, ognuno col suo preset: ${tutti.map((m) => m.nome).join(', ')}`;
+  }
   const voci: string[] = [];
   const lati = abbAiLati(preset);
   if (lati) {

@@ -397,7 +397,9 @@ export function PresetLavoro({
   onApplicaTutto,
   onChiudi,
   creazione,
-  richiediMateriali
+  richiediMateriali,
+  perMateriale: perMaterialeProp,
+  onBozza
 }: {
   preset: PresetProgetto | undefined;
   /** quante forme ci sono già nel lavoro, per il comando «applica a tutte» */
@@ -407,18 +409,37 @@ export function PresetLavoro({
   onApplicaTutto?: (p: PresetProgetto) => void;
   onChiudi: () => void;
   /**
-   * L'ULTIMO PASSO DI UN PROGETTO COMPLESSO: il progetto nasce quando il
-   * preset è detto. Al posto di «salva» c'è «crea il progetto», e «annulla»
-   * torna indietro ai dati del progetto invece di buttare tutto.
+   * GLI ULTIMI PASSI DI UN PROGETTO COMPLESSO: prima si scelgono i materiali,
+   * poi un preset per ognuno, uno dopo l'altro. Il progetto nasce all'ultimo,
+   * con «crea il progetto»; «indietro» dal primo passo torna ai dati del
+   * progetto invece di buttare tutto.
    */
   creazione?: boolean;
   /** un lavoro complesso: senza almeno un materiale il preset non si salva */
   richiediMateriali?: boolean;
+  /**
+   * UN PRESET PER MATERIALE, SEMPRE: il lavoro complesso. Non c'è una scheda
+   * «predefinito» da cui i materiali dipendono: ognuno ha il suo, e uno
+   * aggiunto dopo parte dai valori di default.
+   */
+  perMateriale?: boolean;
+  /**
+   * In creazione, tornando ai dati del progetto: quello che è stato detto
+   * fin qui, perché tornando avanti lo si ritrovi.
+   */
+  onBozza?: (p: PresetProgetto) => void;
 }) {
+  const perMateriale = !!creazione || !!perMaterialeProp;
   const [generale, setGenerale] = useState<PresetScheda>(() => {
     const { materiali: _m, ...resto } = preset ?? PRESET_INIZIALE;
     return resto;
   });
+  /**
+   * DA DOVE PARTE IL PRESET DI UN MATERIALE: i valori di default del lavoro.
+   * In un progetto nuovo sono quelli di fabbrica; in uno già avviato, il
+   * preset che il lavoro aveva prima di dividerlo per materiale.
+   */
+  const partenza = (): PresetScheda => JSON.parse(JSON.stringify(generale)) as PresetScheda;
   // i materiali col loro preset; quelli della 1.96.0 (solo la bobina)
   // passano a un preset intero, il predefinito con quella bobina
   const [materiali, setMateriali] = useState<MaterialePreset[]>(() =>
@@ -427,20 +448,37 @@ export function PresetLavoro({
       return proprio ? { ...m, preset: proprio } : m;
     })
   );
+  /** il preset con cui si lavora un materiale: il suo, o quello da cui partirebbe */
+  const presetDi = (m: MaterialePreset): PresetScheda => m.preset ?? partenza();
   /**
    * LA SCHEDA APERTA: il predefinito, o un materiale.
    *
    * Ogni pellicola si lavora a modo suo — il solare con due centimetri
    * attorno, il coverstyle con cinque e i teli orizzontali — e un preset solo
-   * per tutte non basta. Il predefinito è quello da cui un materiale parte.
+   * per tutte non basta.
    */
-  const [scheda, setScheda] = useState<ID | 'predefinito'>('predefinito');
+  const [scheda, setScheda] = useState<ID | 'predefinito'>(() =>
+    perMateriale && preset?.materiali?.length ? preset.materiali[0].id : 'predefinito'
+  );
+  /**
+   * IN CREAZIONE, IL PASSO: -1 è la scelta dei materiali, poi uno per
+   * materiale, nell'ordine in cui sono stati scelti.
+   */
+  const [passo, setPasso] = useState(-1);
+  /** cresce a ogni «uguale a…»: i campi ripartono dal preset copiato */
+  const [copie, setCopie] = useState(0);
   const mancaMateriale = !!richiediMateriali && materiali.length === 0;
-  const aperto = scheda === 'predefinito' ? undefined : materiali.find((m) => m.id === scheda);
-  // un materiale tolto mentre era aperto: si torna al predefinito
+  const aperto =
+    creazione && passo >= 0
+      ? materiali[passo]
+      : scheda === 'predefinito'
+        ? undefined
+        : materiali.find((m) => m.id === scheda);
+  // un materiale tolto mentre era aperto: si torna al primo (o al predefinito)
   useEffect(() => {
-    if (scheda !== 'predefinito' && !aperto) setScheda('predefinito');
-  }, [scheda, aperto]);
+    if (creazione || scheda === 'predefinito' || materiali.some((m) => m.id === scheda)) return;
+    setScheda(perMateriale && materiali.length ? materiali[0].id : 'predefinito');
+  }, [creazione, scheda, materiali, perMateriale]);
 
   const scriviMateriale = (id: ID, preset: PresetScheda | undefined) =>
     setMateriali((ms) =>
@@ -453,7 +491,13 @@ export function PresetLavoro({
 
   const costruito = (): PresetProgetto => ({
     ...generale,
-    ...(materiali.length ? { materiali } : {})
+    ...(materiali.length
+      ? {
+          // nel lavoro complesso ogni materiale esce col SUO preset, anche
+          // quello lasciato com'era partito
+          materiali: perMateriale ? materiali.map((m) => ({ ...m, preset: presetDi(m) })) : materiali
+        }
+      : {})
   });
 
   const salva = () => {
@@ -472,48 +516,85 @@ export function PresetLavoro({
     onChiudi();
   };
 
+  /** il passo dei materiali, in creazione; tutto il resto, fuori */
+  const sceltaMateriali = !creazione || passo < 0;
+  const ultimo = creazione && passo === materiali.length - 1;
+  const totalePassi = 3 + materiali.length;
+  const precedente = creazione && passo > 0 ? materiali[passo - 1] : undefined;
+
+  const avanti = () => {
+    if (mancaMateriale) return;
+    if (ultimo) return salva();
+    setPasso((n) => n + 1);
+  };
+  const indietro = () => {
+    if (creazione && passo >= 0) return setPasso((n) => n - 1);
+    if (creazione) onBozza?.(costruito());
+    onChiudi();
+  };
+
   return (
-    <Modale titolo={creazione ? 'Nuovo progetto · preset' : 'Preset del lavoro'} onChiudi={onChiudi}>
+    <Modale
+      titolo={
+        creazione
+          ? aperto
+            ? `Nuovo progetto · preset del ${aperto.nome}`
+            : 'Nuovo progetto · materiali'
+          : 'Preset del lavoro'
+      }
+      onChiudi={indietro}
+    >
       <div className="preset-lavoro">
       {creazione ? (
-        <p className="passi-progetto">Passo 3 di 3 · il progetto nasce con questo preset</p>
+        <p className="passi-progetto">
+          {aperto
+            ? `Passo ${4 + passo} di ${totalePassi} · materiale ${passo + 1} di ${materiali.length}`
+            : `Passo 3 di ${materiali.length ? totalePassi : '…'} · i materiali del lavoro`}
+        </p>
       ) : null}
-      <p className="aiuto" style={{ marginTop: 0 }}>
-        {creazione
-          ? 'Da qui partono le cose nuove di questo sopralluogo: il materiale di una forma o di una porta, l’abbondanza, la divisione in teli, il piano di taglio. Si cambia quando vuoi, dalla scheda del progetto.'
-          : 'Da qui partono le cose nuove di questo sopralluogo: il materiale e l’abbondanza di una forma appena disegnata, la divisione in teli, il piano di taglio. Quello che è già disegnato resta com’è — finché non tocchi «salva e applica a tutto», qui sotto.'}
-      </p>
+      {sceltaMateriali && (
+        <p className="aiuto" style={{ marginTop: 0 }}>
+          {creazione
+            ? 'Scegli le pellicole che si posano in questo sopralluogo. Poi, una per una, si dice il preset di ciascuna: abbondanza, supporto e teli. Forme e porte prendono il preset del loro materiale.'
+            : 'Da qui partono le cose nuove di questo sopralluogo: il materiale e l’abbondanza di una forma appena disegnata, la divisione in teli, il piano di taglio. Quello che è già disegnato resta com’è — finché non tocchi «salva e applica a tutto», qui sotto.'}
+        </p>
+      )}
 
-      <div className="campo">
-        <label>Materiali del lavoro{richiediMateriali ? ' *' : ''}</label>
-        <span style={{ color: 'var(--testo-2)', fontSize: 13 }}>
-          Le pellicole che si posano in questo sopralluogo. Una forma o una porta, quando nasce,
-          prende uno di questi; il piano di taglio esce diviso per materiale. Ogni materiale parte
-          dal preset predefinito e può averne uno suo.
-        </span>
-        <MaterialiLavoro materiali={materiali} onCambia={setMateriali} />
-        {mancaMateriale && (
-          <span style={{ color: 'var(--avviso)', fontSize: 13, marginTop: 6 }}>
-            Scegli almeno un materiale: in un progetto complesso ogni forma e ogni porta ne ha uno.
+      {sceltaMateriali && (
+        <div className="campo">
+          <label>Materiali del lavoro{richiediMateriali ? ' *' : ''}</label>
+          <span style={{ color: 'var(--testo-2)', fontSize: 13 }}>
+            {perMateriale
+              ? 'Una forma o una porta, quando nasce, prende uno di questi; il piano di taglio esce diviso per materiale. Ogni materiale ha il suo preset, che parte dai valori di default.'
+              : 'Una forma o una porta, quando nasce, prende uno di questi; il piano di taglio esce diviso per materiale. Ogni materiale parte dal preset predefinito e può averne uno suo.'}
           </span>
-        )}
-      </div>
+          <MaterialiLavoro materiali={materiali} onCambia={setMateriali} />
+          {mancaMateriale && (
+            <span style={{ color: 'var(--avviso)', fontSize: 13, marginTop: 6 }}>
+              Scegli almeno un materiale: in un progetto complesso ogni forma e ogni porta ne ha uno.
+            </span>
+          )}
+        </div>
+      )}
 
       {/*
-        UNA SCHEDA PER PRESET: il predefinito e uno per materiale. Le schede
-        stanno sopra i campi, che sono gli stessi per tutti: cambia solo di
-        chi sono i numeri.
+        UNA SCHEDA PER PRESET (fuori dalla creazione): il predefinito — se il
+        lavoro ne ha uno da cui i materiali dipendono — e uno per materiale.
+        Le schede stanno sopra i campi, che sono gli stessi per tutti: cambia
+        solo di chi sono i numeri.
       */}
-      {materiali.length > 0 && (
+      {!creazione && materiali.length > 0 && (
         <div className="schede-preset" role="tablist" aria-label="Di chi è il preset">
-          <button
-            role="tab"
-            aria-selected={scheda === 'predefinito'}
-            className={scheda === 'predefinito' ? 'attivo' : ''}
-            onClick={() => setScheda('predefinito')}
-          >
-            Predefinito
-          </button>
+          {!perMateriale && (
+            <button
+              role="tab"
+              aria-selected={scheda === 'predefinito'}
+              className={scheda === 'predefinito' ? 'attivo' : ''}
+              onClick={() => setScheda('predefinito')}
+            >
+              Predefinito
+            </button>
+          )}
           {materiali.map((m) => (
             <button
               key={m.id}
@@ -523,13 +604,43 @@ export function PresetLavoro({
               onClick={() => setScheda(m.id)}
             >
               {m.nome}
-              {m.preset ? <span className="segno-suo" aria-label="(preset suo)"> ●</span> : null}
+              {!perMateriale && m.preset ? (
+                <span className="segno-suo" aria-label="(preset suo)"> ●</span>
+              ) : null}
             </button>
           ))}
         </div>
       )}
 
-      {aperto ? (
+      {creazione && passo < 0 ? null : perMateriale ? (
+        aperto && (
+          <>
+            {creazione && (
+              <p className="aiuto" style={{ marginTop: 0 }}>
+                Il preset del <strong>{aperto.nome}</strong>: come si lavora questa pellicola. Parte
+                dai valori di default; cambia quello che per il {aperto.nome} è diverso.
+              </p>
+            )}
+            {precedente && (
+              <button
+                className="btn largo"
+                style={{ marginBottom: 10 }}
+                onClick={() => {
+                  scriviMateriale(aperto.id, JSON.parse(JSON.stringify(presetDi(precedente))));
+                  setCopie((n) => n + 1);
+                }}
+              >
+                Uguale al {precedente.nome}
+              </button>
+            )}
+            <CampiPreset
+              key={`${aperto.id}#${copie}`}
+              valore={presetDi(aperto)}
+              onCambia={(p) => scriviMateriale(aperto.id, p)}
+            />
+          </>
+        )
+      ) : aperto ? (
         <>
           <div className="campo">
             <label>Preset del {aperto.nome}</label>
@@ -582,12 +693,14 @@ export function PresetLavoro({
         </span>
       )}
       <div className="riga-pulsanti">
-        <button className="btn" onClick={onChiudi}>
+        <button className="btn" onClick={indietro}>
           {creazione ? 'Indietro' : 'Annulla'}
         </button>
         {creazione ? (
-          <button className="btn primario" disabled={mancaMateriale} onClick={salva}>
-            Crea il progetto
+          <button className="btn primario" disabled={mancaMateriale} onClick={avanti}>
+            {ultimo
+              ? 'Crea il progetto'
+              : `Avanti: preset del ${materiali[passo + 1]?.nome ?? '…'}`}
           </button>
         ) : (
           <>
