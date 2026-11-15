@@ -455,3 +455,50 @@ export function teliDelPreset(
   });
   return giunti.length ? { asse: t.asse, sormonto, verso: t.verso, giunti } : null;
 }
+
+/** due divisioni in teli uguali, a meno dei residui delle divisioni */
+export function stessiTeli(a: Pannellizzazione | undefined, b: Pannellizzazione | undefined): boolean {
+  if (!a || !b) return !a && !b;
+  const giro = (p: Pannellizzazione) =>
+    JSON.stringify([
+      p.asse,
+      p.verso,
+      Math.round(p.sormonto * 1e4),
+      p.giunti.map((g: number) => Math.round(g * 1e4))
+    ]);
+  return giro(a) === giro(b);
+}
+
+/**
+ * I TELI DEL PRESET, TENUTI AL PASSO CON LA FORMA.
+ *
+ * Il preset del materiale dice come si divide: fascia della bobina,
+ * sormonto, verso, asse. Appena la forma ha le misure la divisione si fa da
+ * sola, e si rifà quando cambiano misure, abbondanze o materiale — aprire
+ * ogni finestra per premere «dividi» era proprio il lavoro che il preset
+ * doveva togliere.
+ *
+ * Non si tocca una divisione decisa a mano nell'ambiente dei teli (anche
+ * quella tolta), né una fatta prima che esistesse questa regola: una parete
+ * coi giunti spostati col dito non la ridivide nessuno.
+ *
+ * Torna la stessa forma (per identità) quando non c'è niente da cambiare.
+ */
+export function conTeliDelPreset(
+  a: Annotazione,
+  foto: Pick<Foto, 'scala' | 'piano' | 'piani'> | null,
+  preset: PresetProgetto | undefined
+): Annotazione {
+  if (a.tipo !== 'quotaPoligono' && a.tipo !== 'quotaRett') return a;
+  if (a.tipo === 'quotaPoligono' && a.soloEtichetta) return a;
+  if (a.teliDa === 'mano') return a;
+  if (a.pannelli && a.teliDa !== 'preset') return a;
+  if (!presetDelMateriale(preset, a.materialeId)?.teli) return a;
+  const pann = teliDelPreset(a, foto, preset) ?? undefined;
+  if (stessiTeli(a.pannelli, pann)) return a;
+  if (!pann) {
+    const { pannelli: _via, teliDa: _da, ...resto } = a;
+    return resto as Annotazione;
+  }
+  return { ...a, pannelli: pann, teliDa: 'preset' } as Annotazione;
+}

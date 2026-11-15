@@ -634,6 +634,14 @@ export interface QuotaRettangolo extends AnnotazioneBase {
    * vorrebbe dire niente.
    */
   pannelli?: Pannellizzazione;
+  /**
+   * DI CHI È LA DIVISIONE IN TELI: `preset` = l'ha fatta il preset del
+   * materiale, e si rifà da sola quando cambiano misure, abbondanze o
+   * materiale; `mano` = l'ha decisa chi rileva nell'ambiente dei teli (anche
+   * togliendola), e nessun preset la tocca più. Assente con `pannelli` =
+   * divisione di prima che esistesse (si tratta come fatta a mano).
+   */
+  teliDa?: 'preset' | 'mano';
 }
 
 /** Angoli del quadrilatero, con conversione dei record legacy (rect) */
@@ -842,6 +850,14 @@ export interface QuotaPoligono extends AnnotazioneBase {
    * che deve stare nella fascia del rotolo.
    */
   pannelli?: Pannellizzazione;
+  /**
+   * DI CHI È LA DIVISIONE IN TELI: `preset` = l'ha fatta il preset del
+   * materiale, e si rifà da sola quando cambiano misure, abbondanze o
+   * materiale; `mano` = l'ha decisa chi rileva nell'ambiente dei teli (anche
+   * togliendola), e nessun preset la tocca più. Assente con `pannelli` =
+   * divisione di prima che esistesse (si tratta come fatta a mano).
+   */
+  teliDa?: 'preset' | 'mano';
 }
 
 /** gli spigoli dichiarati a squadro, come maschera per vertice */

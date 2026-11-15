@@ -18,8 +18,7 @@ import {
   type Sezione
 } from './types';
 import { nuovoId } from '../utils/id';
-import { conAbbondanzaDelPreset, presetDelMateriale, teliDelPreset } from '../utils/preset';
-import type { Pannellizzazione } from '../geometry/pannelli';
+import { conAbbondanzaDelPreset, presetDelMateriale, stessiTeli, teliDelPreset } from '../utils/preset';
 import { blobMiniatura, blobOrigine } from '../utils/image';
 import { inizioSalvataggio, fineSalvataggio } from '../state/saveStatus';
 import { mostraToast } from '../state/toast';
@@ -903,22 +902,6 @@ export async function salvaAnnotazioniFoto(fotoId: ID, annotazioni: Annotazione[
   );
 }
 
-/** vero se due divisioni in teli dicono la stessa cosa */
-function stessiTeli(
-  a: Pannellizzazione | undefined,
-  b: Pannellizzazione | undefined
-): boolean {
-  if (!a || !b) return !a && !b;
-  const giro = (p: Pannellizzazione) =>
-    JSON.stringify([
-      p.asse,
-      p.verso,
-      Math.round(p.sormonto * 1e4),
-      p.giunti.map((g: number) => Math.round(g * 1e4))
-    ]);
-  return giro(a) === giro(b);
-}
-
 /**
  * IL PRESET PORTATO SU TUTTO QUELLO CHE C'È GIÀ.
  *
@@ -973,6 +956,13 @@ export async function applicaPresetATutto(
             if (!stessiTeli(nuova.pannelli, pann)) {
               nuova = { ...nuova, pannelli: pann };
               teli++;
+            }
+            // da qui la divisione è del preset: si rifà da sola quando
+            // cambiano le misure; senza teli, non è di nessuno
+            if (pann) nuova = { ...nuova, teliDa: 'preset' };
+            else if (nuova.teliDa !== undefined) {
+              const { teliDa: _via, ...resto } = nuova;
+              nuova = resto;
             }
           }
           if (nuova !== a) {

@@ -3,6 +3,7 @@ import {
   PRESET_INIZIALE,
   conAbbondanzaDelPreset,
   conPresetApplicato,
+  conTeliDelPreset,
   fasciaDelPreset,
   predefinitiTeli,
   riassuntoPreset,
@@ -505,5 +506,48 @@ describe('la riga che riassume', () => {
   it('il preset di partenza è una bobina da 137, come in laboratorio', () => {
     expect(PRESET_INIZIALE.supporto.bobina.larghezza).toBe(1370);
     expect(PRESET_INIZIALE.teli.sormontoMm).toBe(10);
+  });
+});
+
+describe('i teli del preset seguono la forma', () => {
+  const CON_TELI: PresetProgetto = {
+    ...PRESET,
+    teli: { sormontoMm: 10, verso: 'centro', asse: 'verticale', modo: 'fascia' }
+  };
+
+  it('appena la forma ha le misure si divide da sola, e la divisione è del preset', () => {
+    const divisa = conTeliDelPreset(finestra(400, 250), null, CON_TELI) as QuotaPoligono;
+    expect(divisa.pannelli?.giunti.length).toBeGreaterThan(0);
+    expect(divisa.teliDa).toBe('preset');
+    // rifatta senza cambiamenti è la stessa forma
+    expect(conTeliDelPreset(divisa, null, CON_TELI)).toBe(divisa);
+  });
+
+  it('una finestra che entra nella fascia non si divide', () => {
+    const f = finestra(100, 80);
+    expect(conTeliDelPreset(f, null, CON_TELI)).toBe(f);
+  });
+
+  it('cambiando la misura la divisione del preset si rifà', () => {
+    const divisa = conTeliDelPreset(finestra(400, 250), null, CON_TELI) as QuotaPoligono;
+    const stretta = { ...divisa, punti: finestra(120, 250).punti, segmenti: finestra(120, 250).segmenti };
+    const rifatta = conTeliDelPreset(stretta, null, CON_TELI) as QuotaPoligono;
+    expect(rifatta.pannelli).toBeUndefined();
+    expect(rifatta.teliDa).toBeUndefined();
+  });
+
+  it('una divisione fatta a mano (o di prima) non la tocca nessuno', () => {
+    const divisa = conTeliDelPreset(finestra(400, 250), null, CON_TELI) as QuotaPoligono;
+    const aMano = { ...divisa, teliDa: 'mano' as const, pannelli: { ...divisa.pannelli!, giunti: [200] } };
+    expect(conTeliDelPreset(aMano, null, CON_TELI)).toBe(aMano);
+    const tolta = { ...finestra(400, 250), teliDa: 'mano' as const };
+    expect(conTeliDelPreset(tolta, null, CON_TELI)).toBe(tolta);
+    const diPrima = { ...finestra(400, 250), pannelli: aMano.pannelli };
+    expect(conTeliDelPreset(diPrima, null, CON_TELI)).toBe(diPrima);
+  });
+
+  it('senza teli nel preset non si divide niente', () => {
+    const f = finestra(400, 250);
+    expect(conTeliDelPreset(f, null, { ...PRESET, teli: undefined })).toBe(f);
   });
 });

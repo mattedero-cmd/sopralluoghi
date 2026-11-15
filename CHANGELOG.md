@@ -10,6 +10,25 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.99.0 — I teli del preset si fanno da soli
+
+- **Appena una forma ha le misure, si divide in teli da sola**, come dice il
+  preset del suo materiale: fascia della bobina meno i margini, sormonto,
+  verso del lembo, teli verticali od orizzontali. Prima il preset dei teli
+  valeva solo aprendo «Dividi in teli» forma per forma, o con «applica a
+  tutto»: una porta da 110 × 220 in coverstyle a teli orizzontali su bobina
+  da 1520 restava intera finché non la si apriva.
+
+- **La divisione segue la forma**: si rifà quando cambiano le misure, le
+  abbondanze o il materiale. Una forma che entra in un telo solo non si
+  divide — la stessa porta in solare, a teli verticali, sta in un telo da
+  150 cm e resta intera; tornando al coverstyle si ridivide.
+
+- **Una divisione decisa a mano resta tua.** Confermata (o tolta)
+  nell'ambiente dei teli, nessun preset la tocca più; lo stesso per le
+  divisioni fatte prima di questa versione. «Salva e applica a tutto» la
+  riporta al preset.
+
 ## 1.98.2 — Scrivendo la misura, le abbondanze del preset restavano a metà strada
 
 - **Il preset «lato per lato» si perdeva appena si scriveva una misura.**

@@ -56,6 +56,7 @@ import { mostraToast } from '../state/toast';
 import {
   conMaterialeCambiato,
   conPresetApplicato,
+  conTeliDelPreset,
   fasciaDelPreset,
   materialeDelPreset,
   materialeDiNascita,
@@ -1040,8 +1041,24 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
   }, []);
 
 
+  /**
+   * I TELI DEL PRESET SEGUONO LA FORMA. Ogni forma toccata da questa modifica
+   * (misura scritta, abbondanza, materiale, vertici) ripassa dai teli del
+   * preset del suo materiale: se la divisione è del preset si rifà, se è
+   * stata decisa a mano resta com'è. Le forme non toccate non si guardano —
+   * per identità — così il conto si fa solo dove serve.
+   */
+  const annotazioniOra = useRef<Annotazione[] | null>(null);
+  annotazioniOra.current = annotazioni;
+  const contestoTeli = useRef({ foto, preset: progetto?.preset });
+  contestoTeli.current = { foto, preset: progetto?.preset };
   const commit = useCallback(
-    (nuove: Annotazione[]) => {
+    (nuoveGrezze: Annotazione[]) => {
+      const { foto: f, preset } = contestoTeli.current;
+      const prima = new Set(annotazioniOra.current ?? []);
+      const nuove = preset
+        ? nuoveGrezze.map((a) => (prima.has(a) ? a : conTeliDelPreset(a, f ?? null, preset)))
+        : nuoveGrezze;
       setAnnotazioni((correnti) => {
         if (correnti) {
           passato.current.push(correnti);
@@ -6313,12 +6330,13 @@ export function EditorFoto({ fotoId }: { fotoId: string }) {
                 commit(
                   annotazioni.map((a) => {
                     if (a.id !== ann.id) return a;
+                    // deciso qui, a mano: da adesso il preset non la rifà più
                     if (!pannelli) {
                       // via del tutto: la forma torna un pezzo unico
                       const { pannelli: _tolto, ...resto } = a as QuotaPoligono;
-                      return resto as Annotazione;
+                      return { ...resto, teliDa: 'mano' } as Annotazione;
                     }
-                    return { ...a, pannelli } as Annotazione;
+                    return { ...a, pannelli, teliDa: 'mano' } as Annotazione;
                   })
                 );
                 indietro();
