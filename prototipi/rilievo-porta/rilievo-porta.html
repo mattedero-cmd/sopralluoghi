@@ -2965,6 +2965,51 @@ const leafRecords=[null,null];
 function copyLeaf(value) {return Array.isArray(value)?value.map(copyLeaf):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([key,item])=>[key,copyLeaf(item)])):value;}
 function leafName(index=state.activeLeaf) {return state.leafCount===2?(index===0?'Anta sinistra':'Anta destra'):'Anta';}
 function replaceDoor(values) {Object.keys(door).forEach(key=>delete door[key]);Object.assign(door,values);}
+// DUE ANTE. Al centro le ante si chiudono fra loro, non sullo stipite: l'anta
+// ATTIVA (quella con la maniglia) chiude sulla SEMIFISSA (bloccata con i
+// catenacci, si chiude per prima). «A battuta»: i bordi centrali hanno uno
+// scalino e l'attiva sormonta la semifissa; «accostate»: bordi diritti.
+// La guarnizione centrale, se c'è, sta sulla battuta della semifissa.
+function meetingState(){return state.meeting||(state.meeting={mode:'rebate',lip:null,at:null,seal:false});}
+function meetLip(){const m=meetingState();return Number.isFinite(m.lip)?m.lip:steppedDoor()?doorLip():12;}
+function meetAt(){const m=meetingState();return Number.isFinite(m.at)?m.at:steppedDoor()?doorRebateAt():Math.round(door.thickness/2);}
+function activeLeafIndex(){return state.handleSide==='left'?0:1;}
+// Con due ante tutto quello che si sceglie e si misura vale per le due ante,
+// tranne la larghezza: si copia dall'anta sinistra alla destra.
+function mirrorSharedLeaf(){
+  if(state.leafCount!==2||!leafRecords[0]||!leafRecords[1])return;
+  const source=copyLeaf(state.activeLeaf===0?door:leafRecords[0]);
+  const target=state.activeLeaf===1?door:leafRecords[1];
+  const merged={...source,width:target.width};
+  if(state.activeLeaf===1)replaceDoor(copyLeaf(merged));else leafRecords[1]=copyLeaf(merged);
+}
+function meetingFigure(mode,opts={}){
+  const svg=el('svg',{class:'mt-wiz-fig mt-survey-figure',viewBox:'0 0 320 230',role:'img','data-meeting':mode});
+  const S=door.thickness||40,k=Math.min(2.2,90/S),L=meetLip(),A=Math.min(meetAt(),S-1),x0=160,yF=70,yB=yF+S*k,g=2;
+  const right=activeLeafIndex()===1,mx=x=>right?x:320-x;
+  const poly=(pts,fill)=>svg.append(el('polygon',{points:pts.map(([x,y])=>mx(x)+','+y).join(' '),fill,stroke:'var(--mt-ink)','stroke-width':1.2}));
+  // semifissa (dalla parte opposta alla maniglia) e attiva
+  if(mode==='rebate'){
+    poly([[18,yF],[x0-L*k,yF],[x0-L*k,yF+A*k],[x0,yF+A*k],[x0,yB],[18,yB]],'var(--mt-wood)');
+    poly([[x0-L*k+g,yF],[302,yF],[302,yB],[x0+g,yB],[x0+g,yF+A*k+g],[x0-L*k+g,yF+A*k+g]],'var(--mt-tint)');
+  }else{
+    poly([[18,yF],[x0-g,yF],[x0-g,yB],[18,yB]],'var(--mt-wood)');
+    poly([[x0+g,yF],[302,yF],[302,yB],[x0+g,yB]],'var(--mt-tint)');
+  }
+  // guarnizione centrale: sulla faccia dello scalino della semifissa, dove preme l'attiva
+  if(opts.seal&&mode==='rebate'){const a=mx(x0-L*k),b=mx(x0);svg.append(el('rect',{x:Math.min(a,b),y:yF+A*k-3,width:Math.abs(b-a),height:6,fill:'var(--mt-gasket)','data-meeting-seal':'true'}));}
+  if(opts.seal&&mode!=='rebate')svg.append(el('rect',{x:mx(x0)-2.5,y:yF+S*k*.35,width:5,height:S*k*.3,fill:'var(--mt-gasket)'}));
+  const text=(x,y,t,extra={})=>svg.append(el('text',{x:mx(x),y,'text-anchor':'middle','font-size':12,fill:'var(--mt-secondary)',...extra},t));
+  text(85,yB+22,'SEMIFISSA',{'font-weight':700});text(235,yB+22,'ATTIVA · maniglia',{'font-weight':700,fill:'var(--mt-green)'});
+  svg.append(el('text',{x:160,y:yF-40,'text-anchor':'middle','font-size':11,fill:'var(--mt-secondary)'},'lato a tirare'));
+  svg.append(el('text',{x:160,y:yB+42,'text-anchor':'middle','font-size':11,fill:'var(--mt-secondary)'},'vista dall’alto, al centro della porta'));
+  if(opts.dim==='meetLip'){const a=mx(x0-L*k),b=mx(x0),y=yF-10;svg.append(el('line',{x1:a,y1:y,x2:b,y2:y,stroke:'var(--mt-green)','stroke-width':2}));
+    svg.append(el('text',{x:(a+b)/2,y:y-6,'text-anchor':'middle','font-size':14,'font-weight':700,fill:'var(--mt-green)'},opts.val));}
+  if(opts.dim==='meetAt'){const x=mx(x0-L*k)+(right?-10:10);svg.append(el('line',{x1:x,y1:yF,x2:x,y2:yF+A*k,stroke:'var(--mt-green)','stroke-width':2}));
+    svg.append(el('text',{x:x+(right?-8:8),y:yF+A*k/2+5,'text-anchor':right?'end':'start','font-size':14,'font-weight':700,fill:'var(--mt-green)'},opts.val));}
+  svg.setAttribute('data-orientation-fixed','true');
+  return svg;
+}
 function withLeaf(index,fn,save=false) {
   if(index===state.activeLeaf)return fn();
   const previous={...door},active=state.activeLeaf,record=leafRecords[index];if(!record)return null;
@@ -3729,7 +3774,10 @@ function doorCuts() {
 function doorRows() {
   const cuts = doorCuts(), m = 2 * door.margin;
   const faces=doorFaces.filter(([key])=>isDoorFaceCovered(key));
-  const commonWidth=Math.max(0,...faces.map(([key])=>roundCut(cuts[key][0]+m)));
+  // Due ante a battuta con il bordo diritto: sul bordo centrale c'è lo scalino
+  // della battuta, e la pellicola che lo riveste è più lunga del sormonto.
+  const meetingExtra=state.leafCount===2&&meetingState().mode==='rebate'&&!steppedDoor()?meetLip():0;
+  const commonWidth=Math.max(0,...faces.map(([key])=>roundCut(cuts[key][0]+m+meetingExtra)));
   const faceRows=doorFaces.slice().reverse().filter(([key]) => isDoorFaceCovered(key)).map(([key], index) => ({
     id: 'door:' + key, door: true, face:key, strip: index,
     name: 'Anta · ' + doorFaceName(key) + (doorBottomMode()==='overlap'?'':doorBottomMode()==='butt'?' · sotto a metà':' · sotto scoperto'),
@@ -4773,6 +4821,7 @@ function wizGo(delta) {
   renderWizard();
 }
 function renderWizard() {
+  mirrorSharedLeaf();
   let steps = wizSteps();
   if (wiz.stepId && steps.includes(wiz.stepId)) wiz.step = steps.indexOf(wiz.stepId);
   wiz.step = Math.max(0, Math.min(steps.length - 1, wiz.step)); wiz.stepId = steps[wiz.step];
@@ -4787,7 +4836,7 @@ function renderWizard() {
   if (step.startsWith('m:')) {const m=measureSteps().find(m => m.id === step.slice(2));if(m.leafIndex!==undefined&&m.leafIndex!==state.activeLeaf)setActiveLeaf(m.leafIndex,false);renderMeasure(m, wiz.step === steps.length - 1);orientWizardFigures(); return; }
   const titles = {apertura:'Da che parte è la maniglia?',battuta: 'Battuta', coprifilo: 'Forma del coprifilo', posizioneE:'Coprifilo esterno: posizione',posizioneI:'Coprifilo interno: posizione',traverso:'C’è il traverso superiore?',ante:'Quante ante ha la porta?', angoli: 'Angoli',asimmetria:'Coprifili uguali sui due lati?'};
   const questions = {
-    apertura:'Guarda la porta dal lato in cui la tiri verso di te. Indica dove si trova la maniglia.',
+    apertura:'Guarda la porta dal lato in cui la tiri verso di te. Indica dove si trova la maniglia. Con due ante è l’anta attiva.',
     battuta: 'Com’è lo stipite dove chiude l’anta?',
     coprifilo: 'Che coprifilo c’è?',
     posizioneE:'Confronta il bordo del coprifilo con lo stipite.',
@@ -4879,6 +4928,7 @@ function applyWizard() {
   sync();
 }
 function finishWizard() {
+  mirrorSharedLeaf();
   closeWizard();
   recordDoorFit();
   appEl.classList.remove('mt-advanced');
@@ -5151,10 +5201,10 @@ function singleMeasureSteps(includeFrame=true) {
 //   abbondanze). Ogni scelta fa comparire solo passi PIÙ AVANTI: la guida non
 //   torna indietro da sola.
 const WIZ_SECTIONS={sceltaAnta:'Anta · scelte',misureMaesta:'Maestà · misure',misureAnta:'Anta · misure',guarnizioni:'Guarnizioni',pellicola:'Pellicola'};
-const LEAF_CHOICE_ORDER=['antaTipo','antaDestinazione','antaModoChiusura','antaRiferimento','antaAppoggio','antaBattutaTelaio','guarnizioneStipite','anta-guarnizione'];
+const LEAF_CHOICE_ORDER=['antaTipo','anteCentro','antaDestinazione','antaModoChiusura','antaRiferimento','antaAppoggio','antaBattutaTelaio','guarnizioneStipite','anta-guarnizione','guarnizioneCentrale'];
 // tutte le domande sulla pellicola insieme, maestà e anta
 const FILM_ORDER=['pellicolaAngoli','facce','anta-sormonto-scalino','anta-bordo-inferiore','sorm','abbMaesta','abbAnta'];
-const LEAF_MEASURE_ORDER=['antaL','antaH','antaS','antaLb','antaSb','antaLb2','antaSb2','antaR','antaBaseQuote','antaChiusura'];
+const LEAF_MEASURE_ORDER=['antaL','antaH','antaS','antaLb','antaSb','antaLb2','antaSb2','antaR','anteCentroLb','anteCentroSb','antaBaseQuote','antaChiusura'];
 function wizSectionOf(step){
   const id=step.id.replace(/^leaf2-/,'');
   if(id.startsWith('battuta-misura-')||id==='luceW'||id==='luceH'||id.startsWith('telaio'))return 'misureMaesta';
@@ -5186,14 +5236,25 @@ function rawMeasureSteps() {
   const geometryStep=step=>['antaTipo','antaBaseQuote','antaDestinazione','antaL','antaH','antaS','antaLb','antaSb','antaR','antaLb2','antaSb2'].includes(step.id);
   const leaf=step=>!step.gasketOwner&&(step.id.startsWith('anta')||step.id.startsWith('telaioArresto')||step.id==='facce'||step.id==='abbAnta');
   const owned=(step,index)=>({...step,id:(index?'leaf2-':'')+step.id,leafIndex:index,title:leafName(index)+' · '+step.title.replace(/^Anta:?\s*/,'' )});
+  // una risposta per le due ante (si copia sulla destra); solo la larghezza è di ognuna
+  const shared=step=>({...step,leafIndex:0,title:step.title.replace(/^Anta:\s*/,'Ante: ').replace('Come chiude l’anta?','Come chiudono le ante?').replace(/l’anta/g,'le ante').replace(/sull’anta/g,'sulle ante').replace(/^Abbondanza anta$/,'Abbondanza ante')});
+  const own=step=>step.id==='antaL';
   const frameRubber=first.filter(step=>step.gasketOwner==='frame').map(step=>({...step,leafIndex:0}));
-  const leafRubber=[...first.filter(step=>step.gasketOwner==='leaf').map(step=>owned(step,0)),...second.filter(step=>step.gasketOwner==='leaf').map(step=>owned(step,1))];
-  const rubber=[...frameRubber,...leafRubber];
+  const rubber=[...frameRubber,...first.filter(step=>step.gasketOwner==='leaf').map(shared)];
+  const m=meetingState();
+  const center=[{id:'anteCentro',title:'Al centro: come si chiudono le ante?',choice:'meeting',leafIndex:0,
+      q:'L’anta attiva è quella con la maniglia e si apre per prima; l’altra è la semifissa, bloccata con i catenacci.'},
+    ...(m.mode==='rebate'?[
+      {id:'anteCentroLb',title:'Battuta centrale · sormonto',q:'Di quanto l’attiva copre la semifissa.',fig:'meetLip',leafIndex:0,
+        get:()=>meetLip(),set:v=>{meetingState().lip=v;update();},min:1,max:60},
+      {id:'anteCentroSb',title:'Battuta centrale · nello spessore',q:'A che profondità, dalla faccia a tirare, c’è lo scalino.',fig:'meetAt',leafIndex:0,
+        get:()=>meetAt(),set:v=>{meetingState().at=v;update();},min:1,max:Math.max(1,door.thickness-1)}]:[]),
+    {id:'guarnizioneCentrale',title:'C’è la guarnizione al centro?',choice:'meetingSeal',leafIndex:0,q:'Sulla battuta della semifissa, contro cui chiude l’attiva.'}];
   return [...first.filter(leading).map(step=>({...step,leafIndex:0})),
-    ...first.filter(geometryStep).map(step=>owned(step,0)),...second.filter(geometryStep).map(step=>owned(step,1)),
+    ...first.filter(geometryStep).map(step=>own(step)?owned(step,0):shared(step)),...second.filter(own).map(step=>owned(step,1)),
+    ...center,
     ...rubber.filter(step=>step.gasketPhase==='presence'),...rubber.filter(step=>step.gasketPhase==='detail'),
-    ...first.filter(step=>leaf(step)&&!geometryStep(step)).map(step=>owned(step,0)),
-    ...second.filter(step=>leaf(step)&&!geometryStep(step)&&(!step.framePosition||!sharedPositions.has(step.framePosition))).map(step=>owned(step,1)),
+    ...first.filter(step=>leaf(step)&&!geometryStep(step)).map(shared),
     ...first.filter(step=>!leading(step)&&!geometryStep(step)&&!leaf(step)&&!step.gasketOwner).map(step=>({...step,leafIndex:0}))];
 }
 let surveyFigureSerial=0;
@@ -5645,6 +5706,7 @@ function surveyOptions(container,options,selected,onPick,preview=null) {
 
 // Disegni schematici: in verde la misura da prendere.
 function measureFig(kind, val, context=null) {
+  if(kind==='meetLip'||kind==='meetAt')return meetingFigure(meetingState().mode,{dim:kind,val,seal:meetingState().seal});
   if(['sormCop','sormStip','sormRaggiati'].includes(kind))return roundedMeasureFigure(context?.overlapRef,val);
   if(['antaS','antaLb','antaSb','antaLb2','antaSb2','antaR'].includes(kind))return leafSurveyFigure(kind,val);
   if(['luceW','luceH','antaL','antaH'].includes(kind))return openingFigure(kind,val);
@@ -5745,6 +5807,16 @@ function renderMeasure(m, last) {
   if(m.choice==='leafSeam'){
     const selected=leafSeam()?.edge.stateKey,options=doorProfileEdges().filter(edge=>edge.kind==='line'&&Math.abs(edge.b[1]-edge.a[1])>1e-6).map(edge=>({id:edge.stateKey,name:edge.name}));
     surveyOptions(body,options,selected,id=>{leafProfileOptions(true).seamKey=id;refreshLeafControls();},id=>{const o=leafProfileOptions(true),old=o.seamKey;o.seamKey=id;try{const f=doorEdgeFigure();f.setAttribute('class','mt-survey-figure');return f;}finally{o.seamKey=old;}});next.disabled=!selected;return;
+  }
+  if(m.choice==='meeting'){
+    const grid=choiceGrid(body,2);
+    [['rebate','A battuta','l’attiva sormonta la semifissa'],['butt','Accostate','bordi diritti, senza battuta']].forEach(([id,name,note])=>{
+      grid.append(wizCard(name,note,meetingState().mode===id,meetingFigure(id,{seal:meetingState().seal}),()=>{meetingState().mode=id;update();renderWizard();setTimeout(()=>wizGo(1),180);}));
+    });return;
+  }
+  if(m.choice==='meetingSeal'){
+    surveyOptions(body,[{id:'yes',name:'Sì'},{id:'no',name:'No'}],meetingState().seal?'yes':'no',id=>{meetingState().seal=id==='yes';update();setTimeout(()=>wizGo(1),180);},
+      id=>meetingFigure(meetingState().mode,{seal:id==='yes'}));return;
   }
   if(m.choice==='frameSealIntent'){
     const base=m.base,selected=draft().frameSealWanted===false?'no':'yes';
@@ -6074,12 +6146,12 @@ function reviewLeafSection(){
 function snapshotConfig(){
   const leaves=Array.from({length:state.leafCount===2?2:1},(_,i)=>copyLeaf(i===state.activeLeaf?door:(leafRecords[i]||door)));
   return copyLeaf({cfg:state.cfg,hasHead:state.hasHead,leafCount:state.leafCount,handleSide:state.handleSide,handleChosen:state.handleChosen,
-    joint:state.joint,asym:state.asym,fit:state.fit||null,draft:state.draft,leaves,luce:{W:luce.W,H:luce.H}});
+    joint:state.joint,asym:state.asym,fit:state.fit||null,draft:state.draft,leaves,luce:{W:luce.W,H:luce.H},meeting:state.meeting||null});
 }
 function loadConfig(c){
   const conf=copyLeaf(c);
   Object.assign(state,{cfg:conf.cfg,hasHead:conf.hasHead,leafCount:conf.leafCount,handleSide:conf.handleSide,handleChosen:conf.handleChosen,
-    joint:conf.joint,asym:conf.asym||{side:null,E:null,I:null},fit:conf.fit||null,draft:conf.draft,activeLeaf:0});
+    joint:conf.joint,asym:conf.asym||{side:null,E:null,I:null},fit:conf.fit||null,draft:conf.draft,activeLeaf:0,meeting:conf.meeting||null});
   leafRecords[0]=copyLeaf(conf.leaves[0]);leafRecords[1]=conf.leaves[1]?copyLeaf(conf.leaves[1]):null;
   replaceDoor(copyLeaf(conf.leaves[0]));
   luce.W=conf.luce.W;luce.H=conf.luce.H;

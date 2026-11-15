@@ -166,6 +166,26 @@ Nelle misure la figura prende tutto lo spazio libero sopra il tastierino, e la
 lente (il dettaglio da misurare) è grande; la sezione intera accanto dice solo
 dove si trova.
 
+## Porte a due ante
+
+Al centro le ante si chiudono fra loro, non sullo stipite. L'**anta attiva** è
+quella con la maniglia (la si indica con la prima domanda) e si apre per
+prima; l'altra è la **semifissa**, bloccata in alto e in basso con i catenacci,
+che si chiude per prima.
+
+- Tutto quello che si sceglie e si misura vale per le due ante (bordo, come
+  chiudono, piano di riferimento, altezza, spessore, scalini, guarnizioni,
+  facce, bordo verso il pavimento, abbondanza): si risponde una volta. Solo la
+  larghezza è di ogni anta. Ante diverse si sistemano nella modifica avanzata.
+- **Al centro: come si chiudono le ante?** — *A battuta*: i bordi centrali
+  hanno uno scalino e l'attiva sormonta la semifissa sul lato a tirare; si
+  misurano il sormonto e la profondità dello scalino nello spessore. *Accostate*:
+  bordi diritti, senza battuta.
+- **C'è la guarnizione al centro?** — sulla faccia dello scalino della
+  semifissa, contro cui chiude l'attiva.
+- Con l'anta a bordo diritto e la battuta centrale, la pellicola di ogni faccia
+  è più larga del sormonto, per rivestire lo scalino del bordo centrale.
+
 ## Dentro l'app dei sopralluoghi
 
 Il file resta un'app a sé (si prova da solo e si pubblica come pagina), ma

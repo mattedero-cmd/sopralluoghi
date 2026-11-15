@@ -10,6 +10,18 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.96.0 — Porte a due ante: le ante chiudono fra loro
+
+- Con due ante la guida chiede le cose **una volta sola** e valgono per le due
+  ante; resta separata solo la larghezza di ogni anta.
+- Nuova domanda **«Al centro: come si chiudono le ante?»**: *a battuta* (l'anta
+  attiva, quella con la maniglia, sormonta la semifissa) o *accostate*. A
+  battuta si misurano sormonto e profondità dello scalino.
+- **«C'è la guarnizione al centro?»**: sulla battuta della semifissa.
+- Disegno dall'alto del centro della porta, con anta attiva e semifissa.
+- Pellicola delle facce più larga del sormonto quando l'anta ha il bordo diritto
+  e la battuta centrale (riveste lo scalino del bordo centrale).
+
 ## 1.95.1 — Guarnizioni fra le scelte, angoli con la maestà
 
 - «C'è la guarnizione sullo stipite?» e «C'è una guarnizione sull'anta?» sono
