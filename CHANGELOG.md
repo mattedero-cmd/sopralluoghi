@@ -10,6 +10,18 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.104.0 — Esterno e interno: il cambio colore come in cantiere
+
+- Senza guarnizione sulla battuta il colore cambia sulla battuta, che prende
+  il colore esterno: lo stipite interno si posa per primo e sale sotto su
+  tutta la battuta, il pezzo esterno gira sullo spigolo e lo sormonta. Prima
+  i due pezzi si fermavano nell'angolo senza sormonto.
+- Con la guarnizione il colore cambia sulla guarnizione, come prima.
+- Con l'anta che batte sul coprifilo tutto lo stipite è del colore interno e
+  va sotto, il coprifilo esterno lo sormonta. Senza battuta il colore cambia
+  sulla guarnizione dello stipite, se c'è.
+- L'ordine di posa e le istruzioni lo dicono pezzo per pezzo.
+
 ## 1.103.0 — I colori si dichiarano nella guida, i materiali nel piano di taglio
 
 - Nella guida del rilievo il passo «Colori» ha tre scelte: tutto uguale,

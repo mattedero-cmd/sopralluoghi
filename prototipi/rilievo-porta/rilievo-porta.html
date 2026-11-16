@@ -1337,40 +1337,55 @@ function valid() {return frameQuoteError() === '';}
 function edgeStateKey(part,i){return part.edges[i]?.stateKey||part.key+':'+i;}
 function covered(part,e){return draft().cover[edgeStateKey(part,e)]!==false;}
 function separated(part,e){return !!draft().split[edgeStateKey(part,e)]||colorSplit()?.key===edgeStateKey(part,e);}
-// COLORI DIVERSI FRA LATO ESTERNO E INTERNO: la pellicola dello stipite si
-// divide sullo spigolo interno della battuta (fra la battuta e il fondo dove
-// sta l'anta). A porta chiusa quel punto è coperto dall'anta: da ogni lato si
-// vede solo il suo colore. Il pezzo del lato battuta risvolta sulla battuta e
-// si ferma nell'angolo; quello dell'altro lato arriva nello stesso angolo.
-// Con la guarnizione sulla battuta la pellicola è già interrotta lì.
-// Senza battuta sullo stipite non c'è uno spigolo dove dividere: lo stipite
-// resta intero e prende il colore del lato dove sta di più.
+// COLORI DIVERSI FRA LATO ESTERNO E INTERNO (come si fa in cantiere):
+// - con la guarnizione sulla battuta il colore cambia lì: la pellicola è già
+//   interrotta;
+// - senza guarnizione il colore cambia sulla battuta: la battuta prende il
+//   colore esterno. Lo stipite interno si posa per primo e sale sotto, su
+//   tutta la battuta; il pezzo esterno gira sullo spigolo e lo sormonta fino
+//   all'angolo interno. Il taglio è sullo spigolo, il sormonto è la battuta;
+// - con l'anta che batte sul coprifilo tutto lo stipite è del colore interno
+//   e va sotto, il coprifilo esterno lo sormonta;
+// - senza battuta il colore cambia sulla guarnizione dello stipite, se c'è.
 const colorSplitMemo={k:null,v:null};
 function colorSplit(){
-  if(!state.colorSides||doorStopTarget()==='casing')return null;
-  const k=JSON.stringify([state.cfg,draft().p,door.stopSurfaceKey,door.type,door.thickness,draft().gaskets||null]);
+  if(!state.colorSides)return null;
+  const k=JSON.stringify([state.cfg,draft().p,door.stopSurfaceKey,door.stopTarget,door.type,door.thickness,draft().gaskets||null]);
   if(colorSplitMemo.k===k)return colorSplitMemo.v;
   colorSplitMemo.k=k;colorSplitMemo.v=null;
-  const g=geometry(),stop=selectedDoorStop(g);
-  if(!stop)return null;
+  const g=geometry(),jamb=g.parts.find(q=>q.key==='jamb');
+  if(doorStopTarget()==='casing'){
+    // un pezzo unico coprifilo + stipite (raggiati) si divide alla giunzione
+    const outer=g.parts.find(q=>q.key==='outer');
+    return colorSplitMemo.v={key:outer&&hasProfileFilmRules()?edgeStateKey(outer,outer.edges.length-1):null,x:-1e9,casing:true,lap:0};
+  }
+  const stop=selectedDoorStop(g);
+  if(!stop){
+    // senza battuta: la guarnizione dello stipite, se c'è
+    for(const part of g.parts.filter(q=>['jamb','integrated','extension'].includes(q.key)))
+      for(let i=0;i<part.edges.length;i++){const span=gasketSpan(part,i);if(span){const e=part.edges[i],t=(span.start+span.end)/2/e.len;
+        return colorSplitMemo.v={key:null,x:e.a[0]+(e.b[0]-e.a[0])*t,gasket:true,lap:0};}}
+    return null;
+  }
   const e=stop.edge,x=e.a[0];
-  if(gasketSpan(stop.part,stop.index))return colorSplitMemo.v={key:null,x,gasket:true};
-  // lo spigolo interno è l'estremo della battuta più lontano dalla luce (y maggiore)
-  // La battuta all'inizio dell'imbotte: il pezzo dello stipite finisce già lì,
-  // si divide sulla giunzione (la battuta da sola sarebbe un pezzetto).
-  let key=null;
-  const jamb=g.parts.find(q=>q.key==='jamb');
-  if(stop.index===0&&stop.part.key==='extension'){if(jamb)key=edgeStateKey(jamb,jamb.edges.length-1);}
-  else if(e.b[1]>e.a[1])key=edgeStateKey(stop.part,stop.index);
-  else if(stop.index>0)key=edgeStateKey(stop.part,stop.index-1);
-  return colorSplitMemo.v={key,x,gasket:false};
+  if(gasketSpan(stop.part,stop.index))return colorSplitMemo.v={key:null,x,gasket:true,lap:0};
+  // lo spigolo è l'estremo della battuta più vicino alla luce (y minore)
+  let key=null,lapAt='end';
+  if(e.a[1]<e.b[1]){
+    if(stop.index>0)key=edgeStateKey(stop.part,stop.index-1);
+    else if(stop.part.key==='extension'&&jamb)key=edgeStateKey(jamb,jamb.edges.length-1);
+  }else{key=edgeStateKey(stop.part,stop.index);lapAt='start';}
+  return colorSplitMemo.v={key,x:x-1e-3,gasket:false,lap:key?e.len:0,lapAt};
 }
+// il sormonto del pezzo esterno sulla battuta, al taglio del colore
+function colorLapAt(part,i){const c=colorSplit();return c&&c.lap&&c.key===edgeStateKey(part,i)?c:null;}
 function colorSidesNote(){
   if(!state.colorSides)return '';
-  if(doorStopTarget()==='casing')return 'Colori diversi: l’anta batte sul coprifilo, lo stipite prende il colore del lato opposto.';
   const split=colorSplit();
-  if(!split)return 'Colori diversi: lo stipite non ha battuta, resta un pezzo unico del colore del lato dove sta di più.';
-  return split.gasket?'Colori diversi: la pellicola dello stipite cambia colore sulla guarnizione della battuta.':'Colori diversi: la pellicola dello stipite si divide nell’angolo interno della battuta, coperto dall’anta chiusa.';
+  if(split?.casing)return 'Esterno e interno: l’anta batte sul coprifilo, tutto lo stipite è del colore interno e va sotto; il coprifilo esterno lo sormonta.';
+  if(!split)return 'Esterno e interno: lo stipite non ha battuta né guarnizione, resta un pezzo unico del colore del lato dove sta di più.';
+  return split.gasket?'Esterno e interno: il colore cambia sulla guarnizione dello stipite.':
+    'Esterno e interno: la battuta prende il colore esterno. Lo stipite interno va per primo e sale sotto sulla battuta; il pezzo esterno gira sullo spigolo e lo sormonta.';
 }
 // Guarnizione: ingombro reale lungo il tratto, centrato a «at» mm da edge.a.
 // «full» segue dinamicamente tutto il tratto; le misure manuali restano salvate.
@@ -1475,7 +1490,7 @@ function filmSegments(part, i) {
 function groups(part) {
   const out = [];
   if (gasketError(part)) return out;
-  let cur = null;
+  let cur = null, lapNext = 0;
   const open = (gStart = 0) => { cur = {segs: [], gStart, gEnd: 0}; };
   const close = (gEnd = 0) => {
     if (cur && cur.segs.length) {
@@ -1488,7 +1503,8 @@ function groups(part) {
   };
   part.edges.forEach((edge, i) => {
     if (!covered(part, i)) { close(); return; }
-    if (!cur) open();
+    if (!cur) open(lapNext);
+    lapNext = 0;
     const span = gasketSpan(part, i);
     if (span) {
       const before = Math.max(0, span.start), after = Math.max(0, edge.len - span.end);
@@ -1499,7 +1515,10 @@ function groups(part) {
     } else {
       if (edge.len > 1e-6) cur.segs.push({i, len: edge.len, start: 0, end: edge.len});
     }
-    if (separated(part, i)) close();
+    if (separated(part, i)) {
+      const lap = colorLapAt(part, i);
+      if (lap?.lapAt === 'start') { close(); lapNext = lap.lap; } else close(lap ? lap.lap : 0);
+    }
   });
   close();
   return out;
@@ -1651,6 +1670,9 @@ function roundFilmPlan(g = geometry(), pieceKey = null) {
     const headBoundary = assignedHeads.has(part.key + ':' + i) && relations.some(r => r.targetPart.key === part.key && r.targetEdge === i && r.targetWhich === 'start') ||
       assignedHeads.has(part.key + ':' + (i + 1)) && relations.some(r => r.targetPart.key === part.key && r.targetEdge === i + 1 && r.targetWhich === 'end');
     if (current && next && !separated(part, i) && !cornerSplit(part, i) && !headBoundary) connect(current, 'end', next, 'start');
+    const colorLap = colorLapAt(part, i);
+    if (colorLap?.lapAt === 'start' && next) next.gStart = Math.max(next.gStart || 0, colorLap.lap);
+    else if (colorLap && current) current.gEnd = Math.max(current.gEnd || 0, colorLap.lap);
     // Una battuta tutta occupata dalla guarnizione non produce un gruppo
     // vuoto, ma conserva l'eventuale risvolto sul frammento che le è vicino.
     const afterGap = i > 0 ? gasketSpan(part, i - 1) : null;
@@ -3732,7 +3754,8 @@ function frameRows(part) {
       if (own) width += partCut(part).ends;
       if (index === list.length - 1 && absorbed.length) {
         absorbed.forEach(n => {
-          width += n.strip.width;
+          // con i colori diversi la striscia stretta porta con sé il sormonto sulla battuta
+          width += n.strip.width + (state.colorSides && colorSplit()?.lap > 0 ? (n.strip.after || 0) : 0);
           height = Math.max(height, stripLength(n.owner, n.strip.indices, key, n.strip.segs) + 2 * partCut(part).ends);
         });
         extra = ' + striscia ' + absorbed.map(n => n.owner.name.toLocaleLowerCase('it-IT')).join(', ');
@@ -3964,9 +3987,17 @@ function posaSide(row) {
   const depth = geometry().depth;
   return Number.isFinite(row.zMid) && row.zMid > depth / 2 + 1e-6 ? 1 : 0;
 }
+// con i colori diversi lo stipite interno va sotto: si posa prima dell'esterno
+function colorUnder(r){
+  if(r.door||!state.colorSides)return false;
+  const c=colorSplit();if(!c||!(c.lap>0||c.casing))return false;
+  const keys=r.partKeys||[r.partKey];
+  return posaSide(r)===1&&!keys.includes('inner')&&!keys.includes('outer');
+}
 function sideOrder(list) {
   const frame = list.filter(r => !r.door), doors = list.filter(r => r.door);
-  const rank = r => { const side = posaSide(r); return side * 10 + (r.piece === 'head' ? 0 : (r.piece === 'right') === (side === 0) ? 1 : 2); };
+  const under = r => colorUnder(r);
+  const rank = r => { const side = posaSide(r); return (under(r) ? -10 : side * 10) + (r.piece === 'head' ? 0 : (r.piece === 'right') === (side === 0) ? 1 : 2); };
   const sorted = frame.map((r, i) => [r, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(x => x[0]);
   return [...sorted, ...doors];
 }
@@ -4017,6 +4048,9 @@ function posaOrder(rows) {
 }
 function posaReason(r, prev) {
   if(r.door&&r.face==='edge')return 'tratto del bordo separato dalla guarnizione';
+  if (colorUnder(r)) return colorSplit().casing?'stipite del colore interno: va sotto, il coprifilo esterno lo sormonta':'stipite interno: va per primo e sale sotto sulla battuta';
+  if (!r.door && state.colorSides && colorSplit()?.casing && (r.partKeys || [r.partKey]).includes('outer')) return 'coprifilo esterno: dopo lo stipite, lo sormonta';
+  if (!r.door && state.colorSides && colorSplit()?.lap > 0 && posaSide(r) === 0 && !(r.partKeys || [r.partKey]).includes('outer')) return 'stipite esterno: gira sullo spigolo e sormonta l’interno sulla battuta';
   if (r.door) return !(r.bothFaces??doorFilmPlan().both)?'anta: unico foglio, bordo superiore completo':r.face===doorLapBottom()?'anta: primo foglio, sotto il sormonto':r.face===doorLapTop()?'anta: secondo foglio, copre il primo fino allo spigolo':'anta, dopo la maestà';
   if (hasProfileFilmRules()) {
     if (r.partKeys?.length > 1) return 'coprifilo e tratto dello stipite in un unico pezzo';
@@ -4181,7 +4215,7 @@ function colorSidesFigure(mode){
   svg.append(el('path',{d:'M 30 40 H 160 V 80 H 290 V 170 H 30 Z',fill:'var(--mt-wood)',stroke:'var(--mt-ink)','stroke-width':1}));
   svg.append(el('rect',{x:172,y:14,width:40,height:56,fill:'none',stroke:mode==='leaf'?'var(--mt-film2)':'var(--mt-secondary)','stroke-width':mode==='leaf'?4:1,...(mode==='leaf'?{}:{'stroke-dasharray':'4 3'})}));
   const line=(d,color)=>svg.append(el('path',{d,fill:'none',stroke:color,'stroke-width':5,'stroke-linejoin':'round'}));
-  if(split){line('M 30 34 H 166 V 76','var(--mt-green)');line('M 166 74 H 290','var(--mt-film2)');}
+  if(split){line('M 290 74 H 166 V 40','var(--mt-film2)');line('M 30 34 H 172 V 76','var(--mt-green)');}
   else line('M 30 34 H 166 V 74 H 290','var(--mt-green)');
   svg.append(el('text',{x:30,y:194,'font-size':13},'esterno'),el('text',{x:290,y:194,'text-anchor':'end','font-size':13},'interno'),
     el('text',{x:192,y:46,'text-anchor':'middle','font-size':12,fill:'var(--mt-secondary)'},'anta'));

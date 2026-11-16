@@ -213,14 +213,20 @@ Nella guida, dopo le facce dell'anta, «Colori»: tutto uguale, anta diversa
 parti cambiano colore e prepara tagli e istruzioni; i materiali si assegnano
 nel piano di taglio. Con esterno e interno diversi:
 
-- la pellicola dello stipite si divide nell'**angolo interno della battuta**
-  (fra la battuta e il fondo dove sta l'anta): il pezzo del lato battuta
-  risvolta sulla battuta e si ferma lì, quello dell'altro lato arriva nello
-  stesso angolo. A porta chiusa è coperto dall'anta. Con la guarnizione sulla
-  battuta la pellicola è già interrotta e non si aggiunge niente; con la
-  battuta all'inizio dell'imbotte si divide sulla giunzione stipite/imbotte;
-  con l'anta che batte sul coprifilo o senza battuta lo stipite resta intero
-  (`colorSplit()`, `colorSidesNote()`);
+- il colore cambia dove si fa in cantiere (`colorSplit()`, `colorSidesNote()`):
+  - con la guarnizione sulla battuta, sulla guarnizione: la pellicola è già
+    interrotta;
+  - senza guarnizione, sulla battuta, che prende il colore esterno: il taglio è
+    sullo spigolo, lo stipite interno si posa per primo e sale sotto su tutta la
+    battuta, il pezzo esterno gira sullo spigolo e lo sormonta fino all'angolo
+    interno (il sormonto è lungo quanto la battuta; `colorLapAt`, ordine con
+    `colorUnder`). Con la battuta all'inizio dell'imbotte il taglio è sulla
+    giunzione stipite/imbotte;
+  - con l'anta che batte sul coprifilo tutto lo stipite è del colore interno e
+    va sotto; il coprifilo esterno lo sormonta (nei raggiati il pezzo unico
+    coprifilo + stipite si divide alla giunzione);
+  - senza battuta, sulla guarnizione dello stipite se c'è; altrimenti lo
+    stipite resta intero e la guida lo dice;
 - ogni pezzo ha il lato del colore (`posaSide`): coprifilo esterno E,
   interno I, gli altri secondo dove stanno rispetto alla battuta. La sigla
   comincia con quel lato;
