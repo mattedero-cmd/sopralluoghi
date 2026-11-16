@@ -10,13 +10,20 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.106.2 — Anta: si tocca la battuta per scegliere chi sta sopra
+
+- Nel riepilogo la «Sezione del battente» è lo stesso disegno delle
+  istruzioni (sopra e lati), con il foglio esterno verde e quello interno
+  arancio. Toccando la battuta, dove i due fogli si sovrappongono, si
+  inverte chi sta sopra: cambiano il disegno, l'ordine di posa e le
+  istruzioni PDF.
+
 ## 1.106.1 — Riepilogo senza pulsanti: tutto sul disegno
 
 - Tolti il pulsante «Inverti interno ed esterno» e la scheda «Sormonti».
 - Sul disegno della sezione della maestà: tocco su ESTERNO o INTERNO per
   scambiare i lati, tocco su un sormonto per invertire chi sta sopra,
   pressione lunga su un sormonto per spostarlo sull'altra faccia.
-- Il bordo dell'anta (quale foglio sta sopra) resta nella guida.
 
 ## 1.106.0 — Interno ed esterno invertibili, sormonti spostabili
 

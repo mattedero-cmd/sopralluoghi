@@ -183,7 +183,9 @@ Cosa cambia:
   l'ordine di posa (`applyLapFlips`: sullo stesso lato e pezzo quello che
   ora sta sotto si posa prima);
 - battuta con i colori diversi: `draft().colorLapFlip`, sotto va l'esterno;
-- il bordo dell'anta (`door.lapTop`) si sceglie nella guida.
+- bordo dell'anta: `door.lapTop`, toccando la battuta nella «Sezione del
+  battente» (lo stesso disegno delle istruzioni, con i due fogli in due
+  colori); è la stessa scelta della guida.
 
 Le istruzioni PDF usano gli stessi disegni e lo stesso ordine di posa.
 
