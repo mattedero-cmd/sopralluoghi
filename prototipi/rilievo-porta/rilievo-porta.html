@@ -4212,6 +4212,8 @@ function drawDoorEdge(svg,width,bottom=doorView==='bottom',standalone=false) {
 function colorSidesFigure(mode){
   const split=mode==='sides'||mode===true;
   const svg=el('svg',{class:'mt-wiz-fig',viewBox:'0 0 320 200','aria-hidden':'true'});
+  // fondo chiaro anche sulla scheda scelta: la pellicola verde resta visibile
+  svg.append(el('rect',{x:0,y:0,width:320,height:200,rx:10,fill:'var(--mt-paper)'}));
   svg.append(el('path',{d:'M 30 40 H 160 V 80 H 290 V 170 H 30 Z',fill:'var(--mt-wood)',stroke:'var(--mt-ink)','stroke-width':1}));
   svg.append(el('rect',{x:172,y:14,width:40,height:56,fill:'none',stroke:mode==='leaf'?'var(--mt-film2)':'var(--mt-secondary)','stroke-width':mode==='leaf'?4:1,...(mode==='leaf'?{}:{'stroke-dasharray':'4 3'})}));
   const line=(d,color)=>svg.append(el('path',{d,fill:'none',stroke:color,'stroke-width':5,'stroke-linejoin':'round'}));
@@ -5977,7 +5979,8 @@ function renderMeasure(m, last) {
   if(m.choice==='colorSides'){
     const grid=choiceGrid(body,3);
     const now=state.colorSides?'sides':state.colorLeaf?'leaf':'same';
-    [['same','Tutto uguale','Un colore per maestà e anta'],['leaf','Anta diversa','La maestà di un colore, l’anta di un altro'],['sides','Esterno e interno','Ogni lato il suo colore: lo stipite si divide']].forEach(([value,name,note])=>
+    // la scelta predefinita (tutto uguale) sta sotto, al centro
+    [['leaf','Anta diversa','La maestà di un colore, l’anta di un altro'],['sides','Esterno e interno','Ogni lato il suo colore: lo stipite si divide'],['same','Tutto uguale','Un colore per maestà e anta']].forEach(([value,name,note])=>
       grid.append(wizCard(name,note,now===value,colorSidesFigure(value),()=>{state.colorSides=value==='sides';state.colorLeaf=value==='leaf';sync();drawDoor();updateBadge();renderWizard();setTimeout(()=>wizGo(1),180);})));
     return;
   }

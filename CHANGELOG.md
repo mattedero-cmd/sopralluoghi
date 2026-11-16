@@ -10,6 +10,12 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.104.1 — «Tutto uguale» sotto, al centro
+
+- Nel passo «Colori» della guida la scelta predefinita, «Tutto uguale», sta
+  sotto al centro, come le altre scelte a tre; le anteprime hanno il fondo
+  chiaro anche sulla scheda scelta.
+
 ## 1.104.0 — Esterno e interno: il cambio colore come in cantiere
 
 - Senza guarnizione sulla battuta il colore cambia sulla battuta, che prende
