@@ -10,6 +10,14 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.106.4 — Niente sormonto dove stipite e coprifilo sono un pezzo unico
+
+- Se la striscia dello stipite fra coprifilo e guarnizione è stretta (sotto
+  i 30 mm) diventa un pezzo unico col coprifilo: lì non c'è sormonto. Prima
+  la pressione lunga lo «spostava» lo stesso e cambiava le misure, senza
+  poterlo poi invertire; ora in quel punto spostamento e inversione non
+  valgono e le misure restano quelle del pezzo unico.
+
 ## 1.106.3 — Sezione della maestà a due colori
 
 - Con esterno e interno di colori diversi, nella sezione della maestà (nel

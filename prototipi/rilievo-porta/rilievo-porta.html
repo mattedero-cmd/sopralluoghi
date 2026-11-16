@@ -843,7 +843,25 @@ function overUsed(part, which) {
 // faccia dello stipite. Stessa misura del sormonto, limitata alla faccia;
 // cambiano le misure dei due pezzi. Solo sui profili diritti.
 function lapMoved(part, which) {
-  return !hasProfileFilmRules() && !!draft().lapMove?.[part.key + ':' + which];
+  return !hasProfileFilmRules() && !!draft().lapMove?.[part.key + ':' + which] && !narrowMergedEnd(part, which);
+}
+// La striscia stretta (sotto i 30 mm) fra coprifilo e guarnizione diventa un
+// pezzo unico col coprifilo: lì non c'è sormonto, né da spostare né da
+// invertire. Si guarda la striscia senza i sormonti (groups), come fa
+// narrowJambStrips, senza passare dai pezzi già allungati.
+function narrowMergedEnd(part, which) {
+  if (hasProfileFilmRules() || !['jamb', 'integrated', 'extension'].includes(part.key)) return false;
+  const list = groups(part);
+  if (list.length < 2) return false;
+  const g = geometry();
+  if (which === 'start') {
+    const first = list[0], seg = first.segs[0];
+    return part.key !== 'extension' && !!g.parts.find(q => q.key === 'outer') && seg.i === 0 && seg.start < 1e-6 && !first.gStart && first.width < NARROW_STRIP;
+  }
+  const last = list[list.length - 1], seg = last.segs[last.segs.length - 1], edge = part.edges[seg.i];
+  const innerJamb = g.parts.find(q => q.key === 'extension') || g.parts.find(q => q.key === part.key);
+  return innerJamb?.key === part.key && !!g.parts.find(q => q.key === 'inner') && seg.i === part.edges.length - 1 &&
+    seg.end > edge.len - 1e-6 && !last.gEnd && last.width < NARROW_STRIP;
 }
 // «del coprifilo», «dello stipite», «dell'imbotte»; «sul», «sullo», «sull'»
 function partArticle(name, prep) {
@@ -1045,7 +1063,7 @@ function overlapStackItems(g = geometry()) {
     }
     if (!upperPart || !lowerPart || upperPart.key === lowerPart.key) return;
     // INVERTITO dal riepilogo: stessa misura, cambia chi sta sopra e l'ordine di posa
-    const flipped = !!draft().lapFlip?.[source.key + ':' + which];
+    const flipped = !!draft().lapFlip?.[source.key + ':' + which] && !narrowMergedEnd(source, which);
     if (flipped) [upperPart, lowerPart] = [lowerPart, upperPart];
     const keys = [upperPart.key, lowerPart.key];
     const position = keys.includes('outer') ? 'Lato esterno' : keys.includes('inner')
