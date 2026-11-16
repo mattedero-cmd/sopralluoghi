@@ -1223,34 +1223,118 @@ export function testoEtichettaPorta(a: Etichetta): string {
   return a.lettera + (a.rilievo ? ' · rilievo' : '') + (n > 1 ? ` ×${n}` : '');
 }
 
+/** La lettera di una porta («Porta A» → «A»): è quella che si legge nell'icona. */
+export function letteraPorta(a: Etichetta): string {
+  const t = a.lettera.trim();
+  const m = /^porta\s+(.+)$/i.exec(t);
+  return m ? m[1] : t;
+}
+
+/**
+ * Ingombro dell'icona-porta rispetto a `posizione` (centro dell'anta):
+ * mezza larghezza a sinistra/destra e mezza altezza sopra/sotto, compresa la
+ * nota sotto («rilievo», «×12»).
+ */
+export function ingombroEtichettaPorta(a: Etichetta): { sx: number; dx: number; su: number; giu: number } {
+  const g = geometriaIconaPorta(a);
+  const nota = notaEtichettaPorta(a);
+  const giuNota = nota ? g.altezza / 2 + g.dim * 1.5 : g.altezza / 2 + g.spessore;
+  const meta = Math.max(g.larghezza / 2 + g.anta, nota ? misuraLarghezzaTesto(nota, g.dim * 0.8) / 2 : 0);
+  return { sx: meta, dx: meta, su: g.altezza / 2 + g.spessore, giu: giuNota };
+}
+
+function notaEtichettaPorta(a: Etichetta): string {
+  const n = Math.max(1, a.moltiplicatore ?? 1);
+  return [a.rilievo ? 'rilievo' : '', n > 1 ? `×${n}` : ''].filter(Boolean).join(' · ');
+}
+
+function geometriaIconaPorta(a: Etichetta) {
+  const dim = a.stile.dimensioneTesto;
+  const lettera = letteraPorta(a);
+  // la lettera è grande e la porta le sta attorno: si allarga per le sigle lunghe
+  const dimLettera = dim * 1.7;
+  const larghezza = Math.max(dim * 2.4, misuraLarghezzaTesto(lettera, dimLettera) + dim * 0.9);
+  const altezza = Math.max(dim * 3.6, larghezza * 1.45);
+  return { dim, lettera, dimLettera, larghezza, altezza, anta: larghezza * 0.24, spessore: Math.max(2, dim * 0.16) };
+}
+
 export function primitiveEtichetta(a: Etichetta): Primitiva[] {
   const dim = a.stile.dimensioneTesto;
   if (a.portaId) {
-    // PORTA: un'etichetta che è anche una nota breve, a pillola (il cerchio è
-    // delle lettere della legenda)
-    const testo = testoEtichettaPorta(a);
-    const w = misuraLarghezzaTesto(testo, dim) + dim * 1.2;
-    const h = dim * 1.7;
+    // PORTA: l'icona della porta, grande, con la sua lettera dentro (il
+    // cerchio è delle lettere della legenda). Sotto, piccola, la nota.
+    const g = geometriaIconaPorta(a);
+    const { x: cx, y: cy } = a.posizione;
     const colore = a.stile.colore;
-    return [
+    const contrasto = coloreContrasto(colore);
+    const x0 = cx - g.larghezza / 2;
+    const x1 = cx + g.larghezza / 2;
+    const y0 = cy - g.altezza / 2;
+    const y1 = cy + g.altezza / 2;
+    const out: Primitiva[] = [
+      // anta aperta, dietro al telaio (come nell'icona «porta»)
+      {
+        kind: 'poligono',
+        punti: [x1, y0, x1 + g.anta, y0 + g.anta * 0.55, x1 + g.anta, y1, x1, y1],
+        colore,
+        alone: ALONE
+      },
+      {
+        kind: 'polilinea',
+        punti: [x1, y0, x1 + g.anta, y0 + g.anta * 0.55, x1 + g.anta, y1],
+        colore: contrasto,
+        spessore: g.spessore * 0.6
+      },
+      // il vano della porta, pieno: è il fondo della lettera
       {
         kind: 'rettangolo',
-        rect: { x: a.posizione.x - w / 2, y: a.posizione.y - h / 2, width: w, height: h },
-        colore,
-        spessore: 0,
+        rect: { x: x0, y: y0, width: g.larghezza, height: g.altezza },
+        colore: contrasto,
+        spessore: g.spessore * 0.6,
         riempimento: colore,
-        raggio: h / 2
+        raggio: g.spessore * 0.6
+      },
+      // soglia
+      {
+        kind: 'linea',
+        punti: [x0 - g.anta * 0.6, y1, x1 + g.anta * 1.2, y1],
+        colore,
+        spessore: g.spessore * 1.4,
+        alone: ALONE
+      },
+      // maniglia
+      {
+        kind: 'cerchio',
+        centro: { x: x1 - g.larghezza * 0.09, y: cy + g.altezza * 0.26 },
+        raggio: Math.max(1.5, dim * 0.13),
+        colore: contrasto,
+        spessore: 0,
+        riempimento: contrasto
       },
       {
         kind: 'testo',
-        testo,
-        posizione: a.posizione,
+        testo: g.lettera,
+        posizione: { x: cx, y: cy - g.altezza * 0.06 },
         rotazioneDeg: 0,
-        dimensione: dim,
-        colore: coloreContrasto(colore),
+        dimensione: g.dimLettera,
+        colore: contrasto,
         sfondo: null
       }
     ];
+    const nota = notaEtichettaPorta(a);
+    if (nota) {
+      out.push({
+        kind: 'testo',
+        testo: nota,
+        posizione: { x: cx + g.anta / 2, y: y1 + dim * 0.95 },
+        rotazioneDeg: 0,
+        dimensione: dim * 0.8,
+        colore: '#ffffff',
+        sfondo: null,
+        alone: ALONE
+      });
+    }
+    return out;
   }
   const raggio = Math.max(dim * 0.95, misuraLarghezzaTesto(a.lettera, dim) / 2 + dim * 0.45);
   const colore = a.stile.colore;
