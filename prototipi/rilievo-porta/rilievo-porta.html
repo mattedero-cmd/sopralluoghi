@@ -307,6 +307,10 @@
 #maesta-tecnica .mt-job-type .mt-qty{min-width:56px;font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
 #maesta-tecnica .mt-plan-params{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
 #maesta-tecnica .mt-plan-params .mt-chip{max-width:none}
+#maesta-tecnica .mt-review-laps .mt-lap-chip{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;max-width:none;margin:6px 0;padding:10px 12px;text-align:left;white-space:normal}
+#maesta-tecnica .mt-review-laps .mt-lap-chip span{font-size:12px;color:var(--mt-secondary)}
+#maesta-tecnica .mt-review-laps .mt-lap-chip[aria-pressed=true] span{color:inherit}
+#maesta-tecnica .mt-review-laps .mt-review-leaf-edge{max-width:260px;display:block;margin:6px auto 0}
 #maesta-tecnica .mt-job-mats{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px}
 #maesta-tecnica .mt-job-mats[hidden]{display:none}
 #maesta-tecnica .mt-job-mats .mt-chip{max-width:none}
@@ -976,10 +980,13 @@ function overlapStackItems(g = geometry()) {
       lowerPart = source;
     }
     if (!upperPart || !lowerPart || upperPart.key === lowerPart.key) return;
+    // INVERTITO dal riepilogo: stessa misura, cambia chi sta sopra e l'ordine di posa
+    const flipped = !!draft().lapFlip?.[source.key + ':' + which];
+    if (flipped) [upperPart, lowerPart] = [lowerPart, upperPart];
     const keys = [upperPart.key, lowerPart.key];
-    const position = keys.includes('outer') ? 'Sinistra · esterno' : keys.includes('inner')
-      ? 'Destra · interno' : 'Giunto stipite–imbotte';
-    items.push({id: 'S' + (items.length + 1), source, which, info, used, limit,
+    const position = keys.includes('outer') ? 'Lato esterno' : keys.includes('inner')
+      ? 'Lato interno' : 'Giunto stipite–imbotte';
+    items.push({id: 'S' + (items.length + 1), source, which, info, used, limit, flipped, key: source.key + ':' + which,
       upperPart, lowerPart, upperName: upperPart.name, lowerName: lowerPart.name, position});
   }));
   return items;
@@ -1341,9 +1348,10 @@ function separated(part,e){return !!draft().split[edgeStateKey(part,e)]||colorSp
 // - con la guarnizione sulla battuta il colore cambia lì: la pellicola è già
 //   interrotta;
 // - senza guarnizione il colore cambia sulla battuta: la battuta prende il
-//   colore esterno. Lo stipite interno si posa per primo e sale sotto, su
-//   tutta la battuta; il pezzo esterno gira sullo spigolo e lo sormonta fino
-//   all'angolo interno. Il taglio è sullo spigolo, il sormonto è la battuta;
+//   colore esterno (l'anta chiude dal lato esterno, la battuta sporge da
+//   quello interno). Lo stipite interno si posa per primo, gira sullo spigolo
+//   e scende sotto su tutta la battuta; il pezzo esterno sale dal fondo sulla
+//   battuta e lo sormonta fino allo spigolo. Il sormonto è la battuta;
 // - con l'anta che batte sul coprifilo tutto lo stipite è del colore interno
 //   e va sotto, il coprifilo esterno lo sormonta;
 // - senza battuta il colore cambia sulla guarnizione dello stipite, se c'è.
@@ -1385,7 +1393,7 @@ function colorSidesNote(){
   if(split?.casing)return 'Esterno e interno: l’anta batte sul coprifilo, tutto lo stipite è del colore interno e va sotto; il coprifilo esterno lo sormonta.';
   if(!split)return 'Esterno e interno: lo stipite non ha battuta né guarnizione, resta un pezzo unico del colore del lato dove sta di più.';
   return split.gasket?'Esterno e interno: il colore cambia sulla guarnizione dello stipite.':
-    'Esterno e interno: la battuta prende il colore esterno. Lo stipite interno va per primo e sale sotto sulla battuta; il pezzo esterno gira sullo spigolo e lo sormonta.';
+    'Esterno e interno: la battuta prende il colore esterno. Lo stipite interno va per primo, gira sullo spigolo e scende sotto sulla battuta; il pezzo esterno sale sulla battuta e lo sormonta fino allo spigolo.';
 }
 // Guarnizione: ingombro reale lungo il tratto, centrato a «at» mm da edge.a.
 // «full» segue dinamicamente tutto il tratto; le misure manuali restano salvate.
@@ -1930,6 +1938,7 @@ function render(svg,g,mini=false,size=null){const box=size||svg.getBoundingClien
   if(!selected)part.edges.forEach((e,ei)=>filmSegments(part,ei).forEach(seg=>svg.append(el('path',{d:`M ${X(seg.a[0])} ${Y(seg.a[1])} `+edgeCommand(seg,X,Y,k),fill:'none',stroke:'var(--mt-green)','stroke-width':hasProfileFilmRules()?3:1.5,opacity:hasProfileFilmRules()?1:.7,'pointer-events':'none','data-film-segment':part.key+':'+ei,'data-start':seg.start,'data-end':seg.end}))));
  });
  g.parts.forEach((part,pi)=>['start','end'].forEach(which=>drawFilmOverlap(svg,part,which,X,Y,pi===draft().part)));
+ drawColorLap(svg,g,X,Y);
  // Striscia sotto 30 mm: un solo pezzo con il coprifilo, lo si scrive sul disegno.
  g.parts.forEach(part=>narrowJambStrips(part,g).filter(n=>n.merge).forEach(n=>{
   const seg=n.strip.segs[0],e=part.edges[seg.i],pt=overlapEdgePoint(e,((seg.start+seg.end)/2)/e.len);
@@ -2143,12 +2152,13 @@ function lapFilmContext(part, point, project, reach, indices = null) {
   return [];
 }
 function lapDrawing(stack, project) {
-  const {source,which,info,used,upperPart,lowerPart}=stack;
+  const {source,which,info,used,upperPart,lowerPart,flipped}=stack;
   const world=overPath(source,which),points=world.map(project),length=lapLength(points);
-  const reach=8,freeTip=Math.min(4.5,length*.45),sourceAbove=info.layer==='over';
+  // invertito: il lembo resta dov'è, cambia solo quale pellicola sta sopra
+  const origAbove=info.layer==='over',reach=8,freeTip=Math.min(4.5,length*.45),sourceAbove=origAbove!==!!flipped;
   const sourceIndex=info.sourceEdge??(which==='start'?0:source.edges.length-1);
   const sourceContext=lapFilmContext(source,world[0],project,reach,[sourceIndex]);
-  const receiver=sourceAbove?lowerPart:upperPart;
+  const receiver=origAbove?(flipped?upperPart:lowerPart):(flipped?lowerPart:upperPart);
   const scale=Math.max(1e-6,Math.hypot(...project([1,0]).map((v,i)=>v-project([0,0])[i])));
   let coveredThrough=0;
   for(const segment of info.route){
@@ -2208,6 +2218,26 @@ function mergedNarrowOverlap(part,which){
   const list=narrowJambStrips(part).filter(n=>n.merge);if(!list.length)return false;
   const count=strips(part).length;
   return list.some(n=>which==='start'?n.index===0:n.index===count-1);
+}
+// Esterno e interno di colori diversi, senza guarnizione: sulla battuta i due
+// fogli si sovrappongono. Verde l'esterno, arancio l'interno; sopra quello
+// scelto (di base l'esterno, invertibile dal riepilogo).
+function drawColorLap(svg, g, X, Y) {
+  const c = state.colorSides ? colorSplit() : null;
+  if (!c || !(c.lap > 0)) return;
+  const stop = selectedDoorStop(g);
+  if (!stop) return;
+  // i fogli stanno dal lato libero della battuta, verso l'anta (x minori)
+  const e = stop.edge, dir = -(Math.sign(X(e.a[0] + 1) - X(e.a[0])) || 1);
+  const flip = !!draft().colorLapFlip, group = el('g', {'data-color-lap': flip ? 'interno' : 'esterno', 'pointer-events': 'none'});
+  const track = (off, color) => group.append(el('line', {x1: X(e.a[0]) + dir * off, y1: Y(e.a[1]), x2: X(e.b[0]) + dir * off, y2: Y(e.b[1]),
+    stroke: color, 'stroke-width': 3, 'stroke-linecap': 'butt'}));
+  track(2, flip ? 'var(--mt-green)' : 'var(--mt-film2)');
+  track(6, flip ? 'var(--mt-film2)' : 'var(--mt-green)');
+  group.append(el('line', {x1: X(e.a[0]) + dir * 10, y1: Y(e.a[1]), x2: X(e.b[0]) + dir * 10, y2: Y(e.b[1]),
+    stroke: 'var(--mt-overlap)', 'stroke-width': 3, 'data-layer': 'separator'}));
+  group.append(el('title', {}, 'Battuta · sopra ' + (flip ? 'lo stipite interno' : 'lo stipite esterno')));
+  svg.append(group);
 }
 function drawFilmOverlap(svg, source, which, X, Y, big = false) {
   // Pellicola unica con il coprifilo: il sormonto non esiste, non si disegna.
@@ -3992,7 +4022,8 @@ function colorUnder(r){
   if(r.door||!state.colorSides)return false;
   const c=colorSplit();if(!c||!(c.lap>0||c.casing))return false;
   const keys=r.partKeys||[r.partKey];
-  return posaSide(r)===1&&!keys.includes('inner')&&!keys.includes('outer');
+  // invertito dal riepilogo (solo sulla battuta): sotto va l'esterno
+  return posaSide(r)===(c.lap>0&&draft().colorLapFlip?0:1)&&!keys.includes('inner')&&!keys.includes('outer');
 }
 function sideOrder(list) {
   const frame = list.filter(r => !r.door), doors = list.filter(r => r.door);
@@ -4038,19 +4069,39 @@ function posaAuto(rows) {
   }
   return sideOrder(result);
 }
+// Un sormonto invertito: sullo stesso lato e sullo stesso pezzo quello che
+// ora sta sotto si posa prima di quello che sta sopra.
+function applyLapFlips(list) {
+  const flips = overlapStackItems().filter(item => item.flipped);
+  if (!flips.length) return list;
+  const out = list.slice(), has = (r, k) => (r.partKeys || [r.partKey]).includes(k);
+  flips.forEach(item => {
+    for (let i = 0; i < out.length; i++) {
+      const u = out[i];
+      if (u.door || !has(u, item.upperPart.key) || has(u, item.lowerPart.key)) continue;
+      const j = out.findIndex((l, k) => k > i && !l.door && l.piece === u.piece && posaSide(l) === posaSide(u) &&
+        has(l, item.lowerPart.key) && !has(l, item.upperPart.key));
+      if (j > i) { const [l] = out.splice(j, 1); out.splice(i, 0, l); i++; }
+    }
+  });
+  return out;
+}
 function posaOrder(rows) {
-  const auto = posaAuto(rows), saved = draft().order;
+  const auto = applyLapFlips(posaAuto(rows)), saved = draft().order;
   if (!saved) return auto;
   const byId = new Map(rows.map(r => [r.id, r]));
   const out = saved.filter(id => byId.has(id)).map(id => byId.get(id));
   auto.forEach(r => { if (!out.includes(r)) out.push(r); });
-  return out;
+  return applyLapFlips(out);
 }
 function posaReason(r, prev) {
   if(r.door&&r.face==='edge')return 'tratto del bordo separato dalla guarnizione';
-  if (colorUnder(r)) return colorSplit().casing?'stipite del colore interno: va sotto, il coprifilo esterno lo sormonta':'stipite interno: va per primo e sale sotto sulla battuta';
+  const flipColor = !!draft().colorLapFlip;
+  if (colorUnder(r)) return colorSplit().casing?'stipite del colore interno: va sotto, il coprifilo esterno lo sormonta':
+    flipColor?'stipite esterno: va per primo e sale sulla battuta fino allo spigolo':'stipite interno: va per primo, gira sullo spigolo e scende sotto sulla battuta';
   if (!r.door && state.colorSides && colorSplit()?.casing && (r.partKeys || [r.partKey]).includes('outer')) return 'coprifilo esterno: dopo lo stipite, lo sormonta';
-  if (!r.door && state.colorSides && colorSplit()?.lap > 0 && posaSide(r) === 0 && !(r.partKeys || [r.partKey]).includes('outer')) return 'stipite esterno: gira sullo spigolo e sormonta l’interno sulla battuta';
+  if (!r.door && state.colorSides && colorSplit()?.lap > 0 && posaSide(r) === (flipColor ? 1 : 0) && !(r.partKeys || [r.partKey]).includes(flipColor ? 'inner' : 'outer'))
+    return flipColor ? 'stipite interno: gira sullo spigolo e sormonta l’esterno sulla battuta' : 'stipite esterno: sale sulla battuta e sormonta l’interno fino allo spigolo';
   if (r.door) return !(r.bothFaces??doorFilmPlan().both)?'anta: unico foglio, bordo superiore completo':r.face===doorLapBottom()?'anta: primo foglio, sotto il sormonto':r.face===doorLapTop()?'anta: secondo foglio, copre il primo fino allo spigolo':'anta, dopo la maestà';
   if (hasProfileFilmRules()) {
     if (r.partKeys?.length > 1) return 'coprifilo e tratto dello stipite in un unico pezzo';
@@ -4150,7 +4201,7 @@ function drawDoorEdge(svg,width,bottom=doorView==='bottom',standalone=false) {
   const group=el('g',{'data-door-edge':bottom?'bottom':'top','data-bottom-mode':doorBottomMode()});
   group.append(el('polygon',{points:body.map(p=>project(p).join(',')).join(' '),fill:'var(--mt-wood)',stroke:'var(--mt-ink)','stroke-width':1}));
   // con i colori diversi il foglio interno si disegna nel secondo colore
-  const film=(points,face,layer)=>group.append(el('polyline',{points:points.map(p=>project(p).join(',')).join(' '),fill:'none',stroke:state.colorSides&&face==='back'?'var(--mt-film2)':'var(--mt-green)','stroke-width':3,'stroke-linejoin':'round',
+  const film=(points,face,layer)=>group.append(el('polyline',{points:points.map(p=>project(p).join(',')).join(' '),fill:'none',stroke:(state.colorSides||twoToneDoorEdge)&&face==='back'?'var(--mt-film2)':'var(--mt-green)','stroke-width':3,'stroke-linejoin':'round',
     'data-door-film':face,'data-layer':layer}));
   const both=plan.both,mode=bottom?doorBottomMode():'overlap';
   if(!bottom&&plan.gasketGaps?.length){
@@ -4214,15 +4265,18 @@ function colorSidesFigure(mode){
   const svg=el('svg',{class:'mt-wiz-fig',viewBox:'0 0 320 200','aria-hidden':'true'});
   // fondo chiaro anche sulla scheda scelta: la pellicola verde resta visibile
   svg.append(el('rect',{x:0,y:0,width:320,height:200,rx:10,fill:'var(--mt-paper)'}));
+  // la battuta sporge dal lato interno (a sinistra); l'anta chiude sul fondo esterno
   svg.append(el('path',{d:'M 30 40 H 160 V 80 H 290 V 170 H 30 Z',fill:'var(--mt-wood)',stroke:'var(--mt-ink)','stroke-width':1}));
   svg.append(el('rect',{x:172,y:14,width:40,height:56,fill:'none',stroke:mode==='leaf'?'var(--mt-film2)':'var(--mt-secondary)','stroke-width':mode==='leaf'?4:1,...(mode==='leaf'?{}:{'stroke-dasharray':'4 3'})}));
   const line=(d,color)=>svg.append(el('path',{d,fill:'none',stroke:color,'stroke-width':5,'stroke-linejoin':'round'}));
-  if(split){line('M 290 74 H 166 V 40','var(--mt-film2)');line('M 30 34 H 172 V 76','var(--mt-green)');}
+  if(split){line('M 30 34 H 166 V 76','var(--mt-film2)');line('M 290 74 H 172 V 40','var(--mt-green)');}
   else line('M 30 34 H 166 V 74 H 290','var(--mt-green)');
-  svg.append(el('text',{x:30,y:194,'font-size':13},'esterno'),el('text',{x:290,y:194,'text-anchor':'end','font-size':13},'interno'),
+  svg.append(el('text',{x:30,y:194,'font-size':13},'interno'),el('text',{x:290,y:194,'text-anchor':'end','font-size':13},'esterno'),
     el('text',{x:192,y:46,'text-anchor':'middle','font-size':12,fill:'var(--mt-secondary)'},'anta'));
   return svg;
 }
+// nel riepilogo i due fogli dell'anta hanno colori diversi: si vede chi sta sopra
+let twoToneDoorEdge=false;
 function doorEdgeFigure(bottom=false) {
   const svg=el('svg',{class:'mt-wiz-fig',viewBox:'0 0 320 235','aria-hidden':'true'});drawDoorEdge(svg,320,bottom,true);return svg;
 }
@@ -6240,6 +6294,63 @@ function reviewFrontFigure(){
   if(casing){const p=draft().p;svg.append(el('text',{x:170,y:244,'text-anchor':'middle','font-size':11,fill:'var(--mt-secondary)'},'Coprifilo esterno '+mmText(p.A)+(asymKey&&asymDelta(casing)?' · lato '+(state.asym.side==='handle'?'maniglia':'cerniere')+' '+mmText(state.asym.E):'')+' × '+mmText(p.tE)+' · angoli '+(JOINTS.find(j=>j.id===state.joint)?.name||'').toLocaleLowerCase('it-IT')));}
   return svg;
 }
+// SORMONTI NEL RIEPILOGO: di base come li crea la guida; toccandone uno si
+// inverte chi sta sopra. Cambiano disegno, ordine di posa e istruzioni, non
+// le misure dei pezzi.
+function toggleLap(key){
+  const flips=draft().lapFlip||(draft().lapFlip={});
+  if(flips[key])delete flips[key];else flips[key]=true;
+}
+function reviewLapEntries(){
+  const out=overlapStackItems().map(item=>({id:item.id,title:item.position,upper:item.upperName,lower:item.lowerName,
+    flipped:item.flipped,toggle:()=>toggleLap(item.key)}));
+  const c=state.colorSides?colorSplit():null;
+  if(c&&c.lap>0){const flip=!!draft().colorLapFlip;
+    out.push({id:'B',title:'Battuta · cambio colore',upper:flip?'Stipite interno':'Stipite esterno',lower:flip?'Stipite esterno':'Stipite interno',flipped:flip,
+      toggle:()=>{draft().colorLapFlip=!flip;}});}
+  if(doorFaces.every(([key])=>isDoorFaceCovered(key))&&!leafProfileRanges().gaps.length){
+    const top=doorLapTop();
+    out.push({id:'A',title:'Bordo dell’anta',upper:doorFaceName(top),lower:doorFaceName(top==='front'?'back':'front'),flipped:top==='back',
+      toggle:()=>{door.lapTop=top==='front'?'back':'front';drawDoor();}});
+  }
+  return out;
+}
+function reviewLapList(){
+  const entries=reviewLapEntries();if(!entries.length)return null;
+  const wrap=document.createElement('section');wrap.className='mt-review-card mt-review-laps';
+  const h=document.createElement('h4');h.textContent='Sormonti';wrap.append(h);
+  const note=document.createElement('p');note.className='mt-small';note.textContent='Tocca un sormonto per invertire chi sta sopra: cambiano disegno, ordine di posa e istruzioni, non le misure.';wrap.append(note);
+  entries.forEach(entry=>{
+    const b=document.createElement('button');b.type='button';b.className='mt-chip cursor-interaction mt-lap-chip';b.setAttribute('data-lap',entry.id);
+    b.setAttribute('aria-pressed',String(entry.flipped));
+    const t=document.createElement('strong');t.textContent=entry.id+' · '+entry.title+(entry.flipped?' · invertito':'');
+    const u=document.createElement('span');u.textContent='Sopra: '+entry.upper.toLocaleLowerCase('it-IT');
+    const l=document.createElement('span');l.textContent='Sotto: '+entry.lower.toLocaleLowerCase('it-IT');
+    b.append(t,u,l);b.onclick=()=>{entry.toggle();vibrate();sync();renderReview();};wrap.append(b);
+  });
+  if(doorFaces.every(([key])=>isDoorFaceCovered(key))&&!leafProfileRanges().gaps.length){
+    twoToneDoorEdge=true;let fig;try{fig=doorEdgeFigure(false);}finally{twoToneDoorEdge=false;}fig.classList.add('mt-review-leaf-edge');
+    const seam=fig.querySelector('[data-door-overlap]');
+    if(seam){const hit=seam.cloneNode();hit.setAttribute('stroke','transparent');hit.setAttribute('stroke-width','22');hit.removeAttribute('data-door-overlap');
+      hit.style.cursor='pointer';hit.setAttribute('pointer-events','stroke');hit.onclick=()=>{door.lapTop=doorLapTop()==='front'?'back':'front';drawDoor();vibrate();sync();renderReview();};seam.after(hit);}
+    wrap.append(fig);
+  }
+  return wrap;
+}
+// le linguette grigie nella sezione: toccabili, con un'area larga per il dito
+function reviewLapTaps(svg){
+  svg.querySelectorAll('[data-overlap]').forEach(group=>{
+    const key=group.getAttribute('data-overlap'),line=group.querySelector('[data-layer=separator]');
+    group.setAttribute('pointer-events','auto');group.style.cursor='pointer';
+    if(line){const hit=line.cloneNode();hit.setAttribute('stroke','transparent');hit.setAttribute('stroke-width','24');hit.removeAttribute('data-layer');hit.setAttribute('pointer-events','stroke');group.append(hit);}
+    group.addEventListener('click',()=>{toggleLap(key);vibrate();sync();renderReview();});
+  });
+  svg.querySelectorAll('[data-color-lap]').forEach(group=>{
+    const line=group.querySelector('[data-layer=separator]');group.setAttribute('pointer-events','auto');group.style.cursor='pointer';
+    if(line){const hit=line.cloneNode();hit.setAttribute('stroke','transparent');hit.setAttribute('stroke-width','24');hit.removeAttribute('data-layer');hit.setAttribute('pointer-events','stroke');group.append(hit);}
+    group.addEventListener('click',()=>{draft().colorLapFlip=!draft().colorLapFlip;vibrate();sync();renderReview();});
+  });
+}
 function reviewSectionFigure(){
   const svg=el('svg',{role:'img','aria-label':'Sezione della maestà con le quote'});
   render(svg,geometry(),false,{width:340,height:250});return svg;
@@ -6390,7 +6501,8 @@ function renderReview(){
   if(error){const n=document.createElement('p');n.className='mt-review-note';n.textContent=error;box.append(n);}
   try{card('Maestà vista di fronte',reviewFrontFigure());}catch(e){}
   const section=card('Sezione della maestà',el('svg'));
-  requestAnimationFrame(()=>{try{section.replaceChild(reviewSectionFigure(),section.lastChild);}catch(e){}});
+  requestAnimationFrame(()=>{try{const fig=reviewSectionFigure();section.replaceChild(fig,section.lastChild);reviewLapTaps(fig);}catch(e){}});
+  const laps=reviewLapList();if(laps)box.append(laps);
   try{card(state.leafCount===2?'Ante viste di fronte':'Anta vista di fronte',reviewLeafFront());}catch(e){}
   (state.leafCount===2?[0,1]:[0]).forEach(index=>{try{withLeaf(index,()=>card('Sezione del battente'+(state.leafCount===2?' · '+leafName(index):''),reviewLeafSection()));}catch(e){}});
   const fit=validDoor()?fitGeometryError():'';

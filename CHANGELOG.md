@@ -10,6 +10,23 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.105.0 — Sormonti invertibili dal riepilogo
+
+- Nel riepilogo della porta c'è la scheda «Sormonti»: per ogni sormonto
+  dice chi sta sopra e chi sotto. Toccandolo (o toccando la linguetta grigia
+  nella sezione della maestà) si inverte. Cambiano il disegno, l'ordine di
+  posa e le istruzioni; le misure dei pezzi no. Di base i sormonti restano
+  quelli che crea la guida.
+- Vale per i sormonti fra coprifilo, stipite e imbotte, per quello sulla
+  battuta con esterno e interno di colori diversi e per il bordo dell'anta
+  (con il disegno a due colori per vedere quale foglio sta sopra).
+- Esterno e interno di colori diversi: corretti i testi e i disegni. L'anta
+  chiude dal lato esterno: il foglio esterno sale dal fondo sulla battuta,
+  quello interno gira sullo spigolo e scende sotto. Le misure dei pezzi
+  erano già giuste.
+- Nei dettagli dei sormonti «Lato esterno» e «Lato interno» al posto di
+  sinistra e destra, che con il disegno specchiato non tornavano.
+
 ## 1.104.1 — «Tutto uguale» sotto, al centro
 
 - Nel passo «Colori» della guida la scelta predefinita, «Tutto uguale», sta

@@ -166,6 +166,23 @@ Nelle misure la figura prende tutto lo spazio libero sopra il tastierino, e la
 lente (il dettaglio da misurare) è grande; la sezione intera accanto dice solo
 dove si trova.
 
+## Sormonti invertibili dal riepilogo
+
+I sormonti nascono come li crea la guida. Nel riepilogo la scheda
+«Sormonti» li elenca tutti (S1, S2… fra coprifilo, stipite e imbotte; B sulla
+battuta con esterno e interno di colori diversi; A sul bordo dell'anta) e
+nella sezione della maestà le linguette grigie si possono toccare. Toccarne
+uno inverte chi sta sopra:
+
+- coprifilo/stipite/imbotte: `draft().lapFlip[parte:inizio|fine]`; il lembo
+  e le misure restano, cambiano gli strati nel disegno (`lapDrawing`) e
+  l'ordine di posa (`applyLapFlips`: sullo stesso lato e pezzo quello che
+  ora sta sotto si posa prima);
+- battuta con i colori diversi: `draft().colorLapFlip`, sotto va l'esterno;
+- bordo dell'anta: `door.lapTop`, lo stesso della guida.
+
+Le istruzioni PDF usano gli stessi disegni e lo stesso ordine di posa.
+
 ## Porte a due ante
 
 Al centro le ante si chiudono fra loro, non sullo stipite. L'**anta attiva** è
@@ -216,11 +233,12 @@ nel piano di taglio. Con esterno e interno diversi:
 - il colore cambia dove si fa in cantiere (`colorSplit()`, `colorSidesNote()`):
   - con la guarnizione sulla battuta, sulla guarnizione: la pellicola è già
     interrotta;
-  - senza guarnizione, sulla battuta, che prende il colore esterno: il taglio è
-    sullo spigolo, lo stipite interno si posa per primo e sale sotto su tutta la
-    battuta, il pezzo esterno gira sullo spigolo e lo sormonta fino all'angolo
-    interno (il sormonto è lungo quanto la battuta; `colorLapAt`, ordine con
-    `colorUnder`). Con la battuta all'inizio dell'imbotte il taglio è sulla
+  - senza guarnizione, sulla battuta, che prende il colore esterno (l'anta
+    chiude dal lato esterno, la battuta sporge da quello interno): lo stipite
+    interno si posa per primo, gira sullo spigolo e scende sotto su tutta la
+    battuta; il pezzo esterno sale dal fondo sulla battuta e lo sormonta fino
+    allo spigolo (il sormonto è lungo quanto la battuta; `colorLapAt`, ordine
+    con `colorUnder`). Con la battuta all'inizio dell'imbotte il taglio è sulla
     giunzione stipite/imbotte;
   - con l'anta che batte sul coprifilo tutto lo stipite è del colore interno e
     va sotto; il coprifilo esterno lo sormonta (nei raggiati il pezzo unico
