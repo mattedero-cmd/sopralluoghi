@@ -168,22 +168,26 @@ dove si trova.
 
 ## Sormonti invertibili dal riepilogo
 
-I sormonti nascono come li crea la guida. Nel riepilogo la scheda
-«Sormonti» li elenca tutti (S1, S2… fra coprifilo, stipite e imbotte; B sulla
-battuta con esterno e interno di colori diversi; A sul bordo dell'anta) e
-nella sezione della maestà le linguette grigie si possono toccare. Toccarne
-uno inverte chi sta sopra:
+I sormonti nascono come li crea la guida. Nel riepilogo si cambiano sul
+disegno della sezione della maestà, senza pulsanti né elenchi
+(`reviewLapTaps`):
+
+- tocco su un sormonto (linguetta grigia): si inverte chi sta sopra;
+- pressione lunga su un sormonto: il lembo passa sull'altra faccia;
+- tocco su ESTERNO o INTERNO: i due lati si scambiano il nome.
+
+Cosa cambia:
 
 - coprifilo/stipite/imbotte: `draft().lapFlip[parte:inizio|fine]`; il lembo
   e le misure restano, cambiano gli strati nel disegno (`lapDrawing`) e
   l'ordine di posa (`applyLapFlips`: sullo stesso lato e pezzo quello che
   ora sta sotto si posa prima);
 - battuta con i colori diversi: `draft().colorLapFlip`, sotto va l'esterno;
-- bordo dell'anta: `door.lapTop`, lo stesso della guida.
+- il bordo dell'anta (`door.lapTop`) si sceglie nella guida.
 
 Le istruzioni PDF usano gli stessi disegni e lo stesso ordine di posa.
 
-«Sposta il sormonto sull'altra faccia» (S1, S2… sui profili diritti):
+Pressione lunga su un sormonto (S1, S2… sui profili diritti):
 `draft().lapMove[parte:inizio|fine]`. Invece del lembo dello stipite (o
 dell'imbotte) sul pezzo vicino, è il pezzo vicino che si allunga sulla faccia
 dello stipite, della stessa misura (limitata alla faccia, fino alla
@@ -194,8 +198,8 @@ sormonto segue le regole del profilo e non si sposta.
 
 ## Interno ed esterno invertiti
 
-Nel riepilogo «Inverti interno ed esterno» (`state.sidesSwapped`, salvato
-nella configurazione). La geometria resta quella rilevata; cambia solo come si
+Nel riepilogo si tocca ESTERNO o INTERNO sulla sezione della maestà
+(`state.sidesSwapped`, salvato nella configurazione). La geometria resta quella rilevata; cambia solo come si
 chiamano i due lati: disegni (`el`), PDF (`pdfText`), pagine di riepilogo,
 guida e tagli (`swapDom`), sigle E/I (`sideLetter`) e nomi mandati all'app.
 Serve per le porte montate al contrario (camere d'albergo che aprono verso la

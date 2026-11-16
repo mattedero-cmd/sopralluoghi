@@ -10,6 +10,14 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.106.1 — Riepilogo senza pulsanti: tutto sul disegno
+
+- Tolti il pulsante «Inverti interno ed esterno» e la scheda «Sormonti».
+- Sul disegno della sezione della maestà: tocco su ESTERNO o INTERNO per
+  scambiare i lati, tocco su un sormonto per invertire chi sta sopra,
+  pressione lunga su un sormonto per spostarlo sull'altra faccia.
+- Il bordo dell'anta (quale foglio sta sopra) resta nella guida.
+
 ## 1.106.0 — Interno ed esterno invertibili, sormonti spostabili
 
 - Nel riepilogo della porta «Inverti interno ed esterno»: per le porte

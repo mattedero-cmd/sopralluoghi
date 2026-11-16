@@ -307,12 +307,6 @@
 #maesta-tecnica .mt-job-type .mt-qty{min-width:56px;font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
 #maesta-tecnica .mt-plan-params{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
 #maesta-tecnica .mt-plan-params .mt-chip{max-width:none}
-#maesta-tecnica .mt-review-laps .mt-lap-chip{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;max-width:none;margin:6px 0;padding:10px 12px;text-align:left;white-space:normal}
-#maesta-tecnica .mt-review-laps .mt-lap-chip span,#maesta-tecnica .mt-review-laps .mt-lap-chip strong{font-size:12px;color:var(--mt-secondary);white-space:normal;overflow:visible;text-overflow:clip;max-width:none}
-#maesta-tecnica .mt-review-laps .mt-lap-chip strong{font-size:14px;color:inherit}
-#maesta-tecnica .mt-review-laps .mt-lap-chip[aria-pressed=true] span{color:inherit}
-#maesta-tecnica .mt-review-laps .mt-lap-move{width:100%;max-width:none;min-height:0;margin:-2px 0 10px;padding:8px 12px;font-size:13px;white-space:normal;text-align:left}
-#maesta-tecnica .mt-review-laps .mt-review-leaf-edge{max-width:260px;display:block;margin:6px auto 0}
 #maesta-tecnica .mt-job-mats{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px}
 #maesta-tecnica .mt-job-mats[hidden]{display:none}
 #maesta-tecnica .mt-job-mats .mt-chip{max-width:none}
@@ -4284,7 +4278,7 @@ function drawDoorEdge(svg,width,bottom=doorView==='bottom',standalone=false) {
   const group=el('g',{'data-door-edge':bottom?'bottom':'top','data-bottom-mode':doorBottomMode()});
   group.append(el('polygon',{points:body.map(p=>project(p).join(',')).join(' '),fill:'var(--mt-wood)',stroke:'var(--mt-ink)','stroke-width':1}));
   // con i colori diversi il foglio interno si disegna nel secondo colore
-  const film=(points,face,layer)=>group.append(el('polyline',{points:points.map(p=>project(p).join(',')).join(' '),fill:'none',stroke:(state.colorSides||twoToneDoorEdge)&&face==='back'?'var(--mt-film2)':'var(--mt-green)','stroke-width':3,'stroke-linejoin':'round',
+  const film=(points,face,layer)=>group.append(el('polyline',{points:points.map(p=>project(p).join(',')).join(' '),fill:'none',stroke:state.colorSides&&face==='back'?'var(--mt-film2)':'var(--mt-green)','stroke-width':3,'stroke-linejoin':'round',
     'data-door-film':face,'data-layer':layer}));
   const both=plan.both,mode=bottom?doorBottomMode():'overlap';
   if(!bottom&&plan.gasketGaps?.length){
@@ -4358,8 +4352,6 @@ function colorSidesFigure(mode){
     el('text',{x:192,y:46,'text-anchor':'middle','font-size':12,fill:'var(--mt-secondary)'},'anta'));
   return svg;
 }
-// nel riepilogo i due fogli dell'anta hanno colori diversi: si vede chi sta sopra
-let twoToneDoorEdge=false;
 function doorEdgeFigure(bottom=false) {
   const svg=el('svg',{class:'mt-wiz-fig',viewBox:'0 0 320 235','aria-hidden':'true'});drawDoorEdge(svg,320,bottom,true);return svg;
 }
@@ -6384,59 +6376,34 @@ function toggleLap(key){
   const flips=draft().lapFlip||(draft().lapFlip={});
   if(flips[key])delete flips[key];else flips[key]=true;
 }
-function reviewLapEntries(){
-  const out=overlapStackItems().map(item=>({id:item.id,title:item.position,upper:item.upperName,lower:item.lowerName,
-    flipped:item.flipped,toggle:()=>toggleLap(item.key),
-    where:'Lembo '+partArticle(item.carrierName,'de')+' '+partArticle(item.faceName,'su')+' · '+fmt(item.used)+' mm',
-    move:item.movable?()=>{const m=draft().lapMove||(draft().lapMove={});if(m[item.key])delete m[item.key];else m[item.key]=true;}:null,moved:item.moved}));
-  const c=state.colorSides?colorSplit():null;
-  if(c&&c.lap>0){const flip=!!draft().colorLapFlip;
-    out.push({id:'B',title:'Battuta · cambio colore',upper:flip?'Stipite interno':'Stipite esterno',lower:flip?'Stipite esterno':'Stipite interno',flipped:flip,
-      toggle:()=>{draft().colorLapFlip=!flip;}});}
-  if(doorFaces.every(([key])=>isDoorFaceCovered(key))&&!leafProfileRanges().gaps.length){
-    const top=doorLapTop();
-    out.push({id:'A',title:'Bordo dell’anta',upper:doorFaceName(top),lower:doorFaceName(top==='front'?'back':'front'),flipped:top==='back',
-      toggle:()=>{door.lapTop=top==='front'?'back':'front';drawDoor();}});
-  }
-  return out;
-}
-function reviewLapList(){
-  const entries=reviewLapEntries();if(!entries.length)return null;
-  const wrap=document.createElement('section');wrap.className='mt-review-card mt-review-laps';
-  const h=document.createElement('h4');h.textContent='Sormonti';wrap.append(h);
-  const note=document.createElement('p');note.className='mt-small';note.textContent='Tocca un sormonto per invertire chi sta sopra (cambiano disegno, ordine di posa e istruzioni, non le misure). «Sposta» mette il lembo sull’altra faccia: cambiano le misure dei due pezzi.';wrap.append(note);
-  entries.forEach(entry=>{
-    const b=document.createElement('button');b.type='button';b.className='mt-chip cursor-interaction mt-lap-chip';b.setAttribute('data-lap',entry.id);
-    b.setAttribute('aria-pressed',String(entry.flipped));
-    const t=document.createElement('strong');t.textContent=entry.id+' · '+entry.title+(entry.flipped?' · invertito':'');
-    const u=document.createElement('span');u.textContent='Sopra: '+entry.upper.toLocaleLowerCase('it-IT');
-    const l=document.createElement('span');l.textContent='Sotto: '+entry.lower.toLocaleLowerCase('it-IT');
-    b.append(t,u,l);
-    if(entry.where){const w=document.createElement('span');w.textContent=entry.where;b.append(w);}
-    b.onclick=()=>{entry.toggle();vibrate();sync();renderReview();};wrap.append(b);
-    if(entry.move){
-      const m=document.createElement('button');m.type='button';m.className='mt-chip cursor-interaction mt-lap-move';m.setAttribute('data-lap-move',entry.id);
-      m.setAttribute('aria-pressed',String(!!entry.moved));
-      m.textContent=entry.moved?'↺ Riporta il sormonto sulla faccia di prima':'⇄ Sposta il sormonto sull’altra faccia';
-      m.onclick=()=>{entry.move();vibrate();sync();renderReview();};wrap.append(m);
-    }
-  });
-  if(doorFaces.every(([key])=>isDoorFaceCovered(key))&&!leafProfileRanges().gaps.length){
-    twoToneDoorEdge=true;let fig;try{fig=doorEdgeFigure(false);}finally{twoToneDoorEdge=false;}fig.classList.add('mt-review-leaf-edge');
-    const seam=fig.querySelector('[data-door-overlap]');
-    if(seam){const hit=seam.cloneNode();hit.setAttribute('stroke','transparent');hit.setAttribute('stroke-width','22');hit.removeAttribute('data-door-overlap');
-      hit.style.cursor='pointer';hit.setAttribute('pointer-events','stroke');hit.onclick=()=>{door.lapTop=doorLapTop()==='front'?'back':'front';drawDoor();vibrate();sync();renderReview();};seam.after(hit);}
-    wrap.append(fig);
-  }
-  return wrap;
-}
 // le linguette grigie nella sezione: toccabili, con un'area larga per il dito
+// GESTI SUL DISEGNO DEL RIEPILOGO, senza pulsanti:
+// - tocco su un sormonto: si inverte chi sta sopra;
+// - pressione lunga su un sormonto: il lembo passa sull'altra faccia;
+// - tocco su ESTERNO o INTERNO: i due lati si scambiano il nome.
+function onTapOrHold(node,tap,hold){
+  let timer=0,held=false;
+  node.addEventListener('pointerdown',()=>{held=false;clearTimeout(timer);if(hold)timer=setTimeout(()=>{held=true;hold();},550);});
+  ['pointerup','pointerleave','pointercancel'].forEach(t=>node.addEventListener(t,()=>clearTimeout(timer)));
+  node.addEventListener('click',ev=>{ev.preventDefault();if(held){held=false;return;}tap();});
+  node.addEventListener('contextmenu',ev=>ev.preventDefault());
+}
 function reviewLapTaps(svg){
+  const redo=()=>{vibrate();sync();drawDoor();renderReview();};
   svg.querySelectorAll('[data-overlap]').forEach(group=>{
     const key=group.getAttribute('data-overlap'),line=group.querySelector('[data-layer=separator]');
-    group.setAttribute('pointer-events','auto');group.style.cursor='pointer';
+    const [partKey,which]=key.split(':'),part=geometry().parts.find(q=>q.key===partKey);
+    group.setAttribute('pointer-events','auto');group.style.cursor='pointer';group.style.touchAction='manipulation';
     if(line){const hit=line.cloneNode();hit.setAttribute('stroke','transparent');hit.setAttribute('stroke-width','24');hit.removeAttribute('data-layer');hit.setAttribute('pointer-events','stroke');group.append(hit);}
-    group.addEventListener('click',()=>{toggleLap(key);vibrate();sync();renderReview();});
+    onTapOrHold(group,()=>{toggleLap(key);redo();},part&&!hasProfileFilmRules()?()=>{const m=draft().lapMove||(draft().lapMove={});if(m[key])delete m[key];else m[key]=true;redo();}:null);
+  });
+  svg.querySelectorAll('text').forEach(t=>{
+    if(!/^(ESTERNO|INTERNO)$/.test((t.textContent||'').trim()))return;
+    t.style.cursor='pointer';t.setAttribute('pointer-events','auto');
+    let box=null;try{box=t.getBBox();}catch(e){}
+    if(box&&box.width){const hit=el('rect',{x:box.x-10,y:box.y-10,width:box.width+20,height:box.height+20,fill:'transparent',style:'cursor:pointer'});
+      t.parentNode.insertBefore(hit,t);hit.addEventListener('click',()=>{state.sidesSwapped=!state.sidesSwapped;redo();});}
+    t.addEventListener('click',()=>{state.sidesSwapped=!state.sidesSwapped;redo();});
   });
   svg.querySelectorAll('[data-color-lap]').forEach(group=>{
     const line=group.querySelector('[data-layer=separator]');group.setAttribute('pointer-events','auto');group.style.cursor='pointer';
@@ -6562,8 +6529,6 @@ function renderReview(){
   button('Modifica avanzata',()=>{state.quick=null;appEl.classList.add('mt-advanced');redrawFull();drawDoor();});
   button('Duplica',()=>duplicateDoor());
   button('Rifai la guida',()=>{state.quick=null;openWizard();});
-  button(state.sidesSwapped?'Interno ⇄ esterno: invertiti':'Inverti interno ed esterno',()=>{state.sidesSwapped=!state.sidesSwapped;vibrate();sync();drawDoor();renderReview();});
-  bar.lastChild.setAttribute('aria-pressed',String(!!state.sidesSwapped));
   if(HOST)button('Istruzioni PDF',ev=>hostInstructions(ev.currentTarget));
   button(editing?'Aggiorna '+editing.name:HOST?'Salva porta':'Salva nel lavoro',()=>saveToJob());
   bar.lastChild.classList.add('mt-primary');
@@ -6597,7 +6562,6 @@ function renderReview(){
   try{card('Maestà vista di fronte',reviewFrontFigure());}catch(e){}
   const section=card('Sezione della maestà',el('svg'));
   requestAnimationFrame(()=>{try{const fig=reviewSectionFigure();section.replaceChild(fig,section.lastChild);reviewLapTaps(fig);}catch(e){}});
-  const laps=reviewLapList();if(laps)box.append(laps);
   try{card(state.leafCount===2?'Ante viste di fronte':'Anta vista di fronte',reviewLeafFront());}catch(e){}
   (state.leafCount===2?[0,1]:[0]).forEach(index=>{try{withLeaf(index,()=>card('Sezione del battente'+(state.leafCount===2?' · '+leafName(index):''),reviewLeafSection()));}catch(e){}});
   const fit=validDoor()?fitGeometryError():'';
