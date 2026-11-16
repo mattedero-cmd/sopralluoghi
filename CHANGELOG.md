@@ -10,6 +10,20 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.106.0 — Interno ed esterno invertibili, sormonti spostabili
+
+- Nel riepilogo della porta «Inverti interno ed esterno»: per le porte
+  montate al contrario (camere che aprono verso la camera) si sceglie quale
+  lato chiamare esterno. Cambiano disegni, nomi dei pezzi, sigle (E/I),
+  istruzioni e i pezzi salvati nel progetto; misure e montaggio no.
+- Nella scheda «Sormonti» ogni sormonto fra stipite, coprifilo e imbotte ha
+  «Sposta il sormonto sull'altra faccia»: invece del lembo dello stipite sul
+  coprifilo, il coprifilo si allunga sullo stipite (e viceversa per
+  riportarlo). Cambiano le misure dei due pezzi, il disegno e le istruzioni;
+  si combina con l'inversione di chi sta sopra. Non vale sui coprifili
+  raggiati e smussati, che seguono le regole del profilo.
+- Ogni sormonto dice di quale pezzo è il lembo e su quale faccia sta.
+
 ## 1.105.0 — Sormonti invertibili dal riepilogo
 
 - Nel riepilogo della porta c'è la scheda «Sormonti»: per ogni sormonto

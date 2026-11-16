@@ -308,8 +308,10 @@
 #maesta-tecnica .mt-plan-params{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
 #maesta-tecnica .mt-plan-params .mt-chip{max-width:none}
 #maesta-tecnica .mt-review-laps .mt-lap-chip{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;max-width:none;margin:6px 0;padding:10px 12px;text-align:left;white-space:normal}
-#maesta-tecnica .mt-review-laps .mt-lap-chip span{font-size:12px;color:var(--mt-secondary)}
+#maesta-tecnica .mt-review-laps .mt-lap-chip span,#maesta-tecnica .mt-review-laps .mt-lap-chip strong{font-size:12px;color:var(--mt-secondary);white-space:normal;overflow:visible;text-overflow:clip;max-width:none}
+#maesta-tecnica .mt-review-laps .mt-lap-chip strong{font-size:14px;color:inherit}
 #maesta-tecnica .mt-review-laps .mt-lap-chip[aria-pressed=true] span{color:inherit}
+#maesta-tecnica .mt-review-laps .mt-lap-move{width:100%;max-width:none;min-height:0;margin:-2px 0 10px;padding:8px 12px;font-size:13px;white-space:normal;text-align:left}
 #maesta-tecnica .mt-review-laps .mt-review-leaf-edge{max-width:260px;display:block;margin:6px auto 0}
 #maesta-tecnica .mt-job-mats{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px}
 #maesta-tecnica .mt-job-mats[hidden]{display:none}
@@ -606,7 +608,28 @@ function ceilMeasureLimit(value) {
   return Number.isFinite(value) ? Math.ceil((value - 1e-9) * 100) / 100 : value;
 }
 const fmt = measureText;
-function el(tag,attrs={},content){const n=document.createElementNS(NS,tag);Object.entries(attrs).forEach(([k,v])=>n.setAttribute(k,v));if(content!==undefined)n.textContent=content;return n;}
+function el(tag,attrs={},content){const n=document.createElementNS(NS,tag);Object.entries(attrs).forEach(([k,v])=>n.setAttribute(k,v));if(content!==undefined)n.textContent=typeof content==='string'?sideWords(content):content;return n;}
+// INTERNO ED ESTERNO INVERTITI: la geometria resta quella rilevata (lato
+// esterno = quello da cui si guarda la sezione); cambia solo come si
+// chiamano i due lati in disegni, testi, sigle e istruzioni. Utile quando
+// la porta è montata al contrario (camere d'albergo che aprono verso la
+// camera). Le parole si scambiano una volta sola, all'uscita: testi dei
+// disegni (el), PDF (pdfText), pagine (swapDom), pezzi mandati all'app.
+function sidesSwapped(){return typeof state!=='undefined'&&!!state.sidesSwapped;}
+function sideWords(t){
+  if(!sidesSwapped()||typeof t!=='string')return t;
+  return t.replace(/(e|E)(stern|STERN)|(i|I)(ntern|NTERN)/g,(m,e1,e2,i1,i2)=>{
+    if(e1){const up=e2===e2.toUpperCase();return (e1==='E'?'I':'i')+(up?'NTERN':'ntern');}
+    const up=i2===i2.toUpperCase();return (i1==='I'?'E':'e')+(up?'STERN':'stern');});
+}
+function sideLetter(l){return sidesSwapped()?(l==='E'?'I':l==='I'?'E':l):l;}
+// testi di una pagina (non i disegni, già scambiati quando nascono)
+function swapDom(root){
+  if(!root||!sidesSwapped())return;
+  const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{acceptNode:n=>n.parentNode?.closest?.('svg')?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT});
+  const list=[];while(walker.nextNode())list.push(walker.currentNode);
+  list.forEach(n=>{const v=sideWords(n.nodeValue);if(v!==n.nodeValue)n.nodeValue=v;});
+}
 // La maestà si compone di due scelte indipendenti: la battuta dello stipite
 // e il tipo di coprifilo. La posizione del coprifilo è nelle quote eE / eI.
 const JAMBS = [
@@ -819,7 +842,53 @@ function overApplies(part, which) {
     : gasket.at + gasket.w / 2 < part.edges[index].len - 1e-6;
 }
 function overUsed(part, which) {
-  return overApplies(part, which) ? overLen(part, which) : 0;
+  return overApplies(part, which) && !lapMoved(part, which) ? overLen(part, which) : 0;
+}
+// SORMONTO SPOSTATO (dal riepilogo): invece del lembo dello stipite (o
+// dell'imbotte) sul pezzo vicino, è il pezzo vicino che si allunga sulla
+// faccia dello stipite. Stessa misura del sormonto, limitata alla faccia;
+// cambiano le misure dei due pezzi. Solo sui profili diritti.
+function lapMoved(part, which) {
+  return !hasProfileFilmRules() && !!draft().lapMove?.[part.key + ':' + which];
+}
+// «del coprifilo», «dello stipite», «dell'imbotte»; «sul», «sullo», «sull'»
+function partArticle(name, prep) {
+  const n = name.toLocaleLowerCase('it-IT');
+  if (/^[aeiou]/.test(n)) return prep + 'l’' + n;
+  if (/^(s[^aeiou]|z|gn|ps|x)/.test(n)) return prep + 'llo ' + n;
+  return prep + 'l ' + n;
+}
+function movedLapCapacity(part, which) {
+  const index = which === 'start' ? 0 : part.edges.length - 1, edge = part.edges[index];
+  if (!edge || !covered(part, index)) return 0;
+  const gasket = gasketAt(part, index);
+  if (gasket && Number.isFinite(gasket.at) && Number.isFinite(gasket.w))
+    return Math.max(0, which === 'start' ? gasket.at - gasket.w / 2 : edge.len - gasket.at - gasket.w / 2);
+  return edge.len;
+}
+function movedLapLen(part, which) {
+  if (!lapMoved(part, which) || !overApplies(part, which)) return 0;
+  return Math.max(0, Math.min(overLen(part, which), movedLapCapacity(part, which)));
+}
+function movedLapPath(part, which) {
+  const index = which === 'start' ? 0 : part.edges.length - 1, edge = part.edges[index];
+  return overlapRoutePoints(which === 'start' ? edge.a : edge.b, [{edge, index, reverse: which === 'end', length: edge.len}], movedLapLen(part, which));
+}
+// quanto si allunga un pezzo che porta un sormonto spostato: {before, after}
+function movedLapExtra(part, strip) {
+  const extra = {before: 0, after: 0};
+  if (hasProfileFilmRules() || !draft().lapMove) return extra;
+  const g = geometry();
+  g.parts.forEach(source => ['start', 'end'].forEach(which => {
+    const len = movedLapLen(source, which);
+    if (!(len > 0)) return;
+    const info = overlapInfo(source, which), seg = info.route?.[0];
+    if (!seg || info.targetPart?.key !== part.key) return;
+    const edge = part.edges[seg.index];
+    if (seg.reverse) { const last = strip.segs[strip.segs.length - 1]; if (last.i === seg.index && last.end >= edge.len - 1e-6) extra.after += len; }
+    else { const first = strip.segs[0]; if (first.i === seg.index && first.start <= 1e-6) extra.before += len; }
+  }));
+  return extra;
 }
 function walk(points, len) {
   const out = [points[0]];
@@ -965,8 +1034,9 @@ function overlapStackItems(g = geometry()) {
   const items = [], junctions = roundJunctions(g);
   const inGeometry = part => part && (g.parts.find(candidate => candidate.key === part.key) || part);
   g.parts.forEach(source => ['start', 'end'].forEach(which => {
-    const used = overUsed(source, which), info = overlapInfo(source, which);
-    const path = overPath(source, which), limit = overLimit(source, which);
+    const moved = lapMoved(source, which), info = overlapInfo(source, which);
+    const used = moved ? movedLapLen(source, which) : overUsed(source, which);
+    const path = moved ? movedLapPath(source, which) : overPath(source, which), limit = overLimit(source, which);
     if (!(Number.isFinite(used) && used > 0 && info.capacity > 0) || path.length < 2 ||
         !path.every(point => point.every(Number.isFinite))) return;
     let upperPart, lowerPart;
@@ -986,7 +1056,10 @@ function overlapStackItems(g = geometry()) {
     const keys = [upperPart.key, lowerPart.key];
     const position = keys.includes('outer') ? 'Lato esterno' : keys.includes('inner')
       ? 'Lato interno' : 'Giunto stipite–imbotte';
-    items.push({id: 'S' + (items.length + 1), source, which, info, used, limit, flipped, key: source.key + ':' + which,
+    // chi porta il lembo e su quale faccia sta
+    const carrier = moved ? inGeometry(info.targetPart) : source, face = moved ? source : inGeometry(info.targetPart);
+    items.push({id: 'S' + (items.length + 1), source, which, info, used, limit, flipped, moved, key: source.key + ':' + which,
+      carrierName: carrier?.name || '', faceName: face?.name || '', movable: !hasProfileFilmRules(),
       upperPart, lowerPart, upperName: upperPart.name, lowerName: lowerPart.name, position});
   }));
   return items;
@@ -1781,6 +1854,7 @@ function strips(part, pieceKey = null) {
   const first = list[0], last = list[list.length - 1];
   if (!first.gStart && first.segs[0].i === 0) first.before += overUsed(part, 'start');
   if (!last.gEnd && last.segs[last.segs.length - 1].i === part.edges.length - 1) last.after += overUsed(part, 'end');
+  list.forEach(s => { const x = movedLapExtra(part, s); s.before += x.before; s.after += x.after; });
   list.forEach(s => { s.total = s.width + s.before + s.after; });
   return list;
 }
@@ -2091,7 +2165,7 @@ function renderOverlapOrderList(container, selected = null, focus = null) {
     const upper=document.createElement('span');upper.className='mt-stack-row mt-stack-upper';upper.textContent='SOPRA · '+item.upperName;
     const lower=document.createElement('span');lower.className='mt-stack-row mt-stack-lower';lower.textContent='SOTTO · '+item.lowerName;
     const detail=document.createElement('span');detail.className='mt-stack-detail';
-    detail.textContent=`Si posa prima ${item.lowerName.toLocaleLowerCase('it-IT')}, poi ${item.upperName.toLocaleLowerCase('it-IT')}. Sormonto ${fmt(item.used)} mm`+
+    detail.textContent=`Si posa prima ${item.lowerName.toLocaleLowerCase('it-IT')}, poi ${item.upperName.toLocaleLowerCase('it-IT')}. Lembo ${partArticle(item.carrierName,'de')} ${partArticle(item.faceName,'su')}: ${fmt(item.used)} mm`+
       (item.info.automatic?' · automatico fino allo spigolo.':` · massimo ${fmt(floorMeasureLimit(item.limit))} mm.`);
     card.append(title,upper,lower,detail);
     if(!item.info.targetCovered){
@@ -2196,6 +2270,15 @@ function lapDrawing(stack, project) {
   });
   return {points,tracks,erase:[points,sourceContext,receiverContext].filter(p=>p.length>1)};
 }
+// il lembo del pezzo vicino steso sulla faccia dello stipite
+function movedLapDrawing(stack, project) {
+  const {source,which,info,upperPart}=stack,points=movedLapPath(source,which).map(project);
+  const targetUpper=upperPart.key!==source.key,tracks=[];
+  const carrierTrack=lapOffset(points,source,project,targetUpper?3:-3),ownTrack=lapOffset(points,source,project,targetUpper?-3:3);
+  if(carrierTrack.length>1)tracks.push({role:targetUpper?'upper':'lower',part:info.targetPart,points:carrierTrack});
+  if(ownTrack.length>1)tracks.push({role:targetUpper?'lower':'upper',part:source,points:ownTrack});
+  return {points,tracks,erase:[points]};
+}
 let lapMaskSerial=0;
 function maskLapFilm(svg, drawing) {
   let state=svg._lapMask;
@@ -2245,7 +2328,7 @@ function drawFilmOverlap(svg, source, which, X, Y, big = false) {
   const stack = overlapStackInfo(source,which);
   if(!stack)return;
   const {info,used,id,upperPart,lowerPart}=stack;
-  const drawing=lapDrawing(stack,p=>[X(p[0]),Y(p[1])]);
+  const drawing=stack.moved?movedLapDrawing(stack,p=>[X(p[0]),Y(p[1])]):lapDrawing(stack,p=>[X(p[0]),Y(p[1])]);
   maskLapFilm(svg,drawing);
   const invalid = used > stack.limit + 1e-6;
   const group = el('g', {'data-overlap': source.key + ':' + which,
@@ -6303,7 +6386,9 @@ function toggleLap(key){
 }
 function reviewLapEntries(){
   const out=overlapStackItems().map(item=>({id:item.id,title:item.position,upper:item.upperName,lower:item.lowerName,
-    flipped:item.flipped,toggle:()=>toggleLap(item.key)}));
+    flipped:item.flipped,toggle:()=>toggleLap(item.key),
+    where:'Lembo '+partArticle(item.carrierName,'de')+' '+partArticle(item.faceName,'su')+' · '+fmt(item.used)+' mm',
+    move:item.movable?()=>{const m=draft().lapMove||(draft().lapMove={});if(m[item.key])delete m[item.key];else m[item.key]=true;}:null,moved:item.moved}));
   const c=state.colorSides?colorSplit():null;
   if(c&&c.lap>0){const flip=!!draft().colorLapFlip;
     out.push({id:'B',title:'Battuta · cambio colore',upper:flip?'Stipite interno':'Stipite esterno',lower:flip?'Stipite esterno':'Stipite interno',flipped:flip,
@@ -6319,14 +6404,22 @@ function reviewLapList(){
   const entries=reviewLapEntries();if(!entries.length)return null;
   const wrap=document.createElement('section');wrap.className='mt-review-card mt-review-laps';
   const h=document.createElement('h4');h.textContent='Sormonti';wrap.append(h);
-  const note=document.createElement('p');note.className='mt-small';note.textContent='Tocca un sormonto per invertire chi sta sopra: cambiano disegno, ordine di posa e istruzioni, non le misure.';wrap.append(note);
+  const note=document.createElement('p');note.className='mt-small';note.textContent='Tocca un sormonto per invertire chi sta sopra (cambiano disegno, ordine di posa e istruzioni, non le misure). «Sposta» mette il lembo sull’altra faccia: cambiano le misure dei due pezzi.';wrap.append(note);
   entries.forEach(entry=>{
     const b=document.createElement('button');b.type='button';b.className='mt-chip cursor-interaction mt-lap-chip';b.setAttribute('data-lap',entry.id);
     b.setAttribute('aria-pressed',String(entry.flipped));
     const t=document.createElement('strong');t.textContent=entry.id+' · '+entry.title+(entry.flipped?' · invertito':'');
     const u=document.createElement('span');u.textContent='Sopra: '+entry.upper.toLocaleLowerCase('it-IT');
     const l=document.createElement('span');l.textContent='Sotto: '+entry.lower.toLocaleLowerCase('it-IT');
-    b.append(t,u,l);b.onclick=()=>{entry.toggle();vibrate();sync();renderReview();};wrap.append(b);
+    b.append(t,u,l);
+    if(entry.where){const w=document.createElement('span');w.textContent=entry.where;b.append(w);}
+    b.onclick=()=>{entry.toggle();vibrate();sync();renderReview();};wrap.append(b);
+    if(entry.move){
+      const m=document.createElement('button');m.type='button';m.className='mt-chip cursor-interaction mt-lap-move';m.setAttribute('data-lap-move',entry.id);
+      m.setAttribute('aria-pressed',String(!!entry.moved));
+      m.textContent=entry.moved?'↺ Riporta il sormonto sulla faccia di prima':'⇄ Sposta il sormonto sull’altra faccia';
+      m.onclick=()=>{entry.move();vibrate();sync();renderReview();};wrap.append(m);
+    }
   });
   if(doorFaces.every(([key])=>isDoorFaceCovered(key))&&!leafProfileRanges().gaps.length){
     twoToneDoorEdge=true;let fig;try{fig=doorEdgeFigure(false);}finally{twoToneDoorEdge=false;}fig.classList.add('mt-review-leaf-edge');
@@ -6402,12 +6495,12 @@ function reviewLeafSection(){
 function snapshotConfig(){
   const leaves=Array.from({length:state.leafCount===2?2:1},(_,i)=>copyLeaf(i===state.activeLeaf?door:(leafRecords[i]||door)));
   return copyLeaf({cfg:state.cfg,hasHead:state.hasHead,leafCount:state.leafCount,handleSide:state.handleSide,handleChosen:state.handleChosen,
-    joint:state.joint,asym:state.asym,fit:state.fit||null,draft:state.draft,leaves,luce:{W:luce.W,H:luce.H},meeting:state.meeting||null,colorSides:!!state.colorSides,colorLeaf:!!state.colorLeaf});
+    joint:state.joint,asym:state.asym,fit:state.fit||null,draft:state.draft,leaves,luce:{W:luce.W,H:luce.H},meeting:state.meeting||null,colorSides:!!state.colorSides,colorLeaf:!!state.colorLeaf,sidesSwapped:!!state.sidesSwapped});
 }
 function loadConfig(c){
   const conf=copyLeaf(c);
   Object.assign(state,{cfg:conf.cfg,hasHead:conf.hasHead,leafCount:conf.leafCount,handleSide:conf.handleSide,handleChosen:conf.handleChosen,
-    joint:conf.joint,asym:conf.asym||{side:null,E:null,I:null},fit:conf.fit||null,draft:conf.draft,activeLeaf:0,meeting:conf.meeting||null,colorSides:!!conf.colorSides,colorLeaf:!!conf.colorLeaf});
+    joint:conf.joint,asym:conf.asym||{side:null,E:null,I:null},fit:conf.fit||null,draft:conf.draft,activeLeaf:0,meeting:conf.meeting||null,colorSides:!!conf.colorSides,colorLeaf:!!conf.colorLeaf,sidesSwapped:!!conf.sidesSwapped});
   leafRecords[0]=copyLeaf(conf.leaves[0]);leafRecords[1]=conf.leaves[1]?copyLeaf(conf.leaves[1]):null;
   replaceDoor(copyLeaf(conf.leaves[0]));
   luce.W=conf.luce.W;luce.H=conf.luce.H;
@@ -6469,6 +6562,8 @@ function renderReview(){
   button('Modifica avanzata',()=>{state.quick=null;appEl.classList.add('mt-advanced');redrawFull();drawDoor();});
   button('Duplica',()=>duplicateDoor());
   button('Rifai la guida',()=>{state.quick=null;openWizard();});
+  button(state.sidesSwapped?'Interno ⇄ esterno: invertiti':'Inverti interno ed esterno',()=>{state.sidesSwapped=!state.sidesSwapped;vibrate();sync();drawDoor();renderReview();});
+  bar.lastChild.setAttribute('aria-pressed',String(!!state.sidesSwapped));
   if(HOST)button('Istruzioni PDF',ev=>hostInstructions(ev.currentTarget));
   button(editing?'Aggiorna '+editing.name:HOST?'Salva porta':'Salva nel lavoro',()=>saveToJob());
   bar.lastChild.classList.add('mt-primary');
@@ -6509,6 +6604,12 @@ function renderReview(){
   if(fit){const n=document.createElement('p');n.className='mt-review-note';n.textContent='Avviso: '+fit+' Controlla le misure di anta e stipite; i tagli della pellicola restano validi.';box.append(n);}
 }
 
+// interno ed esterno invertiti: le pagine scambiano le parole a fine disegno
+const withSideWords=(base,root)=>function(...args){const out=base.apply(this,args);swapDom($(root));return out;};
+renderReview=withSideWords(renderReview,'.mt-review');
+renderWizard=withSideWords(renderWizard,'.mt-wizard');
+renderSummary=withSideWords(renderSummary,'.mt-app-total');
+renderPosa=withSideWords(renderPosa,'.mt-posa');
 // ---------- Istruzioni di montaggio (PDF, una per porta del lavoro) ----------
 // Maestà a tre quarti in proporzione con i pezzi numerati nell'ordine di posa,
 // sezioni di traverso e montanti con tutte le pellicole, anta a tre quarti con
@@ -6522,7 +6623,7 @@ const JSPDF_URL='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.mi
 const HOST=new URLSearchParams(location.search).has('ospite')&&window.parent!==window;
 const host={saved:null,lavoro:false,timer:0};
 function hostPost(msg){window.parent.postMessage({sorgente:'rilievo-porta',...msg},location.origin);}
-function hostDesc(){return `${model().name} · ${doorClosureName()} · luce ${fmt(luce.W)} × ${fmt(luce.H)} · `+eachLeaf(i=>leafName(i).toLocaleLowerCase('it-IT')+' '+fmt(door.width)+' × '+fmt(door.height)).join(' / ')+(state.hasHead===false?' · senza traverso':'')+(state.colorSides?' · colori diversi fra i lati':state.colorLeaf?' · anta di un altro colore':'');}
+function hostDesc(){return sideWords(`${model().name} · ${doorClosureName()} · luce ${fmt(luce.W)} × ${fmt(luce.H)} · `+eachLeaf(i=>leafName(i).toLocaleLowerCase('it-IT')+' '+fmt(door.width)+' × '+fmt(door.height)).join(' / ')+(state.hasHead===false?' · senza traverso':'')+(state.colorSides?' · colori diversi fra i lati':state.colorLeaf?' · anta di un altro colore':'')+(state.sidesSwapped?' · interno ed esterno invertiti':''));}
 // Due porte con la stessa firma si montano allo stesso modo: la firma è la
 // configurazione senza le misure che cambia la modifica veloce (luce, larghezza
 // e altezza dell'anta) e senza i dati derivati.
@@ -6539,10 +6640,10 @@ function hostDirty(){return host.saved!==JSON.stringify(snapshotConfig());}
 function rowSiglas(rows){
   const base=rows.map(r=>{
     if(r.door){
-      const side=r.face==='back'?'I':'E',leaf=state.leafCount===2?((r.leafIndex??0)===0?'SX':'DX'):'';
+      const side=sideLetter(r.face==='back'?'I':'E'),leaf=state.leafCount===2?((r.leafIndex??0)===0?'SX':'DX'):'';
       return side+'-A'+leaf;
     }
-    const side=posaSide(r)?'I':'E',pos=r.piece==='head'?'T':r.piece==='right'?'MDX':'MSX';
+    const side=sideLetter(posaSide(r)?'I':'E'),pos=r.piece==='head'?'T':r.piece==='right'?'MDX':'MSX';
     const keys=r.partKeys||[r.partKey],kind=keys.some(k=>k==='outer'||k==='inner')?'CF':keys.includes('extension')?'IM':'S';
     return side+'-'+pos+'-'+kind;
   });
@@ -6556,7 +6657,7 @@ function hostSave(){
   if(!rows){reviewMessage='Ci sono misure da sistemare: la porta non è stata salvata.';renderReview();return;}
   const config=snapshotConfig();
   hostPost({tipo:'salva',id:state.editingType||null,config,firma:hostSignature(config),descrizione:hostDesc(),latiDiversi:!!state.colorSides,coloriAnta:!state.colorSides&&!!state.colorLeaf,
-    righe:(()=>{const sig=rowSiglas(rows);return rows.map((r,i)=>({nome:r.name,sigla:sig[i],larghezza:roundCut(r.width),lunghezza:roundCut(r.height),anta:!!r.door}));})()});
+    righe:(()=>{const sig=rowSiglas(rows);return rows.map((r,i)=>({nome:sideWords(r.name),sigla:sig[i],larghezza:roundCut(r.width),lunghezza:roundCut(r.height),anta:!!r.door}));})()});
 }
 async function hostInstructions(button){
   const t=editingType()||{name:'Porta nuova',qty:1};
@@ -6654,7 +6755,7 @@ function svgToPng(svg,w,h,scale=2.5){
     img.onerror=()=>reject(new Error('svg'));img.src=url;
   });
 }
-const pdfText=t=>String(t).replace(/[’‘]/g,"'").replace(/[“”«»]/g,'"').replace(/[—–]/g,'-').replace(/→/g,'->').replace(/…/g,'...').replace(/[^\x00-\xFF]/g,'');
+const pdfText=t=>sideWords(String(t)).replace(/[’‘]/g,"'").replace(/[“”«»]/g,'"').replace(/[—–]/g,'-').replace(/→/g,'->').replace(/…/g,'...').replace(/[^\x00-\xFF]/g,'');
 // Proiezione a tre quarti (obliqua): x a destra, y in alto, z nello spessore del muro.
 const OBL={ox:.62,oy:.45};
 function callouts(svg,items,center,box){

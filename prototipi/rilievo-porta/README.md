@@ -183,6 +183,24 @@ uno inverte chi sta sopra:
 
 Le istruzioni PDF usano gli stessi disegni e lo stesso ordine di posa.
 
+«Sposta il sormonto sull'altra faccia» (S1, S2… sui profili diritti):
+`draft().lapMove[parte:inizio|fine]`. Invece del lembo dello stipite (o
+dell'imbotte) sul pezzo vicino, è il pezzo vicino che si allunga sulla faccia
+dello stipite, della stessa misura (limitata alla faccia, fino alla
+guarnizione). Il pezzo che dava il lembo si accorcia, quello che lo riceve
+si allunga (`movedLapLen`, `movedLapExtra`); il disegno è `movedLapDrawing`.
+Si combina con l'inversione di chi sta sopra. Sui raggiati e smussati il
+sormonto segue le regole del profilo e non si sposta.
+
+## Interno ed esterno invertiti
+
+Nel riepilogo «Inverti interno ed esterno» (`state.sidesSwapped`, salvato
+nella configurazione). La geometria resta quella rilevata; cambia solo come si
+chiamano i due lati: disegni (`el`), PDF (`pdfText`), pagine di riepilogo,
+guida e tagli (`swapDom`), sigle E/I (`sideLetter`) e nomi mandati all'app.
+Serve per le porte montate al contrario (camere d'albergo che aprono verso la
+camera): si decide di volta in volta quale lato è l'esterno.
+
 ## Porte a due ante
 
 Al centro le ante si chiudono fra loro, non sullo stipite. L'**anta attiva** è
