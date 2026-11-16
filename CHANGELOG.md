@@ -10,6 +10,15 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.106.5 — Gesti sui disegni anche nella scheda Anta e nell'editor
+
+- La sezione della maestà (scheda Maestà) resta neutra: toccare un pezzo
+  non lo seleziona più, quindi la pellicola non si ispessisce. Si toccano
+  solo sormonti ed ESTERNO/INTERNO.
+- Nella scheda Anta, toccando la battuta sul disegno del bordo si inverte
+  chi sta sopra, come nella sezione del battente.
+- Gli stessi gesti valgono anche nella sezione della modifica avanzata.
+
 ## 1.106.4 — Niente sormonto dove stipite e coprifilo sono un pezzo unico
 
 - Se la striscia dello stipite fra coprifilo e guarnizione è stretta (sotto

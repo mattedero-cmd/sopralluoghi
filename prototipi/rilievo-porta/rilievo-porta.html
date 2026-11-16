@@ -2571,6 +2571,7 @@ function update() {
   const part = g.parts[draft().part];
   refreshOverFields(part);
   render($('.mt-section'), g);
+  reviewLapTaps($('.mt-section'));
   drawProfileDetail(part);
   drawFlat(g);
   const list = displayStrips(part);
@@ -4498,6 +4499,7 @@ function drawDoor() {
   svg.append(el('text', {x: cx, y: 26, 'text-anchor': 'middle', 'font-size': 11,
     fill: 'var(--mt-secondary)'}, doorFaceName(measuredFace)));
   drawDoorEdge(svg, width);
+  leafSeamTap(svg);
   svg.append(el('text', {x: width - 8, y: 250, 'text-anchor': 'end', 'font-size': 12}, 'Abbondanza M ' + fmt(door.margin)));
   const map = {L: 'width', H: 'height', S: 'thickness', Lb: 'lip', Sb: 'rebateAt', Lb2:'lip2',Sb2:'rebateAt2',r: 'radius', 'Abbondanza M': 'margin'};
   Array.from(svg.querySelectorAll('text')).forEach(t => {
@@ -4915,6 +4917,7 @@ function redrawFull() {
     if (fullView === 'profile') drawProfileDetail(g.parts[draft().part], svg, {big: true, height: Math.max(180, box.height), tool});
     else {
       render(svg, g);
+      reviewLapTaps(svg);
       const solids = Array.from(svg.querySelectorAll('path.cursor-interaction')).filter(n => n.getAttribute('fill') !== 'none');
       g.parts.forEach((part, i) => {
         const q = part.quotes.find(q => /^e[EI]$/.test(q.key));
@@ -6422,7 +6425,7 @@ function onTapOrHold(node,tap,hold){
   node.addEventListener('contextmenu',ev=>ev.preventDefault());
 }
 function reviewLapTaps(svg){
-  const redo=()=>{vibrate();sync();drawDoor();renderReview();};
+  const redo=()=>{vibrate();sync();if(activePanel==='frame')redrawFull();drawDoor();renderReview();};
   svg.querySelectorAll('[data-overlap]').forEach(group=>{
     const key=group.getAttribute('data-overlap'),line=group.querySelector('[data-layer=separator]');
     const [partKey,which]=key.split(':'),part=geometry().parts.find(q=>q.key===partKey);
@@ -6446,7 +6449,12 @@ function reviewLapTaps(svg){
 }
 function reviewSectionFigure(){
   const svg=el('svg',{role:'img','aria-label':'Sezione della maestà con le quote'});
-  render(svg,geometry(),false,{width:340,height:250});return svg;
+  // nessun pezzo evidenziato: qui la sezione si guarda e si toccano i sormonti
+  const d=draft(),saved=d.part;d.part=-1;
+  try{render(svg,geometry(),false,{width:340,height:250});}finally{d.part=saved;}
+  // toccare un pezzo non lo seleziona (la selezione è della modifica avanzata)
+  svg.querySelectorAll('path.cursor-interaction').forEach(n=>{const c=n.cloneNode(true);c.classList.remove('cursor-interaction');n.replaceWith(c);});
+  return svg;
 }
 function reviewLeafFront(){
   const svg=reviewSvg(250),leaves=state.leafCount===2?eachLeaf(()=>({w:door.width,h:door.height})):[{w:door.width,h:door.height}];
@@ -6475,14 +6483,17 @@ function reviewLeafFront(){
 function reviewLeafSection(){
   const svg=el('svg',{viewBox:'0 0 320 235',role:'img','data-orientation-fixed':'true'});
   drawDoorEdge(svg,320,false,true,true);
-  const seam=svg.querySelector('[data-door-overlap]');
-  if(seam){
-    const hit=seam.cloneNode();hit.removeAttribute('data-door-overlap');
-    hit.setAttribute('stroke','transparent');hit.setAttribute('stroke-width','24');hit.setAttribute('pointer-events','stroke');hit.style.cursor='pointer';
-    hit.addEventListener('click',()=>{door.lapTop=doorLapTop()==='front'?'back':'front';vibrate();sync();drawDoor();updateBadge();renderReview();});
-    seam.after(hit);
-  }
+  leafSeamTap(svg);
   return svg;
+}
+// la battuta dell'anta (sopra e lati) toccabile: si inverte chi sta sopra
+function leafSeamTap(svg){
+  const seam=svg.querySelector('[data-door-overlap=top]');
+  if(!seam)return;
+  const hit=seam.cloneNode();hit.removeAttribute('data-door-overlap');
+  hit.setAttribute('stroke','transparent');hit.setAttribute('stroke-width','24');hit.setAttribute('pointer-events','stroke');hit.style.cursor='pointer';
+  hit.addEventListener('click',ev=>{ev.stopPropagation();door.lapTop=doorLapTop()==='front'?'back':'front';vibrate();sync();drawDoor();updateBadge();renderReview();});
+  seam.after(hit);
 }
 // ---------- Porte salvate: duplicazione, modifica veloce, salvataggio ----------
 // Ogni porta del lavoro conserva la configurazione completa. Una copia è
