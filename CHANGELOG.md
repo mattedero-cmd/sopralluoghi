@@ -10,6 +10,12 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.106.3 — Sezione della maestà a due colori
+
+- Con esterno e interno di colori diversi, nella sezione della maestà (nel
+  riepilogo, nell'editor e nelle istruzioni) la pellicola del lato esterno è
+  verde e quella del lato interno arancio, divise dove cambia il colore.
+
 ## 1.106.2 — Anta: si tocca la battuta per scegliere chi sta sopra
 
 - Nel riepilogo la «Sezione del battente» è lo stesso disegno delle

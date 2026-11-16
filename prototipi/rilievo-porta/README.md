@@ -269,6 +269,8 @@ nel piano di taglio. Con esterno e interno diversi:
     coprifilo + stipite si divide alla giunzione);
   - senza battuta, sulla guarnizione dello stipite se c'è; altrimenti lo
     stipite resta intero e la guida lo dice;
+- nei disegni della maestà la pellicola esterna è verde e quella interna
+  arancio (`filmSideColor`), anche sui lembi dei sormonti;
 - ogni pezzo ha il lato del colore (`posaSide`): coprifilo esterno E,
   interno I, gli altri secondo dove stanno rispetto alla battuta. La sigla
   comincia con quel lato;

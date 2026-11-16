@@ -1994,7 +1994,7 @@ function render(svg,g,mini=false,size=null){const box=size||svg.getBoundingClien
  const defs=el('defs'),id=mini?'mt-hatch-'+svg.dataset.model:'mt-hatch-main',pattern=el('pattern',{id,width:mini?5:8,height:mini?5:8,patternUnits:'userSpaceOnUse'});pattern.append(el('path',{d:mini?'M -1 1 L 1 -1 M 0 5 L 5 0 M 4 6 L 6 4':'M -2 2 L 2 -2 M 0 8 L 8 0 M 6 10 L 10 6',stroke:'var(--mt-line)','stroke-width':.7,fill:'none'}));defs.append(pattern);svg.append(defs);
  svg.append(el('rect',{x:X(g.wall.left),y:Y(g.wall.top),width:(g.wall.right-g.wall.left)*k,height:(g.wall.bottom-g.wall.top)*k,fill:'var(--mt-wall)',stroke:'var(--mt-secondary)','stroke-width':mini?.5:.8}));svg.append(el('rect',{x:X(g.wall.left),y:Y(g.wall.top),width:(g.wall.right-g.wall.left)*k,height:(g.wall.bottom-g.wall.top)*k,fill:`url(#${id})`}));
  g.parts.forEach((part,pi)=>{const solid=el('path',{d:partPath(part,X,Y,k,true),fill:mini?'var(--mt-wood)':pi===draft().part?'var(--mt-tint)':'var(--mt-wood)',stroke:mini?'currentColor':'var(--mt-ink)','stroke-width':mini?.75:1.2,'stroke-linejoin':'miter'});if(!mini){solid.classList.add('cursor-interaction');solid.addEventListener('click',()=>{draft().part=pi;draft().edge=0;sync();});}svg.append(solid);
- if(!mini&&pi===draft().part){part.edges.forEach((e,ei)=>{filmSegments(part,ei).forEach(seg=>svg.append(el('path',{d:`M ${X(seg.a[0])} ${Y(seg.a[1])} `+edgeCommand(seg,X,Y,k),fill:'none',stroke:'var(--mt-green)','stroke-width':hasProfileFilmRules()?3:ei===draft().edge?4:2.5,'data-film-segment':part.key+':'+ei,'data-start':seg.start,'data-end':seg.end})));const hit=el('path',{d:`M ${X(e.a[0])} ${Y(e.a[1])} `+edgeCommand(e,X,Y,k),fill:'none',stroke:'transparent','stroke-width':24,class:'cursor-interaction'});hit.addEventListener('click',()=>{draft().edge=ei;sync();});svg.append(hit);});}
+ if(!mini&&pi===draft().part){part.edges.forEach((e,ei)=>{filmSegments(part,ei).forEach(seg=>svg.append(el('path',{d:`M ${X(seg.a[0])} ${Y(seg.a[1])} `+edgeCommand(seg,X,Y,k),fill:'none',stroke:segColor(part,seg),'stroke-width':hasProfileFilmRules()?3:ei===draft().edge?4:2.5,'data-film-segment':part.key+':'+ei,'data-start':seg.start,'data-end':seg.end})));const hit=el('path',{d:`M ${X(e.a[0])} ${Y(e.a[1])} `+edgeCommand(e,X,Y,k),fill:'none',stroke:'transparent','stroke-width':24,class:'cursor-interaction'});hit.addEventListener('click',()=>{draft().edge=ei;sync();});svg.append(hit);});}
  });
  if(mini){orientSurveySvg(svg,w);return;}
  if(g.leaf)drawClosedDoorLeaf(svg,g.leaf,X,Y);
@@ -2003,7 +2003,7 @@ function render(svg,g,mini=false,size=null){const box=size||svg.getBoundingClien
  drawRoundedFilm(svg,roundedRelations(null,g),X,Y);
  g.parts.forEach((part,pi)=>{
   const selected=pi===draft().part;
-  if(!selected)part.edges.forEach((e,ei)=>filmSegments(part,ei).forEach(seg=>svg.append(el('path',{d:`M ${X(seg.a[0])} ${Y(seg.a[1])} `+edgeCommand(seg,X,Y,k),fill:'none',stroke:'var(--mt-green)','stroke-width':hasProfileFilmRules()?3:1.5,opacity:hasProfileFilmRules()?1:.7,'pointer-events':'none','data-film-segment':part.key+':'+ei,'data-start':seg.start,'data-end':seg.end}))));
+  if(!selected)part.edges.forEach((e,ei)=>filmSegments(part,ei).forEach(seg=>svg.append(el('path',{d:`M ${X(seg.a[0])} ${Y(seg.a[1])} `+edgeCommand(seg,X,Y,k),fill:'none',stroke:segColor(part,seg),'stroke-width':hasProfileFilmRules()?3:1.5,opacity:hasProfileFilmRules()?1:.7,'pointer-events':'none','data-film-segment':part.key+':'+ei,'data-start':seg.start,'data-end':seg.end}))));
  });
  g.parts.forEach((part,pi)=>['start','end'].forEach(which=>drawFilmOverlap(svg,part,which,X,Y,pi===draft().part)));
  drawColorLap(svg,g,X,Y);
@@ -2058,11 +2058,22 @@ function roundedDetachedLabel(relation) {
   const side = relation.sourcePart.key === 'outer' ? 'Sinistra' : 'Destra';
   return `${side}: battuta stretta dall'altro lato, quindi stipite e coprifilo separati. Il coprifilo si ferma al suo spigolo, lo stipite arriva alla sua base, senza sormonto.`;
 }
+// ESTERNO E INTERNO DI COLORI DIVERSI: nei disegni della maestà la pellicola
+// del lato esterno è verde, quella del lato interno arancio. Il lato segue
+// la divisione dello stipite (colorSplit); senza colori diversi tutto verde.
+function filmSideColor(part, x) {
+  if (!state.colorSides || !part) return 'var(--mt-green)';
+  if (part.key === 'outer') return 'var(--mt-green)';
+  if (part.key === 'inner') return 'var(--mt-film2)';
+  const c = colorSplit(), limit = c ? c.x : geometry().depth / 2;
+  return x > limit + 1e-6 ? 'var(--mt-film2)' : 'var(--mt-green)';
+}
+function segColor(part, seg) { return filmSideColor(part, (seg.a[0] + seg.b[0]) / 2); }
 function drawRoundedFilm(svg, relations, X, Y, strokeWidth = 3) {
   relations.forEach(relation => {
     if (relation.mode === 'overlap' || relation.points.length < 2) return;
     const line = el('polyline', {points: relation.points.map(p => X(p[0]) + ',' + Y(p[1])).join(' '),
-      fill: 'none', stroke: 'var(--mt-green)', 'stroke-width': strokeWidth, 'stroke-linejoin': 'round',
+      fill: 'none', stroke: filmSideColor(relation.sourcePart, relation.points[0][0]), 'stroke-width': strokeWidth, 'stroke-linejoin': 'round',
       'pointer-events': 'none', 'data-rounded-film': relation.mode,
       'data-source-part': relation.sourcePart.key, 'data-target-part': relation.targetPart.key});
     line.append(el('title', {}, roundedFilmLabel(relation)));
@@ -2335,9 +2346,13 @@ function drawFilmOverlap(svg, source, which, X, Y, big = false) {
   group.append(el('polyline',{points:drawing.points.map(p=>p.join(',')).join(' '),fill:'none',
     stroke:invalid?'var(--mt-error)':'var(--mt-overlap)','stroke-width':3,'stroke-linejoin':'round',
     'data-layer':'separator',...(invalid?{'stroke-dasharray':'4 3'}:{})}));
+  // il lato del giunto lo dice il coprifilo (esterno o interno) coinvolto
+  const casingKey=[upperPart.key,lowerPart.key].find(k=>k==='outer'||k==='inner');
+  const trackColor=part=>!state.colorSides?'var(--mt-green)':part.key==='outer'||part.key==='inner'?filmSideColor(part,0):
+    casingKey?filmSideColor({key:casingKey},0):filmSideColor(part,(overPath(source,which)[0]||[0])[0]);
   ['lower','upper'].forEach(role=>drawing.tracks.filter(track=>track.role===role).forEach(track=>{
     group.append(el('polyline',{points:track.points.map(p=>p.join(',')).join(' '),fill:'none',
-      stroke:'var(--mt-green)','stroke-width':3,'stroke-linejoin':'round','stroke-linecap':'butt',
+      stroke:trackColor(track.part),'stroke-width':3,'stroke-linejoin':'round','stroke-linecap':'butt',
       'data-layer':role,'data-part':track.part.key}));
   }));
   svg.append(group);
