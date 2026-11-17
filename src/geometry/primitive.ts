@@ -1251,11 +1251,13 @@ function notaEtichettaPorta(a: Etichetta): string {
 function geometriaIconaPorta(a: Etichetta) {
   const dim = a.stile.dimensioneTesto;
   const lettera = letteraPorta(a);
-  // la lettera è grande e la porta le sta attorno: si allarga per le sigle lunghe
-  const dimLettera = dim * 1.7;
-  const larghezza = Math.max(dim * 2.4, misuraLarghezzaTesto(lettera, dimLettera) + dim * 0.9);
-  const altezza = Math.max(dim * 3.6, larghezza * 1.45);
-  return { dim, lettera, dimLettera, larghezza, altezza, anta: larghezza * 0.24, spessore: Math.max(2, dim * 0.16) };
+  // la lettera è grande e la porta le sta attorno: si allarga per le sigle
+  // lunghe. K ingrandisce tutta l'icona rispetto al testo dell'etichetta.
+  const K = 1.5;
+  const dimLettera = dim * 1.7 * K;
+  const larghezza = Math.max(dim * 2.4 * K, misuraLarghezzaTesto(lettera, dimLettera) + dim * 1.2 * K);
+  const altezza = Math.max(dim * 3.6 * K, larghezza * 1.45);
+  return { dim, lettera, dimLettera, larghezza, altezza, anta: larghezza * 0.24, spessore: Math.max(2.5, dim * 0.2 * K) };
 }
 
 export function primitiveEtichetta(a: Etichetta): Primitiva[] {
@@ -1266,50 +1268,47 @@ export function primitiveEtichetta(a: Etichetta): Primitiva[] {
     const g = geometriaIconaPorta(a);
     const { x: cx, y: cy } = a.posizione;
     const colore = a.stile.colore;
-    const contrasto = coloreContrasto(colore);
     const x0 = cx - g.larghezza / 2;
     const x1 = cx + g.larghezza / 2;
     const y0 = cy - g.altezza / 2;
     const y1 = cy + g.altezza / 2;
+    // solo il CONTORNO nel colore dell'etichetta (con l'alone scuro che lo
+    // stacca dalla foto): dentro la porta si vede la foto, e la lettera
+    const sp = g.spessore;
     const out: Primitiva[] = [
-      // anta aperta, dietro al telaio (come nell'icona «porta»)
-      {
-        kind: 'poligono',
-        punti: [x1, y0, x1 + g.anta, y0 + g.anta * 0.55, x1 + g.anta, y1, x1, y1],
-        colore,
-        alone: ALONE
-      },
+      // anta aperta, accanto al telaio (come nell'icona «porta»)
       {
         kind: 'polilinea',
         punti: [x1, y0, x1 + g.anta, y0 + g.anta * 0.55, x1 + g.anta, y1],
-        colore: contrasto,
-        spessore: g.spessore * 0.6
+        colore,
+        spessore: sp,
+        alone: ALONE
       },
-      // il vano della porta, pieno: è il fondo della lettera
+      // il vano della porta
       {
-        kind: 'rettangolo',
-        rect: { x: x0, y: y0, width: g.larghezza, height: g.altezza },
-        colore: contrasto,
-        spessore: g.spessore * 0.6,
-        riempimento: colore,
-        raggio: g.spessore * 0.6
+        kind: 'polilinea',
+        punti: [x1, y1, x1, y0, x0, y0, x0, y1],
+        colore,
+        spessore: sp,
+        alone: ALONE
       },
       // soglia
       {
         kind: 'linea',
         punti: [x0 - g.anta * 0.6, y1, x1 + g.anta * 1.2, y1],
         colore,
-        spessore: g.spessore * 1.4,
+        spessore: sp * 1.2,
         alone: ALONE
       },
       // maniglia
       {
         kind: 'cerchio',
-        centro: { x: x1 - g.larghezza * 0.09, y: cy + g.altezza * 0.26 },
-        raggio: Math.max(1.5, dim * 0.13),
-        colore: contrasto,
+        centro: { x: x1 - g.larghezza * 0.1, y: cy + g.altezza * 0.26 },
+        raggio: Math.max(2, sp * 0.8),
+        colore,
         spessore: 0,
-        riempimento: contrasto
+        riempimento: colore,
+        alone: ALONE
       },
       {
         kind: 'testo',
@@ -1317,8 +1316,9 @@ export function primitiveEtichetta(a: Etichetta): Primitiva[] {
         posizione: { x: cx, y: cy - g.altezza * 0.06 },
         rotazioneDeg: 0,
         dimensione: g.dimLettera,
-        colore: contrasto,
-        sfondo: null
+        colore,
+        sfondo: null,
+        alone: ALONE
       }
     ];
     const nota = notaEtichettaPorta(a);
