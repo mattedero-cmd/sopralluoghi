@@ -348,9 +348,34 @@ function distintaPorta(m: MontaggioPorta, rotolo: (larghezza: number, materiale:
 /**
  * Capitolo PORTE in coda al PDF del sopralluogo.
  */
+/**
+ * LA FOTO DEL RILIEVO UNA VOLTA SOLA. Il collage delle foto di una porta è
+ * una foto del progetto: nel report sta già fra le foto, e lì resta. Nelle
+ * istruzioni di montaggio dello stesso documento va solo se il report non la
+ * contiene (foto esclusa dall'esportazione). Restituisce, per porta, l'id
+ * della foto da mettere nelle istruzioni.
+ */
+export function collageDaAllegare(
+  portaIds: string[],
+  collage: Map<string, { id: string }>,
+  fotoNelReport: Set<string>
+): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const id of portaIds) {
+    const f = collage.get(id);
+    if (f && !fotoNelReport.has(f.id)) out.set(id, f.id);
+  }
+  return out;
+}
+
 export function contenutoPorte(
   dati: PorteDelReport,
-  opzioni: { bobine: boolean; orizzontale?: boolean }
+  opzioni: {
+    bobine: boolean;
+    orizzontale?: boolean;
+    /** per porta: il collage delle sue foto (data URL) da mettere nelle istruzioni */
+    fotoRilievo?: Map<string, string>;
+  }
 ): Content[] {
   const out: Content[] = [
     { text: 'Porte', style: 'h1', pageBreak: 'before', tocItem: true } as Content,
@@ -387,6 +412,13 @@ export function contenutoPorte(
     g.pagine.forEach((img, i) => {
       out.push({ image: img, fit: area, alignment: 'center', ...(i > 0 ? { pageBreak: 'before' } : {}) } as Content);
     });
+    // le foto del rilievo delle porte del gruppo, se il report non le ha già
+    for (const p of g.porte) {
+      const img = opzioni.fotoRilievo?.get(p.porta.id);
+      if (!img) continue;
+      out.push({ text: `Foto del rilievo · ${p.porta.nome}`, style: 'h3', pageBreak: 'before' } as Content);
+      out.push({ image: img, fit: [area[0], area[1] - 30], alignment: 'center' } as Content);
+    }
     // le distinte, una per porta, dopo le istruzioni comuni, con la legenda delle sigle
     out.push({ text: '', pageBreak: 'before' } as Content);
     out.push(legendaSigle());

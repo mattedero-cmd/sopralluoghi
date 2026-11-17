@@ -312,6 +312,10 @@ async function copiaFoto(
       creataIl: ora(),
       modificataIl: ora()
     };
+    // il collage del rilievo porta segue la porta copiata
+    if (copia.collagePorta && portaDi?.(copia.collagePorta.portaId)) {
+      copia.collagePorta = { ...copia.collagePorta, portaId: portaDi(copia.collagePorta.portaId) as ID };
+    }
     legamiSciolti += riscriviLegami(
       copia,
       (vecchio) => nuoveFoto.get(vecchio),
@@ -1606,6 +1610,49 @@ export async function salvaPorta(dati: {
       return nuova;
     })
   );
+}
+
+/** I collage delle foto del rilievo delle porte di un progetto, per porta. */
+export async function collagePorteProgetto(progettoId: ID): Promise<Map<ID, Foto>> {
+  const foto = await db.foto.where('progettoId').equals(progettoId).toArray();
+  const out = new Map<ID, Foto>();
+  for (const f of foto) if (f.collagePorta && !f.danneggiata) out.set(f.collagePorta.portaId, f);
+  return out;
+}
+
+/** Il collage delle foto del rilievo di una porta (se è stato fatto). */
+export async function collageDellaPorta(porta: Pick<Porta, 'id' | 'progettoId'>): Promise<Foto | undefined> {
+  const foto = await db.foto.where('progettoId').equals(porta.progettoId).toArray();
+  return foto.find((f) => f.collagePorta?.portaId === porta.id);
+}
+
+/**
+ * Salva il collage delle foto del rilievo di una porta come foto del
+ * progetto: la prima volta la aggiunge in fondo, poi la aggiorna al suo posto
+ * (con le sue note e la sua sezione). `null` toglie il collage.
+ */
+export async function salvaCollagePorta(
+  porta: Pick<Porta, 'id' | 'progettoId' | 'nome'>,
+  dati: Omit<Foto, 'id' | 'progettoId' | 'ordine' | 'creataIl' | 'modificataIl' | 'didascalia' | 'noteDato' | 'scala' | 'geotag'> | null
+): Promise<Foto | null> {
+  const esistente = await collageDellaPorta(porta);
+  if (!dati) {
+    if (esistente) await eliminaFoto(esistente.id);
+    return null;
+  }
+  const didascalia = `${porta.nome} · foto del rilievo`;
+  if (esistente) {
+    const agg: Foto = {
+      ...esistente,
+      ...dati,
+      // la didascalia la tiene chi l'ha cambiata a mano
+      didascalia: esistente.didascalia || didascalia,
+      modificataIl: ora()
+    };
+    await scrivi('salvare le foto della porta', () => db.foto.put(agg));
+    return agg;
+  }
+  return aggiungiFoto(porta.progettoId, { ...dati, didascalia, noteDato: '', scala: null, geotag: null });
 }
 
 /** Elimina una porta e tutte le sue etichette sulle foto. */

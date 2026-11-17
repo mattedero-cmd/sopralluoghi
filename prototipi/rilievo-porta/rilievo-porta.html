@@ -6697,7 +6697,7 @@ function hostSchedulePlan(){
   },250);
 }
 function hostTypes(list){
-  job.types=(list||[]).map(p=>({id:p.id,name:p.nome,qty:Math.max(1,p.qty||1),config:p.config,desc:p.descrizione||'',mode:p.modo==='kit'?'kit':'strisce',
+  job.types=(list||[]).map(p=>({id:p.id,name:p.nome,qty:Math.max(1,p.qty||1),config:p.config,desc:p.descrizione||'',mode:p.modo==='kit'?'kit':'strisce',photo:p.foto instanceof Blob?p.foto:null,
     rows:(p.righe||[]).map(r=>({label:r.nome,sigla:r.sigla||'',width:r.larghezza,length:r.lunghezza,mat:r.materiale||''}))}));
   fixJobMat();
 }
@@ -6728,7 +6728,8 @@ function hostMessage(ev){
   }else if(m.tipo==='stato'){
     hostPost({tipo:'stato',modificata:hostDirty()});
   }else if(m.tipo==='pdf'&&t){
-    buildInstructions(m.gruppo?{...t,name:m.gruppo.nome,qty:m.gruppo.qty,group:true,lists:false}:t).then(blob=>hostPost({tipo:'file',blob,nome:'Istruzioni montaggio '+t.name+'.pdf'}))
+    // il PDF chiesto dall'app (il report) ha già la foto del rilievo: qui no
+    buildInstructions(m.gruppo?{...t,name:m.gruppo.nome,qty:m.gruppo.qty,group:true,lists:false,photo:null}:{...t,photo:null}).then(blob=>hostPost({tipo:'file',blob,nome:'Istruzioni montaggio '+t.name+'.pdf'}))
       .catch(()=>hostPost({tipo:'errore',testo:'Non riesco a creare il PDF.'}));
   }
 }
@@ -6931,6 +6932,16 @@ async function buildInstructions(type){
         ['Battuta (lato maniglia)','Sopra','Sotto'].forEach((t,i)=>doc.text(t,M+i*(dw+4),yy+4));
         for(let i=0;i<3;i++)await image(doorEdgeFigure(i===2),320,235,M+i*(dw+4),yy+6,dw);
       }
+    }
+    // FOTO DEL RILIEVO: il foglio A4 delle foto della porta, in fondo
+    if(type.photo&&!group){
+      try{
+        const url=await new Promise((ok,ko)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=ko;r.readAsDataURL(type.photo);});
+        const size=await new Promise((ok,ko)=>{const i=new Image();i.onload=()=>ok([i.naturalWidth,i.naturalHeight]);i.onerror=ko;i.src=url;});
+        doc.addPage();title('Foto del rilievo · '+type.name,'Lato esterno, lato interno, stipite e dettagli.');
+        const top=28,maxW=PW-2*M,maxH=297-top-10,k=Math.min(maxW/size[0],maxH/size[1]),w=size[0]*k,h=size[1]*k;
+        doc.addImage(url,'JPEG',(PW-w)/2,top,w,h);
+      }catch(e){}
     }
     return doc.output('blob');
   }finally{loadConfig(saved);state.editingType=savedEditing;if(savedActive)setActiveLeaf(savedActive,false);}

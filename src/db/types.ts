@@ -387,8 +387,28 @@ export interface Foto {
    * pulita lo spegne, e resta spento.
    */
   mostraAbbondanze?: boolean;
+  /**
+   * FOTO DEL RILIEVO PORTA: questa foto è il collage A4 delle foto di una
+   * porta (lato esterno, lato interno, stipite, dettagli). `aree` dice dove
+   * sta ogni scatto, per rifarne uno senza perdere gli altri.
+   */
+  collagePorta?: { portaId: ID; aree: AreaScatto[] };
   creataIl: number;
   modificataIl: number;
+}
+
+/** Il posto di una foto nel collage del rilievo porta. */
+export type RuoloScatto = 'esterno' | 'interno' | 'stipite' | 'dettaglio';
+
+/** Dove è disegnato uno scatto nel collage, in pixel del collage. */
+export interface AreaScatto {
+  ruolo: RuoloScatto;
+  /** per i dettagli: il loro ordine (0…3) */
+  indice?: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 /**

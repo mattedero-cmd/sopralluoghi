@@ -9,7 +9,7 @@ import {
 } from '../geometry/pezziDaSopralluogo';
 import { nestingDiProgetto } from '../db/repository';
 import { contenutoNesting } from './nesting';
-import { contenutoPorte } from './porte';
+import { collageDaAllegare, contenutoPorte } from './porte';
 import { essenzeDaPezzi, migraDocumento, type DocumentoNesting } from '../utils/documentoNesting';
 import { pdfMake } from './engine';
 import type { Content, TDocumentDefinitions } from 'pdfmake/interfaces';
@@ -447,7 +447,26 @@ export async function generaReportPdf(
       const { porteDelReport } = await import('../utils/porteDocumento');
       const porte = await porteDelReport(progetto.id, avanzamento);
       if (porte) {
-        contenuto.push(...contenutoPorte(porte, { bobine: true, orizzontale: opzioni.orizzontale }));
+        // la foto del rilievo di ogni porta una volta sola: fra le foto del
+        // report se c'è, altrimenti nelle sue istruzioni di montaggio
+        const { collagePorteProgetto } = await import('../db/repository');
+        const collage = await collagePorteProgetto(progetto.id);
+        const daAllegare = collageDaAllegare(
+          porte.porte.map((p) => p.porta.id),
+          collage,
+          new Set(fotoList.map((f) => f.id))
+        );
+        const fotoRilievo = new Map<string, string>();
+        for (const [portaId, fotoId] of daAllegare) {
+          const f = [...collage.values()].find((x) => x.id === fotoId);
+          if (!f || fotoIllegibile(f)) continue;
+          const ann = await db.annotazioni.where('fotoId').equals(f.id).toArray();
+          const blob = await renderFotoAnnotata(f, ann, 'image/jpeg', 0.92, (a) => codiceLocaleCtx(ctx, a));
+          fotoRilievo.set(portaId, await blobInDataUrlRidotto(blob, 2200));
+        }
+        contenuto.push(
+          ...contenutoPorte(porte, { bobine: true, orizzontale: opzioni.orizzontale, fotoRilievo })
+        );
       }
     } catch (e) {
       // senza il rilievo porta (o con un errore suo) il report si fa lo stesso

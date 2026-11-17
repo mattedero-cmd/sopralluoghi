@@ -10,6 +10,21 @@ in cui la copia in cache è stata generata.
 > hash dei file nel precache: basta pubblicare una build nuova e il pulsante
 > «Aggiorna all'ultima versione» fa il resto.
 
+## 1.107.0 — Foto della porta nel rilievo, in un foglio A4
+
+- Il rilievo di una porta nuova comincia dalle foto: porta chiusa dal lato
+  esterno, porta chiusa dal lato interno, lo stipite fotografato da sotto il
+  traverso (per vederne il profilo) e fino a 4 dettagli a scelta (cerniere,
+  maniglia, serratura, spioncino…). Ogni foto si può rifare o togliere; si
+  può anche saltare tutto.
+- Al «Salva porta» le foto si impaginano in un A4 verticale in 4 quarti, che
+  diventa una foto del progetto («Porta A · foto del rilievo»). Dal pulsante
+  «Foto» del rilievo si riaprono e si cambiano anche dopo.
+- Nei PDF la foto del rilievo c'è una volta sola: nel riepilogo sta fra le
+  foto del progetto; nelle istruzioni di montaggio dello stesso documento
+  compare solo se nel riepilogo è stata esclusa. Le istruzioni fatte da sole
+  (pulsante «Istruzioni PDF» del rilievo) la hanno in fondo.
+
 ## 1.106.5 — Gesti sui disegni anche nella scheda Anta e nell'editor
 
 - La sezione della maestà (scheda Maestà) resta neutra: toccare un pezzo

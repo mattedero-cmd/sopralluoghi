@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ID, Porta } from '../db/types';
-import { leggiPorta, salvaPorta } from '../db/repository';
+import { collageDellaPorta, collagePorteProgetto, leggiPorta, salvaCollagePorta, salvaPorta } from '../db/repository';
+import { blobOrigine, importaFoto } from '../utils/image';
+import { componiCollage, contaScatti, scattiDaCollage, type ScattiPorta } from '../utils/collagePorta';
+import { FotoPorta } from './FotoPorta';
+import { mostraToast } from '../state/toast';
 import { contestoPorte } from '../utils/porteDocumento';
 import { ModaleAnteprimaPdf } from './ModaleAnteprimaPdf';
 import { Modale } from './comuni';
@@ -60,10 +64,50 @@ export function RilievoPorta({
   const [pdf, setPdf] = useState<{ blob: Blob; nome: string } | null>(null);
   const [chiedi, setChiedi] = useState(false);
   const [titolo, setTitolo] = useState('Rilievo porta');
+  /**
+   * LE FOTO DELLA PORTA (collage A4): `null` finché non si toccano. Una porta
+   * nuova comincia da qui; le altre le riaprono dal pulsante «Foto».
+   */
+  const [scatti, setScatti] = useState<ScattiPorta | null>(modo === 'nuova' ? { dettagli: [] } : null);
+  const [mostraFoto, setMostraFoto] = useState(modo === 'nuova');
+  /** foto cambiate e non ancora nel collage salvato */
+  const fotoDaSalvare = useRef(false);
+  const scattiCorrenti = useRef(scatti);
+  scattiCorrenti.current = scatti;
   // la porta di questa apertura: dopo il primo salvataggio, aggiornarla
   const corrente = useRef<ID | null>(modo === 'scheda' ? portaId ?? null : null);
   const callback = useRef({ onSalvata, onChiudi, lavoro, materialeId });
   callback.current = { onSalvata, onChiudi, lavoro, materialeId };
+
+  /** compone e salva il collage, se le foto sono cambiate dall'ultima volta */
+  const salvaFoto = async (porta: Porta) => {
+    const s = scattiCorrenti.current;
+    if (!fotoDaSalvare.current || !s) return;
+    try {
+      if (contaScatti(s) === 0) {
+        await salvaCollagePorta(porta, null);
+      } else {
+        const c = await componiCollage(s, porta.nome);
+        const dati = await importaFoto(c.blob, c.altezza);
+        await salvaCollagePorta(porta, {
+          origine: dati.origine,
+          origineTipo: dati.origineTipo,
+          miniatura: dati.miniatura,
+          miniaturaTipo: dati.miniaturaTipo,
+          larghezzaPx: dati.larghezzaPx,
+          altezzaPx: dati.altezzaPx,
+          dataScatto: Date.now(),
+          collagePorta: { portaId: porta.id, aree: c.aree }
+        });
+      }
+      fotoDaSalvare.current = false;
+    } catch (e) {
+      console.error(e);
+      mostraToast('errore', 'Le foto della porta non sono state salvate. Riprova da «Foto».');
+    }
+  };
+  const salvaFotoRef = useRef(salvaFoto);
+  salvaFotoRef.current = salvaFoto;
 
   useEffect(() => {
     const manda = (msg: Record<string, unknown>) =>
@@ -75,10 +119,15 @@ export function RilievoPorta({
     // montaggio aperto da qui dice gli stessi rotoli del piano di taglio
     const elenco = async () => {
       const ctx = await contestoPorte(progettoId);
+      // il collage delle foto va in fondo alle istruzioni fatte da qui
+      const collage = await collagePorteProgetto(progettoId);
       return {
         porte: ctx.porte,
         piano: ctx.sezione?.piano ?? null,
-        perIframe: ctx.perRilievo.map((p) => ({ ...p, qty: Math.max(1, p.qty) }))
+        perIframe: ctx.perRilievo.map((p) => {
+          const f = collage.get(p.id);
+          return { ...p, qty: Math.max(1, p.qty), ...(f ? { foto: blobOrigine(f) } : {}) };
+        })
       };
     };
     const ascolta = async (ev: MessageEvent) => {
@@ -124,6 +173,7 @@ export function RilievoPorta({
         const nuova = !id;
         corrente.current = porta.id;
         setTitolo(porta.nome);
+        await salvaFotoRef.current(porta);
         const { perIframe } = await elenco();
         manda({ tipo: 'salvata', id: porta.id, nome: porta.nome, porte: perIframe });
         callback.current.onSalvata?.(porta, nuova);
@@ -143,22 +193,79 @@ export function RilievoPorta({
     return () => window.removeEventListener('message', ascolta);
   }, [progettoId, modo, portaId, fotoId]);
 
+  /** riapre le foto: quelle già nel collage della porta si ritagliano da lì */
+  const apriFoto = async () => {
+    if (!scatti) {
+      let iniziali: ScattiPorta = { dettagli: [] };
+      // una copia («Simile») è un'altra porta: le foto si rifanno
+      const id = corrente.current ?? (modo === 'scheda' ? portaId : undefined);
+      if (id) {
+        const f = await collageDellaPorta({ id, progettoId });
+        if (f?.collagePorta) {
+          try {
+            iniziali = await scattiDaCollage(blobOrigine(f), f.collagePorta.aree);
+          } catch {
+            // collage illeggibile: si ricomincia
+          }
+        }
+      }
+      setScatti(iniziali);
+    }
+    setMostraFoto(true);
+  };
+  /** chiude le foto: su una porta già salvata il collage si aggiorna subito */
+  const fineFoto = async () => {
+    setMostraFoto(false);
+    const id = corrente.current;
+    if (!id || !fotoDaSalvare.current) return;
+    const porta = await leggiPorta(id);
+    if (porta) {
+      await salvaFoto(porta);
+      mostraToast('successo', `Foto di ${porta.nome} salvate nel progetto.`);
+    }
+  };
+
   const chiudi = () => {
     const w = frame.current?.contentWindow;
     // il piano delle strisce si salva a ogni modifica: si esce e basta
     if (!w || modo === 'lavoro') return onChiudi();
+    // foto scattate per una porta non ancora salvata: si perderebbero
+    if (fotoDaSalvare.current && !corrente.current && contaScatti(scatti ?? { dettagli: [] }) > 0) {
+      return setChiedi(true);
+    }
     w.postMessage({ destinazione: 'rilievo-porta', tipo: 'stato' }, window.location.origin);
   };
 
   return (
     <div className="rilievo-porta" role="dialog" aria-label={titolo}>
       <div className="rilievo-porta-barra">
-        <strong>{titolo}</strong>
-        <button className="btn" onClick={chiudi} aria-label="Chiudi il rilievo porta">
-          <Icona nome="chiudi" dimensione={18} /> Chiudi
-        </button>
+        <strong>{mostraFoto ? `Foto · ${titolo}` : titolo}</strong>
+        <span className="riga-strumenti">
+          {modo !== 'lavoro' && !mostraFoto && (
+            <button className="btn" onClick={() => void apriFoto()} aria-label="Foto della porta">
+              <Icona nome="fotocamera" dimensione={18} /> Foto
+              {scatti && contaScatti(scatti) > 0 ? ` (${contaScatti(scatti)})` : ''}
+            </button>
+          )}
+          <button className="btn" onClick={chiudi} aria-label="Chiudi il rilievo porta">
+            <Icona nome="chiudi" dimensione={18} /> Chiudi
+          </button>
+        </span>
       </div>
-      <iframe ref={frame} src="/rilievo-porta.html?ospite" title="Rilievo porta" />
+      <div className="rilievo-porta-corpo">
+        <iframe ref={frame} src="/rilievo-porta.html?ospite" title="Rilievo porta" />
+        {mostraFoto && scatti && (
+          <FotoPorta
+            scatti={scatti}
+            onCambia={(s) => {
+              fotoDaSalvare.current = true;
+              setScatti(s);
+            }}
+            onAvanti={() => void fineFoto()}
+            testoAvanti={corrente.current ? 'Fatto' : 'Avanti: il rilievo'}
+          />
+        )}
+      </div>
       {chiedi && (
         <Modale titolo="Uscire senza salvare?" onChiudi={() => setChiedi(false)} centro>
           <p>La porta ha modifiche non salvate. Uscendo si perdono.</p>
